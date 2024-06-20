@@ -8,7 +8,7 @@
 PRODUCT_NAME = isd
 
 // The application's bundle identifier
-PRODUCT_BUNDLE_IDENTIFIER = ch.hixie.isd
+PRODUCT_BUNDLE_IDENTIFIER = space.interstellar-dynasties.isd
 
 // The copyright displayed in application information
-PRODUCT_COPYRIGHT = Copyright © 2021 ch.hixie. All rights reserved.
+PRODUCT_COPYRIGHT = Copyright © 2024 space.interstellar-dynasties. All rights reserved.
