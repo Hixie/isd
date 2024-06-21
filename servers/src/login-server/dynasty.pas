@@ -5,30 +5,29 @@ unit dynasty;
 interface
 
 uses
-   sysutils;
+   sysutils, passwords;
 
 type
    TDynastyRecord = record
    public
       const
          MaxUsernameLength = 127; // plus one byte for the length
-         SaltLength = 8;
-         SHA256Length = 32;
       var
          Username: String[MaxUsernameLength];
-         Salt: array[0..SaltLength-1] of Byte;
-         PasswordHash: array[0..SHA256Length-1] of Byte; // SHA256
+         Salt: TSalt;
+         PasswordHash: THash;
+         DynastyServer: Cardinal;
    end;
 
    TDynasty = class
    protected
       FID: Cardinal;
       FUsername: UTF8String;
-      FSalt: UTF8String;
-      FPasswordHash: TBytes;
-      class procedure ComputeHash(Salt: UTF8String; Password: UTF8String; out Hash: TBytes);
+      FSalt: TSalt;
+      FPasswordHash: THash;
+      FDynastyServer: Cardinal;
    public
-      constructor Create(AID: Cardinal; AUsername: UTF8String; APassword: UTF8String);
+      constructor Create(AID: Cardinal; AUsername: UTF8String; APassword: UTF8String; ADynastyServer: Cardinal);
       constructor CreateFromRecord(AID: Cardinal; DynastyRecord: TDynastyRecord);
       function ToRecord(): TDynastyRecord;
       procedure UpdateUsername(NewUsername: UTF8String);
@@ -36,11 +35,10 @@ type
       function VerifyPassword(Candidate: UTF8String): Boolean;
       property ID: Cardinal read FID;
       property Username: UTF8String read FUsername;
+      property ServerID: Cardinal read FDynastyServer;
    end;
 
 implementation
-
-uses fpsha256, fphashutils;
 
 function RawToString(var Source; Length: Cardinal): UTF8String;
 begin
@@ -56,11 +54,12 @@ begin
    Move(Source, Result[0], Length);
 end;
 
-constructor TDynasty.Create(AID: Cardinal; AUsername: UTF8String; APassword: UTF8String);
+constructor TDynasty.Create(AID: Cardinal; AUsername: UTF8String; APassword: UTF8String; ADynastyServer: Cardinal);
 begin
    inherited Create();
    FID := AID;
    FUsername := AUsername;
+   FDynastyServer := ADynastyServer;
    UpdatePassword(APassword);
 end;
 
@@ -69,29 +68,18 @@ begin
    inherited Create();
    FID := AID;
    FUsername := DynastyRecord.Username;
-   FSalt := RawToString(DynastyRecord.Salt[0], Length(DynastyRecord.Salt));
-   FPasswordHash := RawToBytes(DynastyRecord.PasswordHash[0], Length(DynastyRecord.PasswordHash));
+   FSalt := DynastyRecord.Salt;
+   FPasswordHash := DynastyRecord.PasswordHash;
+   FDynastyServer := DynastyRecord.DynastyServer;
 end;
 
 function TDynasty.ToRecord(): TDynastyRecord;
 begin
    FillChar(Result.Username, High(Result.Username), 0);
    Result.Username := FUsername;
-   Assert(Length(FSalt) = Length(Result.Salt));
-   Move(FSalt[1], Result.Salt[0], Length(Result.Salt));
-   Assert(Length(FPasswordHash) = Length(Result.PasswordHash));
+   Move(FSalt[0], Result.Salt[0], Length(Result.Salt));
    Move(FPasswordHash[0], Result.PasswordHash[0], Length(Result.PasswordHash));
-   TDynasty.CreateFromRecord(FID, Result).Free();
-end;
-
-class procedure TDynasty.ComputeHash(Salt: UTF8String; Password: UTF8String; out Hash: TBytes);
-var
-   SaltedPassword: TBytes;
-   HashedPassword: TBytes;
-begin
-   SaltedPassword := BytesOf(Salt + Password);
-   TSHA256.DigestBytes(SaltedPassword, HashedPassword);
-   Hash := HashedPassword;
+   Result.DynastyServer := FDynastyServer;
 end;
 
 procedure TDynasty.UpdateUsername(NewUsername: UTF8String);
@@ -101,11 +89,10 @@ end;
 
 procedure TDynasty.UpdatePassword(NewPassword: UTF8String);
 var
-   NewSalt: UTF8String;
-   HashedPassword: TBytes;
+   NewSalt: TSalt;
+   HashedPassword: THash;
 begin
-   SetLength(NewSalt, TDynastyRecord.SaltLength);
-   CryptoGetRandomBytes(PByte(NewSalt), Length(NewSalt)); // $R- (we know SaltLength will fit)
+   NewSalt := CreateSalt();
    ComputeHash(NewSalt, NewPassword, HashedPassword);
    FSalt := NewSalt;
    FPasswordHash := HashedPassword;
@@ -113,42 +100,12 @@ end;
 
 function TDynasty.VerifyPassword(Candidate: UTF8String): Boolean;
 var
-   Index: Cardinal;
-   HashedPassword: TBytes;
+   HashedPassword: THash;
 begin
    ComputeHash(FSalt, Candidate, HashedPassword);
    Assert(Length(HashedPassword) = Length(FPasswordHash));
    Assert(Length(HashedPassword) > 0);
-   for Index := Low(HashedPassword) to High(HashedPassword) do // $R- (we know the hash is a reasonable size)
-   begin
-      if (HashedPassword[Index] <> FPasswordHash[Index]) then
-      begin
-         Result := False;
-         exit;
-      end;
-   end;
-   Result := True;
+   Result := CompareHashes(HashedPassword, FPasswordHash);
 end;
 
-
-function GetTrueRandomBytes(aBytes: PByte; aCount: Integer): Boolean;
-var
-   Source: File of Byte;
-   ActualCount: Cardinal;
-begin
-   Assign(Source, '/dev/urandom');
-   FileMode := 0;
-   Reset(Source);
-   if (IOResult <> 0) then
-   begin
-      Result := False;
-      exit;
-   end;
-   BlockRead(Source, aBytes^, aCount, ActualCount); // $DFA- for ActualCount // $R-
-   Result := (IOResult = 0) and (ActualCount >= aCount);
-   Close(Source);
-end;
-
-initialization
-   GetRandomBytes := @GetTrueRandomBytes;
 end.

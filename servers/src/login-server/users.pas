@@ -11,27 +11,31 @@ type
       constructor Create();
    end;
    
+   TDynastyServerHashTable = class(specialize THashTable<UTF8String, Cardinal, UTF8StringUtils>)
+      constructor Create();
+   end;
+   
    TUserDatabase = class
    protected
       const
          MinPasswordLength = 6;
-         DefaultPasswordLength = 64;
          TemporaryUsernameMarker = #$10; // ASCII DLE
       var
          FAccounts: TDynastyHashTable;
          NextID: Cardinal;
          FDatabase: File of TDynastyRecord;
       procedure Save(Dynasty: TDynasty);
+      function GetDynasties(): TDynastyHashTable.TValueEnumerator;
    public
       constructor Create(var ADatabase: File);
       destructor Destroy(); override;
-      function CreateNewAccount(Password: UTF8String): TDynasty;
+      function CreateNewAccount(Password: UTF8String; DynastyServer: Cardinal): TDynasty;
       function GetAccount(Username: UTF8String; Password: UTF8String): TDynasty;
       procedure ChangeUsername(Dynasty: TDynasty; Username: UTF8String);
       procedure ChangePassword(Dynasty: TDynasty; Password: UTF8String);
       function UsernameAdequate(Username: UTF8String): Boolean;
       class function PasswordAdequate(Password: UTF8String): Boolean;
-      class function CreatePassword(): UTF8String;
+      property Dynasties: TDynastyHashTable.TValueEnumerator read GetDynasties;
    end;
 
 implementation
@@ -39,6 +43,11 @@ implementation
 uses hashfunctions, fphashutils, sysutils;
 
 constructor TDynastyHashTable.Create();
+begin
+   inherited Create(@UTF8StringHash32);
+end;
+
+constructor TDynastyServerHashTable.Create();
 begin
    inherited Create(@UTF8StringHash32);
 end;
@@ -81,13 +90,13 @@ begin
    inherited;
 end;
 
-function TUserDatabase.CreateNewAccount(Password: UTF8String): TDynasty;
+function TUserDatabase.CreateNewAccount(Password: UTF8String; DynastyServer: Cardinal): TDynasty;
 var
    ID: Cardinal;
 begin
    ID := NextID;
    Inc(NextID);
-   Result := TDynasty.Create(ID, TemporaryUsernameMarker + IntToStr(ID), Password);
+   Result := TDynasty.Create(ID, TemporaryUsernameMarker + IntToStr(ID), Password, DynastyServer);
    Assert(not FAccounts.Has(Result.Username));
    FAccounts.Add(Result.Username, Result);
    Save(Result);
@@ -104,6 +113,11 @@ begin
       Writeln('Expected to write one record to user database but wrote ', WriteCount, ' records at index ', NextID, '!!');
       // XXX report this somewhere promptly
    end;
+end;
+
+function TUserDatabase.GetDynasties(): TDynastyHashTable.TValueEnumerator;
+begin
+   Result := FAccounts.Values();
 end;
 
 function TUserDatabase.GetAccount(Username: UTF8String; Password: UTF8String): TDynasty;
@@ -135,22 +149,6 @@ procedure TUserDatabase.ChangePassword(Dynasty: TDynasty; Password: UTF8String);
 begin
    Dynasty.UpdatePassword(Password);
    Save(Dynasty);
-end;
-
-class function TUserDatabase.CreatePassword(): UTF8String;
-var
-   Index: Cardinal;
-   Bytes: TBytes;
-begin
-   SetLength(Bytes, DefaultPasswordLength);
-   CryptoGetRandomBytes(PByte(Bytes), Length(Bytes)); // $R- (bytes is a reasonable size)
-   for Index := Low(Bytes) to High(Bytes) do // $R- (bytes is a reasonable size)
-   begin
-      Bytes[Index] := (Bytes[Index] and $3F) + $3F; // $R-
-   end;
-   Result := '';
-   SetLength(Result, Length(Bytes));
-   Move(Bytes[0], Result[1], Length(Result));
 end;
 
 function TUserDatabase.UsernameAdequate(Username: UTF8String): Boolean;
