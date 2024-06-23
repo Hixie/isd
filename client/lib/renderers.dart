@@ -6,6 +6,8 @@ import 'package:flutter/rendering.dart';
 import 'galaxy.dart';
 import 'zoom.dart';
 
+// CONSTRAINTS
+
 class WorldConstraints extends Constraints {
   const WorldConstraints({
     required this.size,
@@ -30,9 +32,18 @@ class WorldConstraints extends Constraints {
   }
 }
 
+
+// PARENT DATA
+
 class WorldParentData extends ParentData {
-  Offset position = Offset.zero;
+  Offset position = Offset.zero; // in meters
+  double diameter = 0; // in meters
 }
+
+class WorldChildListParentData extends WorldParentData with ContainerParentDataMixin<RenderWorld> { }
+
+
+// HIT TEST
 
 class WorldHitTestResult extends HitTestResult {
   WorldHitTestResult();
@@ -49,16 +60,12 @@ class WorldHitTestEntry extends HitTestEntry {
   final Offset position;
 }
 
+
+// ABSTRACT RENDER OBJECTS
+
 abstract class RenderWorld extends RenderObject {
   @override
   WorldConstraints get constraints => super.constraints as WorldConstraints;
-
-  @override
-  void setupParentData(RenderObject child) {
-    if (child.parentData is! WorldParentData) {
-      child.parentData = WorldParentData();
-    }
-  }
 
   @override
   bool get sizedByParent => true;
@@ -72,14 +79,16 @@ abstract class RenderWorld extends RenderObject {
   @override
   void paint(PaintingContext context, Offset offset) {
   }
-
+  
   bool hitTest(WorldHitTestResult result, { required Offset position }) {
     hitTestChildren(result, position: position);
     result.add(WorldHitTestEntry(this, position: position));
     return true;
   }
 
-  void hitTestChildren(WorldHitTestResult result, { required Offset position }) { }
+  void hitTestChildren(WorldHitTestResult result, { required Offset position }) {
+    // hit test actual children
+  }
 
   @override
   Rect get paintBounds => Offset.zero & constraints.size;
@@ -90,11 +99,10 @@ abstract class RenderWorld extends RenderObject {
   @override
   void debugAssertDoesMeetConstraints() { }
 
+  void handleTap(Offset offset);
   Offset get panOffset; // rendering surface coordinates
   double get zoomFactor; // effective zoom (zoom.zoom but maybe affected by local shenanigans)
 }
-
-class WorldChildListParentData extends WorldParentData with ContainerParentDataMixin<RenderWorld> { }
 
 abstract class RenderWorldWithChildren extends RenderWorld with ContainerRenderObjectMixin<RenderWorld, WorldChildListParentData> {
   RenderWorldWithChildren();
@@ -123,23 +131,27 @@ abstract class RenderWorldWithChildren extends RenderWorld with ContainerRenderO
   }
 }
 
+
+// RENDER GALAXY
+
+class StarType {
+  const StarType(this.color, this.magnitude, [this.blur]);
+  final Color color;
+  final double magnitude;
+  final double? blur;
+}
+
+typedef GalaxyTapHandler = void Function(Offset offset, double zoomFactor);
+
 class RenderGalaxy extends RenderWorldWithChildren {
   RenderGalaxy({
-    required Galaxy? galaxy,
+    required Galaxy galaxy,
     required double diameter,
     PanZoomSpecifier zoom = PanZoomSpecifier.none,
+    this.onTap,
   }) : _galaxy = galaxy,
        _diameter = diameter,
        _zoom = zoom;
-
-  PanZoomSpecifier get zoom => _zoom;
-  PanZoomSpecifier _zoom;
-  set zoom (PanZoomSpecifier value) {
-    if (value != _zoom) {
-      _zoom = value;
-      markNeedsLayout();
-    }
-  }
 
   Galaxy? get galaxy => _galaxy;
   Galaxy? _galaxy;
@@ -150,6 +162,7 @@ class RenderGalaxy extends RenderWorldWithChildren {
     }
   }
 
+  // In meters.
   double get diameter => _diameter;
   double _diameter;
   set diameter (double value) {
@@ -159,10 +172,28 @@ class RenderGalaxy extends RenderWorldWithChildren {
     }
   }
 
+  PanZoomSpecifier get zoom => _zoom;
+  PanZoomSpecifier _zoom;
+  set zoom (PanZoomSpecifier value) {
+    if (value != _zoom) {
+      _zoom = value;
+      markNeedsLayout();
+    }
+  }
+
+  GalaxyTapHandler? onTap;
+  
   final TextPainter _legendLabel = TextPainter(textDirection: TextDirection.ltr);
   final TextStyle _legendStyle = const TextStyle(fontSize: 12.0);
   final Paint _legendPaint = Paint()
     ..color = const Color(0xFFFFFFFF);
+
+  @override
+  void setupParentData(RenderObject child) {
+    if (child.parentData is! WorldChildListParentData) {
+      child.parentData = WorldChildListParentData();
+    }
+  }
   
   @override
   void dispose() {
@@ -205,22 +236,24 @@ class RenderGalaxy extends RenderWorldWithChildren {
   
   double _zoomFactor = 1.0; // effective zoom (zoom.zoom but maybe affected by local shenanigans)
   double _legendLength = 0.0;
-  double _scaleFactor = 1.0; // world coordinates to rendering surface coordinates, not counting zoom
+  double _scaleFactor = 0.0; // meters to pixels, not counting zoom
 
   @override
   void performLayout() {
     _zoomFactor = exp(zoom.zoom - 1.0);
-    RenderWorld? child = firstChild;
-    while (child != null) {
-      final WorldChildListParentData childParentData = child.parentData! as WorldChildListParentData;
-      childParentData.position = Offset.zero; // XXX - don't yet have children
-      child.layout(WorldConstraints(size: constraints.size, full: false)); // XXX - don't yet have children
-      child = childParentData.nextSibling;
-    }
     if (galaxy != null) {
+      RenderWorld? child = firstChild;
+      while (child != null) {
+        final WorldChildListParentData childParentData = child.parentData! as WorldChildListParentData;
+        assert(childParentData.diameter > 0);
+        child.layout(WorldConstraints(
+          size: Size.square(childParentData.diameter), // in meters
+          full: false,
+        ));
+        child = childParentData.nextSibling;
+      }
       final Size renderSize = constraints.size;
       final double renderDiameter = renderSize.shortestSide;
-      print(_zoomFactor);
       final (double legendLength, String legendText) = _selectLegend(renderDiameter * 0.2, diameter * 0.2 / _zoomFactor);
       _legendLength = legendLength;
       _legendLabel.text = TextSpan(text: legendText, style: _legendStyle);
@@ -230,38 +263,37 @@ class RenderGalaxy extends RenderWorldWithChildren {
 
   TransformLayer? _transformLayer;
 
-  Offset _panOffset = Offset.zero; // rendering surface coordinates
+  Offset _panOffset = Offset.zero;
   
   @override
   void paint(PaintingContext context, Offset offset) {
     final Size renderSize = constraints.size;
     final double renderDiameter = renderSize.shortestSide;
-    final double galaxyDiameter = Galaxy.maxCoordinate.toDouble();
-    _scaleFactor = renderDiameter / galaxyDiameter;
+    _scaleFactor = renderDiameter / diameter;
     _panOffset = Offset(
       zoom.destinationFocalPointFraction.dx * renderSize.width,
       zoom.destinationFocalPointFraction.dy * renderSize.height
-    ) - zoom.sourceFocalPointFraction * galaxyDiameter * _scaleFactor * _zoomFactor;
+    ) - zoom.sourceFocalPointFraction * diameter * _scaleFactor * _zoomFactor;
+    final Matrix4 transform = Matrix4.identity()
+      ..translate(_panOffset.dx, _panOffset.dy)
+      ..scale(_scaleFactor * _zoomFactor);
+    _transformLayer = context.pushTransform(
+      needsCompositing,
+      offset,
+      transform,
+      _paintChildren,
+      oldLayer: _transformLayer,
+    );
     if (galaxy != null) {
-      final Matrix4 transform = Matrix4.identity()
-        ..translate(_panOffset.dx, _panOffset.dy)
-        ..scale(_scaleFactor * _zoomFactor);
-      _transformLayer = context.pushTransform(
-        needsCompositing,
-        offset,
-        transform,
-        _paintChildren,
-        oldLayer: _transformLayer,
-      );
       final double d = _legendStyle.fontSize!;
       final double length = _legendLength;
       context.canvas.drawPoints(PointMode.polygon, <Offset>[
-        Offset(d, renderSize.height - d * 2.0),
-        Offset(d, renderSize.height - d),
-        Offset(d + length, renderSize.height - d),
-        Offset(d + length, renderSize.height - d * 2.0),
+        offset + Offset(d, renderSize.height - d * 2.0),
+        offset + Offset(d, renderSize.height - d),
+        offset + Offset(d + length, renderSize.height - d),
+        offset + Offset(d + length, renderSize.height - d * 2.0),
       ], _legendPaint);
-      _legendLabel.paint(context.canvas, Offset(d + length - _legendLabel.width / 2.0, renderSize.height - d * 3.0));
+      _legendLabel.paint(context.canvas, offset + Offset(d + length - _legendLabel.width / 2.0, renderSize.height - d * 3.0));
     }
   }
 
@@ -280,26 +312,46 @@ class RenderGalaxy extends RenderWorldWithChildren {
   ];
   
   void _paintChildren(PaintingContext context, Offset offset) {
-    assert(galaxy != null);
     context.canvas.drawOval(
       Rect.fromCircle(
-        center: const Offset(Galaxy.maxCoordinate / 2.0, Galaxy.maxCoordinate / 2.0),
-        radius: Galaxy.maxCoordinate / 2.0,
+        center: Offset(diameter / 2.0, diameter / 2.0),
+        radius: diameter / 2.0,
       ),
       Paint()
         ..color = const Color(0xFF66BBFF).withOpacity(0x33/0xFF * exp(-(zoom.zoom - 1.0)).clamp(0.0, 1.0))
         ..maskFilter = MaskFilter.blur(BlurStyle.normal, 500.0 / _scaleFactor),
     );
-    for (int index = 0; index < galaxy!.stars.length; index += 1) {
-      final StarType starType = _starTypes[index];
-      final Paint paint = Paint()
-        ..strokeCap = StrokeCap.round
-        ..color = starType.color
-        ..strokeWidth = starType.magnitude / (_scaleFactor * zoom.zoom * zoom.zoom);
-      if (starType.blur != null) {
-        paint.maskFilter = MaskFilter.blur(BlurStyle.normal, starType.blur! / (_scaleFactor * _zoomFactor));
+    if (galaxy != null) {
+      for (int index = 0; index < galaxy!.stars.length; index += 1) {
+        final StarType starType = _starTypes[index];
+        final Paint paint = Paint()
+          ..strokeCap = StrokeCap.round
+          ..color = starType.color
+          ..strokeWidth = starType.magnitude / (_scaleFactor * zoom.zoom * zoom.zoom);
+        if (starType.blur != null) {
+          paint.maskFilter = MaskFilter.blur(BlurStyle.normal, starType.blur! / (_scaleFactor * _zoomFactor));
+        }
+        context.canvas.drawRawPoints(PointMode.points, galaxy!.stars[index], paint);
       }
-      context.canvas.drawRawPoints(PointMode.points, galaxy!.stars[index], paint);
+      RenderWorld? child = firstChild;
+      while (child != null) {
+        final WorldChildListParentData childParentData = child.parentData! as WorldChildListParentData;
+        child.paint(context, offset + childParentData.position);
+        child = childParentData.nextSibling;
+      }
+    }
+  }
+
+  @override
+  void applyPaintTransform(RenderWorld child, Matrix4 transform) {
+    transform.multiply(_transformLayer!.transform!);
+  }
+
+  @override
+  void handleTap(Offset offset) {
+    final Offset actual = (offset - _panOffset) / (_scaleFactor * _zoomFactor);
+    if (onTap != null) {
+      onTap!(actual, _zoomFactor);
     }
   }
 
@@ -310,13 +362,8 @@ class RenderGalaxy extends RenderWorldWithChildren {
   double get zoomFactor => _zoomFactor; // TODO: defer to child if fully zoomed
 }
 
-class StarType {
-  const StarType(this.color, this.magnitude, [this.blur]);
-  final Color color;
-  final double magnitude;
-  final double? blur;
-}
 
+// INFRASTRUCTURE RENDER OBJECTS
 
 class RenderBoxToRenderWorldAdapter extends RenderBox with RenderObjectWithChildMixin<RenderWorld> {
   RenderBoxToRenderWorldAdapter({ RenderWorld? child }) {
@@ -375,6 +422,60 @@ class RenderBoxToRenderWorldAdapter extends RenderBox with RenderObjectWithChild
     return true;
   }
 
+  void handleTap(Offset offset) {
+    if (child != null) {
+      child!.handleTap(offset);
+    }
+  }
+  
   Offset get panOffset => child != null ? child!.panOffset : Offset.zero;
   double get zoomFactor => child != null ? child!.zoomFactor : 1.0;
+}
+
+class RenderWorldPlaceholder extends RenderWorld {
+  RenderWorldPlaceholder({
+    required double diameter,
+    PanZoomSpecifier zoom = PanZoomSpecifier.none,
+  }) : _diameter = diameter,
+       _zoom = zoom;
+
+  double get diameter => _diameter;
+  double _diameter;
+  set diameter (double value) {
+    if (value != _diameter) {
+      _diameter = value;
+      markNeedsPaint();
+    }
+  }
+
+  PanZoomSpecifier get zoom => _zoom;
+  PanZoomSpecifier _zoom;
+  set zoom (PanZoomSpecifier value) {
+    if (value != _zoom) {
+      _zoom = value;
+      markNeedsLayout();
+    }
+  }
+
+  @override
+  void performLayout() { }
+
+  Paint get _paint => Paint()
+    ..color = const Color(0xFFFFFF00)
+    ..strokeWidth = diameter / 2.0
+    ..style = PaintingStyle.stroke;
+  
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    context.canvas.drawCircle(offset, diameter, _paint);
+  }
+
+  @override
+  void handleTap(Offset offset) { }
+  
+  @override
+  Offset get panOffset => Offset.zero;
+
+  @override
+  double get zoomFactor => 1.0;
 }

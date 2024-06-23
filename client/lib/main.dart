@@ -1,13 +1,8 @@
-import 'dart:math';
-
 import 'package:cross_local_storage/cross_local_storage.dart';
-import 'package:flutter/gestures.dart';
 import 'package:flutter/widgets.dart';
 
 import 'game.dart';
-import 'renderers.dart';
 import 'widgets.dart';
-import 'zoom.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -50,13 +45,6 @@ class _InterstellarDynastiesState extends State<InterstellarDynasties> {
   void _doLogin() {
   }
 
-  ZoomSpecifier _zoom = PanZoomSpecifier.none;
-  PanZoomSpecifier? _zoomAnchor;
-  Offset? _focalPoint;
-
-  final GlobalKey _worldRootKey = GlobalKey();
-  RenderBoxToRenderWorldAdapter get _worldRoot => _worldRootKey.currentContext!.findRenderObject()! as RenderBoxToRenderWorldAdapter;
-  
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<bool>(
@@ -67,49 +55,7 @@ class _InterstellarDynastiesState extends State<InterstellarDynasties> {
         builder: (BuildContext context, Widget? navigator) => Stack(
           fit: StackFit.expand,
           children: <Widget>[
-            Listener(
-              onPointerSignal: (PointerSignalEvent event) {
-                GestureBinding.instance.pointerSignalResolver.register(event, (PointerSignalEvent event) {
-                  if (event is PointerScrollEvent) {
-                    final Size size = _worldRootKey.currentContext!.size!;
-                    final Offset panOffset = _worldRoot.panOffset;
-                    final double zoomFactor = _worldRoot.zoomFactor;
-                    setState(() {
-                      _zoom = _zoom.withScale(
-                        event.scrollDelta.dy / -1000.0,
-                        (event.localPosition - panOffset) / (size.shortestSide * zoomFactor),
-                        Offset(event.localPosition.dx / size.width, event.localPosition.dy / size.height),
-                      );
-                    });
-                  }
-                });
-              },
-              child: GestureDetector(
-                trackpadScrollCausesScale: true,
-                onScaleStart: (ScaleStartDetails details) {
-                  _zoomAnchor = _zoom.last;
-                  _focalPoint = details.focalPoint;
-                },
-                onScaleUpdate: (ScaleUpdateDetails details) {
-                  setState(() {
-                    final Size size = _worldRootKey.currentContext!.size!;
-                    final Offset delta = details.focalPoint - _focalPoint!;
-                    _zoom = _zoom.withPan(PanZoomSpecifier(
-                      _zoomAnchor!.sourceFocalPointFraction,
-                      _zoomAnchor!.destinationFocalPointFraction + Offset(delta.dx / size.width, delta.dy / size.height),
-                      max(1.0, _zoomAnchor!.zoom * details.scale),
-                    ));
-                  });
-                },
-                onScaleEnd: (ScaleEndDetails details) {
-                  _zoomAnchor = null;
-                },
-                child: BoxToWorldAdapter(
-                  key: _worldRootKey,
-                  child: widget.game.rootNode.build(context, _zoom),
-                ),
-              ),
-            ),
+            WorldRoot(rootNode: widget.game.rootNode),
             if (!loggedIn)
               ValueListenableBuilder<bool>(
                 valueListenable: widget.game.loginServer.connected,

@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart';
 
 import 'galaxy.dart';
+import 'renderers.dart';
 import 'widgets.dart';
 import 'zoom.dart';
 
@@ -31,7 +32,7 @@ abstract class WorldNode extends ChangeNotifier {
     );
   }
 
-  // canonical location in unit square
+  // canonical location in node's own units
   Offset findLocationForChild(WorldNode child);
 
   // in meters
@@ -41,7 +42,7 @@ abstract class WorldNode extends ChangeNotifier {
 }
 
 class GalaxyNode extends WorldNode {
-  GalaxyNode();
+  GalaxyNode({ GalaxyTapHandler? onTap }) : _onTap = onTap;
 
   Galaxy? get galaxy => _galaxy;
   Galaxy? _galaxy;
@@ -49,45 +50,91 @@ class GalaxyNode extends WorldNode {
     _galaxy = value;
     notifyListeners();
   }
+
+  GalaxyTapHandler? get onTap => _onTap;
+  GalaxyTapHandler? _onTap;
+  set onTap(GalaxyTapHandler? value) {
+    _onTap = value;
+    notifyListeners();
+  }
   
-  final List<SystemNode> systems = <SystemNode>[];
+  final Set<SystemNode> systems = <SystemNode>{};
+
+  List<Widget>? _children;
+  
+  void addSystem(SystemNode system) {
+    systems.add(system);
+    _children = null;
+    notifyListeners();
+  }
+
+  void clearSystems() {
+    systems.clear();
+    _children = null;
+    notifyListeners();
+  }
 
   @override
   Offset findLocationForChild(WorldNode child) {
-    throw UnimplementedError();
+    if (galaxy != null) {
+      return (child as SystemNode).offset;
+    }
+    return Offset.zero;
   }
 
   @override
   double get diameter {
-    // TODO: consider reducing this by 10 or more
-    return 1e21; // approx 105700 light years
+    if (galaxy != null) {
+      return galaxy!.diameter;
+    }
+    return 0;
   }
-
+  
   @override
   Widget buildRenderer(BuildContext context, PanZoomSpecifier zoom, WorldNode? selectedChild, ZoomSpecifier? childZoom) {
-    return GalaxyWidget(
-      galaxy: galaxy,
+    if (galaxy != null) {
+      return GalaxyWidget(
+        galaxy: galaxy!,
+        diameter: diameter,
+        zoom: zoom,
+        onTap: onTap,
+        children: _children ??= _rebuildChildren(context, zoom, selectedChild, childZoom),
+      );
+    }
+    return WorldPlaceholder(
       diameter: diameter,
       zoom: zoom,
-      children: systems.map((SystemNode child) {
-        if (child == selectedChild) {
-          assert(childZoom != null);
-          return child.build(context, childZoom!);
-        }
-        return child.build(context, PanZoomSpecifier.none);
-      }).toList(),
     );
+  }
+
+  List<Widget> _rebuildChildren(BuildContext context, PanZoomSpecifier zoom, WorldNode? selectedChild, ZoomSpecifier? childZoom) {
+    return systems.map((SystemNode childNode) {
+      return ListenableBuilder(
+        listenable: childNode,
+        builder: (BuildContext context, Widget? child) {
+          return WorldNodePosition(
+            position: findLocationForChild(childNode),
+            diameter: childNode.diameter,
+            child: child!,
+          );
+        },
+        child: childNode.build(
+          context,
+          childNode == selectedChild ? childZoom! : PanZoomSpecifier.none,
+        ),
+      );
+    }).toList();
   }
 }
 
 class SystemNode extends WorldNode {
-  SystemNode(this.offset);
+  SystemNode(this.offset, this._diameter);
 
   final Offset offset; // location in galaxy (in unit square)
 
   @override
   Widget buildRenderer(BuildContext context, PanZoomSpecifier zoom, WorldNode? selectedChild, ZoomSpecifier? childZoom) {
-    return const Placeholder();
+    return WorldPlaceholder(diameter: diameter, zoom: zoom);
   }
 
   @override
@@ -95,8 +142,10 @@ class SystemNode extends WorldNode {
     throw UnimplementedError();
   }
 
+  final double _diameter; // should be around 1e16, which is about 1 light year
+  
   @override
   double get diameter {
-    return 1e16; // about 1 light year
+    return _diameter;
   }
 }

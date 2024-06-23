@@ -89,7 +89,7 @@ class Game {
   }
   
   Future<Galaxy> getGalaxy() async {
-    return Galaxy.from(await _getFile(1, 'get-stars'));
+    return Galaxy.from(await _getFile(1, 'get-stars'), Galaxy.standardDiameter);
   }
 
 
