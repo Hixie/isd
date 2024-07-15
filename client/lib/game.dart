@@ -74,7 +74,7 @@ class Game {
     fileSystemDefault.file('$code.bin').writeAsBytes(data);
   }
 
-  Future<Uint8List> _getFile(int code, String command) async {
+  Future<Uint8List> _getFile(int code) async {
     if (!_files.containsKey(code)) {
       _files[code] = Completer<Uint8List>();
       if (await fileSystemDefault.file('$code.bin').exists()) {
@@ -82,14 +82,20 @@ class Game {
         _files[code]!.complete(fileSystemDefault.file('$code.bin').readAsBytes());
       } else {
         // need to get from network
-        await _loginServer!.send(<Object>[command]);
+        await _loginServer!.send(<Object>['get-file']);
       }
     }
     return _files[code]!.future;
   }
   
   Future<Galaxy> getGalaxy() async {
-    return Galaxy.from(await _getFile(1, 'get-stars'), Galaxy.standardDiameter);
+    final StreamReader reader = await _loginServer!.send(<Object>['get-constants']);
+    final double diameter = reader.readDouble();
+    return Galaxy.from(await _getFile(1), diameter);
+  }
+  
+  Future<Uint8List> getSystems() async {
+    return _getFile(2);
   }
 
 
@@ -108,11 +114,13 @@ class Game {
   }
 
   Future<void> logout() async {
+    final String username = _credentials.value!.username;
+    final String password = _credentials.value!.password;
+    _loggedIn.value = false;
     _credentials.value = null;
     _dynastyServer?.dispose();
     _dynastyServer = null;
-    _loggedIn.value = false;
-    await _loginServer!.send(<Object>[]);
+    await _loginServer!.send(<Object>['logout', username, password]);
   }
 
 

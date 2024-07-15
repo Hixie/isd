@@ -104,6 +104,7 @@ class GalaxyNode extends WorldNode {
     return WorldPlaceholder(
       diameter: diameter,
       zoom: zoom,
+      color: const Color(0xFF999999),
     );
   }
 
@@ -128,13 +129,13 @@ class GalaxyNode extends WorldNode {
 }
 
 class SystemNode extends WorldNode {
-  SystemNode(this.offset, this._diameter);
+  SystemNode(this.offset, this._diameter, this.color);
 
   final Offset offset; // location in galaxy (in unit square)
 
   @override
   Widget buildRenderer(BuildContext context, PanZoomSpecifier zoom, WorldNode? selectedChild, ZoomSpecifier? childZoom) {
-    return WorldPlaceholder(diameter: diameter, zoom: zoom);
+    return WorldPlaceholder(diameter: diameter, zoom: zoom, color: color);
   }
 
   @override
@@ -143,6 +144,7 @@ class SystemNode extends WorldNode {
   }
 
   final double _diameter; // should be around 1e16, which is about 1 light year
+  final Color color;
   
   @override
   double get diameter {

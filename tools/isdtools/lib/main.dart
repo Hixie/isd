@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
@@ -7,6 +8,10 @@ import 'package:flutter/material.dart';
 import 'package:isd/galaxy.dart';
 import 'package:isd/widgets.dart';
 import 'package:isd/world.dart';
+
+const double lightYearInM = 9460730472580800.0;
+const double galaxyDiameter = 1e21;
+const double systemGroupingThreshold = 1 * lightYearInM;
 
 void main() {
   runApp(const MainApp());
@@ -40,12 +45,14 @@ class GalaxySettings {
 
 class GalaxyStats {
   GalaxyStats({
+    required this.stars,
     required this.starCount,
     required this.systemCount,
     required this.groups,
     required this.groupSizes,
   });
 
+  final List<StarStats> stars;
   final int starCount;
   final int systemCount;
   final Map<int, Set<int>> groups;
@@ -78,6 +85,32 @@ class StarStats {
   final int index;
   int get id => Galaxy.encodeStarId(category, index);
   Set<StarStats>? group;
+}
+
+class HomeCandidateStar {
+  HomeCandidateStar(this.position, this.distance);
+  final Offset position;
+  final double distance;
+  bool used = false;
+  double? scratch;
+
+  static int binarySearch(List<HomeCandidateStar> list, double targetDistance, [ int min = 0, int? maxLimit ]) {
+    int max = maxLimit ?? list.length;
+    while (min < max) {
+      final int mid = min + ((max - min) >> 1);
+      final double element = list[mid].distance;
+      final int comp = (element - targetDistance).sign.toInt();
+      if (comp == 0) {
+        return mid;
+      }
+      if (comp < 0) {
+        min = mid + 1;
+      } else {
+        max = mid;
+      }
+    }
+    return min;
+  }
 }
 
 class _MainAppState extends State<MainApp> {
@@ -165,6 +198,7 @@ class _MainAppState extends State<MainApp> {
   Uint32List _encodedStars = Uint32List(0);
   GalaxyStats? _stats;
   final GalaxyNode _galaxyNode = GalaxyNode();
+  int? _home;
 
   bool _generating = false;
   bool _dirty = true;
@@ -189,10 +223,11 @@ class _MainAppState extends State<MainApp> {
     if (mounted) {
       setState(() {
         _encodedStars = encode(_stars);
-        _galaxyNode.galaxy = Galaxy.from(_encodedStars.buffer.asUint8List(), Galaxy.standardDiameter);
+        _galaxyNode.galaxy = Galaxy.from(_encodedStars.buffer.asUint8List(), galaxyDiameter);
         _galaxyNode.clearSystems();
         _stats = null;
         _generating = false;
+        _home = null;
       });
       if (_dirty) {
         _dirty = false;
@@ -311,6 +346,7 @@ class _MainAppState extends State<MainApp> {
       groupSizes[group.length] = groupSizes[group.length]! + 1;
     }
     return GalaxyStats(
+      stars: starStats,
       starCount: starCount,
       systemCount: groupMapping.length,
       groups: starGroups,
@@ -322,17 +358,75 @@ class _MainAppState extends State<MainApp> {
     if (_generating)
       return;
     _galaxyNode.clearSystems();
+    _home = null;
     setState(() {
       _generating = true;
     });
-    _stats = await compute(analyzeGalaxy, (stars: _stars, threshold: 1 * 9460730472580800.0 / _galaxyNode.diameter)); // 1 light year in unit square units
+    _stats = await compute(analyzeGalaxy, (stars: _stars, threshold: systemGroupingThreshold / _galaxyNode.diameter)); // 1 light year in unit square units
     if (mounted) {
       setState(() {
         _generating = false;
       });
     }
   }
+  
+  void _selectHomes() {
+    assert(_home != null);
+    final (int homeCategory, int homeIndex) = Galaxy.decodeStarId(_home!);
+    assert(homeCategory >= 2);
+    final Offset homePosition = _stars[homeCategory][homeIndex] * _galaxyNode.galaxy!.diameter;
 
+    const double minDistanceFromHome = lightYearInM * 500.0;
+    const double localSpaceRadius = lightYearInM * 250.0;
+
+    final List<HomeCandidateStar> candidates = <HomeCandidateStar>[];
+    for (StarStats star in _stats!.stars) {
+      if (star.category >= 2 && star.category < 10) {
+        final double distance = ((star.offset * _galaxyNode.galaxy!.diameter) - homePosition).distance;
+        if (distance > minDistanceFromHome && star.group!.length <= 3 &&
+            (_stats!.groups[star.id]!.toList()..sort()).first == star.id) {
+          candidates.add(HomeCandidateStar(star.offset * _galaxyNode.galaxy!.diameter, distance));
+        }
+      }
+    }
+    candidates.sort((HomeCandidateStar a, HomeCandidateStar b) => (a.distance - b.distance).sign.toInt());
+    const int minStarsPerPlayer = 5;
+
+    int count = 0;
+    for (int index = 0; index < candidates.length; index += 1) {
+      // find nearby stars
+      final HomeCandidateStar star = candidates[index];
+      if (star.used) {
+        continue;
+      }
+      final int min = HomeCandidateStar.binarySearch(candidates, star.distance - localSpaceRadius);
+      final int max = HomeCandidateStar.binarySearch(candidates, star.distance + localSpaceRadius, min);
+      final List<HomeCandidateStar> nearbyStars = <HomeCandidateStar>[];
+      for (int subindex = min; subindex < max; subindex += 1) {
+        final HomeCandidateStar substar = candidates[subindex];
+        if ((substar.used) ||
+            (substar == star) ||
+            (substar.position.dx < star.position.dx - localSpaceRadius) ||
+            (substar.position.dx > star.position.dx + localSpaceRadius) ||
+            (substar.position.dy < star.position.dy - localSpaceRadius) ||
+            (substar.position.dy > star.position.dy + localSpaceRadius)) {
+          continue;
+        }
+        substar.scratch = (star.position - substar.position).distanceSquared;
+        nearbyStars.add(substar);
+      }
+      if (nearbyStars.length > minStarsPerPlayer) {
+        nearbyStars.sort((HomeCandidateStar a, HomeCandidateStar b) => (a.scratch! - b.scratch!).sign.toInt());
+        for (HomeCandidateStar substar in nearbyStars.take(minStarsPerPlayer)) {
+          substar.used = true;
+        }
+        star.used = true;
+        count += 1;
+      }
+    }
+    print('Found $count home systems with $minStarsPerPlayer reserved stars per home system.');
+  }
+  
   void _save() {
     // TODO: chose filename
     File('stars.dat').writeAsBytesSync(_encodedStars.buffer.asUint8List());
@@ -341,7 +435,7 @@ class _MainAppState extends State<MainApp> {
   void _saveStats() {
     // TODO: chose filename
     final List<int> groups = _stats!.groups.keys.where(
-      (int star) => _stats!.groups[star]!.length > 1,
+      (int star) => (_stats!.groups[star]!.toList()..sort()).first != star,
     ).toList()..sort();
     final Uint32List systems = Uint32List(groups.length * 2 + 1);
     int index = 0;
@@ -372,8 +466,9 @@ class _MainAppState extends State<MainApp> {
           indexSource += 2;
         }
       }
-      _galaxyNode.galaxy = Galaxy.from(buffer, Galaxy.standardDiameter);
+      _galaxyNode.galaxy = Galaxy.from(buffer, galaxyDiameter);
       _galaxyNode.clearSystems();
+      _home = null;
       _stats = null;
       _generating = false;
     });
@@ -385,14 +480,19 @@ class _MainAppState extends State<MainApp> {
     }
     final int match = _galaxyNode.galaxy!.hitTestNearest(offset);
     assert(match >= 0);
-    _galaxyNode.clearSystems();
+    _home = null;
     final (int category, int index) = Galaxy.decodeStarId(match);
     if (category <= 1) {
-      _galaxyNode.addSystem(SystemNode(_stars[category][index] * _galaxyNode.galaxy!.diameter, 1e16));
+      _galaxyNode.addSystem(SystemNode(_stars[category][index] * _galaxyNode.galaxy!.diameter, 100e16, const Color(0xFF00FF00)));
     } else {
+      if (_stats!.groups[match]!.length == 1 && category >= 2) {
+        setState(() {
+          _home = match;
+        });
+      }
       for (int star in _stats!.groups[match]!) {
         final (int category, int index) = Galaxy.decodeStarId(star);
-        _galaxyNode.addSystem(SystemNode(_stars[category][index] * _galaxyNode.galaxy!.diameter, 1e16));
+        _galaxyNode.addSystem(SystemNode(_stars[category][index] * _galaxyNode.galaxy!.diameter, 100e16, const Color(0xFF00FF00)));
       }
     }
   }
@@ -522,8 +622,15 @@ class _MainAppState extends State<MainApp> {
                           icon: const Icon(Icons.scatter_plot_outlined),
                           label: const Text('Export stats'),
                         ),
+                        OutlinedButton.icon(
+                          onPressed: _home == null ? null : _selectHomes,
+                          icon: const Icon(Icons.home),
+                          label: const Text('Count homes'),
+                        ),
                         if (_stats != null)
                           Text(_stats!.description),
+                        if (_home != null)
+                          Text('Selected star: ${Galaxy.decodeStarId(_home!)}'),
                       ],
                     ),
                   ),

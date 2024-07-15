@@ -18,7 +18,7 @@ class WorldRoot extends StatefulWidget {
 }
 
 class _WorldRootState extends State<WorldRoot> {
-  ZoomSpecifier _zoom = PanZoomSpecifier.none;
+  ZoomSpecifier _zoom = const PanZoomSpecifier.centered(5.0);
 
   PanZoomSpecifier? _zoomAnchor;
   Offset? _focalPoint;
@@ -132,16 +132,19 @@ class WorldPlaceholder extends LeafRenderObjectWidget {
     super.key,
     required this.diameter,
     required this.zoom,
+    required this.color,
   });
 
   final double diameter;
   final PanZoomSpecifier zoom;
+  final Color color;
   
   @override
   RenderWorldPlaceholder createRenderObject(BuildContext context) {
     return RenderWorldPlaceholder(
       diameter: diameter,
       zoom: zoom,
+      color: color,
     );
   }
 
@@ -149,7 +152,8 @@ class WorldPlaceholder extends LeafRenderObjectWidget {
   void updateRenderObject(BuildContext context, RenderWorldPlaceholder renderObject) {
     renderObject
       ..diameter = diameter
-      ..zoom = zoom;
+      ..zoom = zoom
+      ..color = color;
   }
 }
 

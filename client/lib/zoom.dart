@@ -52,12 +52,11 @@ class NodeZoomSpecifier extends ZoomSpecifier {
 class PanZoomSpecifier extends ZoomSpecifier {
   PanZoomSpecifier(this.sourceFocalPointFraction, this.destinationFocalPointFraction, this.zoom) : assert(zoom >= 1.0);
 
-  const PanZoomSpecifier._none()
+  const PanZoomSpecifier.centered(this.zoom)
     : sourceFocalPointFraction = const Offset(0.5, 0.5),
-      destinationFocalPointFraction = const Offset(0.5, 0.5),
-      zoom = 1.0;
+      destinationFocalPointFraction = const Offset(0.5, 0.5);
 
-  static const PanZoomSpecifier none = PanZoomSpecifier._none();
+  static const PanZoomSpecifier none = PanZoomSpecifier.centered(1.0);
 
   final Offset sourceFocalPointFraction; // location in the world
   final Offset destinationFocalPointFraction; // location on the screen 

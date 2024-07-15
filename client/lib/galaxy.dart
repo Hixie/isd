@@ -7,11 +7,10 @@ class Galaxy {
   final List<Float32List> stars; // Star posititions in meters
   final double diameter; // in meters
 
-  static const double standardDiameter = 1e21; // meters; approx 105700 light years
   static const double _maxCoordinate = 4294967295; // Galaxy diameter in DWord Units
 
-  static int encodeStarId(int category, int index) => (category << 32) | index;
-  static (int, int) decodeStarId(int id) => (id >> 32, id & 0xffffffff);
+  static int encodeStarId(int category, int index) => (category << 20) | index; // max 1,048,575 stars per category
+  static (int, int) decodeStarId(int id) => (id >> 20, id & 0x000fffff);
   
   factory Galaxy.from(Uint8List rawdata, double diameter) {
     final Uint32List data = rawdata.buffer.asUint32List();

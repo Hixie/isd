@@ -298,17 +298,17 @@ class RenderGalaxy extends RenderWorldWithChildren {
   }
 
   static const List<StarType> _starTypes = <StarType>[
-    StarType(Color(0x7FFFFFFF), 4.0, 2.0),
-    StarType(Color(0xCFCCBBAA), 2.5),
-    StarType(Color(0xDFFF0000), 0.5),
-    StarType(Color(0xCFFF9900), 0.7),
-    StarType(Color(0xBFFFFFFF), 0.5),
-    StarType(Color(0xAFFFFFFF), 1.2),
-    StarType(Color(0x2F0099FF), 1.0),
-    StarType(Color(0x2F0000FF), 0.5),
-    StarType(Color(0x4FFF9900), 0.5),
-    StarType(Color(0x2FFFFFFF), 0.5),
-    StarType(Color(0x5FFF2200), 20.0, 8.0),
+    StarType(Color(0x7FFFFFFF), 4.0e9, 2.0e9),
+    StarType(Color(0xCFCCBBAA), 2.5e9),
+    StarType(Color(0xDFFF0000), 0.5e9),
+    StarType(Color(0xCFFF9900), 0.7e9),
+    StarType(Color(0xBFFFFFFF), 0.5e9),
+    StarType(Color(0xAFFFFFFF), 1.2e9),
+    StarType(Color(0x2F0099FF), 1.0e9),
+    StarType(Color(0x2F0000FF), 0.5e9),
+    StarType(Color(0x4FFF9900), 0.5e9),
+    StarType(Color(0x2FFFFFFF), 0.5e9),
+    StarType(Color(0x5FFF2200), 20.0e9, 8.0e9),
   ];
   
   void _paintChildren(PaintingContext context, Offset offset) {
@@ -327,9 +327,9 @@ class RenderGalaxy extends RenderWorldWithChildren {
         final Paint paint = Paint()
           ..strokeCap = StrokeCap.round
           ..color = starType.color
-          ..strokeWidth = starType.magnitude / (_scaleFactor * zoom.zoom * zoom.zoom);
+          ..strokeWidth = 8e8 * starType.magnitude / (_zoom.zoom * zoom.zoom * max(1, zoom.zoom - 8.0));
         if (starType.blur != null) {
-          paint.maskFilter = MaskFilter.blur(BlurStyle.normal, starType.blur! / (_scaleFactor * _zoomFactor));
+          paint.maskFilter = MaskFilter.blur(BlurStyle.normal, 8e8 * starType.blur! / _zoomFactor);
         }
         context.canvas.drawRawPoints(PointMode.points, galaxy!.stars[index], paint);
       }
@@ -436,8 +436,10 @@ class RenderWorldPlaceholder extends RenderWorld {
   RenderWorldPlaceholder({
     required double diameter,
     PanZoomSpecifier zoom = PanZoomSpecifier.none,
+    Color color = const Color(0xFFFFFFFF),
   }) : _diameter = diameter,
-       _zoom = zoom;
+       _zoom = zoom,
+       _color = color;
 
   double get diameter => _diameter;
   double _diameter;
@@ -457,12 +459,21 @@ class RenderWorldPlaceholder extends RenderWorld {
     }
   }
 
+  Color get color => _color;
+  Color _color;
+  set color (Color value) {
+    if (value != _color) {
+      _color = value;
+      markNeedsPaint();
+    }
+  }
+
   @override
   void performLayout() { }
 
   Paint get _paint => Paint()
-    ..color = const Color(0xFFFFFF00)
-    ..strokeWidth = diameter / 2.0
+    ..color = color
+    ..strokeWidth = diameter / 128.0
     ..style = PaintingStyle.stroke;
   
   @override

@@ -27,13 +27,14 @@ class _Conversation {
 }
 
 class Connection {
-  Connection(String url, { required this.onMessage, required this.onError, this.onFile, List<Object>? login }) {
+  Connection(this.url, { required this.onMessage, required this.onError, this.onFile, List<Object>? login }) {
     if (login != null) {
       _loginConversation = _prepareConversation(0, login);
     }
     _loop(url);
   }
 
+  final String url;
   final MessageCallback onMessage;
   final ErrorCallback onError;
   final FileCallback? onFile;
@@ -73,7 +74,7 @@ class Connection {
         _active = false;
         onError(e);
       }
-      await Future<void>.delayed(const Duration(seconds: 1));
+      await Future<void>.delayed(const Duration(seconds: 2));
     }
   }
 
