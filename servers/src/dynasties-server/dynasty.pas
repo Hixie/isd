@@ -5,82 +5,73 @@ unit dynasty;
 interface
 
 uses
-   sysutils, passwords;
+   sysutils, passwords, basedynasty, servers, stringstream;
 
 type
    TSettings = record
       DynastyID: Cardinal;
    end;
 
-   TToken = record
-      Salt: TSalt;
-      Hash: THash;
-   end;
-
-   TSystem = record
-      
+   TSystemServer = record
+      // if we make this longer, we should make the logic below return
+      // a pointer instead of a copy
+      ServerID: Cardinal;
    end;
    
-   TDynasty = class
-   protected
+   TDynasty = class(TBaseDynasty)
+   strict private
       FSettings: TSettings;
-      FConfigurationDirectory: UTF8String;
-      FTokens: array of TToken;
-      FSystems: array of TSystem;
+      FSystemServers: array of TSystemServer;
+      function GetServerCount(): Cardinal;
+      function GetServer(Index: Cardinal): TSystemServer;
       procedure SaveSettings();
-      procedure SaveTokens();
+      procedure SaveSystems();
+   protected
+      procedure Reload(); override;
    public
       constructor Create(ADynastyID: Cardinal; AConfigurationDirectory: UTF8String);
-      constructor CreateFromDisk(AConfigurationDirectory: UTF8String);
-      procedure AddToken(Salt: TSalt; Hash: THash);
-      function VerifyToken(Password: UTF8String): Boolean;
-      procedure ResetTokens();
+      procedure AddSystemServer(SystemServerID: Cardinal);
+      procedure RemoveSystemServer(SystemServerID: Cardinal);
+      procedure EncodeServers(ServerDatabase: TServerDatabase; Writer: TStringStreamWriter);
+      procedure UpdateClients(ServerDatabase: TServerDatabase);
+      procedure ForgetDynasty(); override;
       property DynastyID: Cardinal read FSettings.DynastyID;
+      property ServerCount: Cardinal read GetServerCount;
+      property Servers[Index: Cardinal]: TSystemServer read GetServer;
    end;
 
 implementation
 
 uses
-   exceptions, configuration;
-
-const
-   SettingsFileName = 'settings.dat';
-   TokensFileName = 'tokens.db';
+   exceptions, configuration, isdprotocol;
 
 constructor TDynasty.Create(ADynastyID: Cardinal; AConfigurationDirectory: UTF8String);
 begin
-   inherited Create();
+   inherited Create(AConfigurationDirectory);
    FSettings.DynastyID := ADynastyID;
-   FConfigurationDirectory := AConfigurationDirectory;
-   try
-      Assert(not DirectoryExists(FConfigurationDirectory));
-      MkDir(FConfigurationDirectory);
-   except
-      ReportCurrentException();
-   end;
+   SaveSystems();
    SaveSettings();
 end;
 
-constructor TDynasty.CreateFromDisk(AConfigurationDirectory: UTF8String);
+function TDynasty.GetServerCount(): Cardinal;
+begin
+   Result := Length(FSystemServers); // $R-
+end;
+
+function TDynasty.GetServer(Index: Cardinal): TSystemServer;
+begin
+   Result := FSystemServers[Index];
+end;
+
+procedure TDynasty.Reload();
 var
    SettingsFile: File of TSettings;
-   TokensFile: File of TToken;
 begin
-   inherited Create();
-   FConfigurationDirectory := AConfigurationDirectory;
-   Assert(DirectoryExists(FConfigurationDirectory));
-   Assign(SettingsFile, FConfigurationDirectory + SettingsFileName);
+   Assign(SettingsFile, FConfigurationDirectory + SettingsDatabaseFileName);
    Reset(SettingsFile);
    BlockRead(SettingsFile, FSettings, 1);
    Close(SettingsFile);
-   Assign(TokensFile, FConfigurationDirectory + TokensFileName);
-   Reset(TokensFile);
-   SetLength(FTokens, FileSize(TokensFile));
-   if (Length(FTokens) > 0) then
-   begin
-      BlockRead(TokensFile, FTokens[0], Length(FTokens));
-   end;
-   Close(TokensFile);
+   inherited;
 end;
 
 procedure TDynasty.SaveSettings();
@@ -89,10 +80,11 @@ var
    TempFileName: UTF8String;
    RealFileName: UTF8String;
 begin
-   RealFileName := FConfigurationDirectory + SettingsFileName;
-   TempFileName := RealFileName + TemporaryExtension;
    Assert(DirectoryExists(FConfigurationDirectory));
+   RealFileName := FConfigurationDirectory + SettingsDatabaseFileName;
+   TempFileName := RealFileName + TemporaryExtension;
    Assign(TempFile, TempFileName);
+   FileMode := 1;
    Rewrite(TempFile);
    BlockWrite(TempFile, FSettings, 1);
    Close(TempFile);
@@ -100,59 +92,100 @@ begin
    RenameFile(TempFileName, RealFileName);
 end;
 
-procedure TDynasty.SaveTokens();
+procedure TDynasty.SaveSystems();
 var
-   TempFile: File of TToken;
+   TempFile: File of TSystemServer;
    TempFileName: UTF8String;
    RealFileName: UTF8String;
 begin
-   RealFileName := FConfigurationDirectory + TokensFileName;
-   TempFileName := RealFileName + TemporaryExtension;
    Assert(DirectoryExists(FConfigurationDirectory));
+   RealFileName := FConfigurationDirectory + SystemsDatabaseFileName;
+   TempFileName := RealFileName + TemporaryExtension;
    Assign(TempFile, TempFileName);
+   FileMode := 1;
    Rewrite(TempFile);
-   if (Length(FTokens) > 0) then
-      BlockWrite(TempFile, FTokens[0], Length(FTokens)); // $R-
+   if (Length(FSystemServers) > 0) then
+      BlockWrite(TempFile, FSystemServers[0], Length(FSystemServers)); // $R-
    Close(TempFile);
    DeleteFile(RealFileName);
    RenameFile(TempFileName, RealFileName);
 end;
 
-procedure TDynasty.AddToken(Salt: TSalt; Hash: THash);
-var
-   Index: Cardinal;
-begin
-   Index := Length(FTokens); // $R-
-   SetLength(FTokens, Index + 1);
-   FTokens[Index].Salt := Salt;
-   FTokens[Index].Hash := Hash;
-   SaveTokens();
-end;
+procedure TDynasty.AddSystemServer(SystemServerID: Cardinal);
 
-function TDynasty.VerifyToken(Password: UTF8String): Boolean;
-var
-   Index: Cardinal;
-   Hash: THash;
-begin
-   if (Length(FTokens) > 0) then
+   function ServerAlreadyKnown(): Boolean;
+   var
+      Server: TSystemServer;
    begin
-      for Index := Low(FTokens) to High(FTokens) do // $R-
+      for Server in FSystemServers do
       begin
-         ComputeHash(FTokens[Index].Salt, Password, Hash);
-         if (CompareHashes(Hash, FTokens[Index].Hash)) then
+         if (Server.ServerID = SystemServerID) then
          begin
             Result := True;
             exit;
          end;
       end;
+      Result := False;
    end;
-   Result := False;
+
+begin
+   // this is not super efficient but is expected to be rare
+   Assert(not ServerAlreadyKnown());
+   SetLength(FSystemServers, Length(FSystemServers) + 1);
+   FSystemServers[High(FSystemServers)].ServerID := SystemServerID;
 end;
 
-procedure TDynasty.ResetTokens();
+procedure TDynasty.RemoveSystemServer(SystemServerID: Cardinal);
+var
+   Index: Cardinal;
 begin
-   SetLength(FTokens, 0);
-   SaveTokens();
+   // this is not super efficient but is expected to be rare
+   Index := 0;
+   while (Index < Length(FSystemServers)) do
+   begin
+      if (FSystemServers[Index].ServerID = SystemServerID) then
+      begin
+         Delete(FSystemServers, Index, 1);
+      end
+      else
+      begin
+         Inc(Index);
+      end;
+   end;
+end;
+
+procedure TDynasty.EncodeServers(ServerDatabase: TServerDatabase; Writer: TStringStreamWriter);
+var
+   System: TSystemServer;
+begin
+   Writer.WriteCardinal(Length(FSystemServers));
+   for System in FSystemServers do
+      Writer.WriteString(ServerDatabase.Servers[System.ServerID]^.URL);
+end;
+
+procedure TDynasty.UpdateClients(ServerDatabase: TServerDatabase);
+var
+   Writer: TStringStreamWriter;
+begin
+   if (HasConnections) then
+   begin
+      Writer := TStringStreamWriter.Create();
+      try
+         Writer.WriteString(iuSystemServers);
+         EncodeServers(ServerDatabase, Writer);
+         SendToAllConnections(Writer.Serialize());
+      finally
+         Writer.Free();
+      end;
+   end;
+end;
+
+procedure TDynasty.ForgetDynasty();
+begin
+   Assert(False);
+   DeleteFile(FConfigurationDirectory + SettingsDatabaseFileName);
+   DeleteFile(FConfigurationDirectory + SystemsDatabaseFileName);
+   inherited;
 end;
 
 end.

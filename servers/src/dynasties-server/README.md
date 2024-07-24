@@ -1,5 +1,8 @@
 # Public Protocol
 
+## Public commands
+
+Commands are sent from the client to the server in the form of
 WebSocket text frames whose format is null-terminated fields of UTF-8.
 
 The first field is the command, the second is a 32 bit number called
@@ -15,7 +18,7 @@ Replies are not guaranteed to be sent back in the order that messages
 were received (hence the conversation ID field).
 
 
-## `login`
+### `login`
 
 Fields:
 
@@ -25,6 +28,37 @@ Response:
 
  * Count of system servers
  * URL for each system server
+
+
+### `get-star-name`
+
+Does not require being logged in.
+
+Fields:
+
+ * a star ID (see "Canonical systems" file format in login server docs)
+
+Server returns the following fields:
+
+ * String, the name of the given star.
+
+
+## Updates
+
+Occasionally, after receiving a successful `login` command, the server
+may send unsolicited messages. These are in a similar form to
+commands; WebSocket text frames containing null-terminated fields of
+UTF-8. The first field is the message name. No response is expected
+from the client.
+
+### `system-servers`
+
+The server may occasionally send a message whose payload is:
+
+ * Count of system servers
+ * URL for each system server
+
+This is similar to the response to a `login` command.
 
 
 # Internal Protocol
@@ -66,6 +100,32 @@ Response is one of:
 Fields:
 
  * dynasty ID (4-byte integer)
+
+Response is one of:
+
+ * 0x01 byte indicating success
+ * disconnection indicating failure
+
+
+## `add-system-server`
+
+Fields:
+
+ * dynasty ID (4-byte integer)
+ * system server ID (4-byte integer)
+
+Response is one of:
+
+ * 0x01 byte indicating success
+ * disconnection indicating failure
+
+
+## `remove-system-server`
+
+Fields:
+
+ * dynasty ID (4-byte integer)
+ * system server ID (4-byte integer)
 
 Response is one of:
 

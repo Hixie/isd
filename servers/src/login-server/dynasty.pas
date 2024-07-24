@@ -75,7 +75,7 @@ end;
 
 function TDynasty.ToRecord(): TDynastyRecord;
 begin
-   FillChar(Result.Username, High(Result.Username), 0);
+   FillChar(Result.Username, High(Result.Username), 0); // {BOGUS Hint: Function result variable does not seem to be initialized}
    Result.Username := FUsername;
    Move(FSalt[0], Result.Salt[0], Length(Result.Salt));
    Move(FPasswordHash[0], Result.PasswordHash[0], Length(Result.PasswordHash));

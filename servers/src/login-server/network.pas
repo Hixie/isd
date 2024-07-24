@@ -2,10 +2,17 @@
 {$INCLUDE settings.inc}
 unit network;
 
+// TODO: a program that verifies everything is consistent and removes
+// user accounts for cases where the dynasty server doesn't think the
+// user account has a matching dynasty, and dynasties that haven't
+// progressed much and aren't still connected and don't have a
+// user-specified username, etc.
+
 interface
 
 uses
-   corenetwork, corewebsocket, stringstream, users, dynasty, isderrors, servers, baseunix, messages, basenetwork, binaries;
+   corenetwork, stringstream, users, dynasty, isderrors,
+   servers, basenetwork, binaries, galaxy, astronomy;
 
 const
    DefaultPasswordLength = 64;
@@ -15,58 +22,65 @@ const
 type
    TServer = class;
 
-   TInternalServerConnectionSocket = class(TNetworkSocket)
+   TInternalDynastyConnection = class(TBaseOutgoingInternalConnection)
    protected
-      FConversation: TConversation;
-      FDynastyServer: TDynastyServer;
-      FPendingCommands: Cardinal;
-      function InternalRead(Data: array of byte): Boolean; override; // return false if connection is bad
-      procedure Preconnect(); override;
+      FClientMessage: TMessage;
+      procedure Done(); override;
    public
-      constructor Create(AConversation: TConversation; ADynastyServer: TDynastyServer);
-      procedure Connect();
-      procedure ReportConnectionError(ErrorCode: cint); override;
+      constructor Create(AClientMessage: TMessage; ADynastyServer: PServerEntry);
       procedure Disconnect(); override;
       procedure RegisterNewAccount(Dynasty: TDynasty);
       procedure RegisterToken(Dynasty: TDynasty);
       procedure Logout(Dynasty: TDynasty);
    end;
 
-   TConnection = class(TBaseConnection)
+   TInternalSystemConnection = class(TBaseOutgoingInternalConnection)
+   protected
+      FServer: TServer;
+   public
+      constructor Create(AServer: TServer; ASystemServer: PServerEntry);
+      procedure RegisterNewHome(System: TStarID; Dynasty: TDynasty; DynastyServerID: Cardinal);
+   end;
+
+   TConnection = class(TBaseIncomingCapableConnection)
    protected
       FServer: TServer;
       function ParseDynastyArguments(Message: TMessage): TDynasty;
+      procedure SendBinary(var Message: TMessage; BinaryFile: TBinaryFile);
+   protected
       procedure DoCreateDynasty(var Message: TMessage) message 'new'; // no arguments
       procedure DoLogin(var Message: TMessage) message 'login'; // arguments: username, password
       procedure DoLogout(var Message: TMessage) message 'logout'; // arguments: username, password
       procedure DoChangeUsername(var Message: TMessage) message 'change-username'; // arguments: username, password, new username
       procedure DoChangePassword(var Message: TMessage) message 'change-password'; // arguments: username, password, new password
-      procedure GetStars(var Message: TMessage) message 'get-stars'; // no arguments
+      procedure GetConstants(var Message: TMessage) message 'get-constants'; // no arguments
+      procedure GetFile(var Message: TMessage) message 'get-file'; // arguments: file id
    public
       constructor Create(AListener: TListenerSocket; AServer: TServer);
    end;
 
    TServer = class(TBaseServer)
    protected
-      FGalaxy: TBinaryFile;
+      FGalaxyManager: TGalaxyManager;
       FUserDatabase: TUserDatabase;
-      FServerDatabase: TServerDatabase;
+      FDynastyServerDatabase, FSystemServerDatabase: TServerDatabase;
       function CreateNetworkSocket(AListenerSocket: TListenerSocket): TNetworkSocket; override;
    public
-      constructor Create(APort: Word; AUserDatabase: TUserDatabase; AServerDatabase: TServerDatabase; AGalaxy: TBinaryFile);
+      constructor Create(APort: Word; AUserDatabase: TUserDatabase; ADynastyServerDatabase, ASystemServerDatabase: TServerDatabase; AGalaxyManager: TGalaxyManager);
       property UserDatabase: TUserDatabase read FUserDatabase;
-      property ServerDatabase: TServerDatabase read FServerDatabase;
-      property Galaxy: TBinaryFile read FGalaxy;
+      property DynastyServerDatabase: TServerDatabase read FDynastyServerDatabase;
+      property SystemServerDatabase: TServerDatabase read FSystemServerDatabase;
+      property GalaxyManager: TGalaxyManager read FGalaxyManager;
    end;
 
 implementation
 
 uses
-   sysutils, exceptions, isdprotocol, passwords, binarystream, errors;
+   sysutils, exceptions, isdprotocol, passwords, binarystream;
 
 constructor TConnection.Create(AListener: TListenerSocket; AServer: TServer);
 begin
-   inherited Create(AListener, @AServer.ScheduleDemolition);
+   inherited Create(AListener);
    FServer := AServer;
 end;
 
@@ -74,12 +88,12 @@ function TConnection.ParseDynastyArguments(Message: TMessage): TDynasty;
 var
    Username, Password: UTF8String;
 begin
-   Username := Message.Conversation.Input.ReadString();
-   Password := Message.Conversation.Input.ReadString();
+   Username := Message.Input.ReadString();
+   Password := Message.Input.ReadString();
    Result := FServer.UserDatabase.GetAccount(Username, Password);
    if (not Assigned(Result)) then
    begin
-      Message.Conversation.Error(ieUnrecognizedCredentials);
+      Message.Error(ieUnrecognizedCredentials);
    end;
 end;
 
@@ -87,78 +101,104 @@ procedure TConnection.DoCreateDynasty(var Message: TMessage);
 var
    Password: UTF8String;
    Dynasty: TDynasty;
-   DynastyServerID: Cardinal;
-   DynastyServerDetails: TDynastyServer;
-   InternalServerConnectionSocket: TInternalServerConnectionSocket;
+   DynastyServerID, SystemServerID: Cardinal;
+   DynastyServerDetails, SystemServerDetails: PServerEntry;
+   InternalDynastyConnectionSocket: TInternalDynastyConnection;
+   InternalSystemConnectionSocket: TInternalSystemConnection;
+   StarID: TStarID;
 begin
-   if (not Message.Conversation.CloseInput()) then
+   if (not Message.CloseInput()) then
       exit;
+
+   // Prepare user credentials
    Password := CreatePassword(DefaultPasswordLength);
-   DynastyServerID := FServer.ServerDatabase.GetLeastLoadedServer();
-   DynastyServerDetails := FServer.ServerDatabase[DynastyServerID];
+
+   // Choose dynasty server and create user account / dynasty
+   DynastyServerID := FServer.DynastyServerDatabase.GetLeastLoadedServer();
+   DynastyServerDetails := FServer.DynastyServerDatabase[DynastyServerID];
    Dynasty := FServer.UserDatabase.CreateNewAccount(Password, DynastyServerID);
-   FServer.ServerDatabase.AddDynastyToServer(DynastyServerID);
-   Writeln('  Created dynasty "', Dynasty.Username, '"');
-   // TODO: a program that verifies everything is consistent and removes user accounts for cases where the dynasty server doesn't
-   // think the user account has a matching dynasty.
-   Message.Conversation.Reply();
-   Message.Conversation.Output.WriteString(Dynasty.Username);
-   Message.Conversation.Output.WriteString(Password);
-   Message.Conversation.Output.WriteString('wss://' + DynastyServerDetails.HostName + ':' + IntToStr(DynastyServerDetails.WebSocketPort) + '/');
-   InternalServerConnectionSocket := TInternalServerConnectionSocket.Create(Message.Conversation, DynastyServerDetails);
+   FServer.DynastyServerDatabase.IncreaseLoadOnServer(DynastyServerID);
+
+   // Prepare message for client (but don't send yet)
+   Message.Reply();
+   Message.Output.WriteString(Dynasty.Username);
+   Message.Output.WriteString(Password);
+   Message.Output.WriteString('wss://' + DynastyServerDetails^.HostName + ':' + IntToStr(DynastyServerDetails^.WebSocketPort) + '/');
+
+   // Connect to dynasty server and create account
+   InternalDynastyConnectionSocket := TInternalDynastyConnection.Create(Message, DynastyServerDetails);
    try
-      InternalServerConnectionSocket.Connect();
+      InternalDynastyConnectionSocket.Connect();
    except
-      FreeAndNil(InternalServerConnectionSocket);
+      FreeAndNil(InternalDynastyConnectionSocket);
       raise;
    end;
-   FServer.Add(InternalServerConnectionSocket);
-   InternalServerConnectionSocket.RegisterNewAccount(Dynasty);
+   FServer.Add(InternalDynastyConnectionSocket);
+   InternalDynastyConnectionSocket.RegisterNewAccount(Dynasty); // this will send the message if everything works
+
+   // Choose system server and star
+   SystemServerID := FServer.SystemServerDatabase.GetLeastLoadedServer();
+   SystemServerDetails := FServer.SystemServerDatabase[SystemServerID];
+   StarID := FServer.GalaxyManager.SelectNextHomeSystem();
+   FServer.SystemServerDatabase.IncreaseLoadOnServer(SystemServerID);
+
+   // Connect to system server and create actual system
+   InternalSystemConnectionSocket := TInternalSystemConnection.Create(FServer, SystemServerDetails);
+   try
+      InternalSystemConnectionSocket.Connect();
+   except
+      FreeAndNil(InternalSystemConnectionSocket);
+      raise;
+   end;
+   FServer.Add(InternalSystemConnectionSocket);
+   InternalSystemConnectionSocket.RegisterNewHome(StarID, Dynasty, DynastyServerID);
+
+   Writeln('Created dynasty "', Dynasty.Username, '" using star ', HexStr(Int64(StarID), 7));
 end;
 
 procedure TConnection.DoLogin(var Message: TMessage);
 var
    Dynasty: TDynasty;
-   DynastyServerDetails: TDynastyServer;
-   InternalServerConnectionSocket: TInternalServerConnectionSocket;
+   DynastyServerDetails: PServerEntry;
+   InternalDynastyConnectionSocket: TInternalDynastyConnection;
 begin
    Dynasty := ParseDynastyArguments(Message);
-   if (not Assigned(Dynasty) or not Message.Conversation.CloseInput()) then
+   if (not Assigned(Dynasty) or not Message.CloseInput()) then
       exit;
-   DynastyServerDetails := FServer.ServerDatabase[Dynasty.ServerID];
-   Message.Conversation.Reply();
-   Message.Conversation.Output.WriteString('wss://' + DynastyServerDetails.HostName + ':' + IntToStr(DynastyServerDetails.WebSocketPort) + '/');
-   InternalServerConnectionSocket := TInternalServerConnectionSocket.Create(Message.Conversation, DynastyServerDetails);
+   DynastyServerDetails := FServer.DynastyServerDatabase[Dynasty.ServerID];
+   Message.Reply();
+   Message.Output.WriteString('wss://' + DynastyServerDetails^.HostName + ':' + IntToStr(DynastyServerDetails^.WebSocketPort) + '/');
+   InternalDynastyConnectionSocket := TInternalDynastyConnection.Create(Message, DynastyServerDetails);
    try
-      InternalServerConnectionSocket.Connect();
+      InternalDynastyConnectionSocket.Connect();
    except
-      FreeAndNil(InternalServerConnectionSocket);
+      FreeAndNil(InternalDynastyConnectionSocket);
       raise;
    end;
-   FServer.Add(InternalServerConnectionSocket);
-   InternalServerConnectionSocket.RegisterToken(Dynasty);
+   FServer.Add(InternalDynastyConnectionSocket);
+   InternalDynastyConnectionSocket.RegisterToken(Dynasty);
 end;
 
 procedure TConnection.DoLogout(var Message: TMessage);
 var
    Dynasty: TDynasty;
-   DynastyServerDetails: TDynastyServer;
-   InternalServerConnectionSocket: TInternalServerConnectionSocket;
+   DynastyServerDetails: PServerEntry;
+   InternalDynastyConnectionSocket: TInternalDynastyConnection;
 begin
    Dynasty := ParseDynastyArguments(Message);
-   if (not Assigned(Dynasty) or not Message.Conversation.CloseInput()) then
+   if (not Assigned(Dynasty) or not Message.CloseInput()) then
       exit;
-   DynastyServerDetails := FServer.ServerDatabase[Dynasty.ServerID];
-   Message.Conversation.Reply();
-   InternalServerConnectionSocket := TInternalServerConnectionSocket.Create(Message.Conversation, DynastyServerDetails);
+   DynastyServerDetails := FServer.DynastyServerDatabase[Dynasty.ServerID];
+   Message.Reply();
+   InternalDynastyConnectionSocket := TInternalDynastyConnection.Create(Message, DynastyServerDetails);
    try
-      InternalServerConnectionSocket.Connect();
+      InternalDynastyConnectionSocket.Connect();
    except
-      FreeAndNil(InternalServerConnectionSocket);
+      FreeAndNil(InternalDynastyConnectionSocket);
       raise;
    end;
-   FServer.Add(InternalServerConnectionSocket);
-   InternalServerConnectionSocket.Logout(Dynasty);
+   FServer.Add(InternalDynastyConnectionSocket);
+   InternalDynastyConnectionSocket.Logout(Dynasty);
 end;
 
 procedure TConnection.DoChangeUsername(var Message: TMessage);
@@ -167,17 +207,17 @@ var
    NewUsername: UTF8String;
 begin
    Dynasty := ParseDynastyArguments(Message);
-   NewUsername := Message.Conversation.Input.ReadString();
-   if (not Assigned(Dynasty) or not Message.Conversation.CloseInput()) then
+   NewUsername := Message.Input.ReadString();
+   if (not Assigned(Dynasty) or not Message.CloseInput()) then
       exit;
    if (not FServer.UserDatabase.UsernameAdequate(NewUsername)) then
    begin
-      Message.Conversation.Error(ieInadequateUsername);
+      Message.Error(ieInadequateUsername);
       exit;
    end;
    FServer.UserDatabase.ChangeUsername(Dynasty, NewUsername);
-   Message.Conversation.Reply();
-   Message.Conversation.CloseOutput();
+   Message.Reply();
+   Message.CloseOutput();
 end;
 
 procedure TConnection.DoChangePassword(var Message: TMessage);
@@ -186,103 +226,71 @@ var
    NewPassword: UTF8String;
 begin
    Dynasty := ParseDynastyArguments(Message);
-   NewPassword := Message.Conversation.Input.ReadString();
-   if (not Assigned(Dynasty) or not Message.Conversation.CloseInput()) then
+   NewPassword := Message.Input.ReadString();
+   if (not Assigned(Dynasty) or not Message.CloseInput()) then
       exit;
    if (not TUserDatabase.PasswordAdequate(NewPassword)) then
    begin
-      Message.Conversation.Error(ieInadequatePassword);
+      Message.Error(ieInadequatePassword);
       exit;
    end;
    FServer.UserDatabase.ChangePassword(Dynasty, NewPassword);
-   Message.Conversation.Reply();
-   Message.Conversation.CloseOutput();
+   Message.Reply();
+   Message.CloseOutput();
 end;
 
-procedure TConnection.GetStars(var Message: TMessage);
+procedure TConnection.SendBinary(var Message: TMessage; BinaryFile: TBinaryFile);
 begin
-   if (not Message.Conversation.CloseInput()) then
+   Message.Reply();
+   Message.CloseOutput();
+   WriteFrame(BinaryFile.Buffer^, BinaryFile.Length);
+end;
+
+procedure TConnection.GetConstants(var Message: TMessage);
+begin
+   if (not Message.CloseInput()) then
       exit;
-   Message.Conversation.Reply();
-   Message.Conversation.Output.WriteCardinal(1);
-   Message.Conversation.CloseOutput();
-   WriteFrame(FServer.Galaxy.Buffer^, FServer.Galaxy.Length);
+   Message.Reply();
+   Message.Output.WriteDouble(FServer.GalaxyManager.GalaxyDiameter);
+   Message.CloseOutput();
 end;
 
-
-constructor TInternalServerConnectionSocket.Create(AConversation: TConversation; ADynastyServer: TDynastyServer);
-begin
-   inherited Create();
-   FConversation := AConversation;
-   FDynastyServer := ADynastyServer;
-end;
-
-procedure TInternalServerConnectionSocket.Connect();
-begin
-   ConnectIpV4(FDynastyServer.DirectHost, FDynastyServer.DirectPort);
-end;
-
-procedure TInternalServerConnectionSocket.Preconnect();
+procedure TConnection.GetFile(var Message: TMessage);
 var
-   PasswordLengthPrefix: Cardinal;
+   ID: Cardinal;
 begin
-   inherited;
-   Write(#0); // to tell server it's not websockets
-   PasswordLengthPrefix := Length(FDynastyServer.DirectPassword); // $R-
-   Write(@PasswordLengthPrefix, SizeOf(PasswordLengthPrefix));
-   Write(FDynastyServer.DirectPassword);
-end;
-
-function TInternalServerConnectionSocket.InternalRead(Data: array of byte): Boolean;
-var
-   B: Byte;
-begin
-   Result := True;
-   for B in Data do
-   begin
-      case (B) of
-         $01:
-            begin
-               if (FPendingCommands = 0) then
-               begin
-                  Result := False;
-                  exit;
-               end;
-               Dec(FPendingCommands);
-            end;
-         else
-            Result := False;
-            exit;
-      end;
-   end;
-   if (FPendingCommands = 0) then
-   begin
-      if (Assigned(FConversation)) then
-      begin
-         FConversation.CloseOutput();
-         FConversation := nil;
-      end;
-      Result := False;
+   ID := Message.Input.ReadCardinal();
+   if (not Message.CloseInput()) then
+      exit;
+   case ID of
+      1: SendBinary(Message, FServer.GalaxyManager.SystemsData);
+      2: SendBinary(Message, FServer.GalaxyManager.GalaxyData);
+   else
+      Message.Error(ieUnknownFileCode);
    end;
 end;
 
-procedure TInternalServerConnectionSocket.ReportConnectionError(ErrorCode: cint);
+
+constructor TInternalDynastyConnection.Create(AClientMessage: TMessage; ADynastyServer: PServerEntry);
 begin
-   Writeln('Unexpected internal error #', ErrorCode, ': ', StrError(ErrorCode));
-   Writeln(GetStackTrace());
+   inherited Create(ADynastyServer);
+   FClientMessage := AClientMessage;
 end;
 
-procedure TInternalServerConnectionSocket.Disconnect();
+procedure TInternalDynastyConnection.Done();
 begin
-   if (Assigned(FConversation)) then
-   begin
-      FConversation.Error(ieInternalError);
-      FConversation := nil;
-   end;
+   if (not FClientMessage.OutputClosed) then
+      FClientMessage.CloseOutput();
+end;
+
+procedure TInternalDynastyConnection.Disconnect();
+begin
+   if (not FClientMessage.OutputClosed) then
+      FClientMessage.Error(ieInternalError);
    inherited;
 end;
 
-procedure TInternalServerConnectionSocket.RegisterNewAccount(Dynasty: TDynasty);
+procedure TInternalDynastyConnection.RegisterNewAccount(Dynasty: TDynasty);
 var
    Writer: TBinaryStreamWriter;
 begin
@@ -292,10 +300,10 @@ begin
    Write(Writer.Serialize(True));
    FreeAndNil(Writer);
    RegisterToken(Dynasty);
-   Inc(FPendingCommands);
+   IncrementPendingCount();
 end;
 
-procedure TInternalServerConnectionSocket.RegisterToken(Dynasty: TDynasty);
+procedure TInternalDynastyConnection.RegisterToken(Dynasty: TDynasty);
 var
    Token: UTF8String;
    Writer: TBinaryStreamWriter;
@@ -312,12 +320,12 @@ begin
    Writer.WriteRawBytes(@HashedToken[0], SizeOf(HashedToken));
    Write(Writer.Serialize(True));
    FreeAndNil(Writer);
-   if (Assigned(FConversation)) then
-      FConversation.Output.WriteString(IntToStr(Dynasty.ID) + TokenSeparator + Token);
-   Inc(FPendingCommands);
+   if (not FClientMessage.OutputClosed) then
+      FClientMessage.Output.WriteString(IntToStr(Dynasty.ID) + TokenSeparator + Token);
+   IncrementPendingCount();
 end;
 
-procedure TInternalServerConnectionSocket.Logout(Dynasty: TDynasty);
+procedure TInternalDynastyConnection.Logout(Dynasty: TDynasty);
 var
    Writer: TBinaryStreamWriter;
 begin
@@ -326,16 +334,44 @@ begin
    Writer.WriteCardinal(Dynasty.ID);
    Write(Writer.Serialize(True));
    FreeAndNil(Writer);
-   Inc(FPendingCommands);
+   IncrementPendingCount();
 end;
 
 
-constructor TServer.Create(APort: Word; AUserDatabase: TUserDatabase; AServerDatabase: TServerDatabase; AGalaxy: TBinaryFile);
+constructor TInternalSystemConnection.Create(AServer: TServer; ASystemServer: PServerEntry);
+begin
+   inherited Create(ASystemServer);
+   FServer := AServer;
+end;
+
+procedure TInternalSystemConnection.RegisterNewHome(System: TStarID; Dynasty: TDynasty; DynastyServerID: Cardinal);
+var
+   Writer: TBinaryStreamWriter;
+begin
+   Assert(System >= 0);
+   Writer := TBinaryStreamWriter.Create();
+   Writer.WriteString(icCreateSystem);
+   FServer.GalaxyManager.SerializeSystemDescription(System, Writer);
+   Write(Writer.Serialize(True));
+   IncrementPendingCount();
+   Writer.Clear();
+   Writer.WriteString(icTriggerNewDynastyScenario);
+   Writer.WriteCardinal(Dynasty.ID);
+   Writer.WriteCardinal(DynastyServerID);
+   Writer.WriteCardinal(System); // $R-
+   Write(Writer.Serialize(True));
+   IncrementPendingCount();
+   FreeAndNil(Writer);
+end;
+
+
+constructor TServer.Create(APort: Word; AUserDatabase: TUserDatabase; ADynastyServerDatabase, ASystemServerDatabase: TServerDatabase; AGalaxyManager: TGalaxyManager);
 begin
    inherited Create(APort);
    FUserDatabase := AUserDatabase;
-   FServerDatabase := AServerDatabase;
-   FGalaxy := AGalaxy;
+   FDynastyServerDatabase := ADynastyServerDatabase;
+   FSystemServerDatabase := ASystemServerDatabase;
+   FGalaxyManager := AGalaxyManager;
 end;
 
 function TServer.CreateNetworkSocket(AListenerSocket: TListenerSocket): TNetworkSocket;

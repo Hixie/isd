@@ -10,6 +10,7 @@ const
    ieInadequateUsername = 'inadequate username';
    ieInadequatePassword = 'inadequate password';
    ieInternalError = 'internal error';
+   ieUnknownFileCode = 'unknown file code';
 
 implementation
 

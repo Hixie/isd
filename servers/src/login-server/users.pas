@@ -38,6 +38,11 @@ type
       property Dynasties: TDynastyHashTable.TValueEnumerator read GetDynasties;
    end;
 
+type
+   TDynastyFile = File of TDynastyRecord;
+
+procedure OpenUserDatabase(out F: TDynastyFile; Filename: UTF8String);
+
 implementation
 
 uses hashfunctions, fphashutils, sysutils;
@@ -55,7 +60,6 @@ end;
 
 constructor TUserDatabase.Create(var ADatabase: File);
 var
-   ReadCount: Cardinal;
    Dynasty: TDynasty;
    DynastyRecord: TDynastyRecord;
 begin
@@ -63,19 +67,12 @@ begin
    FDatabase := ADatabase;
    FAccounts := TDynastyHashTable.Create();
    Seek(FDatabase, 0);
-   Assert(NextID = 0);
+   NextID := 1;
    while (not EOF(FDatabase)) do
    begin
-      BlockRead(ADatabase, DynastyRecord, 1, ReadCount);
-      if (ReadCount <> 1) then
-      begin
-         Writeln('Expected to read one record from user database but read ', ReadCount, ' records at index ', NextID, '.');
-         Writeln('Aborting.');
-         raise Exception.Create('Failed to read user database.');
-      end;
+      BlockRead(FDatabase, DynastyRecord, 1); // {BOGUS Hint: Local variable "DynastyRecord" does not seem to be initialized}
       Dynasty := TDynasty.CreateFromRecord(NextID, DynastyRecord);
       FAccounts[Dynasty.Username] := Dynasty;
-      Writeln('Loaded dynasty ', Dynasty.ID, ' "', Dynasty.Username, '"');
       Inc(NextID);
    end;
 end;
@@ -103,16 +100,9 @@ begin
 end;
 
 procedure TUserDatabase.Save(Dynasty: TDynasty);
-var
-   WriteCount: Cardinal;
 begin
    Seek(FDatabase, Dynasty.ID);
-   BlockWrite(FDatabase, Dynasty.ToRecord(), 1, WriteCount);
-   if (WriteCount <> 1) then
-   begin
-      Writeln('Expected to write one record to user database but wrote ', WriteCount, ' records at index ', NextID, '!!');
-      // XXX report this somewhere promptly
-   end;
+   BlockWrite(FDatabase, Dynasty.ToRecord(), 1); // {BOGUS Hint: Local variable "WriteCount" does not seem to be initialized}
 end;
 
 function TUserDatabase.GetDynasties(): TDynastyHashTable.TValueEnumerator;
@@ -161,6 +151,20 @@ end;
 class function TUserDatabase.PasswordAdequate(Password: UTF8String): Boolean;
 begin
    Result := Length(Password) >= MinPasswordLength;
+end;
+
+procedure OpenUserDatabase(out F: TDynastyFile; Filename: UTF8String);
+begin
+   Assign(F, Filename);
+   FileMode := 2;
+   if (not FileExists(Filename)) then
+   begin
+      Rewrite(F);
+   end
+   else
+   begin
+      Reset(F);
+   end;
 end;
 
 end.

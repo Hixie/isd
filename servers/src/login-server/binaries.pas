@@ -11,11 +11,13 @@ type
    TBinaryFile = record
    private
       fd: cint;
+      function GetCardinal(Index: Cardinal): Cardinal; inline;
    public
       Buffer: Pointer; // includes leading file identifier
       Length: Cardinal;
       procedure Init(Filename: UTF8String);
       procedure Free();
+      property Cardinals[Index: Cardinal]: Cardinal read GetCardinal;
    end;
 
 implementation
@@ -26,6 +28,7 @@ uses
 procedure TBinaryFile.Init(Filename: UTF8String);
 var
    Error: cint;
+   BufferAsError: PtrInt;
    Info: Stat;
 begin
    fd := fpOpen(Filename, O_RDONLY);
@@ -44,9 +47,14 @@ begin
    end;
    Length := Info.st_size; // $R-
    Buffer := fpMmap(nil, Length, PROT_READ, MAP_SHARED, fd, 0);
-   if (PtrInt(Buffer) < 0) then // {BOGUS Hint: Conversion between ordinals and pointers is not portable}
+   BufferAsError := PtrInt(Buffer); // {BOGUS Hint: Conversion between ordinals and pointers is not portable}
+   if (BufferAsError < 0) then
    begin
-      raise EKernelError.Create(PtrInt(Buffer)); // {BOGUS Hint: Conversion between ordinals and pointers is not portable}
+      if ((BufferAsError < Low(Error)) or (BufferAsError > High(Error))) then
+      begin
+         raise EKernelError.Create(ESysEOverflow);
+      end;
+      raise EKernelError.Create(BufferAsError); // $R-
    end;
 end;
 
@@ -60,6 +68,15 @@ begin
    begin
       raise EKernelError.Create(Error);
    end;
+end;
+
+function TBinaryFile.GetCardinal(Index: Cardinal): Cardinal; inline;
+type
+   PCardinalArray = ^TCardinalArray;
+   TCardinalArray = array[0..High(Integer)] of Cardinal;
+begin
+   Assert(Index < Length div SizeOf(Cardinal));
+   Result := PCardinalArray(Buffer)^[Index];
 end;
 
 end.

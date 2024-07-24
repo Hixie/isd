@@ -72,13 +72,26 @@ Fields:
 Server returns no additional data.
 
 
-## `get-stars`
+## `get-constants`
 
 No other fields.
 
-Server returns one numeric field, whose value is 1. The server will
-then at some point send a binary frame whose first 32 bytes form the
-little-endian number 1.
+Server returns the following fields:
+
+ * a floating point number representing the diameter of the
+   galaxy in meters.
+
+
+## `get-file`
+
+Fields:
+
+ * file code (integer)
+
+Server returns no additional data. The server will then at some point
+send a binary frame whose first 32 bytes form the given code as a
+little-endian number, and whose subsequent bytes are as described in
+the "Binary frames" section below.
 
 
 ## Binary frames
@@ -90,11 +103,12 @@ frame is the raw data of that file.
 File identifiers:
 
  * 1: `stars.dat`, the galaxy.
+ * 2: `systems.dart`, the multiple star systems map.
 
 
-## Galaxy format
+## Galaxy (file 1)
 
-The `stars.dat` file consists of little-endian 32 bit integers:
+The file with code 1 consists of little-endian 32 bit integers:
 
  * Integer 0: the number of star categories, N.
  * Integer 1..N: the number of stars in each category, M0, M1, M2, etc.
@@ -102,16 +116,32 @@ The `stars.dat` file consists of little-endian 32 bit integers:
  * Integer N+M0+1..N+M0+M1: the stars in category 1.
  * etc.
 
-The categories of astronomical objects (with their color and relative magnitudes) are:
+The categories of astronomical objects (with their color and diameters
+in meters) are:
 
-  1. Remote galaxies. 0x7FFFFFFF, 0.0040, blurred.
-  2. Remote galaxies. 0xCFCCBBAA, 0.0025.
-  3. Red stars. 0xDFFF0000, 0.0005,
-  4. Orange stars. 0xCFFF9900, 0.0007,
-  5. White stars. 0xBFFFFFFF, 0.0005,
-  6. White stars. 0xAFFFFFFF, 0.0012,
-  7. Blue stars. 0x2F0099FF, 0.0010,
-  8. Bright blue stars. 0x2F0000FF, 0.0005,
-  9. Orange stars. 0x4FFF9900, 0.0005,
- 10. White stars. 0x2FFFFFFF, 0.0005,
- 11. Nebulae. 0x5FFF2200, 0.0200, blurred.
+  0. Remote galaxies. 0x7FFFFFFF, 4.0e9m, blurred.
+  1. Remote galaxies. 0xCFCCBBAA, 2.5e9m.
+  2. Red stars. 0xDFFF0000, 0.5e9m,
+  3. Orange stars. 0xCFFF9900, 0.7e9m,
+  4. White stars. 0xBFFFFFFF, 0.5e9m,
+  5. White stars. 0xAFFFFFFF, 1.2e9m,
+  6. Blue stars. 0x2F0099FF, 1.0e9m,
+  7. Bright blue stars. 0x2F0000FF, 0.5e9m,
+  8. Orange stars. 0x4FFF9900, 0.5e9m,
+  9. White stars. 0x2FFFFFFF, 0.5e9m,
+ 10. Red giants. 0x5FFF2200, 20.0e9m, blurred.
+
+The larger objects (marked "blurred") are canonically rendered more
+softly than the other stars at scales where all the stars are visible.
+
+
+## Canonical systems (file 2)
+
+The file with code 2 consists of pairs of little-endian 32 bit
+integers represent star IDs. The first of each pair is a star's ID,
+and the second is the star ID of the primary star of that first star's
+system. The whole file is sorted.
+
+Stars are entries in the galaxy file (with code 1). Star IDs are
+formed by shifting the category ID left by 20 bits, and adding the
+offset into the category for the star.

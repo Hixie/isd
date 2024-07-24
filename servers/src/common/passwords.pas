@@ -81,6 +81,7 @@ begin
    Result := CompareMem(@Hash1, @Hash2, SizeOf(THash));
 end;
 
+
 initialization
    GetRandomBytes := @GetTrueRandomBytes;
 end.
