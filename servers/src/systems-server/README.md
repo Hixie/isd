@@ -9,17 +9,13 @@ Fields:
 Response:
 
  * A number giving the server version. This number is actually the
-   highest known feature ID that the server will use. If this number
+   highest known feature code that the server will use. If this number
    is higher than expected by the client, the client may fail to parse
    some server messages.
-   
- * A number that is the user's dynasty ID for this connection. This is
-   not guaranteed to be the same for other connections to the same
-   server, let alone other servers.
 
-The server will subsequently begin sending updates about the system,
-starting with a complete system description (of assets visible to this
-dynasty).
+The server will subsequently begin sending updates about the systems
+it supports that have the dynasty's presence, starting with a complete
+system description for each system (of assets visible to this dynasty).
 
 ## System updates
 
@@ -30,10 +26,14 @@ of an <update> sequence:
 ```bnf
 <update>            ::= <systemupdate>+
 
-<systemupdate>      ::= <systemid> <assetid> <assetupdate>+ <systemterminator>
+<systemupdate>      ::= <systemid> <assetid> <x> <y> <assetupdate>+ <systemterminator>
 
 <systemid>          ::= 32 bit integer giving the system ID. For systems with
                         stars, this is the star ID of the canonical star.
+
+<x>                 ::= position of system origin relative to galaxy left, in meters
+
+<y>                 ::= position of system origin relative to galaxy top, in meters
 
 <assetupdate>       ::= <assetid> <properties> <feature>* <assetterminator>
 
@@ -45,9 +45,9 @@ of an <update> sequence:
 
 <dynasty>           ::= 32 bit integer (0 for unowned).
 
-<feature>           ::= <featureid> <featuredata>
+<feature>           ::= <featurecode> <featuredata>
 
-<featureid>         ::= non-zero 32 bit integer givining the feature ID, see below.
+<featurecode>       ::= non-zero 32 bit integer giving the feature code, see below.
 
 <assetterminator>   ::= zero as a 32 bit integer.
 
@@ -58,7 +58,7 @@ of an <update> sequence:
 <string>            ::= 32 bit integer followed by as many bytes as
                         specific by that integer.
 
-<double>            ::= 64 bit double
+<double>            ::= 64 bit float
 ```
 
 The `<assetid>` in the `<systemupdate>` is the system's root asset
@@ -73,7 +73,7 @@ asset's name (if any; if not, the empty string).
 
 ### Features
 
-Each feature has an ID, which is one of the fcXXXX constants in
+Each feature has a code, which is one of the fcXXXX constants in
 `../common/isdprotocol.pas`. For example, fcAssetName is 0x01.
 
 The highest number reported by the server is the one reported in
@@ -124,6 +124,17 @@ ordit in radians) at time zero, and omega (tilt of the orbit around
 the focal point in radians clockwise from the positive x axis).
 
 
+#### `fcStructure` (0x04)
+
+```bnf
+<featuredata>          ::= <materials quantity> <structural integrity>
+<materials quantity>   ::= 32 bit integer
+<structural integrity> ::= 32 bit integer
+```
+
+Mysterious feature that depends on asset class stuff that isn't documented yet.
+
+
 # Systems Server Internal Protocol
 
 Response in all cases is one of:
@@ -136,10 +147,18 @@ Response in all cases is one of:
 Fields:
 
  * 32 bit integer: system ID
+ * 64 bit float: X position of center of system, in meters
+ * 64 bit float: Y position of center of system, in meters
  * 32 bit integer: number of stars
  * for each star:
     * category (32 bit integer)
-    * distance from center of system (64 bit float)
+    * X distance from center of system (64 bit float)
+    * Y distance from center of system (64 bit float)
+
+The X and Y positions are relative to the top left corner of the galaxy.
+
+The first star must be at the center of the system (so its two
+distance values must be zero).
 
 
 ## `register-token` (`icRegisterToken`)

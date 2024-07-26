@@ -1,6 +1,6 @@
 {$MODE OBJFPC} { -*- delphi -*- }
 {$INCLUDE settings.inc}
-unit network;
+unit dynastynetwork;
 
 interface
 
@@ -255,9 +255,14 @@ begin
    DynastyID := VerifyLogin(Message);
    if (DynastyID < 0) then
       exit;
+   if (Assigned(FDynasty)) then
+   begin
+      FDynasty.RemoveConnection(Self);
+   end;
    FDynasty := FServer.Dynasties[DynastyID]; // $R-
    FDynasty.AddConnection(Self);
    Message.Reply();
+   Message.Output.WriteCardinal(DynastyID); // $R-
    FDynasty.EncodeServers(FServer.SystemServerDatabase, Message.Output);
    Message.CloseOutput();
 end;
@@ -301,13 +306,16 @@ end;
 procedure TInternalSystemConnection.RegisterToken(Dynasty: TDynasty; Salt: TSalt; Hash: THash);
 var
    Writer: TBinaryStreamWriter;
+   Message: RawByteString;
 begin
    Writer := TBinaryStreamWriter.Create();
    Writer.WriteString(icRegisterToken);
    Writer.WriteCardinal(Dynasty.DynastyID);
    Writer.WriteRawBytes(@Salt[0], SizeOf(Salt));
    Writer.WriteRawBytes(@Hash[0], SizeOf(Hash));
-   Write(Writer.Serialize(True));
+   Message := Writer.Serialize(True);
+   ConsoleWriteln('Sending IPC to system server: ', Message);
+   Write(Message);
    FreeAndNil(Writer);
    IncrementPendingCount();
 end;
@@ -315,11 +323,14 @@ end;
 procedure TInternalSystemConnection.Logout(Dynasty: TDynasty);
 var
    Writer: TBinaryStreamWriter;
+   Message: RawByteString;
 begin
    Writer := TBinaryStreamWriter.Create();
    Writer.WriteString(icLogout);
    Writer.WriteCardinal(Dynasty.DynastyID);
-   Write(Writer.Serialize(True));
+   Message := Writer.Serialize(True);
+   ConsoleWriteln('Sending IPC to system server: ', Message);
+   Write(Message);
    FreeAndNil(Writer);
    IncrementPendingCount();
 end;

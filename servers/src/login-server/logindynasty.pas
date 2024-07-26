@@ -1,6 +1,6 @@
 {$MODE OBJFPC} { -*- delphi -*- }
 {$INCLUDE settings.inc}
-unit dynasty;
+unit logindynasty;
 
 interface
 
@@ -8,7 +8,7 @@ uses
    sysutils, passwords;
 
 type
-   TDynastyRecord = record
+   TDynastyRecord = packed record
    public
       const
          MaxUsernameLength = 127; // plus one byte for the length

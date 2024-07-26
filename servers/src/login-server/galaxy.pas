@@ -99,7 +99,7 @@ procedure OpenSystemServerDatabase(out F: TSystemServerFile; Filename: UTF8Strin
 implementation
 
 uses
-   math, arrayutils, sysutils, hashfunctions;
+   math, arrayutils, sysutils, hashfunctions, exceptions;
 
 const
    GalaxyDataHeaderLength = 2;
@@ -337,7 +337,9 @@ begin
       begin
          FNextHomeCandidate := Index;
       end;
+      Inc(Index);
    end;
+   Assert(Index = FileSize(FHomeDatabase));
 end;
 
 procedure TGalaxyManager.ReloadServersDatabase();
@@ -570,8 +572,8 @@ var
       Assert(Star >= 0);
       Writer.WriteCardinal(Star); // $R-
       StarPosition := PositionOf(Star);
-      Writer.WriteDouble(StarPosition.X - CenterPosition.X);
-      Writer.WriteDouble(StarPosition.Y - CenterPosition.Y);
+      Writer.WriteDouble((StarPosition.X - CenterPosition.X) * MetersPerDWordUnit);
+      Writer.WriteDouble((StarPosition.Y - CenterPosition.Y) * MetersPerDWordUnit);
    end;
 
 var
@@ -583,6 +585,8 @@ begin
    if (IsStar(System) and (System = CanonicalStarOf(System))) then
    begin
       CenterPosition := PositionOf(System);
+      Writer.WriteDouble(CenterPosition.X * MetersPerDWordUnit);
+      Writer.WriteDouble(CenterPosition.Y * MetersPerDWordUnit);
       ExtraStarCount := CountExtraStarsOf(System);
       Writer.WriteCardinal(1 + ExtraStarCount); // $R-
       SerializeStar(System);
@@ -598,7 +602,7 @@ begin
    end
    else
    begin
-      Writer.WriteCardinal(0);
+      XXX;
    end;
 end;
 

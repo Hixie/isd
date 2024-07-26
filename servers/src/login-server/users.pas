@@ -4,7 +4,7 @@ unit users;
 
 interface
 
-uses dynasty, hashtable, stringutils;
+uses logindynasty, hashtable, stringutils;
 
 type
    TDynastyHashTable = class(specialize THashTable<UTF8String, TDynasty, UTF8StringUtils>)
@@ -72,6 +72,7 @@ begin
    begin
       BlockRead(FDatabase, DynastyRecord, 1); // {BOGUS Hint: Local variable "DynastyRecord" does not seem to be initialized}
       Dynasty := TDynasty.CreateFromRecord(NextID, DynastyRecord);
+      Assert(not FAccounts.Has(Dynasty.Username), 'duplicate dynasties with username "' + Dynasty.Username + '"');
       FAccounts[Dynasty.Username] := Dynasty;
       Inc(NextID);
    end;
@@ -101,7 +102,7 @@ end;
 
 procedure TUserDatabase.Save(Dynasty: TDynasty);
 begin
-   Seek(FDatabase, Dynasty.ID);
+   Seek(FDatabase, Dynasty.ID - 1);
    BlockWrite(FDatabase, Dynasty.ToRecord(), 1); // {BOGUS Hint: Local variable "WriteCount" does not seem to be initialized}
 end;
 
@@ -128,7 +129,9 @@ end;
 
 procedure TUserDatabase.ChangeUsername(Dynasty: TDynasty; Username: UTF8String);
 begin
+   Assert(Username <> Dynasty.Username);
    Assert(FAccounts[Dynasty.Username] = Dynasty);
+   Assert(not FAccounts.Has(Username));
    FAccounts.Remove(Dynasty.Username);
    FAccounts[Username] := Dynasty;
    Dynasty.UpdateUsername(Username);

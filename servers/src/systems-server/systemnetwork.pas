@@ -1,11 +1,11 @@
 {$MODE OBJFPC} { -*- delphi -*- }
 {$INCLUDE settings.inc}
-unit network;
+unit systemnetwork;
 
 interface
 
 uses
-   corenetwork, binarystream, basenetwork, dynasty, astronomy,
+   corenetwork, binarystream, basenetwork, systemdynasty, astronomy,
    systems, hashtable, genericutils, basedynasty, encyclopedia,
    configuration, servers, baseunix, authnetwork;
 
@@ -72,7 +72,7 @@ type
       FDynastyManager: TDynastyManager;
       function CreateNetworkSocket(AListenerSocket: TListenerSocket): TNetworkSocket; override;
       function GetSystem(Index: Cardinal): TSystem;
-      function CreateSystem(SystemID: Cardinal): TSystem;
+      function CreateSystem(SystemID: Cardinal; X, Y: Double): TSystem;
       procedure ReportChanges(); override;
    public
       constructor Create(APort: Word; APassword: UTF8String; ASystemServerID: Cardinal; ASettings: PSettings; ADynastyServers: TServerDatabase; AConfigurationDirectory: UTF8String);
@@ -124,6 +124,7 @@ type
 var
    Command: UTF8String;
    SystemID, DynastyID, DynastyServerID, StarCount, Index, StarID: Cardinal;
+   X, Y: Double;
    Dynasty: TDynasty;
    System: TSystem;
    Stars: array of TStarEntry;
@@ -137,6 +138,8 @@ begin
    if (Command = icCreateSystem) then // from login server
    begin
       SystemID := Arguments.ReadCardinal();
+      X := Arguments.ReadDouble();
+      Y := Arguments.ReadDouble();
       StarCount := Arguments.ReadCardinal();
       SetLength(Stars, StarCount);
       if (StarCount > 0) then
@@ -155,7 +158,7 @@ begin
             Stars[Index].DY := Arguments.ReadDouble();
          end;
       end;
-      System := FServer.CreateSystem(SystemID);
+      System := FServer.CreateSystem(SystemID, X, Y);
       Assert(System.RootNode.AssetClass.FeatureCount > 0);
       Assert(System.RootNode.AssetClass.Features[0] is TSolarSystemFeatureClass);
       SolarSystem := System.RootNode.Features[0] as TSolarSystemFeatureNode;
@@ -245,11 +248,14 @@ begin
    DynastyID := VerifyLogin(Message);
    if (DynastyID < 0) then
       exit;
+   if (Assigned(FDynasty)) then
+   begin
+      FDynasty.RemoveConnection(Self);
+   end;
    FDynasty := FServer.DynastyManager.GetDynasty(DynastyID); // $R-
    FDynasty.AddConnection(Self);
    Message.Reply();
    Message.Output.WriteCardinal(fcHighestKnownFeatureCode);
-   Message.Output.WriteCardinal(DynastyID); // $R-
    Message.CloseOutput();
    SystemStatus := FServer.SerializeAllSystemsFor(FDynasty);
    Assert(Length(SystemStatus) > 0);
@@ -299,24 +305,30 @@ end;
 procedure TInternalDynastyConnection.AddServerFor(Dynasty: TDynasty);
 var
    Writer: TBinaryStreamWriter;
+   Message: RawByteString;
 begin
    Writer := TBinaryStreamWriter.Create();
    Writer.WriteString(icAddSystemServer);
    Writer.WriteCardinal(Dynasty.DynastyID);
    Writer.WriteCardinal(FServer.SystemServerID);
-   Write(Writer.Serialize(True));
+   Message := Writer.Serialize(True);
+   ConsoleWriteln('Sending IPC to dynasty server: ', Message);
+   Write(Message);
    FreeAndNil(Writer);
 end;
 
 procedure TInternalDynastyConnection.RemoveServerFor(Dynasty: TDynasty);
 var
    Writer: TBinaryStreamWriter;
+   Message: RawByteString;
 begin
    Writer := TBinaryStreamWriter.Create();
    Writer.WriteString(icRemoveSystemServer);
    Writer.WriteCardinal(Dynasty.DynastyID);
    Writer.WriteCardinal(FServer.SystemServerID);
-   Write(Writer.Serialize(True));
+   Message := Writer.Serialize(True);
+   ConsoleWriteln('Sending IPC to dynasty server: ', Message);
+   Write(Message);
    FreeAndNil(Writer);
 end;
 
@@ -465,12 +477,12 @@ begin
    Result := FSystems[Index];
 end;
 
-function TServer.CreateSystem(SystemID: Cardinal): TSystem;
+function TServer.CreateSystem(SystemID: Cardinal; X, Y: Double): TSystem;
 var
    SystemsFile: File of Cardinal;
 begin
    Assert(not FSystems.Has(SystemID));
-   Result := TSystem.Create(FConfigurationDirectory + SystemDataSubDirectory + IntToStr(SystemID) + '/', SystemID, FEncyclopedia.SpaceClass, FDynastyManager, FEncyclopedia);
+   Result := TSystem.Create(FConfigurationDirectory + SystemDataSubDirectory + IntToStr(SystemID) + '/', SystemID, X, Y, FEncyclopedia.SpaceClass, FDynastyManager, FEncyclopedia);
    FSystems[SystemID] := Result;
    Assign(SystemsFile, FConfigurationDirectory + SystemsDatabaseFileName);
    FileMode := 2;

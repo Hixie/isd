@@ -66,11 +66,22 @@ end;
 procedure TDynasty.Reload();
 var
    SettingsFile: File of TSettings;
+   SystemsFile: File of TSystemServer;
 begin
+   // dynasty server ID
    Assign(SettingsFile, FConfigurationDirectory + SettingsDatabaseFileName);
+   FileMode := 0;
    Reset(SettingsFile);
    BlockRead(SettingsFile, FSettings, 1);
    Close(SettingsFile);
+   // list of systems
+   Assign(SystemsFile, FConfigurationDirectory + SystemsDatabaseFileName);
+   FileMode := 0;
+   Reset(SystemsFile);
+   SetLength(FSystemServers, FileSize(SystemsFile));
+   if (Length(FSystemServers) > 0) then
+      BlockRead(SystemsFile, FSystemServers[0], Length(FSystemServers));
+   Close(SystemsFile);
    inherited;
 end;
 
@@ -117,6 +128,7 @@ procedure TDynasty.AddSystemServer(SystemServerID: Cardinal);
    var
       Server: TSystemServer;
    begin
+      // this is not super efficient but is debug-mode only
       for Server in FSystemServers do
       begin
          if (Server.ServerID = SystemServerID) then
@@ -129,10 +141,11 @@ procedure TDynasty.AddSystemServer(SystemServerID: Cardinal);
    end;
 
 begin
-   // this is not super efficient but is expected to be rare
    Assert(not ServerAlreadyKnown());
+   // this is not super efficient (likely results in full array copy) but is expected to be rare with usually small numbers
    SetLength(FSystemServers, Length(FSystemServers) + 1);
    FSystemServers[High(FSystemServers)].ServerID := SystemServerID;
+   SaveSystems();
 end;
 
 procedure TDynasty.RemoveSystemServer(SystemServerID: Cardinal);
@@ -152,6 +165,7 @@ begin
          Inc(Index);
       end;
    end;
+   SaveSystems();
 end;
 
 procedure TDynasty.EncodeServers(ServerDatabase: TServerDatabase; Writer: TStringStreamWriter);

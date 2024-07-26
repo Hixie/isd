@@ -5,7 +5,7 @@ unit systems;
 interface
 
 uses
-   dynasty, configuration, hashtable, hashset, genericutils, icons, binarystream;
+   systemdynasty, configuration, hashtable, hashset, genericutils, icons, binarystream;
 
 type
    {$PUSH}
@@ -279,6 +279,7 @@ type
       FAssets: TAssetNodeHashTable;
       FConfigurationDirectory: UTF8String;
       FSystemID: Cardinal;
+      FX, FY: Double;
       FRoot: TAssetNode;
       FChanges: TChangeKinds;
       procedure Init(AConfigurationDirectory: UTF8String; ASystemID: Cardinal; ARootClass: TAssetClass; ADynastyDatabase: TDynastyDatabase; AAssetClassDatabase: TAssetClassDatabase);
@@ -298,7 +299,7 @@ type
    protected
       procedure MarkAsDirty(ChangeKinds: TChangeKinds);
    public
-      constructor Create(AConfigurationDirectory: UTF8String; ASystemID: Cardinal; ARootClass: TAssetClass; ADynastyDatabase: TDynastyDatabase; AAssetClassDatabase: TAssetClassDatabase);
+      constructor Create(AConfigurationDirectory: UTF8String; ASystemID: Cardinal; AX, AY: Double; ARootClass: TAssetClass; ADynastyDatabase: TDynastyDatabase; AAssetClassDatabase: TAssetClassDatabase);
       constructor CreateFromDisk(AConfigurationDirectory: UTF8String; ASystemID: Cardinal; ARootClass: TAssetClass; ADynastyDatabase: TDynastyDatabase; AAssetClassDatabase: TAssetClassDatabase);
       destructor Destroy(); override;
       function SerializeSystemFor(Dynasty: TDynasty; Writer: TBinaryStreamWriter; DirtyOnly: Boolean): Boolean; // true if anything was dkSelf dirty
@@ -876,10 +877,12 @@ begin
 end;
 
 
-constructor TSystem.Create(AConfigurationDirectory: UTF8String; ASystemID: Cardinal; ARootClass: TAssetClass; ADynastyDatabase: TDynastyDatabase; AAssetClassDatabase: TAssetClassDatabase);
+constructor TSystem.Create(AConfigurationDirectory: UTF8String; ASystemID: Cardinal; AX, AY: Double; ARootClass: TAssetClass; ADynastyDatabase: TDynastyDatabase; AAssetClassDatabase: TAssetClassDatabase);
 begin
    inherited Create();
    Init(AConfigurationDirectory, ASystemID, ARootClass, ADynastyDatabase, AAssetClassDatabase);
+   FX := AX;
+   FY := AY;
    try
       Assert(not DirectoryExists(FConfigurationDirectory));
       MkDir(FConfigurationDirectory);
@@ -946,6 +949,8 @@ begin
    Reset(FJournalFile, 1);
    JournalReader := TJournalReader.Create(Self);
    ID := JournalReader.ReadPtrUInt();
+   FX := JournalReader.ReadDouble();
+   FY := JournalReader.ReadDouble();
    JournalReader.FAssetMap[ID] := FRoot;
    while (not EOF(FJournalFile)) do
    begin
@@ -995,6 +1000,8 @@ begin
       Rewrite(FJournalFile, 1);
       JournalWriter := TJournalWriter.Create(Self);
       JournalWriter.WritePtrUInt(FRoot.ID(Self));
+      JournalWriter.WriteDouble(FX);
+      JournalWriter.WriteDouble(FY);
       FRoot.Walk(nil, @RecordAsset);
       Close(FJournalFile);
       DeleteFile(FileName);
@@ -1078,6 +1085,8 @@ begin
    DynastyIndex := FDynastyIndices[Dynasty];
    Writer.WriteCardinal(SystemID);
    Writer.WritePtrUInt(FRoot.ID(Self));
+   Writer.WriteDouble(FX);
+   Writer.WriteDouble(FY);
    FRoot.Walk(@Serialize, nil);
    Writer.WritePtrUInt(0); // asset ID 0 marks end of system
    Result := FoundASelfDirty;
@@ -1172,6 +1181,8 @@ begin
    RecordUpdate();
    if (ckAffectsVisibility in FChanges) then
       RecomputeVisibility();
+   // TODO: tell the clients if anything stopped being visible
+   // TODO: tell the clients if _everything_ stopped being visible
    for Dynasty in FDynastyIndices do
    begin
       if (Dynasty.HasConnections) then

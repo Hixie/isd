@@ -1,6 +1,6 @@
 {$MODE OBJFPC} { -*- delphi -*- }
 {$INCLUDE settings.inc}
-unit dynasty;
+unit systemdynasty;
 
 interface
 

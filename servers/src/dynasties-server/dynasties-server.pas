@@ -2,7 +2,7 @@
 {$INCLUDE settings.inc}
 program main;
 
-uses sysutils, network, configuration, csvdocument, servers;
+uses sysutils, dynastynetwork, configuration, csvdocument, servers;
 
 var
    Server: TServer;

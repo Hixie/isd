@@ -92,6 +92,7 @@ var
    TokensFile: File of TToken;
 begin
    Assign(TokensFile, FConfigurationDirectory + TokensDatabaseFileName);
+   FileMode := 0;
    Reset(TokensFile);
    SetLength(FTokens, FileSize(TokensFile));
    if (Length(FTokens) > 0) then
@@ -165,6 +166,7 @@ end;
 
 procedure TBaseDynasty.AddConnection(AConnection: TBaseIncomingCapableConnection);
 begin
+   Assert(not FConnections.Has(AConnection));
    FConnections.Add(AConnection);
 end;
 

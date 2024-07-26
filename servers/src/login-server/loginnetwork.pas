@@ -1,6 +1,6 @@
 {$MODE OBJFPC} { -*- delphi -*- }
 {$INCLUDE settings.inc}
-unit network;
+unit loginnetwork;
 
 // TODO: a program that verifies everything is consistent and removes
 // user accounts for cases where the dynasty server doesn't think the
@@ -11,7 +11,7 @@ unit network;
 interface
 
 uses
-   corenetwork, stringstream, users, dynasty, isderrors,
+   corenetwork, stringstream, users, logindynasty, isderrors,
    servers, basenetwork, binaries, galaxy, astronomy;
 
 const
@@ -293,11 +293,14 @@ end;
 procedure TInternalDynastyConnection.RegisterNewAccount(Dynasty: TDynasty);
 var
    Writer: TBinaryStreamWriter;
+   Message: RawByteString;
 begin
    Writer := TBinaryStreamWriter.Create();
    Writer.WriteString(icCreateAccount);
    Writer.WriteCardinal(Dynasty.ID);
-   Write(Writer.Serialize(True));
+   Message := Writer.Serialize(True);
+   ConsoleWriteln('Sending IPC to dynasty server: ', Message);
+   Write(Message);
    FreeAndNil(Writer);
    RegisterToken(Dynasty);
    IncrementPendingCount();
@@ -309,6 +312,7 @@ var
    Writer: TBinaryStreamWriter;
    Salt: TSalt;
    HashedToken: THash;
+   Message: RawByteString;
 begin
    Token := CreatePassword(DefaultTokenLength);
    Salt := CreateSalt();
@@ -318,7 +322,9 @@ begin
    Writer.WriteCardinal(Dynasty.ID);
    Writer.WriteRawBytes(@Salt[0], SizeOf(Salt));
    Writer.WriteRawBytes(@HashedToken[0], SizeOf(HashedToken));
-   Write(Writer.Serialize(True));
+   Message := Writer.Serialize(True);
+   ConsoleWriteln('Sending IPC to dynasty server: ', Message);
+   Write(Message);
    FreeAndNil(Writer);
    if (not FClientMessage.OutputClosed) then
       FClientMessage.Output.WriteString(IntToStr(Dynasty.ID) + TokenSeparator + Token);
@@ -328,11 +334,14 @@ end;
 procedure TInternalDynastyConnection.Logout(Dynasty: TDynasty);
 var
    Writer: TBinaryStreamWriter;
+   Message: RawByteString;
 begin
    Writer := TBinaryStreamWriter.Create();
    Writer.WriteString(icLogout);
    Writer.WriteCardinal(Dynasty.ID);
-   Write(Writer.Serialize(True));
+   Message := Writer.Serialize(True);
+   ConsoleWriteln('Sending IPC to dynasty server: ', Message);
+   Write(Message);
    FreeAndNil(Writer);
    IncrementPendingCount();
 end;
@@ -347,19 +356,24 @@ end;
 procedure TInternalSystemConnection.RegisterNewHome(System: TStarID; Dynasty: TDynasty; DynastyServerID: Cardinal);
 var
    Writer: TBinaryStreamWriter;
+   Message: RawByteString;
 begin
    Assert(System >= 0);
    Writer := TBinaryStreamWriter.Create();
    Writer.WriteString(icCreateSystem);
    FServer.GalaxyManager.SerializeSystemDescription(System, Writer);
-   Write(Writer.Serialize(True));
+   Message := Writer.Serialize(True);
+   ConsoleWriteln('Sending IPC to system server: ', Message);
+   Write(Message);
    IncrementPendingCount();
    Writer.Clear();
    Writer.WriteString(icTriggerNewDynastyScenario);
    Writer.WriteCardinal(Dynasty.ID);
    Writer.WriteCardinal(DynastyServerID);
    Writer.WriteCardinal(System); // $R-
-   Write(Writer.Serialize(True));
+   Message := Writer.Serialize(True);
+   ConsoleWriteln('Sending IPC to system server: ', Message);
+   Write(Message);
    IncrementPendingCount();
    FreeAndNil(Writer);
 end;

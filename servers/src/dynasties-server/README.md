@@ -26,6 +26,7 @@ Fields:
 
 Response:
 
+ * A number that is the user's globally unique dynasty ID.
  * Count of system servers
  * URL for each system server
 
