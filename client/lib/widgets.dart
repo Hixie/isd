@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/gestures.dart';
@@ -5,24 +6,27 @@ import 'package:flutter/widgets.dart';
 
 import 'galaxy.dart';
 import 'renderers.dart';
-import 'world.dart';
 import 'zoom.dart';
 
-class WorldRoot extends StatefulWidget {
-  const WorldRoot({super.key, required this.rootNode});
+typedef WorldBuilder = Widget Function(BuildContext context, ZoomSpecifier zoom);
 
-  final WorldNode rootNode;
+class WorldRoot extends StatefulWidget {
+  const WorldRoot({super.key, required this.builder});
+
+  final WorldBuilder builder;
   
   @override
   _WorldRootState createState() => _WorldRootState();
 }
 
 class _WorldRootState extends State<WorldRoot> {
-  ZoomSpecifier _zoom = const PanZoomSpecifier.centered(5.0);
+  ZoomSpecifier _zoom = const PanZoomSpecifier.centered(5.0); // this is the global source of truth for zoom!
 
   PanZoomSpecifier? _zoomAnchor;
   Offset? _focalPoint;
 
+  WorldTapTarget? _currentTarget;
+  
   final GlobalKey _worldRootKey = GlobalKey();
   RenderBoxToRenderWorldAdapter get _worldRoot => _worldRootKey.currentContext!.findRenderObject()! as RenderBoxToRenderWorldAdapter;
   
@@ -65,12 +69,22 @@ class _WorldRootState extends State<WorldRoot> {
         onScaleEnd: (ScaleEndDetails details) {
           _zoomAnchor = null;
         },
+        onTapDown: (TapDownDetails details) {
+          assert(_currentTarget == null);
+          _currentTarget = _worldRoot.routeTap(details.localPosition);
+          _currentTarget?.handleTapDown();
+        },
+        onTapCancel: () {
+          _currentTarget?.handleTapDown();
+          _currentTarget = null;
+        },
         onTapUp: (TapUpDetails details) {
-          _worldRoot.handleTap(details.localPosition);
+          _currentTarget?.handleTapUp();
+          _currentTarget = null;
         },
         child: BoxToWorldAdapter(
           key: _worldRootKey,
-          child: widget.rootNode.build(context, _zoom),
+          child: widget.builder(context, _zoom),
         ),
       ),
     );
@@ -127,6 +141,115 @@ class GalaxyWidget extends MultiChildRenderObjectWidget {
   }
 }
 
+class GalaxyChildData extends StatefulWidget {
+  const GalaxyChildData({
+    super.key,
+    required this.position,
+    required this.diameter,
+    required this.label,
+    required this.child,
+  });
+
+  final Offset position;
+  final double diameter;
+  final String label;
+  final Widget child;
+
+  @override
+  State<GalaxyChildData> createState() => _GalaxyChildDataState();
+}
+
+class _GalaxyChildDataState extends State<GalaxyChildData> with SingleTickerProviderStateMixin implements WorldTapTarget {
+  late final AnimationController _controller;
+  late final Animation<double> _animation;
+  Timer? _cooldown;
+  
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 250));
+    _animation = _controller.drive(CurveTween(curve: Curves.ease));
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+  
+  @override
+  void handleTapDown() {
+    _cooldown?.cancel();
+    _cooldown = null;
+    _controller.forward();
+  }
+
+  @override
+  void handleTapCancel() {
+    _controller.reverse();
+  }
+
+  @override
+  void handleTapUp() {
+    assert(_cooldown == null);
+    _cooldown = Timer(const Duration(milliseconds: 75), () {
+      _controller.reverse();
+    });
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<double>(
+      valueListenable: _animation,
+      builder: (BuildContext context, double value, Widget? child) => _GalaxyChildData(
+        position: widget.position,
+        diameter: widget.diameter,
+        label: widget.label,
+        active: value,
+        tapTarget: this,
+        child: widget.child,
+      ),
+    );
+  }
+}
+
+class _GalaxyChildData extends ParentDataWidget<GalaxyParentData> {
+  const _GalaxyChildData({
+    super.key, // ignore: unused_element
+    required this.position,
+    required this.diameter,
+    required this.label,
+    required this.active,
+    required this.tapTarget,
+    required super.child,
+  });
+
+  final Offset position;
+  final double diameter;
+  final String label;
+  final double active;
+  final WorldTapTarget? tapTarget;
+  
+  @override
+  void applyParentData(RenderObject renderObject) {
+    final GalaxyParentData parentData = renderObject.parentData! as GalaxyParentData;
+    if (parentData.position != position ||
+        parentData.diameter != diameter ||
+        parentData.label != label ||
+        parentData.active != active) {
+      parentData.position = position;
+      parentData.diameter = diameter;
+      parentData.label = label;
+      parentData.active = active;
+      renderObject.parent!.markNeedsLayout();
+    }
+    parentData.tapTarget = tapTarget;
+  }
+
+  @override
+  Type get debugTypicalAncestorWidgetClass => RenderGalaxy;
+}
+
 class WorldPlaceholder extends LeafRenderObjectWidget {
   const WorldPlaceholder({
     super.key,
@@ -155,30 +278,4 @@ class WorldPlaceholder extends LeafRenderObjectWidget {
       ..zoom = zoom
       ..color = color;
   }
-}
-
-class WorldNodePosition extends ParentDataWidget<WorldParentData> {
-  const WorldNodePosition({
-    super.key,
-    required this.position,
-    required this.diameter,
-    required super.child,
-  });
-
-  final Offset position;
-  final double diameter;
-
-  @override
-  void applyParentData(RenderObject renderObject) {
-    final WorldParentData parentData = renderObject.parentData! as WorldParentData;
-    if (parentData.position != position ||
-        parentData.diameter != diameter) {
-      parentData.position = position;
-      parentData.diameter = diameter;
-      renderObject.parent!.markNeedsLayout();
-    }
-  }
-
-  @override
-  Type get debugTypicalAncestorWidgetClass => RenderGalaxy;
 }

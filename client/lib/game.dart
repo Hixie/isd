@@ -6,6 +6,7 @@ import 'package:fs_shim/fs_shim.dart';
 import 'connection.dart';
 import 'galaxy.dart';
 import 'stringstream.dart';
+import 'systems.dart';
 import 'world.dart';
 
 class Credentials {
@@ -27,6 +28,8 @@ class Game {
 
   ValueListenable<Credentials?> get credentials => _credentials;
   final ValueNotifier<Credentials?> _credentials = ValueNotifier<Credentials?>(null);
+
+  String? _currentToken;
   
   static const String _loginServerURL = 'wss://interstellar-dynasties.space:10024/';
   
@@ -36,15 +39,18 @@ class Game {
   Connection get dynastyServer => _dynastyServer!;
   Connection? _dynastyServer;
 
+  final Set<SystemServer> systemServers = <SystemServer>{};
+
   ValueListenable<bool> get loggedIn => _loggedIn;
   final ValueNotifier<bool> _loggedIn = ValueNotifier<bool>(false);
   
   void _connectToLoginServer() {
     _loginServer = Connection(
       _loginServerURL,
-      onMessage: _handleLoginServerMessage,
       onError: _handleLoginServerError,
-      onFile: _handleFile,
+      onTextMessage: _handleLoginServerMessage,
+      onBinaryMessage: _handleFile,
+      timeout: const Duration(seconds: 10),
     );
   }
 
@@ -52,13 +58,10 @@ class Game {
     print('login server: received unexpected message: $reader');
   }
 
-  void _handleLoginServerError(Exception error) {
-    print('login server: $error');
-    _loginServer!.dispose();
-    _connectToLoginServer();
-    if (_credentials.value != null) {
-      login(_credentials.value!.username, _credentials.value!.password);
-    }
+  void _handleLoginServerError(Exception error, Duration duration) {
+    print('login server: received error: $error');
+    if (duration > Duration.zero)
+      print('reconnecting in ${duration.inMilliseconds}ms');
   }
 
 
@@ -102,50 +105,90 @@ class Game {
   // LOGIN SERVER COMMANDS
   
   Future<void> newGame() async {
+    _clearCredentials();
     final StreamReader reader = await _loginServer!.send(<Object>['new']);
     _credentials.value = Credentials(reader.readString(), reader.readString());
-    _connectToDynastyServer(reader.readString(), reader.readString());
+    _handleLogin(reader);
   }
 
   Future<void> login(String username, String password) async {
+    _clearCredentials();
     _credentials.value = Credentials(username, password);
-    final StreamReader reader = await _loginServer!.send(<Object>['login', username, password]);
-    _connectToDynastyServer(reader.readString(), reader.readString());
+    _handleLogin(await _loginServer!.send(<Object>['login', username, password]));
+  }
+
+  void _handleLogin(StreamReader reader) {
+    assert(_currentToken == null);
+    final String server = reader.readString();
+    _currentToken = reader.readString();
+    _connectToDynastyServer(server);
+    _loggedIn.value = true;
   }
 
   Future<void> logout() async {
     final String username = _credentials.value!.username;
     final String password = _credentials.value!.password;
+    _clearCredentials();
+    await _loginServer!.send(<Object>['logout', username, password]);
+  }
+
+  void _clearCredentials() {
     _loggedIn.value = false;
     _credentials.value = null;
+    _currentToken = null;
+    rootNode.galaxy?.setCurrentDynastyId(null);
     _dynastyServer?.dispose();
     _dynastyServer = null;
-    await _loginServer!.send(<Object>['logout', username, password]);
+    for (SystemServer server in systemServers) {
+      server.dispose();
+    }
+    systemServers.clear();
   }
 
 
   // DYNASTY SERVER
   
-  void _connectToDynastyServer(String url, String token) {
+  void _connectToDynastyServer(String url) {
     _dynastyServer = Connection(
       url,
-      onMessage: _handleDynastyServerMessage,
+      onConnected: _handleDynastyConnected,
+      onTextMessage: _handleDynastyServerMessage,
       onError: _handleDynastyServerError,
-      login: <String>['login', token],
     );
-    _loggedIn.value = true;
+  }
+
+  Future<void> _handleDynastyConnected() async {
+    print('dynasty server: connected, logging in');
+    assert(_currentToken != null);
+    final StreamReader reader = await _dynastyServer!.send(<String>['login', _currentToken!], queue: false);
+    rootNode.galaxy!.setCurrentDynastyId(reader.readInt());
+    final int serverCount = reader.readInt();
+    for (var index = 0; index < serverCount; index += 1) {
+      systemServers.add(SystemServer(
+        reader.readString(),
+        _currentToken!,
+        rootNode,
+        onError: _handleSystemServerError,
+      ));
+    }
   }
 
   void _handleDynastyServerMessage(StreamReader reader) {
     print('dynasty server: received unexpected message: $reader');
   }
 
-  void _handleDynastyServerError(Exception error) {
+  void _handleDynastyServerError(Exception error, Duration duration) {
     print('dynasty server: $error');
-    _dynastyServer!.dispose();
-    _dynastyServer = null;
-    _loggedIn.value = false;
+    if (duration > Duration.zero)
+      print('reconnecting in ${duration.inMilliseconds}ms');
   }
 
+  void _handleSystemServerError(Exception error, Duration duration) {
+    print('system server: $error');
+    if (duration > Duration.zero)
+      print('reconnecting in ${duration.inMilliseconds}ms');
+  }
+
+  
   final GalaxyNode rootNode = GalaxyNode();
 }

@@ -11,9 +11,10 @@ import 'game.dart';
 import 'widgets.dart';
 
 void main() async {
+  print('INTERSTELLAR DYNASTIES CLIENT');
   WidgetsFlutterBinding.ensureInitialized();
   final LocalStorageInterface localStorage = await LocalStorage.getInstance();
-  final Game game = Game(localStorage.getString('username'), localStorage.getString('password'));
+  final game = Game(localStorage.getString('username'), localStorage.getString('password'));
   game.credentials.addListener(() {
     final Credentials? value = game.credentials.value;
     if (value == null) {
@@ -34,14 +35,17 @@ class GameRoot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Interstellar Dynasties',
+    return ColoredBox(
       color: const Color(0xFF000000),
-      home: AnnotatedRegion<SystemUiOverlayStyle>(
-        value: SystemUiOverlayStyle.light, // TODO: make this depend on the actual UI
-        child: Material(
-          type: MaterialType.transparency,
-          child: InterstellarDynasties(game: game),
+      child: MaterialApp(
+        title: 'Interstellar Dynasties',
+        color: const Color(0xFF000000),
+        home: AnnotatedRegion<SystemUiOverlayStyle>(
+          value: SystemUiOverlayStyle.light, // TODO: make this depend on the actual UI
+          child: Material(
+            type: MaterialType.transparency,
+            child: InterstellarDynasties(game: game),
+          ),
         ),
       ),
     );
@@ -66,6 +70,7 @@ class _InterstellarDynastiesState extends State<InterstellarDynasties> {
   Future<void> _doNewGame() async {
     setState(() { _pending = true; });
     try {
+      print('Starting new game...');
       await widget.game.newGame();
     } on NetworkError catch (e) {
       print(e);
@@ -125,7 +130,9 @@ class _InterstellarDynastiesState extends State<InterstellarDynasties> {
       builder: (BuildContext context, bool loggedIn, Widget? child) => Stack(
         fit: StackFit.expand,
         children: <Widget>[
-          WorldRoot(rootNode: widget.game.rootNode),
+          WorldRoot(
+            builder: widget.game.rootNode.build,
+          ),
           DisableSubtree(
             disabled: loggedIn,
             child: ValueListenableBuilder<bool>(

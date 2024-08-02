@@ -1,5 +1,6 @@
 import 'package:flutter/widgets.dart';
 
+import 'dynasty.dart';
 import 'galaxy.dart';
 import 'renderers.dart';
 import 'widgets.dart';
@@ -32,7 +33,7 @@ abstract class WorldNode extends ChangeNotifier {
     );
   }
 
-  // canonical location in node's own units
+  // canonical location in meters
   Offset findLocationForChild(WorldNode child);
 
   // in meters
@@ -47,15 +48,19 @@ class GalaxyNode extends WorldNode {
   Galaxy? get galaxy => _galaxy;
   Galaxy? _galaxy;
   set galaxy(Galaxy? value) {
-    _galaxy = value;
-    notifyListeners();
+    if (_galaxy != value) {
+      _galaxy = value;
+      notifyListeners();
+    }
   }
 
   GalaxyTapHandler? get onTap => _onTap;
   GalaxyTapHandler? _onTap;
   set onTap(GalaxyTapHandler? value) {
-    _onTap = value;
-    notifyListeners();
+    if (_onTap != value) {
+      _onTap = value;
+      notifyListeners();
+    }
   }
   
   final Set<SystemNode> systems = <SystemNode>{};
@@ -63,15 +68,25 @@ class GalaxyNode extends WorldNode {
   List<Widget>? _children;
   
   void addSystem(SystemNode system) {
-    systems.add(system);
-    _children = null;
-    notifyListeners();
+    if (systems.add(system)) {
+      _children = null;
+      notifyListeners();
+    }
+  }
+  
+  void removeSystem(SystemNode system) {
+    if (systems.remove(system)) {
+      _children = null;
+      notifyListeners();
+    }
   }
 
   void clearSystems() {
-    systems.clear();
-    _children = null;
-    notifyListeners();
+    if (systems.isNotEmpty) {
+      systems.clear();
+      _children = null;
+      notifyListeners();
+    }
   }
 
   @override
@@ -95,7 +110,7 @@ class GalaxyNode extends WorldNode {
     if (galaxy != null) {
       return GalaxyWidget(
         galaxy: galaxy!,
-        diameter: diameter,
+        diameter: galaxy!.diameter,
         zoom: zoom,
         onTap: onTap,
         children: _children ??= _rebuildChildren(context, zoom, selectedChild, childZoom),
@@ -113,9 +128,10 @@ class GalaxyNode extends WorldNode {
       return ListenableBuilder(
         listenable: childNode,
         builder: (BuildContext context, Widget? child) {
-          return WorldNodePosition(
+          return GalaxyChildData(
             position: findLocationForChild(childNode),
             diameter: childNode.diameter,
+            label: childNode.label,
             child: child!,
           );
         },
@@ -129,13 +145,45 @@ class GalaxyNode extends WorldNode {
 }
 
 class SystemNode extends WorldNode {
-  SystemNode(this.offset, this._diameter, this.color);
+  SystemNode(this.id);
 
-  final Offset offset; // location in galaxy (in unit square)
+  final int id;
 
+  String get label => _label;
+  String _label = '';
+
+  void _updateLabel() {
+    assert(_root != null);
+    if (_root!.name != _label) {
+      _label = _root!.name;
+      notifyListeners();
+    }
+  }
+  
+  AssetNode get root => _root!;
+  AssetNode? _root;
+  set root(AssetNode value) {
+    if (_root != value) {
+      _root?.removeListener(_updateLabel);
+      _root = value;
+      _label = _root!.name;
+      notifyListeners();
+      _root!.addListener(_updateLabel);
+    }
+  }
+
+  Offset get offset => _offset!;
+  Offset? _offset;
+  set offset(Offset value) {
+    if (_offset != value) {
+      _offset = value;
+      notifyListeners();
+    }
+  }
+  
   @override
   Widget buildRenderer(BuildContext context, PanZoomSpecifier zoom, WorldNode? selectedChild, ZoomSpecifier? childZoom) {
-    return WorldPlaceholder(diameter: diameter, zoom: zoom, color: color);
+    return WorldPlaceholder(diameter: diameter, zoom: zoom, color: const Color(0xFFFFFFFF));
   }
 
   @override
@@ -143,11 +191,121 @@ class SystemNode extends WorldNode {
     throw UnimplementedError();
   }
 
-  final double _diameter; // should be around 1e16, which is about 1 light year
-  final Color color;
-  
   @override
   double get diameter {
-    return _diameter;
+    return root.diameter;
+  }
+}
+
+class Feature {
+  const Feature();
+}
+
+class AssetNode extends WorldNode {
+  AssetNode(this.id);
+
+  final int id;
+
+  int get assetClass => _assetClass!;
+  int? _assetClass;
+  set assetClass(int value) {
+    if (_assetClass != value) {
+      _assetClass = value;
+      notifyListeners();
+    }
+  }
+
+  Dynasty get ownerDynasty => _ownerDynasty!;
+  Dynasty? _ownerDynasty;
+  set ownerDynasty(Dynasty value) {
+    if (_ownerDynasty != value) {
+      _ownerDynasty = value;
+      notifyListeners();
+    }
+  }
+
+  double get mass => _mass!; // meters
+  double? _mass;
+  set mass(double value) {
+    if (_mass != value) {
+      _mass = value;
+      notifyListeners();
+    }
+  }
+
+  double get size => _size!; // kg
+  double? _size;
+  set size(double value) {
+    if (_size != value) {
+      _size = value;
+      notifyListeners();
+    }
+  }
+
+  String get name => _name ?? '';
+  String? _name;
+  set name(String? value) {
+    if (_name != value) {
+      _name = value;
+      notifyListeners();
+    }
+  }
+
+  String get icon => _icon!;
+  String? _icon;
+  set icon(String value) {
+    if (_icon != value) {
+      _icon = value;
+      notifyListeners();
+    }
+  }
+
+  String get className => _className!;
+  String? _className;
+  set className(String value) {
+    if (_className != value) {
+      _className = value;
+      notifyListeners();
+    }
+  }
+
+  String get description => _description!;
+  String? _description;
+  set description(String value) {
+    if (_description != value) {
+      _description = value;
+      notifyListeners();
+    }
+  }
+
+  final Map<Type, Feature> _features = <Type, Feature>{};
+  
+  Set<Type> get featureTypes {
+    return _features.keys.toSet();
+  }
+
+  Type setFeature(Feature feature) {
+    final Type type = feature.runtimeType;
+    _features[type] = feature;
+    return type;
+  }
+
+  void removeFeatures(Set<Type> features) {
+    features.forEach(_features.remove);
+  }
+  
+  @override
+  Widget buildRenderer(BuildContext context, PanZoomSpecifier zoom, WorldNode? selectedChild, ZoomSpecifier? childZoom) {
+    return WorldPlaceholder(diameter: diameter, zoom: zoom, color: const Color(0xFFFF0000));
+  }
+
+  @override
+  Offset findLocationForChild(WorldNode child) {
+    throw UnimplementedError();
+  }
+
+  @override
+  double get diameter {
+    return _size!;
   }
 }

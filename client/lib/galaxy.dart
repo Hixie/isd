@@ -1,26 +1,43 @@
 import 'dart:typed_data';
 import 'dart:ui';
 
+import 'dynasty.dart';
+
 class Galaxy {
   Galaxy._(this.stars, this.diameter);
 
-  final List<Float32List> stars; // Star posititions in meters
+  final List<Float32List> stars; // Star positions in meters
   final double diameter; // in meters
 
   static const double _maxCoordinate = 4294967295; // Galaxy diameter in DWord Units
 
   static int encodeStarId(int category, int index) => (category << 20) | index; // max 1,048,575 stars per category
   static (int, int) decodeStarId(int id) => (id >> 20, id & 0x000fffff);
+
+  final Map<int, Dynasty> _dynasties = <int, Dynasty>{};
+  Dynasty getDynasty(int id) {
+    return _dynasties.putIfAbsent(id, () => Dynasty(id));
+  }
+
+  Dynasty? get currentDynasty => _currentDynasty;
+  Dynasty? _currentDynasty;
+  void setCurrentDynastyId(int? id) {
+    if (id == null) {
+      _currentDynasty = null;
+    } else {
+      _currentDynasty = getDynasty(id);
+    }
+  }
   
   factory Galaxy.from(Uint8List rawdata, double diameter) {
     final Uint32List data = rawdata.buffer.asUint32List();
     assert(data[0] == 1);
     final int categoryCount = data[1];
-    final List<Float32List> categories = <Float32List>[];
+    final categories = <Float32List>[];
     int indexSource = 2 + categoryCount;
-    for (int category = 0; category < categoryCount; category += 1) {
-      final Float32List target = Float32List(data[2 + category] * 2);
-      int indexTarget = 0;
+    for (var category = 0; category < categoryCount; category += 1) {
+      final target = Float32List(data[2 + category] * 2);
+      var indexTarget = 0;
       while (indexTarget < target.length) {
         target[indexTarget] = data[indexSource] * diameter / _maxCoordinate;
         indexTarget += 1;
@@ -52,8 +69,8 @@ class Galaxy {
 
   List<int> hitTest(Offset target, double threshold) {
     // in meters
-    final List<int> result = <int>[];
-    for (int category = 0; category < stars.length; category += 1) {
+    final result = <int>[];
+    for (var category = 0; category < stars.length; category += 1) {
       final int firstCandidate = _binarySearchY(stars[category], target.dy - threshold);
       final int lastCandidate = _binarySearchY(stars[category], target.dy + threshold, firstCandidate);
       for (int index = firstCandidate; index < lastCandidate; index += 1) {
@@ -82,9 +99,9 @@ class Galaxy {
       }
       return false;
     }
-    for (int category = 0; category < stars.length; category += 1) {
+    for (var category = 0; category < stars.length; category += 1) {
       final int index = _binarySearchY(stars[category], target.dy);
-      int subindex = 1;
+      var subindex = 1;
       while ((index - subindex) >= 0) {
         if (test(category, index - subindex)) {
           break;
