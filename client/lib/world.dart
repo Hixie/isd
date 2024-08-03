@@ -2,7 +2,6 @@ import 'package:flutter/widgets.dart';
 
 import 'dynasty.dart';
 import 'galaxy.dart';
-import 'renderers.dart';
 import 'widgets.dart';
 import 'zoom.dart';
 
@@ -43,22 +42,13 @@ abstract class WorldNode extends ChangeNotifier {
 }
 
 class GalaxyNode extends WorldNode {
-  GalaxyNode({ GalaxyTapHandler? onTap }) : _onTap = onTap;
+  GalaxyNode();
 
   Galaxy? get galaxy => _galaxy;
   Galaxy? _galaxy;
   set galaxy(Galaxy? value) {
     if (_galaxy != value) {
       _galaxy = value;
-      notifyListeners();
-    }
-  }
-
-  GalaxyTapHandler? get onTap => _onTap;
-  GalaxyTapHandler? _onTap;
-  set onTap(GalaxyTapHandler? value) {
-    if (_onTap != value) {
-      _onTap = value;
       notifyListeners();
     }
   }
@@ -89,6 +79,21 @@ class GalaxyNode extends WorldNode {
     }
   }
 
+  final Map<int, Dynasty> _dynasties = <int, Dynasty>{};
+  Dynasty getDynasty(int id) {
+    return _dynasties.putIfAbsent(id, () => Dynasty(id));
+  }
+
+  Dynasty? get currentDynasty => _currentDynasty;
+  Dynasty? _currentDynasty;
+  void setCurrentDynastyId(int? id) {
+    if (id == null) {
+      _currentDynasty = null;
+    } else {
+      _currentDynasty = getDynasty(id);
+    }
+  }
+  
   @override
   Offset findLocationForChild(WorldNode child) {
     if (galaxy != null) {
@@ -105,6 +110,10 @@ class GalaxyNode extends WorldNode {
     return 0;
   }
   
+  void _handleTap(WorldNode target) {
+    // ...
+  }
+  
   @override
   Widget buildRenderer(BuildContext context, PanZoomSpecifier zoom, WorldNode? selectedChild, ZoomSpecifier? childZoom) {
     if (galaxy != null) {
@@ -112,7 +121,6 @@ class GalaxyNode extends WorldNode {
         galaxy: galaxy!,
         diameter: galaxy!.diameter,
         zoom: zoom,
-        onTap: onTap,
         children: _children ??= _rebuildChildren(context, zoom, selectedChild, childZoom),
       );
     }
@@ -132,6 +140,7 @@ class GalaxyNode extends WorldNode {
             position: findLocationForChild(childNode),
             diameter: childNode.diameter,
             label: childNode.label,
+            onTap: () => _handleTap(childNode),
             child: child!,
           );
         },

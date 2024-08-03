@@ -1,8 +1,8 @@
 import 'dart:typed_data';
 import 'dart:ui';
 
-import 'dynasty.dart';
-
+// Parsed version of the stars data.
+// Does not handle anything other than stars.
 class Galaxy {
   Galaxy._(this.stars, this.diameter);
 
@@ -13,25 +13,10 @@ class Galaxy {
 
   static int encodeStarId(int category, int index) => (category << 20) | index; // max 1,048,575 stars per category
   static (int, int) decodeStarId(int id) => (id >> 20, id & 0x000fffff);
-
-  final Map<int, Dynasty> _dynasties = <int, Dynasty>{};
-  Dynasty getDynasty(int id) {
-    return _dynasties.putIfAbsent(id, () => Dynasty(id));
-  }
-
-  Dynasty? get currentDynasty => _currentDynasty;
-  Dynasty? _currentDynasty;
-  void setCurrentDynastyId(int? id) {
-    if (id == null) {
-      _currentDynasty = null;
-    } else {
-      _currentDynasty = getDynasty(id);
-    }
-  }
   
   factory Galaxy.from(Uint8List rawdata, double diameter) {
     final Uint32List data = rawdata.buffer.asUint32List();
-    assert(data[0] == 1);
+    assert(data[0] == 1, 'galaxy raw data first dword is ${data[0]}');
     final int categoryCount = data[1];
     final categories = <Float32List>[];
     int indexSource = 2 + categoryCount;

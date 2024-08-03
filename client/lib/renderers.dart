@@ -131,12 +131,11 @@ class StarType {
 
 typedef GalaxyTapHandler = void Function(Offset offset, double zoomFactor);
 
-class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWorld, GalaxyParentData> implements WorldTapTarget {
+class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWorld, GalaxyParentData> {
   RenderGalaxy({
     required Galaxy galaxy,
     required double diameter,
     PanZoomSpecifier zoom = PanZoomSpecifier.none,
-    this.onTap,
   }) : _galaxy = galaxy,
        _diameter = diameter,
        _zoom = zoom;
@@ -216,20 +215,12 @@ class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWor
     }
   }
 
-  GalaxyTapHandler? onTap;
-
   final TextPainter _legendLabel = TextPainter(textDirection: TextDirection.ltr);
   final TextStyle _legendStyle = const TextStyle(fontSize: 12.0);
   final Paint _legendPaint = Paint()
     ..color = const Color(0xFFFFFFFF);
 
   final TextStyle _hudStyle = const TextStyle(fontSize: 14.0, color: Color(0xFFFFFFFF));
-
-  @override
-  void dispose() {
-    _legendLabel.dispose();
-    super.dispose();
-  }
 
   static const double lightYearInM = 9460730472580800.0;
   static const double auInM = 149597870700.0;
@@ -280,7 +271,7 @@ class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWor
   
   double _zoomFactor = 1.0; // effective zoom (zoom.zoom but maybe affected by local shenanigans)
   double _legendLength = 0.0;
-  double _scaleFactor = 0.0; // meters to pixels, not counting zoom
+  double _scaleFactor = 0.0; // meters to pixels (includes _zoomFactor)
   Offset _panOffset = Offset.zero; // in pixels
 
   final List<Float32List> _starPoints = [];
@@ -292,11 +283,11 @@ class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWor
     final Size renderSize = constraints.size; // pixels
     final double renderDiameter = renderSize.shortestSide;
     _zoomFactor = exp(zoom.zoom - 1.0);
-    _scaleFactor = renderDiameter / diameter;
+    _scaleFactor = (renderDiameter / diameter) * _zoomFactor;
     _panOffset = Offset(
       zoom.destinationFocalPointFraction.dx * renderSize.width,
       zoom.destinationFocalPointFraction.dy * renderSize.height
-    ) - zoom.sourceFocalPointFraction * diameter * _scaleFactor * _zoomFactor;
+    ) - zoom.sourceFocalPointFraction * diameter * _scaleFactor;
     if (galaxy != null) {
       // filter galaxy to visible stars
       _starPoints.clear();
@@ -304,10 +295,10 @@ class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWor
         final StarType starType = _starTypes[categoryIndex];
         final Float32List allStars = galaxy!.stars[categoryIndex];
         final double maxStarDiameter = max(starType.strokeWidth(zoom), starType.blurWidth(_zoomFactor) ?? 0.0);
-        final xMin = (0.0 - _panOffset.dx) / (_scaleFactor * _zoomFactor) - maxStarDiameter;
-        final xMax = (renderSize.width - _panOffset.dx) / (_scaleFactor * _zoomFactor) + maxStarDiameter;
-        final yMin = (0.0 - _panOffset.dy) / (_scaleFactor * _zoomFactor) - maxStarDiameter;
-        final yMax = (renderSize.height - _panOffset.dy) / (_scaleFactor * _zoomFactor) + maxStarDiameter;
+        final xMin = (0.0 - _panOffset.dx) / _scaleFactor - maxStarDiameter;
+        final xMax = (renderSize.width - _panOffset.dx) / _scaleFactor + maxStarDiameter;
+        final yMin = (0.0 - _panOffset.dy) / _scaleFactor - maxStarDiameter;
+        final yMax = (renderSize.height - _panOffset.dy) / _scaleFactor + maxStarDiameter;
         if (xMin > 0 || xMax < diameter ||
             yMin > 0 || yMax < diameter) {
           final visibleStars = Float32List(allStars.length);
@@ -332,8 +323,8 @@ class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWor
         final StarType starType = _starTypes[categoryIndex];
         final double starDiameter = starType.strokeWidth(zoom);
         const pixelTriangleRadius = 1.0;
-        if (starType.blur == null && (starDiameter * _scaleFactor * _zoomFactor < pixelTriangleRadius * 2.0)) {
-          final double triangleRadius = pixelTriangleRadius / (_scaleFactor * _zoomFactor);
+        if (starType.blur == null && (starDiameter * _scaleFactor < pixelTriangleRadius * 2.0)) {
+          final double triangleRadius = pixelTriangleRadius / _scaleFactor;
           assert((triangleRadius * 2) > starDiameter, '$triangleRadius vs $starDiameter');
           final Float32List points = _starPoints[categoryIndex];
           final int count = points.length ~/ 2;
@@ -385,7 +376,7 @@ class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWor
   void paint(PaintingContext context, Offset offset) {
     final transform = Matrix4.identity()
       ..translate(_panOffset.dx, _panOffset.dy)
-      ..scale(_scaleFactor * _zoomFactor);
+      ..scale(_scaleFactor);
     _transformLayer = context.pushTransform(
       needsCompositing,
       offset,
@@ -421,6 +412,7 @@ class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWor
           ..strokeWidth = starType.strokeWidth(zoom);
         if (starType.blur != null) {
           paint.maskFilter = MaskFilter.blur(BlurStyle.normal, starType.blurWidth(_zoomFactor)!);
+          print(paint.maskFilter);
         }
         context.canvas.drawRawPoints(PointMode.points, _starPoints[index], paint);
       }
@@ -471,7 +463,7 @@ class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWor
   
   void drawHud(PaintingContext context, Offset offset) {
     if (_zoomFactor < minZoom) {
-      final double unzoom = 1.0 / (_scaleFactor * _zoomFactor);
+      final double unzoom = 1.0 / _scaleFactor;
       final double reticuleOpacity = _zoomFactor < reticuleFadeZoom ? 1.0 : lerpDouble(1.0, 0.0, (_zoomFactor - reticuleFadeZoom) / (minZoom - reticuleFadeZoom))!;
       final double lineOpacity = _zoomFactor < lineFadeZoom ? 1.0 : lerpDouble(1.0, 0.0, (_zoomFactor - lineFadeZoom) / (minZoom - lineFadeZoom))!;
 
@@ -603,11 +595,9 @@ class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWor
   void applyPaintTransform(RenderWorld child, Matrix4 transform) {
     transform.multiply(_transformLayer!.transform!);
   }
-
-  Offset? _lastTapTarget;
   
   @override
-  WorldTapTarget routeTap(Offset offset) {
+  WorldTapTarget? routeTap(Offset offset) {
     RenderWorld? child = firstChild;
     while (child != null) {
       final GalaxyParentData childParentData = child.parentData! as GalaxyParentData;
@@ -619,27 +609,8 @@ class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWor
       }
       child = childParentData.nextSibling;
     }
-    _lastTapTarget = (offset - _panOffset) / (_scaleFactor * _zoomFactor);
-    return this;
-  }
-
-  @override
-  void handleTapDown() {
-    assert(_lastTapTarget != null);
-  }
-
-  @override
-  void handleTapCancel() {
-    _lastTapTarget = null;
-  }
-  
-  @override
-  void handleTapUp() {
-    final Offset target = _lastTapTarget!;
-    _lastTapTarget = null;
-    if (onTap != null) {
-      onTap!(target, _zoomFactor);
-    }
+    // target location in meters is (offset - _panOffset) / (_scaleFactor)
+    return null;
   }
 
   @override
@@ -647,6 +618,15 @@ class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWor
 
   @override
   double get zoomFactor => _zoomFactor; // TODO: defer to child if fully zoomed
+
+  @override
+  void dispose() {
+    _legendLabel.dispose();
+    for (Vertices? vertices in _starVertices) {
+      vertices?.dispose();
+    }
+    super.dispose();
+  }
 }
 
 

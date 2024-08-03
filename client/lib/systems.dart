@@ -65,7 +65,7 @@ class SystemServer {
       int assetID;
       while ((assetID = reader.readInt64()) != 0) {
         final AssetNode asset = _assets.putIfAbsent(assetID, () => AssetNode(assetID));
-        asset.ownerDynasty = galaxy.galaxy!.getDynasty(reader.readInt32());
+        asset.ownerDynasty = galaxy.getDynasty(reader.readInt32());
         asset.mass = reader.readDouble();
         asset.size = reader.readDouble();
         asset.name = reader.readString();

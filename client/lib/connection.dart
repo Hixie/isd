@@ -62,7 +62,7 @@ class Connection {
       _timer = Timer(timeout!, _handleTimer);
     }
   }
-  
+
   void _handleTimer() {
     _timer = null;
     _websocket?.close();
@@ -163,7 +163,7 @@ class Connection {
 
   void _binaryHandler(Uint8List message) {
     _resetTimer();
-    print('received ${prettyBytes(message)}');
+    print('$url received (binary) ${prettyBytes(message)}');
     if (onBinaryMessage != null) {
       onBinaryMessage!(message);
     }
@@ -266,7 +266,7 @@ class Connection {
       lastInteger = thisInteger;
     }
     
-    for (int byte in message) {
+    for (int byte in message.take(256)) {
       if (byte < 0x20 || byte > 0x7E) {
         if (buffer.length > 4) {
           bits.add('\'${String.fromCharCodes(buffer)}\'');
@@ -297,6 +297,9 @@ class Connection {
       } else {
         bits.addAll(buffer.map((int code) => '0x${code.toRadixString(16).padLeft(2, "0")}'));
       }
+    }
+    if (message.length > 256) {
+      bits.add(' ...');
     }
     return bits.join(' ');
   }

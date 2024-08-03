@@ -12,7 +12,12 @@ import 'widgets.dart';
 
 void main() async {
   print('INTERSTELLAR DYNASTIES CLIENT');
-  WidgetsFlutterBinding.ensureInitialized();
+  WidgetsFlutterBinding.ensureInitialized()
+    .platformDispatcher.onError = (Object exception, StackTrace stackTrace) {
+      if (exception is HandledError)
+        return true;
+      return false;
+    };
   final LocalStorageInterface localStorage = await LocalStorage.getInstance();
   final game = Game(localStorage.getString('username'), localStorage.getString('password'));
   game.credentials.addListener(() {
@@ -66,6 +71,21 @@ class _InterstellarDynastiesState extends State<InterstellarDynasties> {
   bool _showMessage = false;
   String _message = '';
   Timer? _messageTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.game.addErrorHandler(_handleError);
+  }
+
+  @override
+  void didUpdateWidget(InterstellarDynasties oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.game != widget.game) {
+      oldWidget.game.removeErrorHandler(_handleError);
+      widget.game.addErrorHandler(_handleError);
+    }
+  }
   
   Future<void> _doNewGame() async {
     setState(() { _pending = true; });
@@ -104,6 +124,11 @@ class _InterstellarDynastiesState extends State<InterstellarDynasties> {
     );
   }
 
+  void _handleError(Object error) {
+    // TODO: prettier error messages
+    _setMessage(error.toString());
+  }
+  
   void _setMessage(String message) {
     if (message != _message || !_showMessage) {
       _messageTimer?.cancel();
@@ -119,6 +144,7 @@ class _InterstellarDynastiesState extends State<InterstellarDynasties> {
 
   @override
   void dispose() {
+    widget.game.removeErrorHandler(_handleError);
     _messageTimer?.cancel();
     super.dispose();
   }

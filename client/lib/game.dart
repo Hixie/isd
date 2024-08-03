@@ -15,17 +15,44 @@ class Credentials {
   final String password;
 }
 
+typedef ErrorHandler = void Function(Object error);
+
+class HandledError implements Exception {
+  const HandledError(this.error);
+  final Object error;
+}
+
+Future<void> _ignore(Object? value) => Future<void>.value();
+
 class Game {
   Game(String? username, String? password) {
     _connectToLoginServer();
     if (username != null && password != null) {
-      login(username, password);
+      login(username, password).catchError(_handleError);
     }
     getGalaxy().then((Galaxy galaxy) {
       rootNode.galaxy = galaxy;
     });
   }
 
+  final GalaxyNode rootNode = GalaxyNode();
+
+  final Set<ErrorHandler> _errorHandlers = {};
+  void addErrorHandler(ErrorHandler handler) {
+    assert(!_errorHandlers.contains(handler));
+    _errorHandlers.add(handler);
+  }
+  void removeErrorHandler(ErrorHandler handler) {
+    assert(_errorHandlers.contains(handler));
+    _errorHandlers.remove(handler);
+  }
+  void _handleError(Object error) {
+    for (ErrorHandler handler in _errorHandlers) {
+      handler(error);
+    }
+    throw HandledError(error);
+  }
+  
   ValueListenable<Credentials?> get credentials => _credentials;
   final ValueNotifier<Credentials?> _credentials = ValueNotifier<Credentials?>(null);
 
@@ -40,7 +67,7 @@ class Game {
   Connection? _dynastyServer;
 
   final Set<SystemServer> systemServers = <SystemServer>{};
-
+  
   ValueListenable<bool> get loggedIn => _loggedIn;
   final ValueNotifier<bool> _loggedIn = ValueNotifier<bool>(false);
   
@@ -85,16 +112,23 @@ class Game {
         _files[code]!.complete(fileSystemDefault.file('$code.bin').readAsBytes());
       } else {
         // need to get from network
-        await _loginServer!.send(<Object>['get-file']);
+        await _loginServer!.send(<Object>['get-file', code]).then(_ignore).catchError(_handleError);
       }
     }
     return _files[code]!.future;
   }
   
   Future<Galaxy> getGalaxy() async {
-    final StreamReader reader = await _loginServer!.send(<Object>['get-constants']);
-    final double diameter = reader.readDouble();
-    return Galaxy.from(await _getFile(1), diameter);
+    late final double diameter;
+    late final Uint8List data;
+    await Future.wait(<Future<void>>[
+      _loginServer!.send(<Object>['get-constants'])
+        .then<void>((StreamReader reader) { diameter = reader.readDouble(); })
+        .catchError(_handleError),
+      _getFile(1)
+        .then<void>((Uint8List result) { data = result; }),
+    ]);
+    return Galaxy.from(data, diameter);
   }
   
   Future<Uint8List> getSystems() async {
@@ -103,7 +137,8 @@ class Game {
 
 
   // LOGIN SERVER COMMANDS
-  
+
+  // throws on error from server
   Future<void> newGame() async {
     _clearCredentials();
     final StreamReader reader = await _loginServer!.send(<Object>['new']);
@@ -111,6 +146,7 @@ class Game {
     _handleLogin(reader);
   }
 
+  // throws on error from server
   Future<void> login(String username, String password) async {
     _clearCredentials();
     _credentials.value = Credentials(username, password);
@@ -129,14 +165,14 @@ class Game {
     final String username = _credentials.value!.username;
     final String password = _credentials.value!.password;
     _clearCredentials();
-    await _loginServer!.send(<Object>['logout', username, password]);
+    await _loginServer!.send(<Object>['logout', username, password]).then(_ignore).catchError(_handleError);
   }
 
   void _clearCredentials() {
     _loggedIn.value = false;
     _credentials.value = null;
     _currentToken = null;
-    rootNode.galaxy?.setCurrentDynastyId(null);
+    rootNode.setCurrentDynastyId(null);
     _dynastyServer?.dispose();
     _dynastyServer = null;
     for (SystemServer server in systemServers) {
@@ -159,17 +195,21 @@ class Game {
 
   Future<void> _handleDynastyConnected() async {
     print('dynasty server: connected, logging in');
-    assert(_currentToken != null);
-    final StreamReader reader = await _dynastyServer!.send(<String>['login', _currentToken!], queue: false);
-    rootNode.galaxy!.setCurrentDynastyId(reader.readInt());
-    final int serverCount = reader.readInt();
-    for (var index = 0; index < serverCount; index += 1) {
-      systemServers.add(SystemServer(
-        reader.readString(),
-        _currentToken!,
-        rootNode,
-        onError: _handleSystemServerError,
-      ));
+    try {
+      assert(_currentToken != null);
+      final StreamReader reader = await _dynastyServer!.send(<String>['login', _currentToken!], queue: false);
+      rootNode.setCurrentDynastyId(reader.readInt());
+      final int serverCount = reader.readInt();
+      for (var index = 0; index < serverCount; index += 1) {
+        systemServers.add(SystemServer(
+          reader.readString(),
+          _currentToken!,
+          rootNode,
+          onError: _handleSystemServerError,
+        ));
+      }
+    } on Exception catch (e) {
+      _handleError(e);
     }
   }
 
@@ -188,7 +228,4 @@ class Game {
     if (duration > Duration.zero)
       print('reconnecting in ${duration.inMilliseconds}ms');
   }
-
-  
-  final GalaxyNode rootNode = GalaxyNode();
 }

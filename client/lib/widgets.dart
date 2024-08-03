@@ -127,7 +127,6 @@ class GalaxyWidget extends MultiChildRenderObjectWidget {
       galaxy: galaxy,
       diameter: diameter,
       zoom: zoom,
-      onTap: onTap,
     );
   }
 
@@ -136,8 +135,7 @@ class GalaxyWidget extends MultiChildRenderObjectWidget {
     renderObject
       ..galaxy = galaxy
       ..diameter = diameter
-      ..zoom = zoom
-      ..onTap = onTap;
+      ..zoom = zoom;
   }
 }
 
@@ -147,12 +145,14 @@ class GalaxyChildData extends StatefulWidget {
     required this.position,
     required this.diameter,
     required this.label,
+    required this.onTap,
     required this.child,
   });
 
   final Offset position;
   final double diameter;
   final String label;
+  final VoidCallback onTap;
   final Widget child;
 
   @override
@@ -192,9 +192,13 @@ class _GalaxyChildDataState extends State<GalaxyChildData> with SingleTickerProv
   @override
   void handleTapUp() {
     assert(_cooldown == null);
-    _cooldown = Timer(const Duration(milliseconds: 75), () {
+    if (_controller.status == AnimationStatus.forward) {
+      _cooldown = Timer(Duration(milliseconds: (75.0 + 250.0 * 1.0 - _controller.value).round()), () {
+        _controller.reverse();
+      });
+    } else {
       _controller.reverse();
-    });
+    }
   }
   
   @override
