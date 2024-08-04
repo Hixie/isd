@@ -1,3 +1,6 @@
+import 'dart:math';
+import 'dart:ui';
+
 import 'package:flutter/widgets.dart';
 
 import 'dynasty.dart';
@@ -12,22 +15,22 @@ abstract class WorldNode extends ChangeNotifier {
     return ListenableBuilder(
       listenable: this,
       builder: (BuildContext context, Widget? child) {
-        WorldNode? selectedChild;
-        ZoomSpecifier? childZoom;
+        WorldNode? zoomedChildNode;
+        ZoomSpecifier? zoomedChildZoom;
         PanZoomSpecifier panZoom;
         if (zoom is NodeZoomSpecifier) {
           final Offset childPosition = findLocationForChild(zoom.child);
           panZoom = PanZoomSpecifier(
-            childPosition,
-            childPosition,
-            zoom.zoom * diameter / zoom.child.diameter,
+            childPosition / diameter,
+            const Offset(0.5, 0.5),
+            lerpDouble(1.0, log(diameter / zoom.child.diameter) + 1.0, zoom.zoom)!,
           );
-          selectedChild = zoom.child;
-          childZoom = zoom.next;
+          zoomedChildNode = zoom.child;
+          zoomedChildZoom = zoom.next;
         } else {
-          panZoom = zoom as PanZoomSpecifier;
+          panZoom = zoom as PanZoomSpecifier; 
         }
-        return buildRenderer(context, panZoom, selectedChild, childZoom);
+        return buildRenderer(context, panZoom, zoomedChildNode, zoomedChildZoom);
       }
     );
   }
@@ -38,7 +41,10 @@ abstract class WorldNode extends ChangeNotifier {
   // in meters
   double get diameter;
   
-  Widget buildRenderer(BuildContext context, PanZoomSpecifier zoom, WorldNode? selectedChild, ZoomSpecifier? childZoom);
+  Widget buildRenderer(BuildContext context, PanZoomSpecifier zoom, WorldNode? zoomedChildNode, ZoomSpecifier? zoomedChildZoom);
+
+  @override
+  String toString() => '<$runtimeType>';
 }
 
 class GalaxyNode extends WorldNode {
@@ -109,19 +115,15 @@ class GalaxyNode extends WorldNode {
     }
     return 0;
   }
-  
-  void _handleTap(WorldNode target) {
-    // ...
-  }
-  
+ 
   @override
-  Widget buildRenderer(BuildContext context, PanZoomSpecifier zoom, WorldNode? selectedChild, ZoomSpecifier? childZoom) {
+  Widget buildRenderer(BuildContext context, PanZoomSpecifier zoom, WorldNode? zoomedChildNode, ZoomSpecifier? zoomedChildZoom) {
     if (galaxy != null) {
       return GalaxyWidget(
         galaxy: galaxy!,
         diameter: galaxy!.diameter,
         zoom: zoom,
-        children: _children ??= _rebuildChildren(context, zoom, selectedChild, childZoom),
+        children: _children ??= _rebuildChildren(context, zoom, zoomedChildNode, zoomedChildZoom),
       );
     }
     return WorldPlaceholder(
@@ -131,7 +133,7 @@ class GalaxyNode extends WorldNode {
     );
   }
 
-  List<Widget> _rebuildChildren(BuildContext context, PanZoomSpecifier zoom, WorldNode? selectedChild, ZoomSpecifier? childZoom) {
+  List<Widget> _rebuildChildren(BuildContext context, PanZoomSpecifier zoom, WorldNode? zoomedChildNode, ZoomSpecifier? zoomedChildZoom) {
     return systems.map((SystemNode childNode) {
       return ListenableBuilder(
         listenable: childNode,
@@ -140,13 +142,15 @@ class GalaxyNode extends WorldNode {
             position: findLocationForChild(childNode),
             diameter: childNode.diameter,
             label: childNode.label,
-            onTap: () => _handleTap(childNode),
             child: child!,
+            onTap: () {
+              ZoomProvider.zoom(context, childNode);
+            },
           );
         },
         child: childNode.build(
           context,
-          childNode == selectedChild ? childZoom! : PanZoomSpecifier.none,
+          childNode == zoomedChildNode ? zoomedChildZoom! : PanZoomSpecifier.none,
         ),
       );
     }).toList();
@@ -191,7 +195,7 @@ class SystemNode extends WorldNode {
   }
   
   @override
-  Widget buildRenderer(BuildContext context, PanZoomSpecifier zoom, WorldNode? selectedChild, ZoomSpecifier? childZoom) {
+  Widget buildRenderer(BuildContext context, PanZoomSpecifier zoom, WorldNode? zoomedChildNode, ZoomSpecifier? zoomedChildZoom) {
     return WorldPlaceholder(diameter: diameter, zoom: zoom, color: const Color(0xFFFFFFFF));
   }
 
@@ -304,7 +308,7 @@ class AssetNode extends WorldNode {
   }
   
   @override
-  Widget buildRenderer(BuildContext context, PanZoomSpecifier zoom, WorldNode? selectedChild, ZoomSpecifier? childZoom) {
+  Widget buildRenderer(BuildContext context, PanZoomSpecifier zoom, WorldNode? zoomedChildNode, ZoomSpecifier? zoomedChildZoom) {
     return WorldPlaceholder(diameter: diameter, zoom: zoom, color: const Color(0xFFFF0000));
   }
 

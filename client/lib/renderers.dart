@@ -5,7 +5,7 @@ import 'dart:ui';
 import 'package:flutter/rendering.dart';
 
 import 'galaxy.dart';
-import 'zoom.dart';
+import 'zoom.dart' show PanZoomSpecifier;
 
 // CONSTRAINTS
 
@@ -36,6 +36,12 @@ class WorldConstraints extends Constraints {
 
 // HIT TEST
 
+abstract interface class WorldTapTarget {
+  void handleTapDown();
+  void handleTapCancel();
+  void handleTapUp();
+}
+
 class WorldHitTestResult extends HitTestResult {
   WorldHitTestResult();
 
@@ -53,12 +59,6 @@ class WorldHitTestEntry extends HitTestEntry {
 
 
 // ABSTRACT RENDER OBJECTS
-
-abstract interface class WorldTapTarget {
-  void handleTapDown();
-  void handleTapCancel();
-  void handleTapUp();
-}
 
 abstract class RenderWorld extends RenderObject {
   @override
@@ -283,6 +283,7 @@ class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWor
     final Size renderSize = constraints.size; // pixels
     final double renderDiameter = renderSize.shortestSide;
     _zoomFactor = exp(zoom.zoom - 1.0);
+    assert(_zoomFactor.isFinite, 'exp(${zoom.zoom - 1.0}) was infinite');
     _scaleFactor = (renderDiameter / diameter) * _zoomFactor;
     _panOffset = Offset(
       zoom.destinationFocalPointFraction.dx * renderSize.width,
@@ -412,7 +413,6 @@ class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWor
           ..strokeWidth = starType.strokeWidth(zoom);
         if (starType.blur != null) {
           paint.maskFilter = MaskFilter.blur(BlurStyle.normal, starType.blurWidth(_zoomFactor)!);
-          print(paint.maskFilter);
         }
         context.canvas.drawRawPoints(PointMode.points, _starPoints[index], paint);
       }

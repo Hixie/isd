@@ -6,14 +6,13 @@ import 'package:flutter/widgets.dart';
 
 import 'galaxy.dart';
 import 'renderers.dart';
+import 'world.dart' show WorldNode;
 import 'zoom.dart';
 
-typedef WorldBuilder = Widget Function(BuildContext context, ZoomSpecifier zoom);
-
 class WorldRoot extends StatefulWidget {
-  const WorldRoot({super.key, required this.builder});
+  const WorldRoot({super.key, required this.rootNode});
 
-  final WorldBuilder builder;
+  final WorldNode rootNode;
   
   @override
   _WorldRootState createState() => _WorldRootState();
@@ -29,9 +28,16 @@ class _WorldRootState extends State<WorldRoot> {
   
   final GlobalKey _worldRootKey = GlobalKey();
   RenderBoxToRenderWorldAdapter get _worldRoot => _worldRootKey.currentContext!.findRenderObject()! as RenderBoxToRenderWorldAdapter;
+
+  void _zoomTo(WorldNode target) {
+    setState(() {
+      _zoom = _zoom.truncate(widget.rootNode).withChild(target);
+    });
+  }
   
   @override
   Widget build(BuildContext context) {
+    print(_zoom);
     return Listener(
       onPointerSignal: (PointerSignalEvent event) {
         GestureBinding.instance.pointerSignalResolver.register(event, (PointerSignalEvent event) {
@@ -59,6 +65,8 @@ class _WorldRootState extends State<WorldRoot> {
           setState(() {
             final Size size = _worldRootKey.currentContext!.size!;
             final Offset delta = details.focalPoint - _focalPoint!;
+            // TODO: if delta is non-zero we should truncate the zoom here
+            // TODO: we should use withScale
             _zoom = _zoom.withPan(PanZoomSpecifier(
               _zoomAnchor!.sourceFocalPointFraction,
               _zoomAnchor!.destinationFocalPointFraction + Offset(delta.dx / size.width, delta.dy / size.height),
@@ -82,13 +90,31 @@ class _WorldRootState extends State<WorldRoot> {
           _currentTarget?.handleTapUp();
           _currentTarget = null;
         },
-        child: BoxToWorldAdapter(
-          key: _worldRootKey,
-          child: widget.builder(context, _zoom),
+        child: ZoomProvider(
+          state: this,
+          child: BoxToWorldAdapter(
+            key: _worldRootKey,
+            child: widget.rootNode.build(context, _zoom),
+          ),
         ),
       ),
     );
   }
+}
+
+class ZoomProvider extends InheritedWidget {
+  const ZoomProvider({ super.key, required this.state, required super.child });
+
+  final _WorldRootState state;
+
+  static void zoom(BuildContext context, WorldNode target) {
+    final ZoomProvider? provider = context.dependOnInheritedWidgetOfExactType<ZoomProvider>();
+    assert(provider != null, 'No ZoomProvider found in context');
+    provider!.state._zoomTo(target);
+  }
+
+  @override
+  bool updateShouldNotify(ZoomProvider oldWidget) => state != oldWidget.state;
 }
 
 class BoxToWorldAdapter extends SingleChildRenderObjectWidget {
@@ -199,6 +225,7 @@ class _GalaxyChildDataState extends State<GalaxyChildData> with SingleTickerProv
     } else {
       _controller.reverse();
     }
+    widget.onTap();
   }
   
   @override
