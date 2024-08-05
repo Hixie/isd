@@ -125,7 +125,7 @@ class StarType {
   final double magnitude;
   final double? blur;
 
-  double strokeWidth(PanZoomSpecifier zoom) => 8e8 * magnitude / (zoom.zoom * zoom.zoom * max(1, zoom.zoom - 8.0));
+  double strokeWidth(PanZoomSpecifier zoom) => 8e8 * magnitude / ((zoom.zoom + 1) * (zoom.zoom + 1) * max(1, zoom.zoom - 7.0)); // the world is in a mess
   double? blurWidth(double zoomFactor) => blur == null ? null : 8e8 * blur! / zoomFactor;
 }
 
@@ -282,8 +282,8 @@ class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWor
   void performLayout() {
     final Size renderSize = constraints.size; // pixels
     final double renderDiameter = renderSize.shortestSide;
-    _zoomFactor = exp(zoom.zoom - 1.0);
-    assert(_zoomFactor.isFinite, 'exp(${zoom.zoom - 1.0}) was infinite');
+    _zoomFactor = exp(zoom.zoom);
+    assert(_zoomFactor.isFinite, 'exp(${zoom.zoom}) was infinite');
     _scaleFactor = (renderDiameter / diameter) * _zoomFactor;
     _panOffset = Offset(
       zoom.destinationFocalPointFraction.dx * renderSize.width,
@@ -398,7 +398,7 @@ class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWor
         radius: diameter / 2.0,
       ),
       Paint()
-        ..color = const Color(0xFF66BBFF).withOpacity(0x33/0xFF * exp(-(zoom.zoom - 1.0)).clamp(0.0, 1.0))
+        ..color = const Color(0xFF66BBFF).withOpacity((0x33/0xFF) * exp(-zoom.zoom).clamp(0.0, 1.0))
         ..maskFilter = MaskFilter.blur(BlurStyle.normal, 500.0 / _scaleFactor),
     );
     for (var index = 0; index < _starPoints.length; index += 1) {

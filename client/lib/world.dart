@@ -1,5 +1,4 @@
 import 'dart:math';
-import 'dart:ui';
 
 import 'package:flutter/widgets.dart';
 
@@ -23,7 +22,7 @@ abstract class WorldNode extends ChangeNotifier {
           panZoom = PanZoomSpecifier(
             childPosition / diameter,
             const Offset(0.5, 0.5),
-            lerpDouble(1.0, log(diameter / zoom.child.diameter) + 1.0, zoom.zoom)!,
+            log(diameter / zoom.child.diameter) * zoom.zoom,
           );
           zoomedChildNode = zoom.child;
           zoomedChildZoom = zoom.next;

@@ -19,10 +19,7 @@ class WorldRoot extends StatefulWidget {
 }
 
 class _WorldRootState extends State<WorldRoot> {
-  ZoomSpecifier _zoom = const PanZoomSpecifier.centered(5.0); // this is the global source of truth for zoom!
-
-  PanZoomSpecifier? _zoomAnchor;
-  Offset? _focalPoint;
+  ZoomSpecifier _zoom = const PanZoomSpecifier.centered(4.0); // this is the global source of truth for zoom!
 
   WorldTapTarget? _currentTarget;
   
@@ -37,16 +34,16 @@ class _WorldRootState extends State<WorldRoot> {
   
   @override
   Widget build(BuildContext context) {
-    print(_zoom);
     return Listener(
       onPointerSignal: (PointerSignalEvent event) {
         GestureBinding.instance.pointerSignalResolver.register(event, (PointerSignalEvent event) {
-          if (event is PointerScrollEvent) {
+          if (event is PointerScrollEvent && event.scrollDelta.dy != 0) {
             final Size size = _worldRootKey.currentContext!.size!;
             final Offset panOffset = _worldRoot.panOffset;
             final double zoomFactor = _worldRoot.zoomFactor;
             setState(() {
               _zoom = _zoom.withScale(
+                widget.rootNode,
                 event.scrollDelta.dy / -1000.0,
                 (event.localPosition - panOffset) / (size.shortestSide * zoomFactor),
                 Offset(event.localPosition.dx / size.width, event.localPosition.dy / size.height),
@@ -57,25 +54,18 @@ class _WorldRootState extends State<WorldRoot> {
       },
       child: GestureDetector(
         trackpadScrollCausesScale: true,
-        onScaleStart: (ScaleStartDetails details) {
-          _zoomAnchor = _zoom.last;
-          _focalPoint = details.focalPoint;
-        },
         onScaleUpdate: (ScaleUpdateDetails details) {
           setState(() {
             final Size size = _worldRootKey.currentContext!.size!;
-            final Offset delta = details.focalPoint - _focalPoint!;
-            // TODO: if delta is non-zero we should truncate the zoom here
-            // TODO: we should use withScale
-            _zoom = _zoom.withPan(PanZoomSpecifier(
-              _zoomAnchor!.sourceFocalPointFraction,
-              _zoomAnchor!.destinationFocalPointFraction + Offset(delta.dx / size.width, delta.dy / size.height),
-              max(1.0, _zoomAnchor!.zoom * details.scale),
-            ));
+            final ZoomSpecifier truncatedZoom = _zoom.truncate(widget.rootNode);
+            final PanZoomSpecifier anchor = truncatedZoom.last;
+            _zoom = truncatedZoom.withScale(
+              widget.rootNode,
+              log(details.scale),
+              anchor.sourceFocalPointFraction,
+              anchor.destinationFocalPointFraction + details.focalPointDelta.scale(1.0 / size.width, 1.0 / size.height),
+            );
           });
-        },
-        onScaleEnd: (ScaleEndDetails details) {
-          _zoomAnchor = null;
         },
         onTapDown: (TapDownDetails details) {
           assert(_currentTarget == null);
@@ -83,7 +73,7 @@ class _WorldRootState extends State<WorldRoot> {
           _currentTarget?.handleTapDown();
         },
         onTapCancel: () {
-          _currentTarget?.handleTapDown();
+          _currentTarget?.handleTapCancel();
           _currentTarget = null;
         },
         onTapUp: (TapUpDetails details) {

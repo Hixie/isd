@@ -10,8 +10,11 @@ import 'world.dart';
 sealed class ZoomSpecifier {
   const ZoomSpecifier();
 
-  ZoomSpecifier withScale(double delta, Offset? newSourceFocalPointFraction, Offset? newDestinationFocalPointFraction) {
-    final (ZoomSpecifier result, double remainingDelta) = computeWithScale(delta, newSourceFocalPointFraction, newDestinationFocalPointFraction);
+  // changes the zooms to apply "delta" to the current zoom.
+  //
+  // "delta" represents the logarithm of the linear zoom factor to apply.
+  ZoomSpecifier withScale(WorldNode parent, double delta, Offset? newSourceFocalPointFraction, Offset? newDestinationFocalPointFraction) {
+    final (ZoomSpecifier result, double remainingDelta) = computeWithScale(parent, delta, newSourceFocalPointFraction, newDestinationFocalPointFraction);
     return result;
   }
 
@@ -26,13 +29,16 @@ sealed class ZoomSpecifier {
 
   PanZoomSpecifier get last;
 
+  // backend for "withScale".
   @protected
-  (ZoomSpecifier, double) computeWithScale(double delta, Offset? newSourceFocalPointFraction, Offset? newDestinationFocalPointFraction);
+  (ZoomSpecifier, double) computeWithScale(WorldNode parent, double delta, Offset? newSourceFocalPointFraction, Offset? newDestinationFocalPointFraction);
 
   double get cumulativeZoom;
 
+  // computes the require zooming out and zooming in to get from this chain to the other chain.
   (double zoomOut, double zoomIn) measureZooms(ZoomSpecifier other) => (cumulativeZoom, other.cumulativeZoom);
 
+  // removes unused trailing nodes so that the last node represents the current zoom.
   ZoomSpecifier truncate(WorldNode parent);
 }
 
@@ -87,13 +93,13 @@ class ZoomTween extends Tween<ZoomSpecifier> {
       _outFraction = total / _out;
       _inFraction = total / _in;
       assert(panFraction == total / pan);
-      _panZoomChain = begin!.withScale(-outZoom, null, null).truncate(rootNode);
+      _panZoomChain = begin!.withScale(rootNode, -outZoom, null, null).truncate(rootNode);
       _panSource = _panZoomChain.last;
-      _panTarget = end!.withScale(-inZoom, null, null).truncate(rootNode).last;
+      _panTarget = end!.withScale(rootNode, -inZoom, null, null).truncate(rootNode).last;
     }
     if (t < _outFraction) {
       t = outCurve.transform(t / _outFraction);
-      return begin!.withScale(-t * _out, null, null);
+      return begin!.withScale(rootNode, -t * _out, null, null);
     }
     t -= _outFraction;
     if (t < panFraction) {
@@ -102,7 +108,7 @@ class ZoomTween extends Tween<ZoomSpecifier> {
     }
     assert(t <= _inFraction);
     t = 1.0 - (t - panFraction);
-    return end!.withScale(-t * _in, null, null);
+    return end!.withScale(rootNode, -t * _in, null, null);
   }
 }
 
@@ -135,21 +141,38 @@ class NodeZoomSpecifier extends ZoomSpecifier {
   PanZoomSpecifier get last => next.last;
 
   @override
-  (ZoomSpecifier, double) computeWithScale(double delta, Offset? newSourceFocalPointFraction, Offset? newDestinationFocalPointFraction) {
+  (ZoomSpecifier, double) computeWithScale(WorldNode parent, double delta, Offset? newSourceFocalPointFraction, Offset? newDestinationFocalPointFraction) {
+    if (delta == 0.0) {
+      final (ZoomSpecifier newNext, double remainingDelta) = next.computeWithScale(child, delta, newSourceFocalPointFraction, newDestinationFocalPointFraction);
+      return (NodeZoomSpecifier(child, zoom, newNext), remainingDelta);
+    }
+    final double deltaScale = log(parent.diameter / child.diameter);
     if (delta > 0.0) {
-      final double newZoom = zoom + delta;
+      final double newZoom = zoom + delta / deltaScale;
       if (newZoom > 1.0) {
-        final (ZoomSpecifier newNext, double remainingDelta) = next.computeWithScale(newZoom - 1.0, newSourceFocalPointFraction, newDestinationFocalPointFraction);
+        final (ZoomSpecifier newNext, double remainingDelta) = next.computeWithScale(
+          child,
+          (newZoom - 1.0) * deltaScale,
+          newSourceFocalPointFraction,
+          newDestinationFocalPointFraction,
+        );
         return (NodeZoomSpecifier(child, 1.0, newNext), 0.0);
       }
       return (NodeZoomSpecifier(child, newZoom, next), 0.0);
     }
-    final (ZoomSpecifier newNext, double remainingDelta) = next.computeWithScale(delta, newSourceFocalPointFraction, newDestinationFocalPointFraction);
+    assert(delta < 0.0);
+    final (ZoomSpecifier newNext, double remainingDelta) = next.computeWithScale(
+      child,
+      delta,
+      newSourceFocalPointFraction,
+      newDestinationFocalPointFraction,
+    );
     assert(remainingDelta <= 0.0);
-    if (zoom + remainingDelta < 0.0) {
-      return (NodeZoomSpecifier(child, 0.0, newNext), remainingDelta + zoom);
+    final double newZoom = zoom + remainingDelta / deltaScale;
+    if (newZoom < 0.0) {
+      return (NodeZoomSpecifier(child, 0.0, newNext), remainingDelta + zoom * deltaScale);
     }
-    return (NodeZoomSpecifier(child, zoom + remainingDelta, newNext), 0.0);
+    return (NodeZoomSpecifier(child, newZoom, newNext), 0.0);
   }
 
   @override
@@ -202,7 +225,7 @@ class NodeZoomSpecifier extends ZoomSpecifier {
   @override
   ZoomSpecifier truncate(WorldNode parent) {
     if (zoom < 1.0) {
-      return PanZoomSpecifier(parent.findLocationForChild(child), const Offset(0.5, 0.5), log(parent.diameter / child.diameter) + 1);
+      return PanZoomSpecifier(parent.findLocationForChild(child) / parent.diameter, const Offset(0.5, 0.5), zoom * log(parent.diameter / child.diameter));
     }
     return NodeZoomSpecifier(child, zoom, next.truncate(child));
   }
@@ -212,25 +235,23 @@ class NodeZoomSpecifier extends ZoomSpecifier {
 }
 
 class PanZoomSpecifier extends ZoomSpecifier {
-  const PanZoomSpecifier(this.sourceFocalPointFraction, this.destinationFocalPointFraction, this.zoom) : assert(zoom >= 1.0), assert(zoom < double.infinity);
+  const PanZoomSpecifier(this.sourceFocalPointFraction, this.destinationFocalPointFraction, this.zoom) : assert(zoom >= 0.0, 'unexpected zoom $zoom'), assert(zoom < double.infinity);
 
   const PanZoomSpecifier.centered(this.zoom)
     : sourceFocalPointFraction = const Offset(0.5, 0.5),
       destinationFocalPointFraction = const Offset(0.5, 0.5);
 
-  static const PanZoomSpecifier none = PanZoomSpecifier.centered(1.0);
+  static const PanZoomSpecifier none = PanZoomSpecifier.centered(0.0);
 
   final Offset sourceFocalPointFraction; // location in the world
 
   final Offset destinationFocalPointFraction; // location on the screen 
 
-  final double zoom; // >=1.0
-
-  double get inputZoom => 1.0 + log(zoom);
+  final double zoom; // >=0.0, represents the log of the actual zoom factor
 
   @override
   ZoomSpecifier withZoom(double total) {
-    return PanZoomSpecifier(sourceFocalPointFraction, destinationFocalPointFraction, total + 1.0);
+    return PanZoomSpecifier(sourceFocalPointFraction, destinationFocalPointFraction, total);
   }
 
   @override
@@ -247,7 +268,8 @@ class PanZoomSpecifier extends ZoomSpecifier {
   PanZoomSpecifier get last => this;
 
   @override
-  (ZoomSpecifier, double) computeWithScale(double delta, Offset? newSourceFocalPointFraction, Offset? newDestinationFocalPointFraction) {
+  (ZoomSpecifier, double) computeWithScale(WorldNode parent, double delta, Offset? newSourceFocalPointFraction, Offset? newDestinationFocalPointFraction) {
+    assert(delta.isFinite);
     final Offset effectiveSource = newSourceFocalPointFraction ?? sourceFocalPointFraction;
     final Offset effectiveDestination = newDestinationFocalPointFraction ?? destinationFocalPointFraction;
     if (delta > 0.0) {
@@ -256,9 +278,9 @@ class PanZoomSpecifier extends ZoomSpecifier {
       return (PanZoomSpecifier(effectiveSource, effectiveDestination, zoom + delta), 0);
     }
     final double newZoom = zoom + delta;
-    if (newZoom < 1.0) {
+    if (newZoom < 0.0) {
       // zoomed out all the way, spill the remainder up
-      return (PanZoomSpecifier(effectiveSource, effectiveDestination, 1.0), delta + (zoom - 1.0));
+      return (PanZoomSpecifier(effectiveSource, effectiveDestination, 0.0), newZoom);
     }
     // zoom out
     return (PanZoomSpecifier(effectiveSource, effectiveDestination, newZoom), 0.0);
@@ -266,7 +288,7 @@ class PanZoomSpecifier extends ZoomSpecifier {
 
   @override
   double get cumulativeZoom {
-    return zoom - 1.0;
+    return zoom;
   }
 
   @override
@@ -274,7 +296,9 @@ class PanZoomSpecifier extends ZoomSpecifier {
     return this;
   }
 
-  static PanZoomSpecifier lerp(PanZoomSpecifier a, PanZoomSpecifier b, double t, { double unzoom = 1.0 }) {
+  static PanZoomSpecifier lerp(PanZoomSpecifier a, PanZoomSpecifier b, double t, { double unzoom = 0.0 }) {
+    assert(a.zoom >= unzoom);
+    assert(b.zoom >= unzoom);
     return PanZoomSpecifier(
       Offset.lerp(a.sourceFocalPointFraction, b.sourceFocalPointFraction, t)!,
       Offset.lerp(a.destinationFocalPointFraction, b.destinationFocalPointFraction, t)!,
