@@ -241,9 +241,9 @@ end;
 
 procedure TConnection.SendBinary(var Message: TMessage; BinaryFile: TBinaryFile);
 begin
+   WriteFrame(BinaryFile.Buffer^, BinaryFile.Length);
    Message.Reply();
    Message.CloseOutput();
-   WriteFrame(BinaryFile.Buffer^, BinaryFile.Length);
 end;
 
 procedure TConnection.GetConstants(var Message: TMessage);
@@ -263,8 +263,8 @@ begin
    if (not Message.CloseInput()) then
       exit;
    case ID of
-      1: SendBinary(Message, FServer.GalaxyManager.SystemsData);
-      2: SendBinary(Message, FServer.GalaxyManager.GalaxyData);
+      1: SendBinary(Message, FServer.GalaxyManager.GalaxyData);
+      2: SendBinary(Message, FServer.GalaxyManager.SystemsData);
    else
       Message.Error(ieUnknownFileCode);
    end;

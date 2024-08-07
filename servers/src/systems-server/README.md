@@ -26,49 +26,71 @@ of an <update> sequence:
 ```bnf
 <update>            ::= <systemupdate>+
 
-<systemupdate>      ::= <systemid> <assetid> <x> <y> <assetupdate>+ <systemterminator>
+<systemupdate>      ::= <systemid> <assetid> <x> <y> <assetupdate>+ <zero> <zero>
 
-<systemid>          ::= 32 bit integer giving the system ID. For systems with
-                        stars, this is the star ID of the canonical star.
+<systemid>          ::= <integer> ; the star ID of the canonical star, if any.
 
 <x>                 ::= position of system origin relative to galaxy left, in meters
 
 <y>                 ::= position of system origin relative to galaxy top, in meters
 
-<assetupdate>       ::= <assetid> <properties> <feature>* <assetterminator>
+<assetupdate>       ::= <assetid> <properties> <feature>* <zero>
 
 <assetid>           ::= non-zero 64 bit integer.
 
-<systemterminator>  ::= zero as a 64 bit integer.
+<properties>        ::= <dynasty> ; owner
+                        <double>  ; mass
+                        <double>  ; size
+                        <string>  ; name
+                        <string>  ; icon
+                        <string>  ; class name
+                        <string>  ; description
 
-<properties>        ::= <classid> <dynasty> <double> <double> <string>
-
-<dynasty>           ::= 32 bit integer (0 for unowned).
+<dynasty>           ::= <integer> ; zero for unowned
 
 <feature>           ::= <featurecode> <featuredata>
 
-<featurecode>       ::= non-zero 32 bit integer giving the feature code, see below.
-
-<assetterminator>   ::= zero as a 32 bit integer.
+<featurecode>       ::= <integer> ; non-zero, see below
 
 <featuredata>       ::= feature-specific form, see below.
 
-<classid>           ::= non-zero 32 bit integer.
-
-<string>            ::= 32 bit integer followed by as many bytes as
-                        specific by that integer.
+<string>            ::= <integer> [ <integer> <byte>* ] ; see below
 
 <double>            ::= 64 bit float
+
+<integer>           ::= 32 bit unsigned integer
+
+<zero>              ::= 32 bit zero
 ```
+
+The `<systemid>` is currently always a star ID.
 
 The `<assetid>` in the `<systemupdate>` is the system's root asset
 (usually a "space" asset that contains positioned orbits that
 themselves have stars).
 
-The `<properties>` are the asset class ID, the owner dynasty ID
-(dynasty IDs, like all other IDs, are only meaningful per connection),
-the asset's mass in kg, the asset's rough diameter in meters, and the
-asset's name (if any; if not, the empty string).
+Asset IDs (`<assetid>`) are connection-specific.
+
+The `<properties>` are the owner dynasty ID (zero for unowned assets),
+the asset's mass in kg, the asset's rough diameter in meters, the
+asset's name (if any; this is often the empty string), the icon name,
+a class name (brief description of the object, e.g. "star", "planet",
+"ship"), and a longer description of the object.
+
+The class name may vary in precision based on the knowledge that the
+dynasty's observing asset has. The icon generally does not vary.
+
+The longer description may be vague or otherwise change based on the
+specifics of the situation; for example, it is typically "Unknown
+object type." when the dynasty does not have knowledge of the object
+type, or "Not currently visible or otherwise detectable." when the
+player cannot see the object (but can infer its presence).
+
+Strings (`<string>`) in this format are deduplicated as follows. The
+first time a particular string is encountered, it is serialized as a
+32 bit integer identifier, then the string's length, then that many
+bytes giving the string data. The second time, only the identifier is
+specified. String identifiers are scoped to the connection.
 
 
 ### Features
@@ -86,17 +108,17 @@ features cannot decode server data.
 #### `fcStar` (0x01)
 
 ```bnf
-<featuredata>  ::= <starid>
-<starid>       ::= 32 bit integer
+<featuredata>       ::= <starid>
+<starid>            ::= <integer>
 ```
 
 
 #### `fcSpace` (0x02)
 
 ```bnf
-<featuredata>  ::= <assetid> <childcount> <child>*
-<childcount>   ::= 32 bit integer
-<child>        ::= <double>{2} <assetid>
+<featuredata>       ::= <assetid> <childcount> <child>*
+<childcount>        ::= <integer>
+<child>             ::= <double>{2} <assetid>
 ```
 
 The first `<assetid>` is the asset at the origin.
@@ -110,9 +132,9 @@ child.
 #### `fcOrbit` (0x03)
 
 ```bnf
-<featuredata>  ::= <assetid> <orbitcount> <orbit>*
-<orbitcount>   ::= 32 bit integer
-<orbit>        ::= <double>{4} <assetid>
+<featuredata>       ::= <assetid> <orbitcount> <orbit>*
+<orbitcount>        ::= <integer>
+<orbit>             ::= <double>{4} <assetid>
 ```
 
 There are as many `<orbit>` repetitions as specified by
@@ -127,12 +149,96 @@ the focal point in radians clockwise from the positive x axis).
 #### `fcStructure` (0x04)
 
 ```bnf
-<featuredata>          ::= <materials quantity> <structural integrity>
-<materials quantity>   ::= 32 bit integer
-<structural integrity> ::= 32 bit integer
+<featuredata>       ::= <material-lineitem>* <zero> <hp> <minhp>
+<material-lineitem> ::= <marker> <quantity> <max> <componentname> <materialname> <materialid>
+<marker>            ::= 0xFFFFFFFF as an unsigned 32 bit integer
+<quantity>          ::= <integer>
+<max>               ::= <integer>
+<componentname>     ::= <string>
+<materialname>      ::= <string>
+<materialid>        ::= <integer> ; non-zero material id
+<hp>                ::= <integer>
+<minhp>             ::= <integer>
 ```
 
-Mysterious feature that depends on asset class stuff that isn't documented yet.
+The structure feature describes the make-up and structural integrity
+of the asset.
+
+Each material line item (`<material-lineitem>`) consists of the
+following data:
+
+ * a marker to distinguish it from the terminating zero.
+ * how much of the material is present.
+ * how much of the material is required (0 if the asset class is not known).
+ * the name of the component (an empty string if the asset class is not known).
+ * a brief description of the material.
+ * the ID of the material.
+
+Material IDs (`<materialid>`) are connection-specific.
+
+Material line items that have zero material present are skipped when
+the asset class is not known.
+
+The description of the material in this list can be ignored if the
+material is known, as the material data will have a more detailed
+description.
+
+The list of material line items is terminated by a zero (instead of
+the 0xFFFFFFFF marker).
+
+After the material line items, the following values describing the
+asset's structural integrity are given:
+
+ * a number indicating the structural integrity of the asset.
+ * the minimum required structural integrity for the object to
+   function (0 if the asset class is not known).
+
+The maximum structural integrity is the sum of the quantities in the
+material line items (which may be incomplete if the asset class is not
+known). The current structural integrity can't be greater than the sum
+of the quantities of material preset.
+
+TODO: Currently the material IDs are opaque.
+      Currently the structural integrity values have no effect.
+
+
+### `fcSpaceSensor` (0x05)
+
+```bnf
+<featuredata>       ::= <reach> <up> <down> <resolution> [<feature>]
+<reach>             ::= <integer> ; max steps up tree to nearest orbit
+<up>                ::= <integer> ; distance that the sensors reach up the tree from the nearest orbit
+<down>              ::= <integer> ; distance down the tree that the sensors reach
+<resolution>        ::= <double> ; the minimum size of assets that these sensors can detect (meters)
+```
+
+Space sensors work by walking up the tree from the sensor up to the
+nearest orbit (going a max of `<reach>` steps), then going a further
+<up> steps up the tree, then going down from that in a depth-first
+search of orbits, up to `<down>` levels. Sensors can detect any asset
+that is at least `<resolution>` meters in size and is in an orbit
+examined during this walk.
+
+The trailing `<feature>`, if present, is a `fcSpaceSensorStatus`
+feature, documented next.
+
+
+### `fcSpaceSensorStatus` (0x06)
+
+```bnf
+<featuredata>       ::= <nearest-orbit>
+                        <top-orbit>
+                        <count>
+<nearest-orbit>     ::= <assetid>
+<top-orbit>         ::= <assetid>
+<count>             ::= <integer> ; number of detected assets
+```
+
+Reports the "top" and "bottom" nodes of the tree that were affected by
+the sensor sweep (see `fcSpaceSensor`), as well as the total number
+of detected nodes.
+
+This feature, if present, always follows a `fcSpaceSensor` feature.
 
 
 # Systems Server Internal Protocol

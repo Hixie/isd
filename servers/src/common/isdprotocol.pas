@@ -18,12 +18,16 @@ const
    TokenSeparator = #$1F;
 
 const
-   fcTerminator = $00000000;
-   fcStar = $00000001;
-   fcSpace = $00000002;
-   fcOrbit = $00000003;
-   fcStructure = $00000004;
-   fcHighestKnownFeatureCode = fcStructure;
+   // These must increment monotonically and their values must never change
+   // during the history of the project.
+   fcTerminator = 0;
+   fcStar = 1;
+   fcSpace = 2;
+   fcOrbit = 3;
+   fcStructure = 4;
+   fcSpaceSensor = 5;
+   fcSpaceSensorStatus = 6;
+   fcHighestKnownFeatureCode = fcSpaceSensorStatus;
    
 implementation
 

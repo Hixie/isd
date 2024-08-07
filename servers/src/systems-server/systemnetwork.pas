@@ -7,7 +7,7 @@ interface
 uses
    corenetwork, binarystream, basenetwork, systemdynasty, astronomy,
    systems, hashtable, genericutils, basedynasty, encyclopedia,
-   configuration, servers, baseunix, authnetwork;
+   configuration, servers, baseunix, authnetwork, serverstream;
 
 type
    TSystemHashTable = class(specialize THashTable<Cardinal, TSystem, CardinalUtils>)
@@ -24,6 +24,7 @@ type
    protected
       FServer: TServer;
       FDynasty: TDynasty;
+      FWriter: TServerStreamWriter;
       procedure HandleIPC(Arguments: TBinaryStreamReader); override;
       function GetDynasty(DynastyID: Cardinal): TBaseDynasty; override; // used for VerifyLogin
       procedure DoLogin(var Message: TMessage); message 'login';
@@ -31,6 +32,7 @@ type
    public
       constructor Create(AListener: TListenerSocket; AServer: TServer);
       destructor Destroy(); override;
+      procedure Invoke(Callback: TConnectionCallback); override;
    end;
 
    TInternalDynastyConnection = class(TNetworkSocket)
@@ -77,7 +79,7 @@ type
    public
       constructor Create(APort: Word; APassword: UTF8String; ASystemServerID: Cardinal; ASettings: PSettings; ADynastyServers: TServerDatabase; AConfigurationDirectory: UTF8String);
       destructor Destroy(); override;
-      function SerializeAllSystemsFor(Dynasty: TDynasty): RawByteString;
+      function SerializeAllSystemsFor(Dynasty: TDynasty; Writer: TServerStreamWriter): RawByteString;
       property Password: UTF8String read FPassword;
       property SystemServerID: Cardinal read FSystemServerID;
       property Systems[Index: Cardinal]: TSystem read GetSystem;
@@ -106,13 +108,20 @@ constructor TConnection.Create(AListener: TListenerSocket; AServer: TServer);
 begin
    inherited Create(AListener);
    FServer := AServer;
+   FWriter := TServerStreamWriter.Create();
 end;
 
 destructor TConnection.Destroy();
 begin
    if (Assigned(FDynasty)) then
       FDynasty.RemoveConnection(Self);
+   FWriter.Free();
    inherited;
+end;
+
+procedure TConnection.Invoke(Callback: TConnectionCallback);
+begin
+   Callback(Self, FWriter);
 end;
 
 procedure TConnection.HandleIPC(Arguments: TBinaryStreamReader);
@@ -257,7 +266,9 @@ begin
    Message.Reply();
    Message.Output.WriteCardinal(fcHighestKnownFeatureCode);
    Message.CloseOutput();
-   SystemStatus := FServer.SerializeAllSystemsFor(FDynasty);
+   Assert(FWriter.BufferLength = 0);
+   SystemStatus := FServer.SerializeAllSystemsFor(FDynasty, FWriter);
+   Assert(FWriter.BufferLength = 0);
    Assert(Length(SystemStatus) > 0);
    WriteFrame(SystemStatus[1], Length(SystemStatus)); // $R-
 end;
@@ -500,21 +511,19 @@ begin
       System.ReportChanges();
 end;
 
-function TServer.SerializeAllSystemsFor(Dynasty: TDynasty): RawByteString;
+function TServer.SerializeAllSystemsFor(Dynasty: TDynasty; Writer: TServerStreamWriter): RawByteString;
 var
-   Writer: TBinaryStreamWriter;
    System: TSystem;
 begin
-   Writer := TBinaryStreamWriter.Create();
    for System in FSystems.Values do
    begin
       if (System.HasDynasty(Dynasty)) then
       begin
-         System.SerializeSystemFor(Dynasty, Writer, False);
+         System.SerializeSystem(Dynasty, Writer, False);
       end;
    end;
    Result := Writer.Serialize(False);
-   Writer.Free();
+   Writer.Clear();
 end;
 
 

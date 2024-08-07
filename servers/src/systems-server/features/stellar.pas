@@ -5,7 +5,7 @@ unit stellar;
 interface
 
 uses
-   sysutils, systems, astronomy, providers, binarystream;
+   sysutils, systems, astronomy, providers, serverstream;
 
 type
    TStarFeatureClass = class(TFeatureClass)
@@ -24,7 +24,7 @@ type
       function GetFeatureName(): UTF8String; override;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
       procedure ApplyVisibility(VisibilityHelper: TVisibilityHelper); override;
-      procedure SerializeFor(DynastyIndex: Cardinal; Writer: TBinaryStreamWriter; System: TSystem); override;
+      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem); override;
       function GetAssetName(): UTF8String;
    public
       constructor Create(AStarID: TStarID);
@@ -120,7 +120,7 @@ begin
    VisibilityHelper.AddBroadVisibility([dmVisibleSpectrum], Parent);
 end;
 
-procedure TStarFeatureNode.SerializeFor(DynastyIndex: Cardinal; Writer: TBinaryStreamWriter; System: TSystem);
+procedure TStarFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem);
 begin
    Writer.WriteCardinal(fcStar);
    Assert(StarID >= 0);

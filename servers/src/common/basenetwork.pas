@@ -56,6 +56,8 @@ type
       property OutputClosed: Boolean read GetOutputClosed;
    end;
 
+   TConnectionCallback = procedure (Connection: TBaseIncomingCapableConnection; Data: Pointer) is nested;
+   
    TBaseIncomingCapableConnection = class(TWebSocket)
    strict private
       FConversations: TConversationHashSet;
@@ -66,6 +68,7 @@ type
       destructor Destroy(); override;
       procedure TrackConversation(Conversation: TBaseConversationHandle);
       procedure DiscardConversation(Conversation: TBaseConversationHandle);
+      procedure Invoke(Callback: TConnectionCallback); virtual;
       procedure DefaultHandlerStr(var Message); override;
       {$IFOPT C+} procedure WriteFrame(const s: UTF8String); override; {$ENDIF}
       {$IFOPT C+} procedure WriteFrame(const Buf; const Length: Cardinal); override; {$ENDIF} {BOGUS Hint: Value parameter "Buf" is assigned but never used}
@@ -133,7 +136,7 @@ uses
 
 procedure ConsoleWriteln(const Prefix, S: UTF8String);
 var
-   Index, Codepoint: Cardinal;
+   Index, Codepoint, Count: Cardinal;
    Control, NextIsControl: Boolean;
    Color: Boolean;
 begin
@@ -141,10 +144,13 @@ begin
    Write(Prefix);
    if (Length(S) > 0) then
    begin
+      Count := Length(S); // $R-
+      if (Count > 256) then
+         Count := 256;
       Control := False;
       if (Color) then
          Write(#$1B'[30;37;1m');
-      for Index := 1 to Length(S) do // $R-
+      for Index := 1 to Count do // $R-
       begin
          Codepoint := Ord(S[Index]);
          NextIsControl := (Codepoint < $20) or (Codepoint = $80);
@@ -182,6 +188,8 @@ begin
       end;
       if (Color) then
          Write(#$1B'[0m');
+      if (Count < Length(S)) then
+         Write('...');
       Writeln();
    end
    else
@@ -324,6 +332,11 @@ procedure TBaseIncomingCapableConnection.DiscardConversation(Conversation: TBase
 begin
    FConversations.Remove(Conversation);
    Conversation.DiscardSocket();
+end;
+
+procedure TBaseIncomingCapableConnection.Invoke(Callback: TConnectionCallback);
+begin
+   Callback(Self, nil);
 end;
 
 procedure TBaseIncomingCapableConnection.HandleMessage(Message: UTF8String);

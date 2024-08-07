@@ -5,7 +5,7 @@ unit space;
 interface
 
 uses
-   systems, binarystream;
+   systems, providers, serverstream;
 
 type
    TSolarSystemFeatureClass = class(TFeatureClass)
@@ -18,7 +18,7 @@ type
       function InitFeatureNode(): TFeatureNode; override;
    end;
 
-   TSolarSystemFeatureNode = class(TFeatureNode)
+   TSolarSystemFeatureNode = class(TFeatureNode, IAssetNameProvider)
    private
       FFeatureClass: TSolarSystemFeatureClass;
       FChildren: array of TAssetNode;
@@ -29,12 +29,13 @@ type
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass); override;
       procedure AdoptSolarSystemChild(Child: TAssetNode);
       procedure DropSolarSystemChild(Child: TAssetNode);
+      procedure MarkAsDirty(DirtyKinds: TDirtyKinds; ChangeKinds: TChangeKinds); override;
       function GetMass(): Double; override;
       function GetSize(): Double; override;
       function GetFeatureName(): UTF8String; override;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
       procedure ApplyVisibility(VisibilityHelper: TVisibilityHelper); override;
-      procedure SerializeFor(DynastyIndex: Cardinal; Writer: TBinaryStreamWriter; System: TSystem); override;
+      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem); override;
    public
       constructor Create(AFeatureClass: TSolarSystemFeatureClass);
       destructor Destroy(); override;
@@ -42,6 +43,7 @@ type
       procedure ApplyJournal(Journal: TJournalReader); override;
       procedure AddCartesianChild(Child: TAssetNode; X, Y: Double); // meters, first must be at 0,0
       procedure AddPolarChild(Child: TAssetNode; Distance, Theta: Double); // meters
+      function GetAssetName(): UTF8String;
       property Children[Index: Cardinal]: TAssetNode read GetChild;
       property ChildCount: Cardinal read GetChildCount;
    end;
@@ -156,6 +158,8 @@ begin
    Dispose(PSolarSystemData(Child.ParentData));
    Child.ParentData := nil;
    DropChild(Child);
+   if (Length(FChildren) = 0) then
+      MarkAsDirty([dkSelf], [ckAffectsNames]);
 end;
 
 procedure TSolarSystemFeatureNode.AddCartesianChild(Child: TAssetNode; X, Y: Double); // meters, first must be at 0,0
@@ -209,6 +213,13 @@ begin
    PSolarSystemData(Child.ParentData)^.Theta := Theta;
 end;
 
+procedure TSolarSystemFeatureNode.MarkAsDirty(DirtyKinds: TDirtyKinds; ChangeKinds: TChangeKinds);
+begin
+   if (ckAffectsNames in ChangeKinds) then
+      Include(DirtyKinds, dkSelf);
+   inherited;
+end;
+
 function TSolarSystemFeatureNode.GetMass(): Double;
 var
    Index: Cardinal;
@@ -239,9 +250,11 @@ end;
 
 procedure TSolarSystemFeatureNode.ApplyVisibility(VisibilityHelper: TVisibilityHelper);
 begin
+   Assert(Assigned(Parent));
+   VisibilityHelper.AddBroadVisibility([dmVisibleSpectrum, dmClassKnown], Parent);
 end;
 
-procedure TSolarSystemFeatureNode.SerializeFor(DynastyIndex: Cardinal; Writer: TBinaryStreamWriter; System: TSystem);
+procedure TSolarSystemFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem);
 var
    Child: TAssetNode;
    Index: Cardinal;
@@ -335,6 +348,18 @@ begin
          ckMove: MoveChild();
       end;
       Dec(Count);
+   end;
+end;
+
+function TSolarSystemFeatureNode.GetAssetName(): UTF8String;
+begin
+   if (Length(FChildren) > 0) then
+   begin
+      Result := FChildren[0].AssetName;
+   end
+   else
+   begin
+      Result := 'Unchartered space'; // TODO: find a better name for this? "Sector 13" or whatever
    end;
 end;
 

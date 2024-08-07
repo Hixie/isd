@@ -38,7 +38,7 @@ const
 implementation
 
 uses
-   icons, space, orbit, structure, stellar, name, exceptions;
+   icons, space, orbit, structure, stellar, name, sensors, exceptions;
 
 constructor TEncyclopedia.Create(Settings: PSettings);
 
@@ -64,7 +64,7 @@ begin
    );
    RegisterAssetClass(FSpace);
    
-   FOrbits := TAssetClass.Create(idOrbits, 'Orbit', 'Orbit', '', [ TOrbitFeatureClass.Create() ], OrbitIcon);
+   FOrbits := TAssetClass.Create(idOrbits, 'Orbit', 'Orbit', 'Objects in space are attracted to each other in a way that makes them spin around each other.', [ TOrbitFeatureClass.Create() ], OrbitIcon);
    RegisterAssetClass(FOrbits);
    
    FStars[2] := TAssetClass.Create(idStars - 2,
@@ -112,7 +112,7 @@ begin
       idPlaceholder,                                   
       'Placeholder', 'Indeterminate item',
       'A McGuffin owned and controlled by a player.',
-      [ ],
+      [ TSpaceSensorFeatureClass.Create(1, 1, 1, 4e6, [dmVisibleSpectrum]) ],
       PlaceholderIcon
    );
    RegisterAssetClass(FPlaceholder);

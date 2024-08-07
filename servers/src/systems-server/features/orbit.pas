@@ -5,7 +5,7 @@ unit orbit;
 interface
 
 uses
-   systems, providers, binarystream;
+   systems, providers, serverstream;
 
 type
    TOrbitFeatureClass = class(TFeatureClass)
@@ -25,12 +25,14 @@ type
    protected
       procedure AdoptOrbitingChild(Child: TAssetNode);
       procedure DropOrbitingChild(Child: TAssetNode);
+      procedure MarkAsDirty(DirtyKinds: TDirtyKinds; ChangeKinds: TChangeKinds); override;
       function GetMass(): Double; override;
       function GetSize(): Double; override;
       function GetFeatureName(): UTF8String; override;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
       procedure ApplyVisibility(VisibilityHelper: TVisibilityHelper); override;
-      procedure SerializeFor(DynastyIndex: Cardinal; Writer: TBinaryStreamWriter; System: TSystem); override;
+      procedure InferVisibilityByIndex(DynastyIndex: Cardinal; VisibilityHelper: TVisibilityHelper); override;
+      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem); override;
    public
       constructor Create(APrimaryChild: TAssetNode);
       destructor Destroy(); override;
@@ -158,6 +160,13 @@ begin
    Result := Length(FChildren); // $R-
 end;
 
+procedure TOrbitFeatureNode.MarkAsDirty(DirtyKinds: TDirtyKinds; ChangeKinds: TChangeKinds);
+begin
+   if (ckAffectsNames in ChangeKinds) then
+      Include(DirtyKinds, dkSelf);
+   inherited;
+end;
+
 function TOrbitFeatureNode.GetMass(): Double;
 var
    Index: Cardinal;
@@ -197,22 +206,23 @@ end;
 
 procedure TOrbitFeatureNode.ApplyVisibility(VisibilityHelper: TVisibilityHelper);
 begin
+   VisibilityHelper.AddBroadVisibility([dmClassKnown], Parent);
+end;
+
+procedure TOrbitFeatureNode.InferVisibilityByIndex(DynastyIndex: Cardinal; VisibilityHelper: TVisibilityHelper);
+begin
+   inherited;
+   // The following is not an infinite loop only because the child's asset parent already has dmInference by the time we get here.
+   Assert(dmInference in Parent.ReadVisibilityFor(DynastyIndex, VisibilityHelper.System));
+   VisibilityHelper.AddSpecificVisibilityByIndex(DynastyIndex, [dmInference], PrimaryChild);
 end;
 
 function TOrbitFeatureNode.GetOrbitName(): UTF8String;
-var
-   ChildName: UTF8String;
 begin
-   ChildName := PrimaryChild.AssetName;
-   if (ChildName <> '') then
-   begin
-      Result := 'Orbit of ' + ChildName;
-      exit;
-   end;
-   Result := Parent.AssetClass.Name;
+   Result := PrimaryChild.AssetName;
 end;
 
-procedure TOrbitFeatureNode.SerializeFor(DynastyIndex: Cardinal; Writer: TBinaryStreamWriter; System: TSystem);
+procedure TOrbitFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem);
 var
    Child: TAssetNode;
 begin

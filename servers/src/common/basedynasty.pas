@@ -38,6 +38,7 @@ type
       procedure AddConnection(AConnection: TBaseIncomingCapableConnection);
       procedure RemoveConnection(AConnection: TBaseIncomingCapableConnection);
       procedure SendToAllConnections(Message: RawByteString);
+      procedure ForEachConnection(Callback: TConnectionCallback);
       property HasConnections: Boolean read GetHasConnections;
       property Tokens: TTokenArray read FTokens;
    end;
@@ -183,6 +184,20 @@ begin
    begin
       try
          Connection.WriteFrame(Message, Length(Message)); // $R-
+      except
+         ReportCurrentException();
+      end;
+   end;
+end;
+
+procedure TBaseDynasty.ForEachConnection(Callback: TConnectionCallback);
+var
+   Connection: TBaseIncomingCapableConnection;
+begin
+   for Connection in FConnections do
+   begin
+      try
+         Connection.Invoke(Callback); // $R-
       except
          ReportCurrentException();
       end;

@@ -5,7 +5,7 @@ unit name;
 interface
 
 uses
-   systems, binarystream, providers;
+   systems, serverstream, providers;
 
 type
    // For assets that have globally known fixed names (e.g. stars).
@@ -24,7 +24,7 @@ type
       function GetFeatureName(): UTF8String; override;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
       procedure ApplyVisibility(VisibilityHelper: TVisibilityHelper); override;
-      procedure SerializeFor(DynastyIndex: Cardinal; Writer: TBinaryStreamWriter; System: TSystem); override;
+      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem); override;
       function GetAssetName(): UTF8String;
    public
       constructor Create(AAssetName: UTF8String);
@@ -79,7 +79,7 @@ procedure TAssetNameFeatureNode.ApplyVisibility(VisibilityHelper: TVisibilityHel
 begin
 end;
 
-procedure TAssetNameFeatureNode.SerializeFor(DynastyIndex: Cardinal; Writer: TBinaryStreamWriter; System: TSystem);
+procedure TAssetNameFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem);
 begin
    // client receives this as a property of the asset via IAssetNameProvider
 end;

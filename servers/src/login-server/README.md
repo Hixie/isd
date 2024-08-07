@@ -88,10 +88,12 @@ Fields:
 
  * file code (integer)
 
-Server returns no additional data. The server will then at some point
-send a binary frame whose first 32 bytes form the given code as a
-little-endian number, and whose subsequent bytes are as described in
-the "Binary frames" section below.
+The server will send a binary frame whose first 32 bytes form the
+given code as a little-endian number, and whose subsequent bytes are
+as described in the "Binary frames" section below.
+
+Then, the server will respond to the original message with no
+additional data.
 
 
 ## Binary frames

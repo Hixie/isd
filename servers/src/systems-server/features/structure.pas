@@ -5,16 +5,17 @@ unit structure;
 interface
 
 uses
-   systems, binarystream;
+   systems, serverstream;
 
 type
    TStructureFeatureClass = class(TFeatureClass)
-   strict protected
-      function GetFeatureNodeClass(): FeatureNodeReference; override;
-   protected
+   strict private
       FDefaultSize: Double;
       FBillOfMaterials: TMaterialLineItemArray;
       FMinimumFunctionalQuantity: Cardinal; // 0.0 .. TotalQuantity
+   strict protected
+      function GetFeatureNodeClass(): FeatureNodeReference; override;
+   protected
       function GetMaterialLineItem(Index: Cardinal): TMaterialLineItem;
       function GetMaterialLineItemCount(): Cardinal;
       function GetTotalQuantity(): Cardinal;
@@ -39,7 +40,7 @@ type
       function GetFeatureName(): UTF8String; override;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
       procedure ApplyVisibility(VisibilityHelper: TVisibilityHelper); override;
-      procedure SerializeFor(DynastyIndex: Cardinal; Writer: TBinaryStreamWriter; System: TSystem); override;
+      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem); override;
    public
       constructor Create(AFeatureClass: TStructureFeatureClass);
       procedure RecordSnapshot(Journal: TJournalWriter); override;
@@ -121,7 +122,7 @@ begin
    Assert((Remaining = 0) or (FFeatureClass.BillOfMaterialsLength > 0));
    if (FFeatureClass.BillOfMaterialsLength > 0) then
    begin
-      for MaterialIndex := 0 to FFeatureClass.BillOfMaterialsLength-1 do // $R-
+      for MaterialIndex := 0 to FFeatureClass.BillOfMaterialsLength - 1 do // $R-
       begin
          CurrentQuantity := FFeatureClass.BillOfMaterials[MaterialIndex].Quantity;
          if (Remaining > CurrentQuantity) then
@@ -142,7 +143,7 @@ end;
 
 function TStructureFeatureNode.GetSize(): Double;
 begin
-   Result := FFeatureClass.FDefaultSize;
+   Result := FFeatureClass.DefaultSize;
 end;
 
 function TStructureFeatureNode.GetFeatureName(): UTF8String;
@@ -158,12 +159,61 @@ procedure TStructureFeatureNode.ApplyVisibility(VisibilityHelper: TVisibilityHel
 begin
 end;
 
-procedure TStructureFeatureNode.SerializeFor(DynastyIndex: Cardinal; Writer: TBinaryStreamWriter; System: TSystem);
+procedure TStructureFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem);
+var
+   Index, Remaining, Quantity: Cardinal;
+   Visibility: TVisibility;
+   ClassKnown: Boolean;
 begin
-   // TODO: surely someone should be able to figure out that something is made of wood even if they don't know what the asset class is, if they know what wood is
    Writer.WriteCardinal(fcStructure);
-   Writer.WriteCardinal(MaterialsQuantity);
+   Remaining := MaterialsQuantity;
+   Visibility := Parent.ReadVisibilityFor(DynastyIndex, System);
+   ClassKnown := dmClassKnown in Visibility;
+   if (FFeatureClass.BillOfMaterialsLength > 0) then
+   begin
+      for Index := 0 to FFeatureClass.BillOfMaterialsLength - 1 do // $R-
+      begin
+         if ((Remaining > 0) or ClassKnown) then
+         begin
+            Writer.WriteCardinal($FFFFFFFF); // sentinel
+            Quantity := FFeatureClass.BillOfMaterials[Index].Quantity;
+            if (Quantity < Remaining) then
+            begin
+               Writer.WriteCardinal(Quantity);
+               Dec(Remaining, Quantity);
+            end
+            else
+            begin
+               Writer.WriteCardinal(Remaining);
+               Remaining := 0;
+            end;
+            if (ClassKnown) then
+            begin
+               Writer.WriteCardinal(Quantity);
+               Writer.WriteStringReference(FFeatureClass.BillOfMaterials[Index].ComponentName);
+            end
+            else
+            begin
+               Writer.WriteCardinal(0); // expected quantity unknown
+               Writer.WriteStringReference(''); // component name unknown
+            end;
+            Writer.WriteStringReference(FFeatureClass.BillOfMaterials[Index].Material.AmbiguousName);
+            Writer.WritePtrUInt(FFeatureClass.BillOfMaterials[Index].Material.ID(System));
+         end
+         else
+            break;
+      end;
+   end;
+   Writer.WriteCardinal(0); // material terminator marker
    Writer.WriteCardinal(StructuralIntegrity);
+   if (ClassKnown) then
+   begin
+      Writer.WriteCardinal(FFeatureClass.MinimumFunctionalQuantity);
+   end
+   else
+   begin
+      Writer.WriteCardinal(0);
+   end;
 end;
 
 procedure TStructureFeatureNode.RecordSnapshot(Journal: TJournalWriter);

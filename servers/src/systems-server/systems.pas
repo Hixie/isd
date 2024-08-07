@@ -5,12 +5,18 @@ unit systems;
 interface
 
 uses
-   systemdynasty, configuration, hashtable, hashset, genericutils, icons, binarystream;
+   systemdynasty, configuration, hashtable, hashset, genericutils, icons, serverstream;
 
 type
    {$PUSH}
    {$PACKSET 1}
-   TDetectionMechanism = (dmInference, dmVisibleSpectrum, dmReserved2, dmReserved3, dmReserved4, dmReserved5, dmReserved6, dmReserved7);
+   TDetectionMechanism = (
+      dmInference, // set on anything with a descendant with non-empty visibility
+      dmVisibleSpectrum,
+      dmClassKnown,
+      dmInternals, // the dynasty can see internals (e.g. what happened last time the sensors triggered)
+      dmReserved4, dmReserved5, dmReserved6, dmReserved7
+   );
    TVisibility = set of TDetectionMechanism;
    {$POP}
    {$IF SIZEOF(TVisibility) <> SIZEOF(Byte)}
@@ -18,7 +24,8 @@ type
    {$ENDIF}
 
 const
-   dmEverything = [Low(TDetectionMechanism) .. High(TDetectionMechanism)];
+   dmDetectable = [dmVisibleSpectrum];
+   dmOwnership = [dmInference, dmVisibleSpectrum, dmInternals];
    
 type
    TMaterial = class;
@@ -69,11 +76,13 @@ type
    TVisibilityHelper = record // 64 bits
    strict private
       FSystem: TSystem;
-      procedure AddSpecificVisibilityByIndex(const DynastyIndex: Cardinal; const Visibility: TVisibility; const Asset: TAssetNode);
-   public
+   private
       procedure Init(ASystem: TSystem); inline;
+   public
       procedure AddSpecificVisibility(const Dynasty: TDynasty; const Visibility: TVisibility; const Asset: TAssetNode); inline;
+      procedure AddSpecificVisibilityByIndex(const DynastyIndex: Cardinal; const Visibility: TVisibility; const Asset: TAssetNode);
       procedure AddBroadVisibility(const Visibility: TVisibility; const Asset: TAssetNode);
+      property System: TSystem read FSystem;
    end;
 
    TAssetChangeKind = (ckAdd, ckRemove, ckMove);
@@ -171,24 +180,29 @@ type
    TDirtyKinds = set of TDirtyKind;
    TChangeKind = (
       ckAffectsDynastyCount, // system needs to redo a dynasty census (requires ckAffectsVisibility)
-      ckAffectsVisibility // system needs to redo a visibility scan
+      ckAffectsVisibility, // system needs to redo a visibility scan
+      ckAffectsNames // any nodes listening to names of descendants should consider itself dirty
    );
    TChangeKinds = set of TChangeKind;
    
    TFeatureNode = class abstract
-   private
+   strict private
       FParent: TAssetNode;
+   private
+      procedure SetParent(Asset: TAssetNode); inline;
+      function GetParent(): TAssetNode; inline;
    protected
       procedure AdoptChild(Child: TAssetNode); virtual;
       procedure DropChild(Child: TAssetNode); virtual;
-      procedure MarkAsDirty(DirtyKinds: TDirtyKinds; ChangeKinds: TChangeKinds);
+      procedure MarkAsDirty(DirtyKinds: TDirtyKinds; ChangeKinds: TChangeKinds); virtual;
       function GetMass(): Double; virtual; abstract; // kg
       function GetSize(): Double; virtual; abstract; // m
       function GetFeatureName(): UTF8String; virtual; abstract;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); virtual; abstract;
       procedure ApplyVisibility(VisibilityHelper: TVisibilityHelper); virtual; abstract;
-      procedure SerializeFor(DynastyIndex: Cardinal; Writer: TBinaryStreamWriter; System: TSystem); virtual; abstract;
-      property Parent: TAssetNode read FParent;
+      procedure InferVisibilityByIndex(DynastyIndex: Cardinal; VisibilityHelper: TVisibilityHelper); virtual;
+      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem); virtual; abstract;
+      property Parent: TAssetNode read GetParent write SetParent;
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass); virtual;
    public
       procedure RecordSnapshot(Journal: TJournalWriter); virtual; abstract;
@@ -211,11 +225,13 @@ type
    public
       constructor Create(AID: TAssetClassID; AName, AAmbiguousName, ADescription: UTF8String; AFeatures: TFeatureClassArray; AIcon: TIcon);
       destructor Destroy(); override;
-      function SpawnFeatureNodes(): TFeatureNodeArray;
+      function SpawnFeatureNodes(): TFeatureNodeArray; // some feature nodes _can't_ be spawned this way (e.g. TAssetNameFeatureNode)
       function SpawnFeatureNodesFromJournal(Journal: TJournalReader): TFeatureNodeArray;
+      procedure ApplyFeatureNodesFromJournal(Journal: TJournalReader; AssetNode: TAssetNode);
       function Spawn(AOwner: TDynasty): TAssetNode; overload;
       function Spawn(AOwner: TDynasty; AFeatures: TFeatureNodeArray): TAssetNode; overload;
    public // encoded in knowledge
+      procedure Serialize(AssetNode: TAssetNode; DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem); virtual;
       property Features[Index: Cardinal]: TFeatureClass read GetFeature;
       property FeatureCount: Cardinal read GetFeatureCount;
       property Name: UTF8String read FName;
@@ -258,7 +274,7 @@ type
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback);
       procedure ApplyVisibility(VisibilityHelper: TVisibilityHelper);
       function ReadVisibilityFor(DynastyIndex: Cardinal; System: TSystem): TVisibility;
-      procedure SerializeFor(DynastyIndex: Cardinal; Writer: TBinaryStreamWriter; System: TSystem);
+      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem);
       procedure RecordSnapshot(Journal: TJournalWriter);
       procedure ApplyJournal(Journal: TJournalReader);
       function ID(System: TSystem): PtrUInt; inline;
@@ -302,7 +318,7 @@ type
       constructor Create(AConfigurationDirectory: UTF8String; ASystemID: Cardinal; AX, AY: Double; ARootClass: TAssetClass; ADynastyDatabase: TDynastyDatabase; AAssetClassDatabase: TAssetClassDatabase);
       constructor CreateFromDisk(AConfigurationDirectory: UTF8String; ASystemID: Cardinal; ARootClass: TAssetClass; ADynastyDatabase: TDynastyDatabase; AAssetClassDatabase: TAssetClassDatabase);
       destructor Destroy(); override;
-      function SerializeSystemFor(Dynasty: TDynasty; Writer: TBinaryStreamWriter; DirtyOnly: Boolean): Boolean; // true if anything was dkSelf dirty
+      function SerializeSystem(Dynasty: TDynasty; Writer: TServerStreamWriter; DirtyOnly: Boolean): Boolean; // true if anything was dkSelf dirty
       procedure ReportChanges();
       function HasDynasty(Dynasty: TDynasty): Boolean; inline;
       property RootNode: TAssetNode read FRoot;
@@ -317,7 +333,7 @@ type
 implementation
 
 uses
-   sysutils, exceptions, hashfunctions, isdprotocol, providers, typedump;
+   sysutils, exceptions, hashfunctions, isdprotocol, providers, typedump, basenetwork;
 
 type
    TRootAssetNode = class(TAssetNode)
@@ -360,12 +376,12 @@ end;
 
 
 const
-   jcNewAsset = $AAAAAAAA;
-   jcAssetChange = $F0F0F0F0;
-   jcStartOfAsset = $12345678;
-   jcEndOfAsset = $FEEDFEED;
-   jcStartOfFeature = $44444444;
-   jcEndOfFeature = $55555555;
+   jcNewAsset = $000A55E7;
+   jcAssetChange = $000D317A;
+   jcEndOfAsset = $CAB005ED;
+   jcStartOfFeature = $00D00DAD;
+   jcEndOfFeature = $0DA151E5;
+   jcEndOfFeatures = $C0D1F1ED;
 
 type
    EJournalError = class(Exception) end;
@@ -525,6 +541,19 @@ begin
    ApplyJournal(Journal);
 end;
 
+procedure TFeatureNode.SetParent(Asset: TAssetNode);
+begin
+   Assert(Assigned(Asset));
+   Assert(not Assigned(FParent));
+   FParent := Asset;
+end;
+       
+function TFeatureNode.GetParent(): TAssetNode;
+begin
+   Assert(Assigned(FParent));
+   Result := FParent;
+end;
+
 procedure TFeatureNode.AdoptChild(Child: TAssetNode);
 begin
    Assert(not Assigned(Child.Parent));
@@ -554,15 +583,25 @@ begin
 end;
 
 
+procedure TFeatureNode.InferVisibilityByIndex(DynastyIndex: Cardinal; VisibilityHelper: TVisibilityHelper);
+begin
+   VisibilityHelper.AddSpecificVisibilityByIndex(DynastyIndex, [dmInference], Parent);
+end;
+
+
 constructor TAssetClass.Create(AID: TAssetClassID; AName, AAmbiguousName, ADescription: UTF8String; AFeatures: TFeatureClassArray; AIcon: TIcon);
 begin
    inherited Create();
    FID := AID;
    FName := AName;
+   Assert(FName <> '');
    FAmbiguousName := AAmbiguousName;
+   Assert(FAmbiguousName <> '');
    FDescription := ADescription;
+   Assert(FDescription <> '');
    FFeatures := AFeatures;
    FIcon := AIcon;
+   Assert(FIcon <> '');
 end;
 
 destructor TAssetClass.Destroy();
@@ -599,26 +638,70 @@ end;
 
 function TAssetClass.SpawnFeatureNodesFromJournal(Journal: TJournalReader): TFeatureNodeArray;
 var
-   FeatureNodes: TFeatureNodeArray;
-   Index: Cardinal;
+   Index, FallbackIndex: Cardinal;
 begin
-   SetLength(FeatureNodes, Length(FFeatures));
-   if (Length(FeatureNodes) > 0) then
+   SetLength(Result, Length(FFeatures)); {BOGUS Warning: Function result variable of a managed type does not seem to be initialized}
+   if (Length(Result) > 0) then
    begin
-      for Index := 0 to High(FFeatures) do // $R-
+      for Index := Low(FFeatures) to High(FFeatures) do // $R-
       begin
-         if (Journal.ReadCardinal() <> jcStartOfFeature) then
-         begin
-            raise EJournalError.Create('missing start of feature marker');
-         end;
-         FeatureNodes[Index] := FFeatures[Index].FeatureNodeClass.CreateFromJournal(Journal, FFeatures[Index]);
-         if (Journal.ReadCardinal() <> jcEndOfFeature) then
-         begin
-            raise EJournalError.Create('missing end of feature marker');
+         case (Journal.ReadCardinal()) of
+            jcStartOfFeature:
+               begin
+                  Result[Index] := FFeatures[Index].FeatureNodeClass.CreateFromJournal(Journal, FFeatures[Index]);
+                  if (Journal.ReadCardinal() <> jcEndOfFeature) then
+                  begin
+                     raise EJournalError.Create('missing end of feature marker (0x' + HexStr(jcEndOfFeature, 8) + ')');
+                  end;
+               end;
+            jcEndOfFeatures:
+               begin
+                  for FallbackIndex := Index to High(FFeatures) do // $R-
+                  begin
+                     Writeln('Migrating asset class ', FName, '; using default values for ', FFeatures[Index].ClassName);
+                     Result[Index] := FFeatures[Index].InitFeatureNode(); // this will fail for some features nodes...
+                  end;
+                  exit;
+               end;
+            else
+               raise EJournalError.Create('missing start of feature (0x' + HexStr(jcStartOfFeature, 8) + ') or end of features (0x' + HexStr(jcEndOfFeatures, 8) + ') marker');
          end;
       end;
    end;
-   Result := FeatureNodes;
+   if (Journal.ReadCardinal() <> jcEndOfFeatures) then
+   begin
+      raise EJournalError.Create('missing end of features marker (0x' + HexStr(jcEndOfFeatures, 8) + ')');
+   end;
+end;
+
+procedure TAssetClass.ApplyFeatureNodesFromJournal(Journal: TJournalReader; AssetNode: TAssetNode);
+var
+   Index: Cardinal;
+begin
+   if (Length(FFeatures) > 0) then
+   begin
+      for Index := Low(FFeatures) to High(FFeatures) do // $R-
+      begin
+         case (Journal.ReadCardinal()) of
+            jcStartOfFeature:
+               begin
+                  AssetNode.Features[Index].ApplyJournal(Journal);
+                  if (Journal.ReadCardinal() <> jcEndOfFeature) then
+                  begin
+                     raise EJournalError.Create('missing end of feature marker (0x' + HexStr(jcEndOfFeature, 8) + ')');
+                  end;
+               end;
+            jcEndOfFeatures:
+               exit;
+            else
+               raise EJournalError.Create('missing start of feature (0x' + HexStr(jcStartOfFeature, 8) + ') or end of features (0x' + HexStr(jcEndOfFeatures, 8) + ') marker');
+         end;
+      end;
+   end;
+   if (Journal.ReadCardinal() <> jcEndOfFeatures) then
+   begin
+      raise EJournalError.Create('missing end of features marker (0x' + HexStr(jcEndOfFeatures, 8) + ')');
+   end;
 end;
 
 function TAssetClass.Spawn(AOwner: TDynasty): TAssetNode;
@@ -629,6 +712,40 @@ end;
 function TAssetClass.Spawn(AOwner: TDynasty; AFeatures: TFeatureNodeArray): TAssetNode;
 begin
    Result := TAssetNode.Create(Self, AOwner, AFeatures);
+end;
+
+procedure TAssetClass.Serialize(AssetNode: TAssetNode; DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem);
+var
+   Visibility: TVisibility;
+   Detectable, Recognizable: Boolean;
+   ReportedIcon, ReportedName, ReportedDescription: UTF8String;
+begin
+   Visibility := AssetNode.ReadVisibilityFor(DynastyIndex, System);
+   Detectable := dmDetectable * Visibility <> [];
+   Recognizable := dmClassKnown in Visibility;
+   ReportedIcon := FIcon;
+   if (Detectable and Recognizable) then
+   begin
+      ReportedName := FName;
+      ReportedDescription := FDescription;
+   end
+   else
+   begin
+      ReportedName := FAmbiguousName;
+      if (Detectable) then
+      begin
+         Assert(not Recognizable);
+         ReportedDescription := 'Unknown object type.';
+      end
+      else
+      begin
+         ReportedDescription := 'Not currently visible or otherwise detectable.';
+      end;
+   end;
+   Writer.WriteStringReference(ReportedIcon);
+   Writer.WriteStringReference(ReportedName);
+   Assert(ReportedDescription <> '');
+   Writer.WriteStringReference(ReportedDescription);
 end;
    
 
@@ -645,8 +762,7 @@ begin
    FFeatures := AFeatures;
    for Feature in FFeatures do
    begin
-      Assert(not Assigned(Feature.FParent));
-      Feature.FParent := Self;
+      Feature.SetParent(Self);
    end;
    FDirty := [dkNew, dkSelf, dkDescendant];
 end;
@@ -683,24 +799,6 @@ function TAssetNode.GetFeature(Index: Cardinal): TFeatureNode;
 begin
    Result := FFeatures[Index];
 end;
-
-// function TAssetNode.GetFeature(Key: FeatureClassReference): TFeatureNode;
-// var
-//    Index: Cardinal;
-// begin
-//    if (Length(FFeatures) > 0) then
-//    begin
-//       for Index := Low(FFeatures) to High(FFeatures) do // $R-
-//       begin
-//          if (FAssetClass.Features[Index] is Key) then
-//          begin
-//             Result := FFeatures[Index];
-//             exit;
-//          end;
-//       end;
-//    end;
-//    Result := nil;
-// end;
 
 function TAssetNode.GetMass(): Double; // kg
 var
@@ -746,6 +844,7 @@ begin
    if (Assigned(FParent)) then
    begin
       Exclude(DirtyKinds, dkSelf);
+      Include(DirtyKinds, dkDescendant);
       FParent.Parent.MarkAsDirty(DirtyKinds, ChangeKinds);
    end;
 end;
@@ -766,7 +865,7 @@ var
    Feature: TFeatureNode;
 begin
    if (Assigned(FOwner)) then
-      VisibilityHelper.AddSpecificVisibility(FOwner, dmEverything, Self);
+      VisibilityHelper.AddSpecificVisibility(FOwner, dmOwnership, Self);
    for Feature in FFeatures do
       Feature.ApplyVisibility(VisibilityHelper);
 end;
@@ -783,12 +882,11 @@ begin
    end;
 end;
 
-procedure TAssetNode.SerializeFor(DynastyIndex: Cardinal; Writer: TBinaryStreamWriter; System: TSystem);
+procedure TAssetNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem);
 var
    Feature: TFeatureNode;
 begin
    Writer.WritePtrUInt(ID(System));
-   Writer.WriteCardinal(Cardinal(FAssetClass.ID));
    if (Assigned(FOwner)) then
    begin
       Writer.WriteCardinal(FOwner.DynastyID);
@@ -799,9 +897,10 @@ begin
    end;
    Writer.WriteDouble(Mass);
    Writer.WriteDouble(Size);
-   Writer.WriteString(AssetName);
+   Writer.WriteStringReference(AssetName);
+   FAssetClass.Serialize(Self, DynastyIndex, Writer, System);
    for Feature in FFeatures do
-      Feature.SerializeFor(DynastyIndex, Writer, System);
+      Feature.Serialize(DynastyIndex, Writer, System);
    Writer.WriteCardinal(fcTerminator);
 end;
 
@@ -809,7 +908,6 @@ procedure TAssetNode.RecordSnapshot(Journal: TJournalWriter);
 var
    Feature: TFeatureNode;
 begin
-   Journal.WriteCardinal(jcStartOfAsset);
    Journal.WriteAssetClassReference(FAssetClass);
    Journal.WriteDynastyReference(FOwner);
    for Feature in FFeatures do
@@ -818,6 +916,7 @@ begin
       Feature.RecordSnapshot(Journal);
       Journal.WriteCardinal(jcEndOfFeature);
    end;
+   Journal.WriteCardinal(jcEndOfFeatures);
    Journal.WriteCardinal(jcEndOfAsset);
 end;
 
@@ -827,10 +926,6 @@ var
    Feature: TFeatureNode;
    SpawnFeatures: Boolean;
 begin
-   if (Journal.ReadCardinal() <> jcStartOfAsset) then
-   begin
-      raise EJournalError.Create('missing start of asset marker');
-   end;
    NewAssetClass := Journal.ReadAssetClassReference();
    if (not Assigned(AssetClass)) then
    begin
@@ -848,26 +943,15 @@ begin
       Assert(Length(FFeatures) = 0);
       FFeatures := FAssetClass.SpawnFeatureNodesFromJournal(Journal);
       for Feature in FFeatures do
-         Feature.FParent := Self;
+         Feature.SetParent(Self);
    end
    else
    begin
-      for Feature in FFeatures do
-      begin
-         if (Journal.ReadCardinal() <> jcStartOfFeature) then
-         begin
-            raise EJournalError.Create('missing start of feature marker');
-         end;
-         Feature.ApplyJournal(Journal);
-         if (Journal.ReadCardinal() <> jcEndOfFeature) then
-         begin
-            raise EJournalError.Create('missing end of feature marker');
-         end;
-      end;
+      FAssetClass.ApplyFeatureNodesFromJournal(Journal, Self);
    end;
    if (Journal.ReadCardinal() <> jcEndOfAsset) then
    begin
-      raise EJournalError.Create('missing end of asset marker');
+      raise EJournalError.Create('missing end of asset marker (0x' + HexStr(jcEndOfAsset, 8) + ')');
    end;
 end;
 
@@ -966,7 +1050,7 @@ begin
             Asset.ApplyJournal(JournalReader);               
          end;
       else
-         raise EJournalError.Create('Unknown operation code in system journal: 0x' + HexStr(Code, 8));
+         raise EJournalError.Create('Unknown operation code in system journal (0x' + HexStr(Code, 8) + '), expected either new asset (0x' + HexStr(jcNewAsset, 8) + ') or asset change (0x' + HexStr(jcAssetChange, 8) + ') marker');
       end;
    end;
    JournalReader.Free();
@@ -1056,7 +1140,7 @@ begin
    Result := FRoot.Dirty <> [];
 end;
 
-function TSystem.SerializeSystemFor(Dynasty: TDynasty; Writer: TBinaryStreamWriter; DirtyOnly: Boolean): Boolean;
+function TSystem.SerializeSystem(Dynasty: TDynasty; Writer: TServerStreamWriter; DirtyOnly: Boolean): Boolean;
 var
    FoundASelfDirty: Boolean;
    DynastyIndex: Cardinal;
@@ -1071,7 +1155,7 @@ var
          if ((dkSelf in Asset.FDirty) or not DirtyOnly) then
          begin
             FoundASelfDirty := True;
-            Asset.SerializeFor(DynastyIndex, Writer, Self);
+            Asset.Serialize(DynastyIndex, Writer, Self);
          end;
          Result := (dkDescendant in Asset.FDirty) or not DirtyOnly;
       end
@@ -1173,7 +1257,15 @@ end;
 procedure TSystem.ReportChanges();
 var
    Dynasty: TDynasty;
-   Writer: TBinaryStreamWriter;
+
+   procedure ReportChange(Connection: TBaseIncomingCapableConnection; Writer: Pointer);
+   begin
+      Assert(TServerStreamWriter(Writer).BufferLength = 0);
+      SerializeSystem(Dynasty, TServerStreamWriter(Writer), True);
+      Connection.Write(TServerStreamWriter(Writer).Serialize(False));
+      TServerStreamWriter(Writer).Clear();
+   end;      
+
 begin
    if (not Dirty) then
       exit;
@@ -1185,13 +1277,7 @@ begin
    // TODO: tell the clients if _everything_ stopped being visible
    for Dynasty in FDynastyIndices do
    begin
-      if (Dynasty.HasConnections) then
-      begin
-         Writer := TBinaryStreamWriter.Create();
-         SerializeSystemFor(Dynasty, Writer, True);
-         Dynasty.SendToAllConnections(Writer.Serialize(False));
-         Writer.Free();
-      end;
+      Dynasty.ForEachConnection(@ReportChange);
    end;
    Clean();
 end;
@@ -1222,8 +1308,6 @@ begin
          Inc(FSystem.FVisibilityOffset, SizeOf(TVisibility) * FSystem.FDynastyIndices.Count);
       end;
       Current := Asset.FVisibilitySummary.LongDynasties^[DynastyIndex];
-      if (not (dmInference in Current)) then
-         AddSpecificVisibilityByIndex(DynastyIndex, [dmInference], Asset.Parent.Parent);
       Asset.FVisibilitySummary.LongDynasties^[DynastyIndex] := Current + Visibility;
    end
    else
@@ -1231,9 +1315,11 @@ begin
       Assert(DynastyIndex >= Low(Asset.FVisibilitySummary.ShortDynasties));
       Assert(DynastyIndex <= High(Asset.FVisibilitySummary.ShortDynasties));
       Current := Asset.FVisibilitySummary.ShortDynasties[DynastyIndex];
-      if ((not (dmInference in Current)) and Assigned(Asset.Parent)) then
-         AddSpecificVisibilityByIndex(DynastyIndex, [dmInference], Asset.Parent.Parent);
       Asset.FVisibilitySummary.ShortDynasties[DynastyIndex] := Current + Visibility;
+   end;
+   if ((not (dmInference in Current)) and Assigned(Asset.Parent)) then
+   begin
+      Asset.Parent.InferVisibilityByIndex(DynastyIndex, Self);
    end;
 end;
 
@@ -1278,7 +1364,7 @@ begin
       for DynastyIndex := 0 to DynastyCount - 1 do // $R-
       begin
          Current := Asset.FVisibilitySummary.ShortDynasties[DynastyIndex];
-         if (not (dmInference in Current)) then
+         if ((not (dmInference in Current)) and (Assigned(Asset.Parent))) then
             AddSpecificVisibilityByIndex(DynastyIndex, [dmInference], Asset.Parent.Parent);
          Asset.FVisibilitySummary.ShortDynasties[DynastyIndex] := Current + Visibility;
       end;
