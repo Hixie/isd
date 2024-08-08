@@ -26,9 +26,16 @@ of an <update> sequence:
 ```bnf
 <update>            ::= <systemupdate>+
 
-<systemupdate>      ::= <systemid> <assetid> <x> <y> <assetupdate>+ <zero> <zero>
+<systemupdate>      ::= <systemid>
+                        <currenttime> <timefactor> ; time data for system, see below
+                        <assetid> <x> <y> ; center of system
+                        <assetupdate>+ <zero> <zero> ; assets
 
-<systemid>          ::= <integer> ; the star ID of the canonical star, if any.
+<systemid>          ::= <integer> ; the star ID of the canonical star, if any
+
+<currenttime>       ::= 64 bit integer ; current time relative to system's t₀
+
+<timefactor>        ::= <double> ; rate of time in system (usually 500.0)
 
 <x>                 ::= position of system origin relative to galaxy left, in meters
 
@@ -36,7 +43,7 @@ of an <update> sequence:
 
 <assetupdate>       ::= <assetid> <properties> <feature>* <zero>
 
-<assetid>           ::= non-zero 64 bit integer.
+<assetid>           ::= non-zero 64 bit integer
 
 <properties>        ::= <dynasty> ; owner
                         <double>  ; mass
@@ -52,7 +59,7 @@ of an <update> sequence:
 
 <featurecode>       ::= <integer> ; non-zero, see below
 
-<featuredata>       ::= feature-specific form, see below.
+<featuredata>       ::= feature-specific form, see below
 
 <string>            ::= <integer> [ <integer> <byte>* ] ; see below
 
@@ -64,6 +71,14 @@ of an <update> sequence:
 ```
 
 The `<systemid>` is currently always a star ID.
+
+The `<currenttime>` gives the system's current actual time, relative
+to the system's origin time (t₀), which allows positions in orbits to
+be computed.
+
+The time in the system advances at the rate of `<timefactor>` seconds
+per TAI second. The `<timefactor>` may be any finite number (including
+zero and negative numbers), but will never be NaN or infinite.
 
 The `<assetid>` in the `<systemupdate>` is the system's root asset
 (usually a "space" asset that contains positioned orbits that
@@ -142,8 +157,11 @@ There are as many `<orbit>` repetitions as specified by
 
 The four `<double>` parameters for the `<orbit>` children are the
 semi-major axis (in meters), eccentricity, theta (position around the
-ordit in radians) at time zero, and omega (tilt of the orbit around
-the focal point in radians clockwise from the positive x axis).
+ordit in radians) at time zero (t₀), and omega (tilt of the orbit
+around the focal point in radians clockwise from the positive x axis).
+
+The current position is computed from the current system time and the
+time factor.
 
 
 #### `fcStructure` (0x04)

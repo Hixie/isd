@@ -67,6 +67,7 @@ type
    protected
       FPassword: UTF8String;
       FSystemServerID: Cardinal;
+      FSettings: PSettings;
       FDynastyServers: TServerDatabase;
       FConfigurationDirectory: UTF8String;
       FSystems: TSystemHashTable;
@@ -433,6 +434,7 @@ var
 begin
    inherited Create(APort);
    FPassword := APassword;
+   FSettings := ASettings;
    FDynastyServers := ADynastyServers;
    FConfigurationDirectory := AConfigurationDirectory;
    FEncyclopedia := TEncyclopedia.Create(ASettings);
@@ -493,7 +495,7 @@ var
    SystemsFile: File of Cardinal;
 begin
    Assert(not FSystems.Has(SystemID));
-   Result := TSystem.Create(FConfigurationDirectory + SystemDataSubDirectory + IntToStr(SystemID) + '/', SystemID, X, Y, FEncyclopedia.SpaceClass, FDynastyManager, FEncyclopedia);
+   Result := TSystem.Create(FConfigurationDirectory + SystemDataSubDirectory + IntToStr(SystemID) + '/', SystemID, X, Y, FEncyclopedia.SpaceClass, FDynastyManager, FEncyclopedia, FSettings);
    FSystems[SystemID] := Result;
    Assign(SystemsFile, FConfigurationDirectory + SystemsDatabaseFileName);
    FileMode := 2;

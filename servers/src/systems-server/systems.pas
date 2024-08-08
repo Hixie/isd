@@ -296,6 +296,8 @@ type
       FConfigurationDirectory: UTF8String;
       FSystemID: Cardinal;
       FX, FY: Double;
+      FTimeOrigin: TDateTime;
+      FTimeFactor: Double;
       FRoot: TAssetNode;
       FChanges: TChangeKinds;
       procedure Init(AConfigurationDirectory: UTF8String; ASystemID: Cardinal; ARootClass: TAssetClass; ADynastyDatabase: TDynastyDatabase; AAssetClassDatabase: TAssetClassDatabase);
@@ -315,7 +317,7 @@ type
    protected
       procedure MarkAsDirty(ChangeKinds: TChangeKinds);
    public
-      constructor Create(AConfigurationDirectory: UTF8String; ASystemID: Cardinal; AX, AY: Double; ARootClass: TAssetClass; ADynastyDatabase: TDynastyDatabase; AAssetClassDatabase: TAssetClassDatabase);
+      constructor Create(AConfigurationDirectory: UTF8String; ASystemID: Cardinal; AX, AY: Double; ARootClass: TAssetClass; ADynastyDatabase: TDynastyDatabase; AAssetClassDatabase: TAssetClassDatabase; Settings: PSettings);
       constructor CreateFromDisk(AConfigurationDirectory: UTF8String; ASystemID: Cardinal; ARootClass: TAssetClass; ADynastyDatabase: TDynastyDatabase; AAssetClassDatabase: TAssetClassDatabase);
       destructor Destroy(); override;
       function SerializeSystem(Dynasty: TDynasty; Writer: TServerStreamWriter; DirtyOnly: Boolean): Boolean; // true if anything was dkSelf dirty
@@ -333,7 +335,7 @@ type
 implementation
 
 uses
-   sysutils, exceptions, hashfunctions, isdprotocol, providers, typedump, basenetwork;
+   sysutils, exceptions, hashfunctions, isdprotocol, providers, typedump, basenetwork, dateutils;
 
 type
    TRootAssetNode = class(TAssetNode)
@@ -961,12 +963,14 @@ begin
 end;
 
 
-constructor TSystem.Create(AConfigurationDirectory: UTF8String; ASystemID: Cardinal; AX, AY: Double; ARootClass: TAssetClass; ADynastyDatabase: TDynastyDatabase; AAssetClassDatabase: TAssetClassDatabase);
+constructor TSystem.Create(AConfigurationDirectory: UTF8String; ASystemID: Cardinal; AX, AY: Double; ARootClass: TAssetClass; ADynastyDatabase: TDynastyDatabase; AAssetClassDatabase: TAssetClassDatabase; Settings: PSettings);
 begin
    inherited Create();
    Init(AConfigurationDirectory, ASystemID, ARootClass, ADynastyDatabase, AAssetClassDatabase);
    FX := AX;
    FY := AY;
+   FTimeOrigin := Now();
+   FTimeFactor := Settings^.DefaultTimeRate;
    try
       Assert(not DirectoryExists(FConfigurationDirectory));
       MkDir(FConfigurationDirectory);
@@ -1035,6 +1039,8 @@ begin
    ID := JournalReader.ReadPtrUInt();
    FX := JournalReader.ReadDouble();
    FY := JournalReader.ReadDouble();
+   FTimeOrigin := TDateTime(JournalReader.ReadDouble());
+   FTimeFactor := JournalReader.ReadDouble();
    JournalReader.FAssetMap[ID] := FRoot;
    while (not EOF(FJournalFile)) do
    begin
@@ -1086,6 +1092,8 @@ begin
       JournalWriter.WritePtrUInt(FRoot.ID(Self));
       JournalWriter.WriteDouble(FX);
       JournalWriter.WriteDouble(FY);
+      JournalWriter.WriteDouble(FTimeOrigin);
+      JournalWriter.WriteDouble(FTimeFactor);
       FRoot.Walk(nil, @RecordAsset);
       Close(FJournalFile);
       DeleteFile(FileName);
@@ -1168,6 +1176,8 @@ begin
    Assert(FDynastyIndices.Has(Dynasty));
    DynastyIndex := FDynastyIndices[Dynasty];
    Writer.WriteCardinal(SystemID);
+   Writer.WriteInt64(MillisecondsBetween(Now() * FTimeFactor, FTimeOrigin * FTimeFactor));
+   Writer.WriteDouble(FTimeFactor);
    Writer.WritePtrUInt(FRoot.ID(Self));
    Writer.WriteDouble(FX);
    Writer.WriteDouble(FY);

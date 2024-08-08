@@ -59,6 +59,7 @@ type
       MaxStarsPerHomeSystem: Cardinal;
       GalaxyDiameter: Double; // meters
       StarGroupingThreshold: Double; // meters
+      DefaultTimeRate: Double; // game seconds per TAI second
    end;
 
 const
@@ -72,6 +73,7 @@ const
    MaxStarsPerHomeSystemSetting = 'max stars per home system';
    GalaxyDiameterSetting = 'galaxy diameter'; // meters
    StarGroupingThresholdSetting = 'star grouping threshold'; // meters
+   DefaultTimeRateSetting = 'default time rate'; // game seconds per TAI second
 
 function LoadSettingsConfiguration(): PSettings;
 
@@ -222,6 +224,11 @@ begin
             if (Setting = StarGroupingThresholdSetting) then
             begin
                Result^.StarGroupingThreshold := ReadDoubleSetting(); // $R-
+            end
+            else
+            if (Setting = DefaultTimeRateSetting) then
+            begin
+               Result^.DefaultTimeRate := ReadDoubleSetting(); // $R-
             end
             else
             begin
