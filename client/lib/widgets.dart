@@ -1,10 +1,8 @@
-import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/widgets.dart';
 
-import 'galaxy.dart';
 import 'renderers.dart';
 import 'world.dart' show WorldNode;
 import 'zoom.dart';
@@ -19,8 +17,14 @@ class WorldRoot extends StatefulWidget {
 }
 
 class _WorldRootState extends State<WorldRoot> {
-  ZoomSpecifier _zoom = const PanZoomSpecifier.centered(4.0); // this is the global source of truth for zoom!
+  late ZoomSpecifier _zoom; // this is the global source of truth for zoom!
 
+  @override
+  void initState() {
+    super.initState();
+    _zoom = PanZoomSpecifier.centered(widget.rootNode.diameter, 4.0);
+  }
+  
   WorldTapTarget? _currentTarget;
   
   final GlobalKey _worldRootKey = GlobalKey();
@@ -45,7 +49,7 @@ class _WorldRootState extends State<WorldRoot> {
               _zoom = _zoom.withScale(
                 widget.rootNode,
                 event.scrollDelta.dy / -1000.0,
-                (event.localPosition - panOffset) / (size.shortestSide * zoomFactor),
+                (event.localPosition - panOffset) / zoomFactor,
                 Offset(event.localPosition.dx / size.width, event.localPosition.dy / size.height),
               );
             });
@@ -62,7 +66,7 @@ class _WorldRootState extends State<WorldRoot> {
             _zoom = truncatedZoom.withScale(
               widget.rootNode,
               log(details.scale),
-              anchor.sourceFocalPointFraction,
+              anchor.sourceFocalPoint,
               anchor.destinationFocalPointFraction + details.focalPointDelta.scale(1.0 / size.width, 1.0 / size.height),
             );
           });
@@ -122,165 +126,18 @@ class BoxToWorldAdapter extends SingleChildRenderObjectWidget {
   void updateRenderObject(BuildContext context, RenderBoxToRenderWorldAdapter renderObject) { }
 }
 
-class GalaxyWidget extends MultiChildRenderObjectWidget {
-  const GalaxyWidget({
-    super.key,
-    required this.galaxy,
-    required this.diameter,
-    required this.zoom,
-    this.onTap,
-    super.children,
-  });
-
-  final Galaxy galaxy;
-  final double diameter;
-  final PanZoomSpecifier zoom;
-  final GalaxyTapHandler? onTap;
-  
-  @override
-  RenderGalaxy createRenderObject(BuildContext context) {
-    return RenderGalaxy(
-      galaxy: galaxy,
-      diameter: diameter,
-      zoom: zoom,
-    );
-  }
-
-  @override
-  void updateRenderObject(BuildContext context, RenderGalaxy renderObject) {
-    renderObject
-      ..galaxy = galaxy
-      ..diameter = diameter
-      ..zoom = zoom;
-  }
-}
-
-class GalaxyChildData extends StatefulWidget {
-  const GalaxyChildData({
-    super.key,
-    required this.position,
-    required this.diameter,
-    required this.label,
-    required this.onTap,
-    required this.child,
-  });
-
-  final Offset position;
-  final double diameter;
-  final String label;
-  final VoidCallback onTap;
-  final Widget child;
-
-  @override
-  State<GalaxyChildData> createState() => _GalaxyChildDataState();
-}
-
-class _GalaxyChildDataState extends State<GalaxyChildData> with SingleTickerProviderStateMixin implements WorldTapTarget {
-  late final AnimationController _controller;
-  late final Animation<double> _animation;
-  Timer? _cooldown;
-  
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 250));
-    _animation = _controller.drive(CurveTween(curve: Curves.ease));
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-  
-  @override
-  void handleTapDown() {
-    _cooldown?.cancel();
-    _cooldown = null;
-    _controller.forward();
-  }
-
-  @override
-  void handleTapCancel() {
-    _controller.reverse();
-  }
-
-  @override
-  void handleTapUp() {
-    assert(_cooldown == null);
-    if (_controller.status == AnimationStatus.forward) {
-      _cooldown = Timer(Duration(milliseconds: (75.0 + 250.0 * 1.0 - _controller.value).round()), () {
-        _controller.reverse();
-      });
-    } else {
-      _controller.reverse();
-    }
-    widget.onTap();
-  }
-  
-  @override
-  Widget build(BuildContext context) {
-    return ValueListenableBuilder<double>(
-      valueListenable: _animation,
-      builder: (BuildContext context, double value, Widget? child) => _GalaxyChildData(
-        position: widget.position,
-        diameter: widget.diameter,
-        label: widget.label,
-        active: value,
-        tapTarget: this,
-        child: widget.child,
-      ),
-    );
-  }
-}
-
-class _GalaxyChildData extends ParentDataWidget<GalaxyParentData> {
-  const _GalaxyChildData({
-    super.key, // ignore: unused_element
-    required this.position,
-    required this.diameter,
-    required this.label,
-    required this.active,
-    required this.tapTarget,
-    required super.child,
-  });
-
-  final Offset position;
-  final double diameter;
-  final String label;
-  final double active;
-  final WorldTapTarget? tapTarget;
-  
-  @override
-  void applyParentData(RenderObject renderObject) {
-    final GalaxyParentData parentData = renderObject.parentData! as GalaxyParentData;
-    if (parentData.position != position ||
-        parentData.diameter != diameter ||
-        parentData.label != label ||
-        parentData.active != active) {
-      parentData.position = position;
-      parentData.diameter = diameter;
-      parentData.label = label;
-      parentData.active = active;
-      renderObject.parent!.markNeedsLayout();
-    }
-    parentData.tapTarget = tapTarget;
-  }
-
-  @override
-  Type get debugTypicalAncestorWidgetClass => RenderGalaxy;
-}
-
 class WorldPlaceholder extends LeafRenderObjectWidget {
   const WorldPlaceholder({
     super.key,
     required this.diameter,
     required this.zoom,
+    required this.transitionLevel,
     required this.color,
   });
 
   final double diameter;
   final PanZoomSpecifier zoom;
+  final double transitionLevel;
   final Color color;
   
   @override
@@ -288,6 +145,7 @@ class WorldPlaceholder extends LeafRenderObjectWidget {
     return RenderWorldPlaceholder(
       diameter: diameter,
       zoom: zoom,
+      transitionLevel: transitionLevel,
       color: color,
     );
   }
@@ -297,6 +155,7 @@ class WorldPlaceholder extends LeafRenderObjectWidget {
     renderObject
       ..diameter = diameter
       ..zoom = zoom
+      ..transitionLevel = transitionLevel
       ..color = color;
   }
 }

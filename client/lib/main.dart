@@ -90,10 +90,10 @@ class _InterstellarDynastiesState extends State<InterstellarDynasties> {
   Future<void> _doNewGame() async {
     setState(() { _pending = true; });
     try {
-      print('Starting new game...');
+      debugPrint('Starting new game...');
       await widget.game.newGame();
     } on NetworkError catch (e) {
-      print(e);
+      debugPrint('$e');
       _setMessage(e.message);
     } finally {
       setState(() { _pending = false; });
@@ -156,9 +156,8 @@ class _InterstellarDynastiesState extends State<InterstellarDynasties> {
       builder: (BuildContext context, bool loggedIn, Widget? child) => Stack(
         fit: StackFit.expand,
         children: <Widget>[
-          WorldRoot(
-            rootNode: widget.game.rootNode,
-          ),
+          if (widget.game.rootNode.galaxy != null)
+            WorldRoot(rootNode: widget.game.rootNode),
           DisableSubtree(
             disabled: loggedIn,
             child: ValueListenableBuilder<bool>(

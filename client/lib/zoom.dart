@@ -13,8 +13,8 @@ sealed class ZoomSpecifier {
   // changes the zooms to apply "delta" to the current zoom.
   //
   // "delta" represents the logarithm of the linear zoom factor to apply.
-  ZoomSpecifier withScale(WorldNode parent, double delta, Offset? newSourceFocalPointFraction, Offset? newDestinationFocalPointFraction) {
-    final (ZoomSpecifier result, double remainingDelta) = computeWithScale(parent, delta, newSourceFocalPointFraction, newDestinationFocalPointFraction);
+  ZoomSpecifier withScale(WorldNode parent, double delta, Offset? newSourceFocalPoint, Offset? newDestinationFocalPointFraction) {
+    final (ZoomSpecifier result, double remainingDelta) = computeWithScale(parent, delta, newSourceFocalPoint, newDestinationFocalPointFraction);
     return result;
   }
 
@@ -31,7 +31,7 @@ sealed class ZoomSpecifier {
 
   // backend for "withScale".
   @protected
-  (ZoomSpecifier, double) computeWithScale(WorldNode parent, double delta, Offset? newSourceFocalPointFraction, Offset? newDestinationFocalPointFraction);
+  (ZoomSpecifier, double) computeWithScale(WorldNode parent, double delta, Offset? newSourceFocalPoint, Offset? newDestinationFocalPointFraction);
 
   double get cumulativeZoom;
 
@@ -141,9 +141,9 @@ class NodeZoomSpecifier extends ZoomSpecifier {
   PanZoomSpecifier get last => next.last;
 
   @override
-  (ZoomSpecifier, double) computeWithScale(WorldNode parent, double delta, Offset? newSourceFocalPointFraction, Offset? newDestinationFocalPointFraction) {
+  (ZoomSpecifier, double) computeWithScale(WorldNode parent, double delta, Offset? newSourceFocalPoint, Offset? newDestinationFocalPointFraction) {
     if (delta == 0.0) {
-      final (ZoomSpecifier newNext, double remainingDelta) = next.computeWithScale(child, delta, newSourceFocalPointFraction, newDestinationFocalPointFraction);
+      final (ZoomSpecifier newNext, double remainingDelta) = next.computeWithScale(child, delta, newSourceFocalPoint, newDestinationFocalPointFraction);
       return (NodeZoomSpecifier(child, zoom, newNext), remainingDelta);
     }
     final double deltaScale = log(parent.diameter / child.diameter);
@@ -153,18 +153,25 @@ class NodeZoomSpecifier extends ZoomSpecifier {
         final (ZoomSpecifier newNext, double remainingDelta) = next.computeWithScale(
           child,
           (newZoom - 1.0) * deltaScale,
-          newSourceFocalPointFraction,
+          newSourceFocalPoint,
           newDestinationFocalPointFraction,
         );
         return (NodeZoomSpecifier(child, 1.0, newNext), 0.0);
       }
-      return (NodeZoomSpecifier(child, newZoom, next), 0.0);
+      final (ZoomSpecifier newNext, double remainingDelta) = next.computeWithScale(
+        child,
+        0.0,
+        newSourceFocalPoint,
+        newDestinationFocalPointFraction,
+      );
+      assert(remainingDelta == 0.0);
+      return (NodeZoomSpecifier(child, newZoom, newNext), 0.0);
     }
     assert(delta < 0.0);
     final (ZoomSpecifier newNext, double remainingDelta) = next.computeWithScale(
       child,
       delta,
-      newSourceFocalPointFraction,
+      newSourceFocalPoint,
       newDestinationFocalPointFraction,
     );
     assert(remainingDelta <= 0.0);
@@ -225,25 +232,37 @@ class NodeZoomSpecifier extends ZoomSpecifier {
   @override
   ZoomSpecifier truncate(WorldNode parent) {
     if (zoom < 1.0) {
-      return PanZoomSpecifier(parent.findLocationForChild(child) / parent.diameter, const Offset(0.5, 0.5), zoom * log(parent.diameter / child.diameter));
+      return PanZoomSpecifier(parent.findLocationForChild(child), const Offset(0.5, 0.5), zoom * log(parent.diameter / child.diameter));
     }
     return NodeZoomSpecifier(child, zoom, next.truncate(child));
   }
 
   @override
   String toString() => '--[ $zoom $child ]-->$next';
+
+  @override
+  bool operator ==(Object other) {
+    if (other.runtimeType != runtimeType) {
+      return false;
+    }
+    return other is NodeZoomSpecifier
+        && other.child == child
+        && other.zoom == zoom
+        && other.next == next;
+  }
+  
+  @override
+  int get hashCode => Object.hash(child, zoom, next);
 }
 
 class PanZoomSpecifier extends ZoomSpecifier {
-  const PanZoomSpecifier(this.sourceFocalPointFraction, this.destinationFocalPointFraction, this.zoom) : assert(zoom >= 0.0, 'unexpected zoom $zoom'), assert(zoom < double.infinity);
+  const PanZoomSpecifier(this.sourceFocalPoint, this.destinationFocalPointFraction, this.zoom) : assert(zoom >= 0.0, 'unexpected zoom $zoom'), assert(zoom < double.infinity);
 
-  const PanZoomSpecifier.centered(this.zoom)
-    : sourceFocalPointFraction = const Offset(0.5, 0.5),
+  const PanZoomSpecifier.centered(double diameter, this.zoom)
+    : sourceFocalPoint = const Offset(0.5, 0.5) * diameter, // meters
       destinationFocalPointFraction = const Offset(0.5, 0.5);
 
-  static const PanZoomSpecifier none = PanZoomSpecifier.centered(0.0);
-
-  final Offset sourceFocalPointFraction; // location in the world
+  final Offset sourceFocalPoint; // location in the world, meters
 
   final Offset destinationFocalPointFraction; // location on the screen 
 
@@ -251,7 +270,7 @@ class PanZoomSpecifier extends ZoomSpecifier {
 
   @override
   ZoomSpecifier withZoom(double total) {
-    return PanZoomSpecifier(sourceFocalPointFraction, destinationFocalPointFraction, total);
+    return PanZoomSpecifier(sourceFocalPoint, destinationFocalPointFraction, total);
   }
 
   @override
@@ -261,16 +280,16 @@ class PanZoomSpecifier extends ZoomSpecifier {
 
   @override
   ZoomSpecifier withChild(WorldNode newChild) {
-    return NodeZoomSpecifier(newChild, 1.0, none);
+    return NodeZoomSpecifier(newChild, 1.0, PanZoomSpecifier.centered(newChild.diameter, 0.0));
   }
 
   @override
   PanZoomSpecifier get last => this;
 
   @override
-  (ZoomSpecifier, double) computeWithScale(WorldNode parent, double delta, Offset? newSourceFocalPointFraction, Offset? newDestinationFocalPointFraction) {
+  (ZoomSpecifier, double) computeWithScale(WorldNode parent, double delta, Offset? newSourceFocalPoint, Offset? newDestinationFocalPointFraction) {
     assert(delta.isFinite);
-    final Offset effectiveSource = newSourceFocalPointFraction ?? sourceFocalPointFraction;
+    final Offset effectiveSource = newSourceFocalPoint ?? sourceFocalPoint;
     final Offset effectiveDestination = newDestinationFocalPointFraction ?? destinationFocalPointFraction;
     if (delta > 0.0) {
       // zoom in, always works
@@ -300,12 +319,26 @@ class PanZoomSpecifier extends ZoomSpecifier {
     assert(a.zoom >= unzoom);
     assert(b.zoom >= unzoom);
     return PanZoomSpecifier(
-      Offset.lerp(a.sourceFocalPointFraction, b.sourceFocalPointFraction, t)!,
+      Offset.lerp(a.sourceFocalPoint, b.sourceFocalPoint, t)!,
       Offset.lerp(a.destinationFocalPointFraction, b.destinationFocalPointFraction, t)!,
       t < 0.5 ? lerpDouble(a.zoom, unzoom, t * 2.0)! : lerpDouble(unzoom, b.zoom, (t - 0.5) * 2.0)!,
     );
   }
 
   @override
-  String toString() => '--PanZoomSpecifier($sourceFocalPointFraction for $destinationFocalPointFraction x$zoom)';
+  String toString() => '--PanZoomSpecifier($sourceFocalPoint for ${destinationFocalPointFraction.dx},${destinationFocalPointFraction.dy} x$zoom)';
+
+  @override
+  bool operator ==(Object other) {
+    if (other.runtimeType != runtimeType) {
+      return false;
+    }
+    return other is PanZoomSpecifier
+        && other.sourceFocalPoint == sourceFocalPoint
+        && other.destinationFocalPointFraction == destinationFocalPointFraction
+        && other.zoom == zoom;
+  }
+  
+  @override
+  int get hashCode => Object.hash(sourceFocalPoint, destinationFocalPointFraction, zoom);
 }

@@ -5,6 +5,8 @@ import 'binarystream.dart';
 import 'components.dart';
 import 'connection.dart';
 import 'features.dart';
+import 'features/galaxy.dart';
+import 'features/space.dart';
 import 'stringstream.dart';
 import 'world.dart';
 
@@ -34,7 +36,6 @@ class SystemServer {
   static const int expectedVersion = fcSpaceSensorsStatus;
   
   Future<void> _handleLogin() async {
-    print('system server: connected, logging in');
     final StreamReader reader = await _connection.send(<String>['login', token], queue: false);
     final int version = reader.readInt();
     if (version > expectedVersion) {
@@ -56,6 +57,8 @@ class SystemServer {
     while (!reader.done) {
       final int systemID = reader.readInt32();
       final SystemNode system = _systems.putIfAbsent(systemID, () => SystemNode(systemID));
+      final int timeOrigin = reader.readInt64();
+      final double timeFactor = reader.readDouble();
       final int rootAssetID = reader.readInt64();
       system.root = _assets.putIfAbsent(rootAssetID, () => AssetNode(rootAssetID));
       final double x = reader.readDouble();
@@ -78,7 +81,7 @@ class SystemServer {
           switch (featureCode) {
             case fcStar:
               final int starId = reader.readInt32();
-              oldFeatures.remove(asset.setFeature(StarFeature(starId)));
+              oldFeatures.remove(asset.setAbility(StarFeature(asset, starId)));
             case fcSpace:
               final Set<SpaceChild> children = {};
               final AssetNode primaryChild = _readAsset(reader);
@@ -90,7 +93,7 @@ class SystemServer {
                 final AssetNode child = _readAsset(reader);
                 children.add((r: distance, theta: theta, child: child));
               }
-              oldFeatures.remove(asset.setFeature(SpaceFeature(children)));
+              oldFeatures.remove(asset.setContainer(SpaceFeature(asset, children)));
             case fcOrbit:
               final Set<Orbit> children = {};
               final AssetNode originChild = _readAsset(reader);
@@ -104,7 +107,7 @@ class SystemServer {
                 final AssetNode child = _readAsset(reader);
                 children.add((a: semiMajorAxis, e: eccentricity, theta: thetaZero, omega: omega, child: child));
               }
-              oldFeatures.remove(asset.setFeature(OrbitFeature(children)));
+              oldFeatures.remove(asset.setContainer(OrbitFeature(asset, timeOrigin, timeFactor, children)));
             case fcStructure:
               var structuralIntegrityMax = 0;
               int marker;
@@ -127,7 +130,8 @@ class SystemServer {
               }
               final int structuralIntegrityCurrent = reader.readInt32();
               final int structuralIntegrityMin = reader.readInt32();
-              oldFeatures.remove(asset.setFeature(StructureFeature(
+              oldFeatures.remove(asset.setAbility(StructureFeature(
+                parent: asset,
                 structuralComponents: components,
                 current: structuralIntegrityCurrent,
                 min: structuralIntegrityMin == 0 ? null : structuralIntegrityMin,
@@ -150,7 +154,8 @@ class SystemServer {
               } else {
                 reader.restoreCheckpoint();
               }
-              oldFeatures.remove(asset.setFeature(SpaceSensorsFeature(
+              oldFeatures.remove(asset.setAbility(SpaceSensorsFeature(
+                parent: asset,
                 reach: reach,
                 up: up,
                 down: down,

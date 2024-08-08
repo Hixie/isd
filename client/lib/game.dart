@@ -4,10 +4,9 @@ import 'package:flutter/foundation.dart';
 import 'package:fs_shim/fs_shim.dart';
 
 import 'connection.dart';
-import 'galaxy.dart';
+import 'features/galaxy.dart';
 import 'stringstream.dart';
 import 'systems.dart';
-import 'world.dart';
 
 class Credentials {
   Credentials(this.username, this.password);
@@ -82,13 +81,13 @@ class Game {
   }
 
   void _handleLoginServerMessage(StreamReader reader) {
-    print('login server: received unexpected message: $reader');
+    debugPrint('login server: received unexpected message: $reader');
   }
 
   void _handleLoginServerError(Exception error, Duration duration) {
-    print('login server: received error: $error');
+    debugPrint('login server: received error: $error');
     if (duration > Duration.zero)
-      print('reconnecting in ${duration.inMilliseconds}ms');
+      debugPrint('reconnecting in ${duration.inMilliseconds}ms');
   }
 
 
@@ -173,6 +172,7 @@ class Game {
     _credentials.value = null;
     _currentToken = null;
     rootNode.setCurrentDynastyId(null);
+    rootNode.clearSystems();
     _dynastyServer?.dispose();
     _dynastyServer = null;
     for (SystemServer server in systemServers) {
@@ -194,7 +194,7 @@ class Game {
   }
 
   Future<void> _handleDynastyConnected() async {
-    print('dynasty server: connected, logging in');
+    debugPrint('dynasty server: connected, logging in');
     try {
       assert(_currentToken != null);
       final StreamReader reader = await _dynastyServer!.send(<String>['login', _currentToken!], queue: false);
@@ -214,18 +214,18 @@ class Game {
   }
 
   void _handleDynastyServerMessage(StreamReader reader) {
-    print('dynasty server: received unexpected message: $reader');
+    debugPrint('dynasty server: received unexpected message: $reader');
   }
 
   void _handleDynastyServerError(Exception error, Duration duration) {
-    print('dynasty server: $error');
+    debugPrint('dynasty server: $error');
     if (duration > Duration.zero)
-      print('reconnecting in ${duration.inMilliseconds}ms');
+      debugPrint('reconnecting in ${duration.inMilliseconds}ms');
   }
 
   void _handleSystemServerError(Exception error, Duration duration) {
-    print('system server: $error');
+    debugPrint('system server: $error');
     if (duration > Duration.zero)
-      print('reconnecting in ${duration.inMilliseconds}ms');
+      debugPrint('reconnecting in ${duration.inMilliseconds}ms');
   }
 }

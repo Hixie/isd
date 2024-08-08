@@ -34,7 +34,7 @@ class _Conversation {
 
 class Connection {
   Connection(this.url, { this.onConnected, this.onTextMessage, this.onBinaryMessage, this.onError, this.timeout }) {
-    print('$url creating connection object');
+    log('$url creating connection object');
     _loop(url);
   }
 
@@ -91,28 +91,28 @@ class Connection {
             await _hold!.future;
             assert(_hold == null);
           }
-          print('$url connecting; ${_conversations.length} conversations to send');
+          log('$url connecting; ${_conversations.length} conversations to send');
           _websocket = await WebSocket.connect(url, onText: _textHandler, onBinary: _binaryHandler);
           _codeTables = CodeTables();
           if (!_active) {
             return;
           }
-          print('$url opened; ${_conversations.length} conversations to send');
+          log('$url opened; ${_conversations.length} conversations to send');
           if (onConnected != null) {
-            print('$url handling connection boilerplate...');
+            log('$url handling connection boilerplate...');
             await onConnected!();
           }
           for (_Conversation conversation in _conversations.values.where(_Conversation.queued)) {
-            print('$url sending ${prettyText(conversation.request)}');
+            log('$url sending ${prettyText(conversation.request)}');
             _websocket!.sendText(conversation.request);
           }
           _conversations.removeWhere(_Conversation.notQueued);
           _connected.value = true;
           connectDelay = const Duration(seconds: 1);
           _resetTimer();
-          print('$url idle; listening');
+          log('$url idle; listening');
           await _websocket!.closure;
-          print('$url stream terminated with ${_conversations.length} conversations pending');
+          log('$url stream terminated with ${_conversations.length} conversations pending');
         } finally {
           _websocket = null;
           _codeTables = null;
@@ -132,7 +132,7 @@ class Connection {
 
   void _textHandler(String message) {
     _resetTimer();
-    print('$url received ${prettyText(message)}');
+    log('$url received ${prettyText(message)}');
     final reader = StreamReader(message);
     if (reader.readString() == 'reply') {
       final int conversationId = reader.readInt();
@@ -163,7 +163,7 @@ class Connection {
 
   void _binaryHandler(Uint8List message) {
     _resetTimer();
-    print('$url received (binary) ${prettyBytes(message)}');
+    log('$url received (binary) ${prettyBytes(message)}');
     if (onBinaryMessage != null) {
       onBinaryMessage!(message);
     }
@@ -195,10 +195,10 @@ class Connection {
   
   Future<StreamReader> send(List<Object> messageParts, { bool queue = true }) {
     final _Conversation conversation = _prepareConversation(_nextConversation, messageParts, queue: queue);
-    print('$url adding new conversation $_nextConversation: ${prettyText(conversation.request)}');
+    log('$url adding new conversation $_nextConversation: ${prettyText(conversation.request)}');
     _nextConversation += 1;
     if (_websocket != null) {
-      print('$url sending ${prettyText(conversation.request)}');
+      log('$url sending ${prettyText(conversation.request)}');
       _websocket!.sendText(conversation.request);
     }
     if (_hold != null) {
@@ -302,5 +302,9 @@ class Connection {
       bits.add(' ...');
     }
     return bits.join(' ');
+  }
+
+  void log(String s) {
+    debugPrint(s);
   }
 }

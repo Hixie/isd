@@ -3,7 +3,6 @@ import 'dart:math';
 import 'package:flutter/widgets.dart';
 
 import 'dynasty.dart';
-import 'galaxy.dart';
 import 'widgets.dart';
 import 'zoom.dart';
 
@@ -14,22 +13,25 @@ abstract class WorldNode extends ChangeNotifier {
     return ListenableBuilder(
       listenable: this,
       builder: (BuildContext context, Widget? child) {
+        double transitionLevel;
         WorldNode? zoomedChildNode;
         ZoomSpecifier? zoomedChildZoom;
         PanZoomSpecifier panZoom;
         if (zoom is NodeZoomSpecifier) {
           final Offset childPosition = findLocationForChild(zoom.child);
           panZoom = PanZoomSpecifier(
-            childPosition / diameter,
+            childPosition,
             const Offset(0.5, 0.5),
             log(diameter / zoom.child.diameter) * zoom.zoom,
           );
           zoomedChildNode = zoom.child;
           zoomedChildZoom = zoom.next;
+          transitionLevel = ((zoom.zoom - 0.90) / 0.05).clamp(0.0, 1.0);
         } else {
-          panZoom = zoom as PanZoomSpecifier; 
+          panZoom = zoom as PanZoomSpecifier;
+          transitionLevel = 0.0;
         }
-        return buildRenderer(context, panZoom, zoomedChildNode, zoomedChildZoom);
+        return buildRenderer(context, panZoom, zoomedChildNode, zoomedChildZoom, transitionLevel);
       }
     );
   }
@@ -40,120 +42,10 @@ abstract class WorldNode extends ChangeNotifier {
   // in meters
   double get diameter;
   
-  Widget buildRenderer(BuildContext context, PanZoomSpecifier zoom, WorldNode? zoomedChildNode, ZoomSpecifier? zoomedChildZoom);
+  Widget buildRenderer(BuildContext context, PanZoomSpecifier zoom, WorldNode? zoomedChildNode, ZoomSpecifier? zoomedChildZoom, double transitionLevel);
 
   @override
   String toString() => '<$runtimeType>';
-}
-
-class GalaxyNode extends WorldNode {
-  GalaxyNode();
-
-  Galaxy? get galaxy => _galaxy;
-  Galaxy? _galaxy;
-  set galaxy(Galaxy? value) {
-    if (_galaxy != value) {
-      _galaxy = value;
-      notifyListeners();
-    }
-  }
-  
-  final Set<SystemNode> systems = <SystemNode>{};
-
-  List<Widget>? _children;
-  
-  void addSystem(SystemNode system) {
-    if (systems.add(system)) {
-      _children = null;
-      notifyListeners();
-    }
-  }
-  
-  void removeSystem(SystemNode system) {
-    if (systems.remove(system)) {
-      _children = null;
-      notifyListeners();
-    }
-  }
-
-  void clearSystems() {
-    if (systems.isNotEmpty) {
-      systems.clear();
-      _children = null;
-      notifyListeners();
-    }
-  }
-
-  final Map<int, Dynasty> _dynasties = <int, Dynasty>{};
-  Dynasty getDynasty(int id) {
-    return _dynasties.putIfAbsent(id, () => Dynasty(id));
-  }
-
-  Dynasty? get currentDynasty => _currentDynasty;
-  Dynasty? _currentDynasty;
-  void setCurrentDynastyId(int? id) {
-    if (id == null) {
-      _currentDynasty = null;
-    } else {
-      _currentDynasty = getDynasty(id);
-    }
-  }
-  
-  @override
-  Offset findLocationForChild(WorldNode child) {
-    if (galaxy != null) {
-      return (child as SystemNode).offset;
-    }
-    return Offset.zero;
-  }
-
-  @override
-  double get diameter {
-    if (galaxy != null) {
-      return galaxy!.diameter;
-    }
-    return 0;
-  }
- 
-  @override
-  Widget buildRenderer(BuildContext context, PanZoomSpecifier zoom, WorldNode? zoomedChildNode, ZoomSpecifier? zoomedChildZoom) {
-    if (galaxy != null) {
-      return GalaxyWidget(
-        galaxy: galaxy!,
-        diameter: galaxy!.diameter,
-        zoom: zoom,
-        children: _children ??= _rebuildChildren(context, zoom, zoomedChildNode, zoomedChildZoom),
-      );
-    }
-    return WorldPlaceholder(
-      diameter: diameter,
-      zoom: zoom,
-      color: const Color(0xFF999999),
-    );
-  }
-
-  List<Widget> _rebuildChildren(BuildContext context, PanZoomSpecifier zoom, WorldNode? zoomedChildNode, ZoomSpecifier? zoomedChildZoom) {
-    return systems.map((SystemNode childNode) {
-      return ListenableBuilder(
-        listenable: childNode,
-        builder: (BuildContext context, Widget? child) {
-          return GalaxyChildData(
-            position: findLocationForChild(childNode),
-            diameter: childNode.diameter,
-            label: childNode.label,
-            child: child!,
-            onTap: () {
-              ZoomProvider.zoom(context, childNode);
-            },
-          );
-        },
-        child: childNode.build(
-          context,
-          childNode == zoomedChildNode ? zoomedChildZoom! : PanZoomSpecifier.none,
-        ),
-      );
-    }).toList();
-  }
 }
 
 class SystemNode extends WorldNode {
@@ -194,13 +86,13 @@ class SystemNode extends WorldNode {
   }
   
   @override
-  Widget buildRenderer(BuildContext context, PanZoomSpecifier zoom, WorldNode? zoomedChildNode, ZoomSpecifier? zoomedChildZoom) {
-    return WorldPlaceholder(diameter: diameter, zoom: zoom, color: const Color(0xFFFFFFFF));
+  Widget buildRenderer(BuildContext context, PanZoomSpecifier zoom, WorldNode? zoomedChildNode, ZoomSpecifier? zoomedChildZoom, double transitionLevel) {
+    return root.buildRenderer(context, zoom, zoomedChildNode, zoomedChildZoom, transitionLevel);
   }
 
   @override
   Offset findLocationForChild(WorldNode child) {
-    throw UnimplementedError();
+    return root.findLocationForChild(child);
   }
 
   @override
@@ -209,8 +101,20 @@ class SystemNode extends WorldNode {
   }
 }
 
-class Feature {
-  const Feature();
+abstract class Feature {
+  const Feature(this.parent);
+
+  final AssetNode parent;
+}
+
+abstract class AbilityFeature extends Feature {
+  const AbilityFeature(super.parent);
+}
+
+abstract class ContainerFeature extends Feature {
+  const ContainerFeature(super.parent);
+
+  Widget buildRenderer(BuildContext context, PanZoomSpecifier zoom, WorldNode? zoomedChildNode, ZoomSpecifier? zoomedChildZoom, double transitionLevel);
 }
 
 class AssetNode extends WorldNode {
@@ -290,25 +194,39 @@ class AssetNode extends WorldNode {
     }
   }
 
-  final Map<Type, Feature> _features = <Type, Feature>{};
-  
-  Set<Type> get featureTypes {
-    return _features.keys.toSet();
-  }
+  final Map<Type, AbilityFeature> _abilities = <Type, AbilityFeature>{};
+  final Map<Type, ContainerFeature> _containers = <Type, ContainerFeature>{};
 
-  Type setFeature(Feature feature) {
-    final Type type = feature.runtimeType;
-    _features[type] = feature;
+  Type setAbility(AbilityFeature ability) {
+    final Type type = ability.runtimeType;
+    _abilities[type] = ability;
     return type;
   }
 
+  Type setContainer(ContainerFeature container) {
+    final Type type = container.runtimeType;
+    _containers[type] = container;
+    return type;
+  }
+  
+  Set<Type> get featureTypes {
+    return <Type>{
+      ..._abilities.keys,
+      ..._containers.keys,
+    };
+  }
+
   void removeFeatures(Set<Type> features) {
-    features.forEach(_features.remove);
+    features.forEach(_abilities.remove);
+    features.forEach(_containers.remove);
   }
   
   @override
-  Widget buildRenderer(BuildContext context, PanZoomSpecifier zoom, WorldNode? zoomedChildNode, ZoomSpecifier? zoomedChildZoom) {
-    return WorldPlaceholder(diameter: diameter, zoom: zoom, color: const Color(0xFFFF0000));
+  Widget buildRenderer(BuildContext context, PanZoomSpecifier zoom, WorldNode? zoomedChildNode, ZoomSpecifier? zoomedChildZoom, double transitionLevel) {
+    if (_containers.length == 1) {
+      return _containers.values.single.buildRenderer(context, zoom, zoomedChildNode, zoomedChildZoom, transitionLevel);
+    }
+    return WorldPlaceholder(diameter: diameter, zoom: zoom, transitionLevel: transitionLevel,color: const Color(0xFFFF0000));
   }
 
   @override
