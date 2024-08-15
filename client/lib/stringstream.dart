@@ -62,6 +62,6 @@ class StreamWriter {
   void writeBool(bool value) {
     writeString(value ? 'T' : 'F');
   }
-  
+
   String serialize() => _message.toString();
 }

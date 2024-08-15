@@ -13,9 +13,9 @@ typedef BinaryMessageCallback = void Function(Uint8List bytes);
 
 class NetworkError implements Exception {
   NetworkError(this.message);
-  
+
   final String message;
-  
+
   @override
   String toString() => message;
 }
@@ -44,14 +44,14 @@ class Connection {
   final TextMessageCallback? onTextMessage;
   final BinaryMessageCallback? onBinaryMessage;
   final Duration? timeout;
-  
+
   WebSocket? _websocket;
   CodeTables? _codeTables;
   bool _active = true;
 
   // only valid when handling a message synchronously
   CodeTables get codeTables => _codeTables!;
-  
+
   Timer? _timer;
   Completer<void>? _hold;
 
@@ -73,7 +73,7 @@ class Connection {
       _hold = Completer<void>();
     }
   }
-  
+
   final ValueNotifier<bool> _connected = ValueNotifier<bool>(false);
   ValueListenable<bool> get connected => _connected;
 
@@ -168,7 +168,7 @@ class Connection {
       onBinaryMessage!(message);
     }
   }
-  
+
   _Conversation _prepareConversation(int conversationId, List<Object> messageParts, { required bool queue }) {
     final message = StreamWriter();
     message.writeInt(conversationId);
@@ -192,7 +192,7 @@ class Connection {
       queue: queue,
     );
   }
-  
+
   Future<StreamReader> send(List<Object> messageParts, { bool queue = true }) {
     final _Conversation conversation = _prepareConversation(_nextConversation, messageParts, queue: queue);
     log('$url adding new conversation $_nextConversation: ${prettyText(conversation.request)}');
@@ -208,7 +208,7 @@ class Connection {
     _conversations[conversation.id] = conversation;
     return conversation.response.future;
   }
-  
+
   void dispose() {
     _active = false;
     _timer?.cancel();
@@ -265,7 +265,7 @@ class Connection {
       isText = null;
       lastInteger = thisInteger;
     }
-    
+
     for (int byte in message.take(256)) {
       if (byte < 0x20 || byte > 0x7E) {
         if (buffer.length > 4) {

@@ -30,6 +30,7 @@ class Game {
       login(username, password).catchError(_handleError);
     }
     getGalaxy().then((Galaxy galaxy) {
+      print('Galaxy data ready.');
       rootNode.galaxy = galaxy;
     });
   }
@@ -51,25 +52,25 @@ class Game {
     }
     throw HandledError(error);
   }
-  
+
   ValueListenable<Credentials?> get credentials => _credentials;
   final ValueNotifier<Credentials?> _credentials = ValueNotifier<Credentials?>(null);
 
   String? _currentToken;
-  
+
   static const String _loginServerURL = 'wss://interstellar-dynasties.space:10024/';
-  
+
   Connection get loginServer => _loginServer!;
   Connection? _loginServer;
-  
+
   Connection get dynastyServer => _dynastyServer!;
   Connection? _dynastyServer;
 
   final Set<SystemServer> systemServers = <SystemServer>{};
-  
+
   ValueListenable<bool> get loggedIn => _loggedIn;
   final ValueNotifier<bool> _loggedIn = ValueNotifier<bool>(false);
-  
+
   void _connectToLoginServer() {
     _loginServer = Connection(
       _loginServerURL,
@@ -92,7 +93,7 @@ class Game {
 
 
   // BINARY FILES
-  
+
   final Map<int, Completer<Uint8List>> _files = <int, Completer<Uint8List>>{};
 
   void _handleFile(Uint8List data) {
@@ -116,7 +117,7 @@ class Game {
     }
     return _files[code]!.future;
   }
-  
+
   Future<Galaxy> getGalaxy() async {
     late final double diameter;
     late final Uint8List data;
@@ -129,7 +130,7 @@ class Game {
     ]);
     return Galaxy.from(data, diameter);
   }
-  
+
   Future<Uint8List> getSystems() async {
     return _getFile(2);
   }
@@ -183,7 +184,7 @@ class Game {
 
 
   // DYNASTY SERVER
-  
+
   void _connectToDynastyServer(String url) {
     _dynastyServer = Connection(
       url,

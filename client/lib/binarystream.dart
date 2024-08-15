@@ -16,7 +16,7 @@ class BinaryStreamReader {
   int _position = 0;
 
   final CodeTables _codeTables;
-  
+
   int readInt32() {
     final int result = _source.getUint32(_position, Endian.little);
     _position += 4;
@@ -59,9 +59,9 @@ class BinaryStreamReader {
     }
     return _codeTables._objects.putIfAbsent(code, reader) as T;
   }
-  
+
   List<int>? _checkpoints;
-  
+
   void saveCheckpoint() {
     _checkpoints ??= <int>[];
     _checkpoints!.add(_position);
@@ -76,7 +76,7 @@ class BinaryStreamReader {
   }
 
   bool get checkpointed => _checkpoints != null && _checkpoints!.isNotEmpty;
-  
+
   bool get done => _position >= _source.lengthInBytes;
 }
 

@@ -6,11 +6,11 @@ import 'dart:ui';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
+import '../assets.dart';
 import '../dynasty.dart';
-import '../renderers.dart';
+import '../layout.dart';
+import '../root.dart';
 import '../widgets.dart';
-import '../world.dart';
-import '../zoom.dart';
 
 // Parsed version of the stars data.
 // Does not handle anything other than stars.
@@ -24,7 +24,7 @@ class Galaxy {
 
   static int encodeStarId(int category, int index) => (category << 20) | index; // max 1,048,575 stars per category
   static (int, int) decodeStarId(int id) => (id >> 20, id & 0x000fffff);
-  
+
   factory Galaxy.from(Uint8List rawdata, double diameter) {
     final Uint32List data = rawdata.buffer.asUint32List();
     assert(data[0] == 1, 'galaxy raw data first dword is ${data[0]}');
@@ -85,7 +85,7 @@ class Galaxy {
     int result = -1;
     bool test(int category, int index) {
       final double y = stars[category][index * 2 + 1];
-      if ((target.dy - y).abs() > currentDistance) 
+      if ((target.dy - y).abs() > currentDistance)
         return true;
       final double x = stars[category][index * 2];
       final double distance = (target - Offset(x, y)).distance;
@@ -127,30 +127,40 @@ class GalaxyNode extends WorldNode {
       notifyListeners();
     }
   }
-  
+
   final Set<SystemNode> systems = <SystemNode>{};
 
   List<Widget>? _children;
-  
+
+  void markChildrenDirty() {
+    _children = null;
+    notifyListeners();
+  }
+
   void addSystem(SystemNode system) {
     if (systems.add(system)) {
-      _children = null;
-      notifyListeners();
+      assert(system.parent == null);
+      system.parent = this;
+      markChildrenDirty();
     }
   }
-  
+
   void removeSystem(SystemNode system) {
     if (systems.remove(system)) {
-      _children = null;
-      notifyListeners();
+      assert(system.parent == this);
+      system.parent = null;
+      markChildrenDirty();
     }
   }
 
   void clearSystems() {
     if (systems.isNotEmpty) {
+      for (SystemNode system in systems) {
+        assert(system.parent == this);
+        system.parent = null;
+      }
       systems.clear();
-      _children = null;
-      notifyListeners();
+      markChildrenDirty();
     }
   }
 
@@ -168,9 +178,11 @@ class GalaxyNode extends WorldNode {
       _currentDynasty = getDynasty(id);
     }
   }
-  
+
   @override
-  Offset findLocationForChild(WorldNode child) {
+  Offset findLocationForChild(WorldNode child, List<VoidCallback> callbacks) {
+    assert(child.parent == this);
+    addTransientListeners(callbacks);
     if (galaxy != null) {
       return (child as SystemNode).offset;
     }
@@ -185,53 +197,44 @@ class GalaxyNode extends WorldNode {
     return 1.0;
   }
 
-  WorldNode? _lastZoomedChildNode;
-  ZoomSpecifier? _lastZoomedChildZoom;
-  
+  double? _lastScale;
+
   @override
-  Widget buildRenderer(BuildContext context, PanZoomSpecifier zoom, WorldNode? zoomedChildNode, ZoomSpecifier? zoomedChildZoom, double transitionLevel) {
-    if (zoomedChildNode != _lastZoomedChildNode ||
-        zoomedChildZoom != _lastZoomedChildZoom) {
-      _children = null;
-    }
-    _lastZoomedChildNode = zoomedChildNode;
-    _lastZoomedChildZoom = zoomedChildZoom;
+  Widget buildRenderer(BuildContext context, Widget? child) {
     if (galaxy != null) {
-      return GalaxyWidget(
-        galaxy: galaxy!,
-        diameter: galaxy!.diameter,
-        zoom: zoom,
-        transitionLevel: transitionLevel,
-        children: _children ??= _rebuildChildren(context, zoom, zoomedChildNode, zoomedChildZoom),
+      return WorldLayoutBuilder(
+        builder: (BuildContext context, WorldConstraints constraints) {
+          if (_lastScale != constraints.scale) {
+            _children = null;
+          }
+          _lastScale = constraints.scale;
+          return GalaxyWidget(
+            galaxy: galaxy!,
+            diameter: galaxy!.diameter,
+            children: _children ??= _rebuildChildren(context, constraints.scale),
+          );
+        },
       );
     }
-    return WorldPlaceholder(
-      diameter: diameter,
-      zoom: zoom,
-      transitionLevel: transitionLevel,
-      color: const Color(0xFF999999),
-    );
+    return const WorldNull();
   }
 
-  List<Widget> _rebuildChildren(BuildContext context, PanZoomSpecifier zoom, WorldNode? zoomedChildNode, ZoomSpecifier? zoomedChildZoom) {
+  List<Widget> _rebuildChildren(BuildContext context, double scale) {
     return systems.map((SystemNode childNode) {
       return ListenableBuilder(
         listenable: childNode,
         builder: (BuildContext context, Widget? child) {
+          final bool visible = childNode.diameter * scale >= WorldGeometry.minSystemRenderDiameter;
           return GalaxyChildData(
-            position: findLocationForChild(childNode),
-            diameter: childNode.diameter,
+            position: findLocationForChild(childNode, [markChildrenDirty]),
             label: childNode.label,
-            child: child!,
+            child: visible ? child! : const WorldNull(),
             onTap: () {
-              ZoomProvider.zoom(context, childNode);
+              ZoomProvider.centerOn(context, childNode);
             },
           );
         },
-        child: childNode.build(
-          context,
-          childNode == zoomedChildNode ? zoomedChildZoom! : PanZoomSpecifier.centered(childNode.diameter, 0.0),
-        ),
+        child: childNode.build(context),
       );
     }).toList();
   }
@@ -242,25 +245,19 @@ class GalaxyWidget extends MultiChildRenderObjectWidget {
     super.key,
     required this.galaxy,
     required this.diameter,
-    required this.zoom,
-    required this.transitionLevel,
     this.onTap,
     super.children,
   });
 
   final Galaxy galaxy;
   final double diameter;
-  final PanZoomSpecifier zoom;
-  final double transitionLevel;
   final GalaxyTapHandler? onTap;
-  
+
   @override
   RenderGalaxy createRenderObject(BuildContext context) {
     return RenderGalaxy(
       galaxy: galaxy,
       diameter: diameter,
-      zoom: zoom,
-      transitionLevel: transitionLevel,
     );
   }
 
@@ -268,9 +265,7 @@ class GalaxyWidget extends MultiChildRenderObjectWidget {
   void updateRenderObject(BuildContext context, RenderGalaxy renderObject) {
     renderObject
       ..galaxy = galaxy
-      ..diameter = diameter
-      ..zoom = zoom
-      ..transitionLevel = transitionLevel;
+      ..diameter = diameter;
   }
 }
 
@@ -278,14 +273,12 @@ class GalaxyChildData extends StatefulWidget {
   const GalaxyChildData({
     super.key,
     required this.position,
-    required this.diameter,
     required this.label,
     required this.onTap,
     required this.child,
   });
 
   final Offset position;
-  final double diameter;
   final String label;
   final VoidCallback onTap;
   final Widget child;
@@ -298,7 +291,7 @@ class _GalaxyChildDataState extends State<GalaxyChildData> with SingleTickerProv
   late final AnimationController _controller;
   late final Animation<double> _animation;
   Timer? _cooldown;
-  
+
   @override
   void initState() {
     super.initState();
@@ -311,7 +304,7 @@ class _GalaxyChildDataState extends State<GalaxyChildData> with SingleTickerProv
     _controller.dispose();
     super.dispose();
   }
-  
+
   @override
   void handleTapDown() {
     _cooldown?.cancel();
@@ -328,7 +321,7 @@ class _GalaxyChildDataState extends State<GalaxyChildData> with SingleTickerProv
   void handleTapUp() {
     assert(_cooldown == null);
     if (_controller.status == AnimationStatus.forward) {
-      _cooldown = Timer(Duration(milliseconds: (75.0 + 250.0 * 1.0 - _controller.value).round()), () {
+      _cooldown = Timer(Duration(milliseconds: (75.0 + _controller.duration!.inMilliseconds * (1.0 - _controller.value)).round()), () {
         _controller.reverse();
       });
     } else {
@@ -336,14 +329,13 @@ class _GalaxyChildDataState extends State<GalaxyChildData> with SingleTickerProv
     }
     widget.onTap();
   }
-  
+
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<double>(
       valueListenable: _animation,
       builder: (BuildContext context, double value, Widget? child) => _GalaxyChildData(
         position: widget.position,
-        diameter: widget.diameter,
         label: widget.label,
         active: value,
         tapTarget: this,
@@ -357,7 +349,6 @@ class _GalaxyChildData extends ParentDataWidget<GalaxyParentData> {
   const _GalaxyChildData({
     super.key, // ignore: unused_element
     required this.position,
-    required this.diameter,
     required this.label,
     required this.active,
     required this.tapTarget,
@@ -365,20 +356,17 @@ class _GalaxyChildData extends ParentDataWidget<GalaxyParentData> {
   });
 
   final Offset position;
-  final double diameter;
   final String label;
   final double active;
   final WorldTapTarget? tapTarget;
-  
+
   @override
   void applyParentData(RenderObject renderObject) {
     final GalaxyParentData parentData = renderObject.parentData! as GalaxyParentData;
     if (parentData.position != position ||
-        parentData.diameter != diameter ||
         parentData.label != label ||
         parentData.active != active) {
       parentData.position = position;
-      parentData.diameter = diameter;
       parentData.label = label;
       parentData.active = active;
       renderObject.parent!.markNeedsLayout();
@@ -392,12 +380,11 @@ class _GalaxyChildData extends ParentDataWidget<GalaxyParentData> {
 
 class GalaxyParentData extends ParentData with ContainerParentDataMixin<RenderWorld> {
   Offset position = Offset.zero; // in meters
-  double diameter = 0; // in meters
   String label = '';
   double active = 0.0; // how much to highlight the child's reticule (0..1)
 
   WorldTapTarget? tapTarget;
-  
+
   TextPainter? _label;
   Rect? _labelRect;
   Offset? _reticuleCenter;
@@ -410,7 +397,9 @@ class StarType {
   final double magnitude;
   final double? blur;
 
-  double strokeWidth(PanZoomSpecifier zoom) => 8e8 * magnitude / ((zoom.zoom + 1) * (zoom.zoom + 1) * max(1, zoom.zoom - 7.0)); // the world is in a mess
+  double strokeWidth(double zoom) {
+    return 8e8 * magnitude / ((zoom + 1) * (zoom + 1) * max(1, zoom - 7.0));
+  }
   double? blurWidth(double zoomFactor) => blur == null ? null : 8e8 * blur! / zoomFactor;
 }
 
@@ -420,12 +409,8 @@ class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWor
   RenderGalaxy({
     required Galaxy galaxy,
     required double diameter,
-    required PanZoomSpecifier zoom,
-    required double transitionLevel,
   }) : _galaxy = galaxy,
-       _diameter = diameter,
-       _zoom = zoom,
-       _transitionLevel = transitionLevel;
+       _diameter = diameter;
 
   Galaxy? get galaxy => _galaxy;
   Galaxy? _galaxy;
@@ -446,23 +431,7 @@ class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWor
     }
   }
 
-  PanZoomSpecifier get zoom => _zoom;
-  PanZoomSpecifier _zoom;
-  set zoom (PanZoomSpecifier value) {
-    if (value != _zoom) {
-      _zoom = value;
-      markNeedsLayout();
-    }
-  }
-
-  double get transitionLevel => _transitionLevel;
-  double _transitionLevel;
-  set transitionLevel (double value) {
-    if (value != _transitionLevel) {
-      _transitionLevel = value;
-      markNeedsLayout();
-    }
-  }
+  double get radius => diameter / 2.0;
 
   @override
   void setupParentData(RenderObject child) {
@@ -470,7 +439,7 @@ class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWor
       child.parentData = GalaxyParentData();
     }
   }
-  
+
   @override
   void adoptChild(RenderObject child) {
     super.adoptChild(child);
@@ -478,7 +447,7 @@ class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWor
     assert(childParentData._label == null);
     childParentData._label = TextPainter(textDirection: TextDirection.ltr);
   }
-  
+
   @override
   void dropChild(RenderObject child) {
     final GalaxyParentData childParentData = child.parentData! as GalaxyParentData;
@@ -486,19 +455,6 @@ class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWor
     childParentData._label!.dispose();
     childParentData._label = null;
     super.dropChild(child);
-  }
-
-  @override
-  void hitTestChildren(WorldHitTestResult result, { required Offset position }) {
-    RenderWorld? child = firstChild;
-    while (child != null) {
-      final GalaxyParentData childParentData = child.parentData! as GalaxyParentData;
-      if ((childParentData.position & child.constraints.size).contains(position) &&
-          child.hitTest(result, position: position - childParentData.position)) {
-        return;
-      }
-      child = childParentData.previousSibling;
-    }
   }
 
   @override
@@ -521,6 +477,192 @@ class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWor
   static const double lightYearInM = 9460730472580800.0;
   static const double auInM = 149597870700.0;
 
+  static const double minReticuleZoom = 8.0;
+  static const double reticuleFadeZoom = 5.0;
+  static const double lineFadeZoom = 7.5;
+  static const double hudOuterRadius = 36.0;
+  static const double hudInnerRadius = 30.0;
+  static const double hudReticuleLineLength = 15.0;
+  static const double hudLineExtension = 20.0;
+  static const double hudReticuleStrokeWidth = 4.0;
+  static const double hudAvoidanceRadius = hudOuterRadius + hudReticuleStrokeWidth / 2.0 + 8.0;
+  static const int hudRadials = 16;
+  static const int maxHudLineExtensions = 3;
+  static const EdgeInsets hudTextMargin = EdgeInsets.symmetric(horizontal: 8.0);
+  static const Offset hudLineMargin = Offset(2.0, 0.0);
+
+  static const List<StarType> _starTypes = <StarType>[
+    StarType(Color(0x7FFFFFFF), 4.0e9, 2.0e9),
+    StarType(Color(0xCFCCBBAA), 2.5e9),
+    StarType(Color(0xDFFF0000), 0.5e9),
+    StarType(Color(0xCFFF9900), 0.7e9),
+    StarType(Color(0xBFFFFFFF), 0.5e9),
+    StarType(Color(0xAFFFFFFF), 1.2e9),
+    StarType(Color(0x2F0099FF), 1.0e9),
+    StarType(Color(0x2F0000FF), 0.5e9),
+    StarType(Color(0x4FFF9900), 0.5e9),
+    StarType(Color(0x2FFFFFFF), 0.5e9),
+    StarType(Color(0x5FFF2200), 20.0e9, 8.0e9),
+  ];
+
+  double _legendLength = 0.0;
+
+  Rect? _preparedStarsRect;
+  final List<Float32List> _starPoints = [];
+  final List<Vertices?> _starVertices = [];
+  final List<Color> _adjustedStarTypeColors = [];
+
+  @override
+  WorldGeometry computeLayout(WorldConstraints constraints) {
+    RenderWorld? child = firstChild;
+    while (child != null) {
+      final GalaxyParentData childParentData = child.parentData! as GalaxyParentData;
+      child.layout(constraints.forChild(childParentData.position));
+      if (constraints.zoom < minReticuleZoom) {
+        final TextPainter painter = childParentData._label!;
+        painter.text = TextSpan(text: childParentData.label, style: _hudStyle);
+        painter.layout();
+      }
+      child = childParentData.nextSibling;
+    }
+    if (_preparedStarsRect != constraints.scaledViewport) {
+      _prepareStars(constraints.scaledViewport, constraints.scaledPan);
+      _preparedStarsRect = constraints.scaledViewport;
+    }
+    _layoutLegend(constraints);
+    return WorldGeometry(shape: Circle(center: constraints.scaledPosition, diameter: diameter));
+  }
+
+  void _prepareStars(Rect visibleRect, Offset offset) { // visibleRect and offset are in meters
+    assert(galaxy != null);
+    final double dx = offset.dx - radius;
+    final double dy = offset.dy - radius;
+    // filter galaxy to visible stars
+    _starPoints.clear();
+    for (var categoryIndex = 0; categoryIndex < galaxy!.stars.length; categoryIndex += 1) {
+      final StarType starType = _starTypes[categoryIndex];
+      final Float32List allStars = galaxy!.stars[categoryIndex];
+      final double maxStarDiameter = max(starType.strokeWidth(constraints.zoom), starType.blurWidth(constraints.zoomFactor) ?? 0.0);
+      final xMin = visibleRect.left + radius - maxStarDiameter;
+      final xMax = visibleRect.right + radius + maxStarDiameter;
+      final yMin = visibleRect.top + radius - maxStarDiameter;
+      final yMax = visibleRect.bottom + radius + maxStarDiameter;
+      final visibleStars = Float32List(allStars.length);
+      var count = 0;
+      for (var starIndex = 0; starIndex < allStars.length; starIndex += 2) {
+        if (allStars[starIndex] >= xMin && allStars[starIndex] < xMax &&
+            allStars[starIndex + 1] >= yMin && allStars[starIndex + 1] < yMax) {
+          visibleStars[count] = allStars[starIndex] + dx;
+          visibleStars[count + 1] = allStars[starIndex + 1] + dy;
+          count += 2;
+        }
+      }
+      _starPoints.add(Float32List.sublistView(visibleStars, 0, count));
+    }
+    // prepare vertices for tiny stars
+    _starVertices.clear();
+    _adjustedStarTypeColors.clear();
+    for (var categoryIndex = 0; categoryIndex < galaxy!.stars.length; categoryIndex += 1) {
+      final StarType starType = _starTypes[categoryIndex];
+      final double starDiameter = starType.strokeWidth(constraints.zoom);
+      const pixelTriangleRadius = 1.0;
+      if (starType.blur == null && (starDiameter * constraints.scale < pixelTriangleRadius * 2.0)) {
+        final double triangleRadius = pixelTriangleRadius / constraints.scale;
+        assert((triangleRadius * 2) > starDiameter, '$triangleRadius vs $starDiameter');
+        final Float32List points = _starPoints[categoryIndex];
+        final int count = points.length ~/ 2;
+        final vertices = Float32List(count * 12);
+        for (var starIndex = 0; starIndex < count; starIndex += 1) {
+          vertices[starIndex * 12 + 0] = points[starIndex * 2 + 0];
+          vertices[starIndex * 12 + 1] = points[starIndex * 2 + 1] - triangleRadius;
+          vertices[starIndex * 12 + 2] = points[starIndex * 2 + 0] - triangleRadius;
+          vertices[starIndex * 12 + 3] = points[starIndex * 2 + 1];
+          vertices[starIndex * 12 + 4] = points[starIndex * 2 + 0] + triangleRadius;
+          vertices[starIndex * 12 + 5] = points[starIndex * 2 + 1];
+          vertices[starIndex * 12 + 6] = points[starIndex * 2 + 0];
+          vertices[starIndex * 12 + 7] = points[starIndex * 2 + 1] + triangleRadius;
+          vertices[starIndex * 12 + 8] = points[starIndex * 2 + 0] - triangleRadius;
+          vertices[starIndex * 12 + 9] = points[starIndex * 2 + 1];
+          vertices[starIndex * 12 + 10] = points[starIndex * 2 + 0] + triangleRadius;
+          vertices[starIndex * 12 + 11] = points[starIndex * 2 + 1];
+        }
+        _adjustedStarTypeColors.add(starType.color.withOpacity(starType.color.opacity * min(starDiameter / (triangleRadius * 2.0), 1.0)));
+        _starVertices.add(Vertices.raw(VertexMode.triangles, vertices));
+      } else {
+        _adjustedStarTypeColors.add(starType.color.withOpacity(starType.color.opacity));
+        _starVertices.add(null);
+      }
+    }
+  }
+
+  final LayerHandle<TransformLayer> _transformLayer = LayerHandle<TransformLayer>();
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    if (galaxy != null) {
+      final transform = Matrix4.identity()
+        ..translate(offset.dx, offset.dy)
+        ..scale(constraints.scale);
+      _transformLayer.layer = context.pushTransform(
+        needsCompositing,
+        Offset.zero,
+        transform,
+        _drawStars,
+        oldLayer: _transformLayer.layer,
+      );
+    } else {
+      _transformLayer.layer = null;
+    }
+    _drawChildren(context, offset);
+    if (galaxy != null) {
+      _drawLegend(context, Offset.zero);
+      _drawHud(context, offset);
+    }
+  }
+
+  void _drawStars(PaintingContext context, Offset offset) {
+    assert(offset == Offset.zero);
+    final Color galaxyGlowColor = const Color(0xFF66BBFF).withOpacity((0x33/0xFF) * (1.0 / constraints.zoom).clamp(0.0, 1.0));
+    if (galaxyGlowColor.alpha > 0) {
+      context.canvas.drawOval(
+        Rect.fromCircle(
+          center: constraints.scaledPan,
+          radius: diameter / 2.0,
+        ),
+        Paint()
+          ..color = galaxyGlowColor
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, 500.0 / constraints.scale),
+      );
+    }
+    for (var index = 0; index < _starPoints.length; index += 1) {
+      if (_starPoints[index].isNotEmpty) {
+        final StarType starType = _starTypes[index];
+        final paint = Paint()
+          ..color = _adjustedStarTypeColors[index];
+        if (_starVertices[index] != null) {
+          context.canvas.drawVertices(_starVertices[index]!, BlendMode.src, paint);
+        } else {
+          paint
+            ..strokeCap = StrokeCap.round
+            ..strokeWidth = starType.strokeWidth(constraints.zoom);
+          if (starType.blur != null) {
+            paint.maskFilter = MaskFilter.blur(BlurStyle.normal, starType.blurWidth(constraints.zoomFactor)!);
+          }
+          context.canvas.drawRawPoints(PointMode.points, _starPoints[index], paint);
+        }
+      }
+    }
+  }
+
+  void _drawChildren(PaintingContext context, Offset offset) {
+    RenderWorld? child = firstChild;
+    while (child != null) {
+      final GalaxyParentData childParentData = child.parentData! as GalaxyParentData;
+      context.paintChild(child, offset + (childParentData.position + constraints.scaledPan) * constraints.scale);
+      child = childParentData.nextSibling;
+    }
+  }
+
   static (double, String) _selectLegend(double length, double m) {
     assert(m > 0);
     double value;
@@ -540,228 +682,82 @@ class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWor
           value = km;
           units = 'km';
         } else {
-          value = m;
-          units = 'm';
+          if (m > 0.9) {
+            value = m;
+            units = 'm';
+          } else {
+            final double cm = m / 10.0;
+            if (cm > 0.9) {
+              value = cm;
+              units = 'cm';
+            } else {
+              final double mm = m * 1000.0;
+              if (mm > 0.9) {
+                value = mm;
+                units = 'mm';
+              } else {
+                final double um = m * 1e6;
+                if (um > 0.9) {
+                  value = um;
+                  units = 'μm';
+                } else {
+                  final double nm = m * 1e9;
+                  if (nm > 0.9) {
+                    value = nm;
+                    units = 'nm';
+                  } else {
+                    final double A = m * 1e10;
+                    if (A > 0.1) {
+                      value = A;
+                      units = 'Å';
+                    } else {
+                      final double fm = m * 1e15;
+                      if (fm > 0.05) {
+                        value = fm;
+                        units = 'fm';
+                      } else {
+                        final double lp = m / 1.616255e-35;
+                        if (lp > 0.9) {
+                          value = lp;
+                          units = 'ℓₚ';
+                        } else {
+                          return (length, 'uncertain');
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
       }
     }
     const sigfig = 1;
     final double scale = pow(10, sigfig - (log(value) / ln10).ceil()).toDouble();
     final double roundValue = (value * scale).round() / scale;
-    return (length * roundValue / value, '$roundValue $units');
+    return (length * roundValue / value, '${roundValue.toStringAsFixed(1)} $units');
   }
 
-  static const double minReticuleZoom = 10000.0;
-  static const double reticuleFadeZoom = 5000.0;
-  static const double lineFadeZoom = 8000.0;
-  static const double hudOuterRadius = 36.0;
-  static const double hudInnerRadius = 30.0;
-  static const double hudReticuleLineLength = 15.0;
-  static const double hudLineExtension = 20.0;
-  static const double hudReticuleStrokeWidth = 4.0;
-  static const double hudAvoidanceRadius = hudOuterRadius + hudReticuleStrokeWidth / 2.0 + 8.0;
-  static const int hudRadials = 16;
-  static const int maxHudLineExtensions = 3;
-  static const EdgeInsets hudTextMargin = EdgeInsets.symmetric(horizontal: 8.0);
-  static const Offset hudLineMargin = Offset(2.0, 0.0);
-  
-  static const List<StarType> _starTypes = <StarType>[
-    StarType(Color(0x7FFFFFFF), 4.0e9, 2.0e9),
-    StarType(Color(0xCFCCBBAA), 2.5e9),
-    StarType(Color(0xDFFF0000), 0.5e9),
-    StarType(Color(0xCFFF9900), 0.7e9),
-    StarType(Color(0xBFFFFFFF), 0.5e9),
-    StarType(Color(0xAFFFFFFF), 1.2e9),
-    StarType(Color(0x2F0099FF), 1.0e9),
-    StarType(Color(0x2F0000FF), 0.5e9),
-    StarType(Color(0x4FFF9900), 0.5e9),
-    StarType(Color(0x2FFFFFFF), 0.5e9),
-    StarType(Color(0x5FFF2200), 20.0e9, 8.0e9),
-  ];
-  
-  double _zoomFactor = 1.0; // effective zoom (zoom.zoom but maybe affected by local shenanigans)
-  double _legendLength = 0.0;
-  double _scaleFactor = 0.0; // meters to pixels (includes _zoomFactor)
-  Offset _panOffset = Offset.zero; // in pixels
-  Offset _scaledPanOffset = Offset.zero; // in meters
-  double _transitionOpacity = 1.0; // 1 - transitionLevel
-
-  final List<Float32List> _starPoints = [];
-  final List<Vertices?> _starVertices = [];
-  final List<Color> _adjustedStarTypeColors = [];
-
-  @override
-  void performLayout() {
-    final Size renderSize = constraints.size; // pixels
-    final double renderDiameter = renderSize.shortestSide;
-    _zoomFactor = exp(zoom.zoom);
-    assert(_zoomFactor.isFinite, 'exp(${zoom.zoom}) was infinite');
-    _scaleFactor = (renderDiameter / diameter) * _zoomFactor;
-    // TODO: clamp the pan to prevent showing the nothingness on the edges
-    _panOffset = Offset(
-      zoom.destinationFocalPointFraction.dx * renderSize.width,
-      zoom.destinationFocalPointFraction.dy * renderSize.height
-    ) - zoom.sourceFocalPoint * _scaleFactor;
-    _scaledPanOffset = _panOffset / _scaleFactor;
-    _transitionOpacity = 1.0 - transitionLevel;
-    if (galaxy != null) {
-      // filter galaxy to visible stars
-      _starPoints.clear();
-      for (var categoryIndex = 0; categoryIndex < galaxy!.stars.length; categoryIndex += 1) {
-        final StarType starType = _starTypes[categoryIndex];
-        final Float32List allStars = galaxy!.stars[categoryIndex];
-        final double maxStarDiameter = max(starType.strokeWidth(zoom), starType.blurWidth(_zoomFactor) ?? 0.0);
-        final xMin = (0.0 - _panOffset.dx) / _scaleFactor - maxStarDiameter;
-        final xMax = (renderSize.width - _panOffset.dx) / _scaleFactor + maxStarDiameter;
-        final yMin = (0.0 - _panOffset.dy) / _scaleFactor - maxStarDiameter;
-        final yMax = (renderSize.height - _panOffset.dy) / _scaleFactor + maxStarDiameter;
-        if (xMin > 0 || xMax < diameter ||
-            yMin > 0 || yMax < diameter ||
-            _panOffset != Offset.zero) {
-          final visibleStars = Float32List(allStars.length);
-          var count = 0;
-          for (var starIndex = 0; starIndex < allStars.length; starIndex += 2) {
-            if (allStars[starIndex] >= xMin && allStars[starIndex] < xMax &&
-                allStars[starIndex + 1] >= yMin && allStars[starIndex + 1] < yMax) {
-              visibleStars[count] = allStars[starIndex] + _scaledPanOffset.dx;
-              visibleStars[count + 1] = allStars[starIndex + 1] + _scaledPanOffset.dy;
-              count += 2;
-            }
-          }
-          _starPoints.add(Float32List.sublistView(visibleStars, 0, count));
-        } else {
-          _starPoints.add(allStars);
-        }
-      }
-      // prepare vertices for tiny stars
-      _starVertices.clear();
-      _adjustedStarTypeColors.clear();
-      for (var categoryIndex = 0; categoryIndex < galaxy!.stars.length; categoryIndex += 1) {
-        final StarType starType = _starTypes[categoryIndex];
-        final double starDiameter = starType.strokeWidth(zoom);
-        const pixelTriangleRadius = 1.0;
-        if (starType.blur == null && (starDiameter * _scaleFactor < pixelTriangleRadius * 2.0)) {
-          final double triangleRadius = pixelTriangleRadius / _scaleFactor;
-          assert((triangleRadius * 2) > starDiameter, '$triangleRadius vs $starDiameter');
-          final Float32List points = _starPoints[categoryIndex];
-          final int count = points.length ~/ 2;
-          final vertices = Float32List(count * 12);
-          for (var starIndex = 0; starIndex < count; starIndex += 1) {
-            vertices[starIndex * 12 + 0] = points[starIndex * 2 + 0];
-            vertices[starIndex * 12 + 1] = points[starIndex * 2 + 1] - triangleRadius;
-            vertices[starIndex * 12 + 2] = points[starIndex * 2 + 0] - triangleRadius;
-            vertices[starIndex * 12 + 3] = points[starIndex * 2 + 1];
-            vertices[starIndex * 12 + 4] = points[starIndex * 2 + 0] + triangleRadius;
-            vertices[starIndex * 12 + 5] = points[starIndex * 2 + 1];
-            vertices[starIndex * 12 + 6] = points[starIndex * 2 + 0];
-            vertices[starIndex * 12 + 7] = points[starIndex * 2 + 1] + triangleRadius;
-            vertices[starIndex * 12 + 8] = points[starIndex * 2 + 0] - triangleRadius;
-            vertices[starIndex * 12 + 9] = points[starIndex * 2 + 1];
-            vertices[starIndex * 12 + 10] = points[starIndex * 2 + 0] + triangleRadius;
-            vertices[starIndex * 12 + 11] = points[starIndex * 2 + 1];
-          }
-          _adjustedStarTypeColors.add(starType.color.withOpacity(_transitionOpacity * starType.color.opacity * min(starDiameter / (triangleRadius * 2.0), 1.0)));
-          _starVertices.add(Vertices.raw(VertexMode.triangles, vertices));
-        } else {
-          _adjustedStarTypeColors.add(starType.color.withOpacity(_transitionOpacity * starType.color.opacity));
-          _starVertices.add(null);
-        }
-      }
-    }
-    RenderWorld? child = firstChild;
-    while (child != null) {
-      final GalaxyParentData childParentData = child.parentData! as GalaxyParentData;
-      assert(childParentData.diameter > 0);
-      child.layout(WorldConstraints(
-        size: Size.square(childParentData.diameter), // in meters
-        currentScale: constraints.currentScale * _scaleFactor,
-      ));
-      if (_zoomFactor < minReticuleZoom) {
-        final TextPainter painter = childParentData._label!;
-        painter.text = TextSpan(text: childParentData.label, style: _hudStyle);
-        painter.layout();
-      }
-      child = childParentData.nextSibling;
-    }
-    if (_transitionOpacity > 0.0) {
-      final (double legendLength, String legendText) = _selectLegend(renderDiameter * 0.2, diameter * 0.2 / _zoomFactor);
-      _legendLength = legendLength;
-      final TextStyle style = _transitionOpacity == 1.0 ? _legendStyle : _legendStyle.copyWith(color: _legendStyle.color!.withOpacity(_transitionOpacity));
-      _legendLabel.text = TextSpan(text: legendText, style: style);
-      _legendLabel.layout();
-    }
+  void _layoutLegend(WorldConstraints constraints) {
+    final (double legendLength, String legendText) = _selectLegend(constraints.viewport.width * 0.2, diameter * 0.2 / constraints.zoomFactor);
+    _legendLength = legendLength;
+    final TextStyle style = _legendStyle;
+    _legendLabel.text = TextSpan(text: legendText, style: style);
+    _legendLabel.layout();
   }
 
-  TransformLayer? _transformLayer;
-  
-  @override
-  void paint(PaintingContext context, Offset offset) {
-    final transform = Matrix4.identity()
-      ..scale(_scaleFactor);
-    _transformLayer = context.pushTransform(
-      needsCompositing,
-      offset,
-      transform,
-      _paintChildren,
-      oldLayer: _transformLayer,
-    );
-    if (galaxy != null && _transitionOpacity > 0.0) {
-      drawLegend(context, offset);
-      drawHud(context, offset);
-    }
-  }
-  
-  void _paintChildren(PaintingContext context, Offset offset) {
-    final Color galaxyGlowColor = const Color(0xFF66BBFF).withOpacity((0x33/0xFF) * exp(-zoom.zoom).clamp(0.0, 1.0));
-    if (galaxyGlowColor.alpha > 0) {
-      context.canvas.drawOval(
-        Rect.fromCircle(
-          center: Offset(diameter / 2.0, diameter / 2.0) + _scaledPanOffset,
-          radius: diameter / 2.0,
-        ),
-        Paint()
-          ..color = galaxyGlowColor
-          ..maskFilter = MaskFilter.blur(BlurStyle.normal, 500.0 / _scaleFactor),
-      );
-    }
-    for (var index = 0; index < _starPoints.length; index += 1) {
-      if (_starPoints[index].isNotEmpty) {
-        final StarType starType = _starTypes[index];
-        final paint = Paint()
-          ..color = _adjustedStarTypeColors[index];
-        if (_starVertices[index] != null) {
-          context.canvas.drawVertices(_starVertices[index]!, BlendMode.src, paint);
-        } else {
-          paint
-            ..strokeCap = StrokeCap.round
-            ..strokeWidth = starType.strokeWidth(zoom);
-          if (starType.blur != null) {
-            paint.maskFilter = MaskFilter.blur(BlurStyle.normal, starType.blurWidth(_zoomFactor)!);
-          }
-          context.canvas.drawRawPoints(PointMode.points, _starPoints[index], paint);
-        }
-      }
-    }
-    RenderWorld? child = firstChild;
-    while (child != null) {
-      final GalaxyParentData childParentData = child.parentData! as GalaxyParentData;
-      context.paintChild(child, offset + (childParentData.position + _scaledPanOffset));
-      child = childParentData.nextSibling;
-    }
-  }
-
-  void drawLegend(PaintingContext context, Offset offset) {
-    final Size renderSize = constraints.size;
+  void _drawLegend(PaintingContext context, Offset offset) {
     final double d = _legendStyle.fontSize!;
     final double length = _legendLength;
-    final Paint paint = transitionLevel == 1.0 ? _legendPaint : Paint.from(_legendPaint)..color = _legendPaint.color.withOpacity(_transitionOpacity);
+    final Paint paint = _legendPaint;
     context.canvas.drawPoints(PointMode.polygon, <Offset>[
-      offset + Offset(d, renderSize.height - d * 2.0),
-      offset + Offset(d, renderSize.height - d),
-      offset + Offset(d + length, renderSize.height - d),
-      offset + Offset(d + length, renderSize.height - d * 2.0),
+      offset + Offset(d, constraints.viewport.height - d * 2.0),
+      offset + Offset(d, constraints.viewport.height - d),
+      offset + Offset(d + length, constraints.viewport.height - d),
+      offset + Offset(d + length, constraints.viewport.height - d * 2.0),
     ], paint);
-    _legendLabel.paint(context.canvas, offset + Offset(d + length - _legendLabel.width / 2.0, renderSize.height - d * 3.0));
+    _legendLabel.paint(context.canvas, offset + Offset(d + length - _legendLabel.width / 2.0, constraints.viewport.height - d * 3.0));
   }
 
   bool _hasOverlap(Iterable<Rect> rects, Rect candidate) {
@@ -772,12 +768,11 @@ class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWor
     }
     return false;
   }
-  
-  void drawHud(PaintingContext context, Offset offset) {
-    if (_zoomFactor < minReticuleZoom) {
-      final double unzoom = 1.0 / _scaleFactor;
-      final double reticuleOpacity = _zoomFactor < reticuleFadeZoom ? 1.0 : lerpDouble(1.0, 0.0, (_zoomFactor - reticuleFadeZoom) / (minReticuleZoom - reticuleFadeZoom))!;
-      final double lineOpacity = _zoomFactor < lineFadeZoom ? 1.0 : lerpDouble(1.0, 0.0, (_zoomFactor - lineFadeZoom) / (minReticuleZoom - lineFadeZoom))!;
+
+  void _drawHud(PaintingContext context, Offset offset) {
+    if (constraints.zoom < minReticuleZoom) {
+      final double reticuleOpacity = constraints.zoom < reticuleFadeZoom ? 1.0 : lerpDouble(1.0, 0.0, (constraints.zoom - reticuleFadeZoom) / (minReticuleZoom - reticuleFadeZoom))!;
+      final double lineOpacity = constraints.zoom < lineFadeZoom ? 1.0 : lerpDouble(1.0, 0.0, (constraints.zoom - lineFadeZoom) / (minReticuleZoom - lineFadeZoom))!;
 
       final hudReticulePaint = Paint()
         ..color = const Color(0xFFFFFFFF).withOpacity(reticuleOpacity)
@@ -796,7 +791,7 @@ class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWor
       child = firstChild;
       while (child != null) {
         final GalaxyParentData childParentData = child.parentData! as GalaxyParentData;
-        final Offset center = _panOffset + offset + childParentData.position / unzoom;
+        final Offset center = offset + (childParentData.position + constraints.scaledPan) * constraints.scale;
         childParentData._reticuleCenter = center;
         childParentData._reticuleRadius = hudAvoidanceRadius;
         context.canvas.drawCircle(center, hudOuterRadius, hudReticulePaint);
@@ -808,10 +803,10 @@ class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWor
           context.canvas.translate(center.dx, center.dy);
           context.canvas.rotate(childParentData.active * pi / 2);
           context.canvas.drawPoints(PointMode.lines, [
-            Offset(0.0, hudCenterRadius - length), Offset(0.0, hudCenterRadius + length), 
-            Offset(0.0, -hudCenterRadius + length), Offset(0.0, -hudCenterRadius - length), 
-            Offset(hudCenterRadius - length, 0.0), Offset(hudCenterRadius + length, 0.0), 
-            Offset(-hudCenterRadius + length, 0.0), Offset(-hudCenterRadius - length, 0.0), 
+            Offset(0.0, hudCenterRadius - length), Offset(0.0, hudCenterRadius + length),
+            Offset(0.0, -hudCenterRadius + length), Offset(0.0, -hudCenterRadius - length),
+            Offset(hudCenterRadius - length, 0.0), Offset(hudCenterRadius + length, 0.0),
+            Offset(-hudCenterRadius + length, 0.0), Offset(-hudCenterRadius - length, 0.0),
           ], hudReticulePaint);
           context.canvas.restore();
         }
@@ -904,13 +899,20 @@ class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWor
   }
 
   @override
-  void applyPaintTransform(RenderWorld child, Matrix4 transform) {
-    transform.multiply(_transformLayer!.transform!);
+  void hitTestChildren(WorldHitTestResult result, { required Offset position }) {
+    RenderWorld? child = firstChild;
+    while (child != null) {
+      if (child.geometry.contains(position) &&
+          child.hitTest(result, position: position)) {
+        return;
+      }
+      child = childBefore(child);
+    }
   }
-  
+
   @override
   WorldTapTarget? routeTap(Offset offset) {
-    if (transitionLevel < 1.0) {
+    if (constraints.zoom < minReticuleZoom) {
       RenderWorld? child = firstChild;
       while (child != null) {
         final GalaxyParentData childParentData = child.parentData! as GalaxyParentData;
@@ -927,17 +929,12 @@ class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWor
   }
 
   @override
-  Offset get panOffset => _panOffset; // TODO: defer to child if fully zoomed
-
-  @override
-  double get zoomFactor => _scaleFactor; // TODO: defer to child if fully zoomed
-
-  @override
   void dispose() {
     _legendLabel.dispose();
     for (Vertices? vertices in _starVertices) {
       vertices?.dispose();
     }
+    _transformLayer.layer = null;
     super.dispose();
   }
 }

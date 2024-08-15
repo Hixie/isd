@@ -8,7 +8,7 @@ import 'package:flutter/services.dart';
 
 import 'connection.dart';
 import 'game.dart';
-import 'widgets.dart';
+import 'root.dart';
 
 void main() async {
   print('INTERSTELLAR DYNASTIES CLIENT');
@@ -61,7 +61,7 @@ class InterstellarDynasties extends StatefulWidget {
   InterstellarDynasties({required this.game}) : super(key: ValueKey<Game>(game));
 
   final Game game;
-  
+
   @override
   _InterstellarDynastiesState createState() => _InterstellarDynastiesState();
 }
@@ -86,7 +86,7 @@ class _InterstellarDynastiesState extends State<InterstellarDynasties> {
       widget.game.addErrorHandler(_handleError);
     }
   }
-  
+
   Future<void> _doNewGame() async {
     setState(() { _pending = true; });
     try {
@@ -128,7 +128,7 @@ class _InterstellarDynastiesState extends State<InterstellarDynasties> {
     // TODO: prettier error messages
     _setMessage(error.toString());
   }
-  
+
   void _setMessage(String message) {
     if (message != _message || !_showMessage) {
       _messageTimer?.cancel();
@@ -148,7 +148,7 @@ class _InterstellarDynastiesState extends State<InterstellarDynasties> {
     _messageTimer?.cancel();
     super.dispose();
   }
-  
+
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<bool>(
@@ -156,8 +156,7 @@ class _InterstellarDynastiesState extends State<InterstellarDynasties> {
       builder: (BuildContext context, bool loggedIn, Widget? child) => Stack(
         fit: StackFit.expand,
         children: <Widget>[
-          if (widget.game.rootNode.galaxy != null)
-            WorldRoot(rootNode: widget.game.rootNode),
+          WorldRoot(rootNode: widget.game.rootNode),
           DisableSubtree(
             disabled: loggedIn,
             child: ValueListenableBuilder<bool>(
@@ -271,7 +270,7 @@ class Button extends StatelessWidget {
 
   final Widget child;
   final VoidCallback? onPressed;
-  
+
   @override
   Widget build(BuildContext context) {
     return SizedBox(
@@ -334,7 +333,7 @@ class MenuLayoutDelegate extends SingleChildLayoutDelegate {
   Offset getPositionForChild(Size size, Size childSize) {
     return Alignment.bottomRight.inscribe(childSize, Offset.zero & size).topLeft;
   }
-  
+
   @override
   bool shouldRelayout(MenuLayoutDelegate oldDelegate) => false;
 }

@@ -30,7 +30,7 @@ class WebSocket {
   final Completer<void> _closure = Completer<void>();
   Future<void> get closure => _closure.future;
   bool _closed = false;
-  
+
   void close() {
     assert(!_closed);
     assert(_socket.readyState < io.WebSocket.closing);
@@ -43,7 +43,7 @@ class WebSocket {
   }
 
   late final StreamSubscription<Object?> _subscription;
-  
+
   void _handleData(Object? data) {
     if (data is String) {
       if (onText != null) {
@@ -68,7 +68,9 @@ class WebSocket {
   }
 
   void _handleDone() {
-    assert(_socket.readyState >= io.WebSocket.closing);
+    if (_socket.readyState < io.WebSocket.closing) {
+      print('odd, $_socket is in state ${_socket.readyState} when handling done event');
+    }
     if (!_closed) {
       _closed = true;
       _closure.complete();
