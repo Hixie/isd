@@ -16,9 +16,18 @@ class WorldRoot extends StatefulWidget {
   _WorldRootState createState() => _WorldRootState();
 }
 
-class _WorldRootState extends State<WorldRoot> {
-  double _zoom = 4.0; // log scale
-  Offset _pan = Offset.zero; // meters offset from center of galaxy being in center of screen
+class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 2500),
+  );
+
+  final Tween<double> _zoomTween = Tween<double>(begin: 4.0, end: 4.0);
+  late final Animation<double> _zoom = _controller.drive(CurveTween(curve: Curves.easeInBack)).drive(_zoomTween);
+
+  final Tween<Offset> _panTween = Tween<Offset>(begin: Offset.zero, end: Offset.zero);
+  late final Animation<Offset> _pan = _controller.drive(CurveTween(curve: const Interval(0.0, 0.5, curve: Curves.easeOut))).drive(_panTween);
+
   WorldNode? _centerNode;
 
   WorldTapTarget? _currentTarget;
@@ -30,12 +39,37 @@ class _WorldRootState extends State<WorldRoot> {
     setState(() { });
   }
 
+  void _updateTo(double zoom, Offset pan) {
+    _zoomTween.end = zoom;
+    _panTween.end = pan;
+  }
+
+  void _updateSnap(double zoom, Offset pan) {
+    _centerNode = null;
+    _zoomTween.begin = zoom;
+    _zoomTween.end = zoom;
+    _panTween.begin = pan;
+    _panTween.end = pan;
+    _controller.reset();
+  }
+
+  void _updatePan(Offset newPan, double scale, { double? zoom }) {
+    final Size size = _worldRoot.size;
+    _updateSnap(zoom ?? _zoom.value, Offset(
+      _clampPan(newPan.dx, size.width / scale, widget.rootNode.diameter, size.width < size.height),
+      _clampPan(newPan.dy, size.height / scale, widget.rootNode.diameter, size.height < size.width),
+    ));
+  }
+
   void _centerOn(WorldNode node) {
-    setState(() {
-      _centerNode = node;
-      _pan = -_centerNode!.computePosition([markNeedsBuild]);
-      _zoom = log(widget.rootNode.diameter / node.diameter);
-    });
+    _centerNode = node;
+    final double zoom = log(widget.rootNode.diameter / _centerNode!.diameter);
+    final Offset pan = -_centerNode!.computePosition([markNeedsBuild]);
+    _zoomTween.begin = _zoom.value;
+    _zoomTween.end = zoom;
+    _panTween.begin = _pan.value;
+    _panTween.end = pan;
+    _controller.forward(from: 0.0);
   }
 
   double? _lastScale; // tracks into-frame scales in case scale events come in faster than the refresh rate (easy to do with a mousewheel)
@@ -45,16 +79,12 @@ class _WorldRootState extends State<WorldRoot> {
     return x.clamp(-margin, margin);
   }
 
-  // should be called inside setState
-  void _updatePan(Offset newPan, double scale) {
-    final Size size = _worldRoot.size;
-    _pan = Offset(
-      _clampPan(newPan.dx, size.width / scale, widget.rootNode.diameter, size.width < size.height),
-      _clampPan(newPan.dy, size.height / scale, widget.rootNode.diameter, size.height < size.width),
-    );
-    _centerNode = null;
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
   }
-
+  
   @override
   Widget build(BuildContext context) {
     _lastScale = null;
@@ -65,14 +95,13 @@ class _WorldRootState extends State<WorldRoot> {
             final RenderBoxToRenderWorldAdapter box = _worldRoot;
             final Size size = box.size;
             setState(() {
-              final double deltaZoom = max(0.0 - _zoom, -event.scrollDelta.dy / 1000.0);
+              final double deltaZoom = max(0.0 - _zoom.value, -event.scrollDelta.dy / 1000.0);
               // I don't understand why I need the negative sign below.
               // All the math I did suggests it should be positive, not negative.
               final sigma = -Offset(event.localPosition.dx - size.width / 2.0, event.localPosition.dy - size.height / 2.0);
               _lastScale ??= box.layoutScale;
               final double newScale = max(box.minScale, _lastScale! * exp(deltaZoom));
-              _zoom += deltaZoom;
-              _updatePan(_pan + sigma / _lastScale! - sigma / newScale, newScale);
+              _updatePan(_pan.value + sigma / _lastScale! - sigma / newScale, newScale, zoom: _zoom.value + deltaZoom);
               _lastScale = newScale;
             });
           }
@@ -86,8 +115,8 @@ class _WorldRootState extends State<WorldRoot> {
             setState(() {
               _lastScale ??= box.layoutScale;
               final double newScale = max(box.minScale, _lastScale! * details.scale);
-              _zoom += log(details.scale);
-              _updatePan(_pan + details.focalPointDelta / _lastScale!, newScale); // TODO: check that this works when you pan AND zoom
+              // TODO: check that this works when you pan AND zoom
+              _updatePan(_pan.value + details.focalPointDelta / _lastScale!, newScale, zoom: _zoom.value + log(details.scale));
               _lastScale = newScale;
             });
           });
@@ -108,13 +137,19 @@ class _WorldRootState extends State<WorldRoot> {
         child: ZoomProvider(
           state: this,
           child: ListenableBuilder(
-            listenable: widget.rootNode,
+            listenable: Listenable.merge([widget.rootNode, _controller]),
             builder: (BuildContext context, Widget? child) {
+              if (_centerNode != null) {
+                _updateTo(
+                  log(widget.rootNode.diameter / _centerNode!.diameter),
+                  -_centerNode!.computePosition([markNeedsBuild]),
+                );
+              }
               return BoxToWorldAdapter(
                 key: _worldRootKey,
                 diameter: widget.rootNode.diameter,
-                zoom: _zoom,
-                pan: _pan,
+                zoom: max(0.0, _zoom.value),
+                pan: _pan.value,
                 centerNode: _centerNode,
                 child: widget.rootNode.build(context),
               );
