@@ -72,9 +72,9 @@ of an <update> sequence:
 
 The `<systemid>` is currently always a star ID.
 
-The `<currenttime>` gives the system's current actual time, relative
-to the system's origin time (t₀), which allows positions in orbits to
-be computed.
+The `<currenttime>` gives the system's current actual time, in
+milliseconds, relative to the system's origin time (t₀), which allows
+positions in orbits to be computed.
 
 The time in the system advances at the rate of `<timefactor>` seconds
 per TAI second. The `<timefactor>` may be any finite number (including
@@ -141,7 +141,7 @@ The first `<assetid>` is the asset at the origin.
 There are many `<child>` repetitions as `<childcount>`. These children
 have two `<double>` parameters which are the distance from the origin,
 and the angle in radians clockwise from the positive x axis to that
-child.
+child (the angle may be negative).
 
 
 #### `fcOrbit` (0x03)

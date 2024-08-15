@@ -20,7 +20,7 @@ type
       function GetMaterialLineItemCount(): Cardinal;
       function GetTotalQuantity(): Cardinal;
    public
-      constructor Create(ABillOfMaterials: TMaterialLineItemArray; AMinimumFunctionalQuantity: Cardinal);
+      constructor Create(ABillOfMaterials: TMaterialLineItemArray; AMinimumFunctionalQuantity: Cardinal; ADefaultSize: Double);
       function InitFeatureNode(): TFeatureNode; override;
       property DefaultSize: Double read FDefaultSize;
       property BillOfMaterials[Index: Cardinal]: TMaterialLineItem read GetMaterialLineItem;
@@ -54,11 +54,12 @@ implementation
 uses
    isdprotocol, exceptions;
 
-constructor TStructureFeatureClass.Create(ABillOfMaterials: TMaterialLineItemArray; AMinimumFunctionalQuantity: Cardinal);
+constructor TStructureFeatureClass.Create(ABillOfMaterials: TMaterialLineItemArray; AMinimumFunctionalQuantity: Cardinal; ADefaultSize: Double);
 begin
    inherited Create();
    FBillOfMaterials := ABillOfMaterials;
    FMinimumFunctionalQuantity := AMinimumFunctionalQuantity;
+   FDefaultSize := ADefaultSize;
 end;
 
 function TStructureFeatureClass.GetFeatureNodeClass(): FeatureNodeReference;

@@ -311,6 +311,7 @@ begin
    end;
    FHomeCandidates.Length := Index;
    FHomeCandidates.Sort(@CompareDistances);
+   Writeln('Found ', Index, ' home system candidates.');
 end;
 
 procedure TGalaxyManager.ReloadHomeDatabase();
@@ -546,8 +547,12 @@ begin
          end;
       end;
       Inc(FNextHomeCandidate);
-      SaveHomeStatusFor(FNextHomeCandidate);
    end;
+   if (FNextHomeCandidate >= FHomeCandidates.Length) then
+   begin
+      raise Exception.Create('Could not find home system. Ran out of candidates.');
+   end;
+   SaveHomeStatusFor(FNextHomeCandidate);
 end;
 
 procedure TGalaxyManager.AddServerRecord(Star: TStarID; SystemServer: Cardinal);

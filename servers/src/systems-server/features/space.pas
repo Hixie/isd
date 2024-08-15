@@ -137,7 +137,7 @@ begin
    begin
       for Index := 1 to High(FChildren) do // $R-
       begin
-         Distance := PSolarSystemData(FChildren[0].ParentData)^.DistanceFromCenter;
+         Distance := PSolarSystemData(FChildren[Index].ParentData)^.DistanceFromCenter;
          Assert(Distance > 0);
          if (Distance > Result) then
          begin
@@ -198,7 +198,7 @@ begin
       end
       else
       begin
-         PSolarSystemData(Child.ParentData)^.Theta := ArcTan2(Y, X) + Pi; // $R-
+         PSolarSystemData(Child.ParentData)^.Theta := ArcTan2(Y, X); // $R-
       end;
    end;
 end;
@@ -232,7 +232,12 @@ end;
 
 function TSolarSystemFeatureNode.GetSize(): Double;
 begin
-   Result := GetFurthestDistanceFromCenter() + FFeatureClass.FStarGroupingThreshold / 2.0;
+   // The _radius_ of a solar system is the distance from the center
+   // to the furthest star plus half the distance that would lead you
+   // to the next system (because the next system is similarly going
+   // to have that kind of padding). The diameter (our size) is twice
+   // that. Hence:
+   Result := GetFurthestDistanceFromCenter() * 2.0 + FFeatureClass.FStarGroupingThreshold;
 end;
 
 function TSolarSystemFeatureNode.GetFeatureName(): UTF8String;

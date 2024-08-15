@@ -174,7 +174,7 @@ begin
       SolarSystem := System.RootNode.Features[0] as TSolarSystemFeatureNode;
       for Star in Stars do
       begin
-         SolarSystem.AddCartesianChild(FServer.Encyclopedia.CreateStarSystem(StarID), Star.DX, Star.DY); // $R-
+         SolarSystem.AddCartesianChild(FServer.Encyclopedia.CreateStarSystem(Star.StarID), Star.DX, Star.DY); // $R-
       end;
       Write(#$01);
    end
@@ -200,7 +200,7 @@ begin
       ((System.RootNode.Features[0] as TSolarSystemFeatureNode).Children[0].Features[0] as TOrbitFeatureNode).AddOrbitingChild(
          FServer.Encyclopedia.WrapAssetForOrbit(FServer.Encyclopedia.Placeholder.Spawn(Dynasty)),
          1 * AU, // SemiMajorAxis
-         1.0, // Eccentricity
+         0.0, // Eccentricity
          0.0, // ThetaZero
          0.0 // Omega
       );

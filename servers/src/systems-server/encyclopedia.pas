@@ -44,8 +44,7 @@ constructor TEncyclopedia.Create(Settings: PSettings);
 
    function CreateStarFeatures(Category: TStarCategory): TFeatureClassArray;
    begin
-      Result := [ TStructureFeatureClass.Create([ ], 0), // XXX
-                  TStarFeatureClass.Create(),
+      Result := [ TStarFeatureClass.Create(),
                   TAssetNameFeatureClass.Create() ];
    end;
 
@@ -112,7 +111,10 @@ begin
       idPlaceholder,                                   
       'Placeholder', 'Indeterminate item',
       'A McGuffin owned and controlled by a player.',
-      [ TSpaceSensorFeatureClass.Create(1, 1, 1, 4e6, [dmVisibleSpectrum]) ],
+      [
+         TSpaceSensorFeatureClass.Create(1, 1, 1, 4e6, [dmVisibleSpectrum]),
+         TStructureFeatureClass.Create([ ], 0, 200e6)
+      ],
       PlaceholderIcon
    );
    RegisterAssetClass(FPlaceholder);
@@ -157,7 +159,6 @@ begin
    Result := FStars[Category].Spawn(
       nil,
       [
-         TStructureFeatureNode.Create(FStars[Category].Features[0] as TStructureFeatureClass),
          TStarFeatureNode.Create(StarID),
          TAssetNameFeatureNode.Create(StarNameOf(StarID))
       ]
