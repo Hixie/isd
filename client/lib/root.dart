@@ -22,10 +22,14 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
     duration: const Duration(milliseconds: 2500),
   );
 
-  final Tween<double> _zoomTween = Tween<double>(begin: 4.0, end: 4.0);
+  static const double _initialZoom = 4.0;
+  static const Offset _initialPan = Offset(-3582946788187048960.0, -179685314906842080.0);
+  
+  
+  final Tween<double> _zoomTween = Tween<double>(begin: _initialZoom, end: _initialZoom);
   late final Animation<double> _zoom = _controller.drive(CurveTween(curve: Curves.easeInBack)).drive(_zoomTween);
-
-  final Tween<Offset> _panTween = Tween<Offset>(begin: Offset.zero, end: Offset.zero);
+  
+  final Tween<Offset> _panTween = Tween<Offset>(begin: _initialPan, end: _initialPan);
   late final Animation<Offset> _pan = _controller.drive(CurveTween(curve: const Interval(0.0, 0.5, curve: Curves.easeOut))).drive(_panTween);
 
   WorldNode? _centerNode;
@@ -310,7 +314,6 @@ class RenderBoxToRenderWorldAdapter extends RenderBox with RenderObjectWithChild
         zoom: zoom,
         scale: _layoutScale, // pixels per meter
         pan: size.center(pan * _layoutScale),
-        scaledPosition: Offset.zero, // distance from canvas origin to child origin, without pan
         scaledPan: scaledPan,
         scaledViewport: Rect.fromLTWH(
           -scaledPan.dx,
@@ -331,10 +334,6 @@ class RenderBoxToRenderWorldAdapter extends RenderBox with RenderObjectWithChild
 
   @override
   bool hitTest(BoxHitTestResult result, { required Offset position }) {
-    if (child == null) {
-      return false;
-    }
-    child!.hitTest(WorldHitTestResult.wrap(result), position: position);
     result.add(BoxHitTestEntry(this, position));
     return true;
   }

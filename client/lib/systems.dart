@@ -1,16 +1,17 @@
 import 'dart:typed_data';
 import 'dart:ui' show Offset;
 
+import 'abilities/sensors.dart';
+import 'abilities/stars.dart';
+import 'abilities/structure.dart';
 import 'assets.dart';
 import 'binarystream.dart';
 import 'components.dart';
 import 'connection.dart';
-import 'features/galaxy.dart';
-import 'features/orbits.dart';
-import 'features/sensors.dart';
-import 'features/space.dart';
-import 'features/stars.dart';
-import 'features/structure.dart';
+import 'containers/orbits.dart';
+import 'containers/space.dart';
+import 'nodes/galaxy.dart';
+import 'spacetime.dart';
 import 'stringstream.dart';
 
 class SystemServer {
@@ -102,17 +103,17 @@ class SystemServer {
             case fcOrbit:
               final Map<AssetNode, Orbit> children = {};
               final AssetNode originChild = _readAsset(reader);
-              children[originChild] = (a: 0, e: 0, theta: 0, omega: 0);
               final int childCount = reader.readInt32();
               for (var index = 0; index < childCount; index += 1) {
                 final double semiMajorAxis = reader.readDouble();
                 final double eccentricity = reader.readDouble();
-                final double thetaZero = reader.readDouble();
                 final double omega = reader.readDouble();
+                final int timeOrigin = reader.readInt64();
+                final bool clockwise = reader.readBool();
                 final AssetNode child = _readAsset(reader);
-                children[child] = (a: semiMajorAxis, e: eccentricity, theta: thetaZero, omega: omega);
+                children[child] = (a: semiMajorAxis, e: eccentricity, omega: omega, timeOrigin: timeOrigin, clockwise: clockwise);
               }
-              oldFeatures.remove(asset.setContainer(OrbitFeature(spaceTime, children)));
+              oldFeatures.remove(asset.setContainer(OrbitFeature(spaceTime, originChild, children)));
             case fcStructure:
               var structuralIntegrityMax = 0;
               int marker;
@@ -124,12 +125,12 @@ class SystemServer {
                 structuralIntegrityMax += materialMax;
                 final String componentName = reader.readString();
                 final String materialName = reader.readString();
-                final Material material = reader.readObject<Material>(Material.new);
+                final int materialID = reader.readInt32();
                 components.add(StructuralComponent(
                   current: materialCurrent,
                   max: materialMax == 0 ? null : materialMax,
                   name: componentName.isEmpty ? null : componentName,
-                  material: material,
+                  materialID: materialID,
                   description: materialName,
                 ));
               }

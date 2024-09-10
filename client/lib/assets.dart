@@ -1,43 +1,9 @@
-import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 
+import 'containers/orbits.dart';
 import 'dynasty.dart';
-import 'features/placeholder.dart';
-
-@immutable
-class SpaceTime {
-  const SpaceTime(this._anchorTime, this._timeFactor, this._origin);
-
-  final int _anchorTime;
-  final double _timeFactor;
-  final DateTime _origin;
-
-  static DateTime? _lastFrameTime;
-  static final Set<VoidCallback> _callbacks = {};
-  static bool _pending = false;
-
-  void _handler(Duration timestamp) {
-    _lastFrameTime = DateTime.now();
-    _pending = false;
-    for (VoidCallback callback in _callbacks) {
-      callback();
-    }
-    _callbacks.clear();
-  }
-
-  // returns local system time in seconds
-  double computeTime(List<VoidCallback> callbacks) {
-    _lastFrameTime ??= DateTime.now();
-    _callbacks.addAll(callbacks);
-    if (!_pending) {
-      SchedulerBinding.instance.scheduleFrameCallback(_handler);
-      _pending = true;
-    }
-    assert(_origin.isUtc);
-    final int realElapsed = _lastFrameTime!.difference(_origin).inMicroseconds;
-    return _anchorTime / 1e3 + (realElapsed * _timeFactor) / 1e6;
-  }
-}
+import 'nodes/placeholder.dart';
+import 'spacetime.dart';
 
 abstract class WorldNode extends ChangeNotifier {
   WorldNode({ this.parent });
@@ -56,10 +22,13 @@ abstract class WorldNode extends ChangeNotifier {
   // in meters
   double get diameter;
 
-  // in meters relative to parent
+  // in meters
+  double get maxRenderDiameter => diameter;
+
+  // in meters relative to parent, used by computePosition
   Offset findLocationForChild(WorldNode child, List<VoidCallback> callbacks);
 
-  // absolute position in meters
+  // absolute position in meters - used e.g. for centering on the child
   Offset computePosition(List<VoidCallback> callbacks) {
     addTransientListeners(callbacks);
     if (parent == null) {
@@ -70,16 +39,21 @@ abstract class WorldNode extends ChangeNotifier {
 
   final Set<VoidCallback> _transientListeners = {};
 
+  void addTransientListener(VoidCallback callback) {
+    _transientListeners.add(callback);
+  }
+
   void addTransientListeners(List<VoidCallback> callbacks) {
     _transientListeners.addAll(callbacks);
   }
 
   @override
   void notifyListeners() {
-    for (VoidCallback callback in _transientListeners) {
+    final List<VoidCallback> listeners = _transientListeners.toList();
+    _transientListeners.clear();
+    for (VoidCallback callback in listeners) {
       callback();
     }
-    _transientListeners.clear();
     super.notifyListeners();
   }
 
@@ -175,6 +149,10 @@ abstract class Feature {
 
 abstract class AbilityFeature extends Feature {
   AbilityFeature();
+
+  Widget? buildRenderer(BuildContext context, Widget? child) {
+    return null;
+  }
 }
 
 /// Features that have children.
@@ -190,7 +168,7 @@ abstract class ContainerFeature extends Feature {
 }
 
 class AssetNode extends WorldNode {
-  AssetNode({ super.parent, required this.id, });
+  AssetNode({ super.parent, required this.id });
 
   final int id;
 
@@ -212,7 +190,7 @@ class AssetNode extends WorldNode {
     }
   }
 
-  double get mass => _mass!; // meters
+  double get mass => _mass!; // kg
   double? _mass;
   set mass(double value) {
     if (_mass != value) {
@@ -221,7 +199,7 @@ class AssetNode extends WorldNode {
     }
   }
 
-  double get size => _size!; // kg
+  double get size => _size!; // meters
   double? _size;
   set size(double value) {
     if (_size != value) {
@@ -299,7 +277,16 @@ class AssetNode extends WorldNode {
 
   @override
   double get diameter {
+    assert(_size != null, 'unknown size for asset $id');
     return _size!;
+  }
+
+  @override
+  double get maxRenderDiameter {
+    if (parent is AssetNode && (parent! as AssetNode)._containers.containsKey(OrbitFeature)) {
+      return parent!.maxRenderDiameter;
+    }
+    return super.maxRenderDiameter;
   }
 
   @override
@@ -317,6 +304,17 @@ class AssetNode extends WorldNode {
     if (_containers.length == 1) {
       return _containers.values.single.buildRenderer(context, null);
     }
-    return WorldPlaceholder(diameter: diameter, color: const Color(0xFFFF0000));
+    for (AbilityFeature feature in _abilities.values) {
+      final Widget? result = feature.buildRenderer(context, null);
+      if (result != null) {
+        return result;
+      }
+    }
+    if (parent != null) {
+      parent!.addTransientListener(notifyListeners);
+      assert(parent!.diameter > 0.0, 'parent $parent has zero diameter');
+      return WorldPlaceholder(diameter: diameter, maxDiameter: parent!.maxRenderDiameter, color: const Color(0xFFFFFF00));
+    }
+    return WorldPlaceholder(diameter: diameter, maxDiameter: maxRenderDiameter, color: const Color(0xFFFF0000));
   }
 }

@@ -5,13 +5,13 @@ class StructuralComponent {
     required this.current,
     required this.max,
     required this.name,
-    required this.material,
+    required this.materialID,
     required this.description,
   });
 
   final int current;
   final int? max;
   final String? name;
-  final Material material;
+  final int materialID;
   final String description;
 }

@@ -68,9 +68,6 @@ class WebSocket {
   }
 
   void _handleDone() {
-    if (_socket.readyState < io.WebSocket.closing) {
-      print('odd, $_socket is in state ${_socket.readyState} when handling done event');
-    }
     if (!_closed) {
       _closed = true;
       _closure.complete();

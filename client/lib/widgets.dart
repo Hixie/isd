@@ -15,18 +15,11 @@ class _RenderWorldLayoutBuilder extends RenderWorld
   _RenderWorldLayoutBuilder();
 
   @override
-  WorldGeometry computeLayout(WorldConstraints constraints) {
+  void computeLayout(WorldConstraints constraints) {
     rebuildIfNecessary();
     if (child != null) {
-      child!.layout(constraints.forChild(Offset.zero), parentUsesSize: true);
-      return child!.geometry;
+      child!.layout(constraints, parentUsesSize: true);
     }
-    return WorldGeometry(shape: Circle(center: constraints.scaledPosition, diameter: 0.0));
-  }
-
-  @override
-  bool hitTestChildren(WorldHitTestResult result, { required Offset position }) {
-    return child?.hitTest(result, position: position) ?? false;
   }
 
   @override
@@ -35,10 +28,12 @@ class _RenderWorldLayoutBuilder extends RenderWorld
   }
 
   @override
-  void paint(PaintingContext context, Offset offset) {
+  WorldGeometry computePaint(PaintingContext context, Offset offset) {
     if (child != null) {
       context.paintChild(child!, offset);
+      return child!.geometry;
     }
+    return const WorldGeometry(shape: Circle(0.0));
   }
 }
 
@@ -58,12 +53,12 @@ class RenderWorldNull extends RenderWorld {
   RenderWorldNull();
 
   @override
-  WorldGeometry computeLayout(WorldConstraints constraints) {
-    return WorldGeometry(shape: Circle(center: constraints.scaledPosition, diameter: 0.0));
-  }
+  void computeLayout(WorldConstraints constraints) { }
 
   @override
-  void paint(PaintingContext context, Offset offset) { }
+  WorldGeometry computePaint(PaintingContext context, Offset offset) {
+    return const WorldGeometry(shape: Circle(0.0));
+  }
 
   @override
   WorldTapTarget? routeTap(Offset offset) => null;

@@ -513,11 +513,11 @@ class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWor
   final List<Color> _adjustedStarTypeColors = [];
 
   @override
-  WorldGeometry computeLayout(WorldConstraints constraints) {
+  void computeLayout(WorldConstraints constraints) {
     RenderWorld? child = firstChild;
     while (child != null) {
       final GalaxyParentData childParentData = child.parentData! as GalaxyParentData;
-      child.layout(constraints.forChild(childParentData.position));
+      child.layout(constraints);
       if (constraints.zoom < minReticuleZoom) {
         final TextPainter painter = childParentData._label!;
         painter.text = TextSpan(text: childParentData.label, style: _hudStyle);
@@ -530,7 +530,6 @@ class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWor
       _preparedStarsRect = constraints.scaledViewport;
     }
     _layoutLegend(constraints);
-    return WorldGeometry(shape: Circle(center: constraints.scaledPosition, diameter: diameter));
   }
 
   void _prepareStars(Rect visibleRect, Offset offset) { // visibleRect and offset are in meters
@@ -598,7 +597,7 @@ class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWor
   final LayerHandle<TransformLayer> _transformLayer = LayerHandle<TransformLayer>();
 
   @override
-  void paint(PaintingContext context, Offset offset) {
+  WorldGeometry computePaint(PaintingContext context, Offset offset) {
     if (galaxy != null) {
       final transform = Matrix4.identity()
         ..translate(offset.dx, offset.dy)
@@ -618,6 +617,7 @@ class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWor
       _drawLegend(context, Offset.zero);
       _drawHud(context, offset);
     }
+    return WorldGeometry(shape: Circle(diameter));
   }
 
   void _drawStars(PaintingContext context, Offset offset) {
@@ -895,18 +895,6 @@ class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWor
           context.canvas.drawRect(rect.deflate(0.5), debugPaintSizePaint);
         }
       }
-    }
-  }
-
-  @override
-  void hitTestChildren(WorldHitTestResult result, { required Offset position }) {
-    RenderWorld? child = firstChild;
-    while (child != null) {
-      if (child.geometry.contains(position) &&
-          child.hitTest(result, position: position)) {
-        return;
-      }
-      child = childBefore(child);
     }
   }
 

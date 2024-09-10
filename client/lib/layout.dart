@@ -11,7 +11,6 @@ class WorldConstraints extends Constraints {
     required this.zoom,
     required this.scale,
     required this.pan,
-    required this.scaledPosition,
     required this.scaledPan,
     required this.scaledViewport,
   });
@@ -20,24 +19,10 @@ class WorldConstraints extends Constraints {
   final double zoom; // logarithmic scale (0..)
   final double scale; // pixels per meter with zoom applied
   final Offset pan; // center of root node relative to canvas origin, in pixels
-  final Offset scaledPosition; // child origin relative to center of root node, in meters
   final Offset scaledPan; // center of root node relative to canvas origin, in meters
   final Rect scaledViewport; // visible area relative to center of root node, in meters
 
   double get zoomFactor => exp(zoom);
-
-  // childOffset is in meters
-  WorldConstraints forChild(Offset childOffset) {
-    return WorldConstraints(
-      viewport: viewport,
-      zoom: zoom, // the world is in a mess!
-      scale: scale,
-      pan: pan,
-      scaledPosition: scaledPosition + childOffset,
-      scaledPan: scaledPan,
-      scaledViewport: scaledViewport,
-    );
-  }
 
   @override
   bool get isTight => true;
@@ -54,24 +39,22 @@ class WorldConstraints extends Constraints {
   }
 
   @override
-  String toString() => 'WorldConstraints(x$zoom, scale=${scale}px/m, position=${scaledPosition}m, pan=${scaledPan}m viewport=${viewport}px or ${scaledViewport}m)';
+  String toString() => 'WorldConstraints(x$zoom, scale=${scale}px/m, pan=${scaledPan}m viewport=${viewport}px or ${scaledViewport}m)';
 }
 
 @immutable
 sealed class WorldShape {
-  const WorldShape(this.center);
-
-  final Offset center;
+  const WorldShape();
 
   Size get size;
 
   double get diameter => size.longestSide;
 
-  bool contains(Offset point);
+  bool contains(Offset center, Offset point);
 }
 
 class Square extends WorldShape {
-  const Square(super.center, this.sideLength);
+  const Square(this.sideLength);
 
   final double sideLength;
 
@@ -79,13 +62,13 @@ class Square extends WorldShape {
   Size get size => Size.square(sideLength);
 
   @override
-  bool contains(Offset point) {
+  bool contains(Offset center, Offset point) {
     return Rect.fromCenter(center: center, width: sideLength, height: sideLength).contains(point);
   }
 }
 
 class Circle extends WorldShape {
-  const Circle({required Offset center, required this.diameter}) : super(center);
+  const Circle(this.diameter);
 
   @override
   final double diameter;
@@ -96,7 +79,7 @@ class Circle extends WorldShape {
   Size get size => Size.square(diameter);
 
   @override
-  bool contains(Offset point) {
+  bool contains(Offset center, Offset point) {
     return (point - center).distance < radius;
   }
 }
@@ -112,7 +95,7 @@ class WorldGeometry {
   static const double minSystemRenderDiameter = 24.0; // a system less than this size is not rendered at all, and fades in...
   static const double fullyVisibleRenderDiameter = 96.0; // ...up to the point where it's at least this size.
 
-  bool contains(Offset point) => shape.contains(point);
+  bool contains(Offset center, Offset point) => shape.contains(center, point);
 }
 
 
@@ -122,21 +105,6 @@ abstract interface class WorldTapTarget {
   void handleTapDown();
   void handleTapCancel();
   void handleTapUp();
-}
-
-class WorldHitTestResult extends HitTestResult {
-  WorldHitTestResult();
-
-  WorldHitTestResult.wrap(super.result) : super.wrap();
-}
-
-class WorldHitTestEntry extends HitTestEntry {
-  WorldHitTestEntry(RenderWorld super.target, { required this.position });
-
-  @override
-  RenderWorld get target => super.target as RenderWorld;
-
-  final Offset position;
 }
 
 
@@ -157,24 +125,34 @@ abstract class RenderWorld extends RenderObject {
 
   @override
   void performLayout() {
-    _geometry = computeLayout(constraints);
+    computeLayout(constraints);
   }
 
-  WorldGeometry computeLayout(WorldConstraints constraints);
+  void computeLayout(WorldConstraints constraints);
 
   @override
-  void paint(PaintingContext context, Offset offset) { }
-
-  bool hitTest(WorldHitTestResult result, { required Offset position }) {
-    hitTestChildren(result, position: position);
-    result.add(WorldHitTestEntry(this, position: position));
-    return true;
+  @nonVirtual
+  void paint(PaintingContext context, Offset offset) {
+    assert(offset.isFinite);
+    _geometry = computePaint(context, offset);
   }
 
-  void hitTestChildren(WorldHitTestResult result, { required Offset position }) {
-    // hit test actual children
-  }
+  // offset is the distance from the canvas origin to the asset origin, in pixels
+  WorldGeometry computePaint(PaintingContext context, Offset offset);
 
+  static const double _minDiameter = 40.0;
+  static const double _maxDiameterRatio = 0.1;
+
+  double computePaintDiameter(double diameter, double maxDiameter) {
+    return min(
+      max(
+        _minDiameter,
+        diameter * constraints.scale,
+      ),
+      maxDiameter * _maxDiameterRatio * constraints.scale,
+    );
+  }
+  
   @override
   Rect get paintBounds => Offset.zero & geometry.shape.size;
 

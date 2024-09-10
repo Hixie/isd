@@ -130,18 +130,6 @@ class RenderSpace extends RenderWorld with ContainerRenderObjectMixin<RenderWorl
   }
 
   @override
-  void hitTestChildren(WorldHitTestResult result, { required Offset position }) {
-    RenderWorld? child = firstChild;
-    while (child != null) {
-      if (child.geometry.contains(position) &&
-          child.hitTest(result, position: position)) {
-        return;
-      }
-      child = childBefore(child);
-    }
-  }
-
-  @override
   void visitChildren(RenderObjectVisitor visitor) {
     RenderWorld? child = firstChild;
     while (child != null) {
@@ -152,14 +140,13 @@ class RenderSpace extends RenderWorld with ContainerRenderObjectMixin<RenderWorl
   }
 
   @override
-  WorldGeometry computeLayout(WorldConstraints constraints) {
+  void computeLayout(WorldConstraints constraints) {
     RenderWorld? child = firstChild;
     while (child != null) {
       final SpaceParentData childParentData = child.parentData! as SpaceParentData;
-      child.layout(constraints.forChild(childParentData.position));
+      child.layout(constraints);
       child = childParentData.nextSibling;
     }
-    return WorldGeometry(shape: Circle(center: constraints.scaledPosition, diameter: diameter));
   }
 
   TransformLayer? _transformLayer;
@@ -177,7 +164,7 @@ class RenderSpace extends RenderWorld with ContainerRenderObjectMixin<RenderWorl
   }
 
   @override
-  void paint(PaintingContext context, Offset offset) {
+  WorldGeometry computePaint(PaintingContext context, Offset offset) {
     final double visibleDiameter = diameter * constraints.scale;
     assert(visibleDiameter >= WorldGeometry.minSystemRenderDiameter);
     final double fade = ((visibleDiameter - WorldGeometry.minSystemRenderDiameter) / (WorldGeometry.fullyVisibleRenderDiameter - WorldGeometry.minSystemRenderDiameter)).clamp(0.0, 1.0);
@@ -189,6 +176,7 @@ class RenderSpace extends RenderWorld with ContainerRenderObjectMixin<RenderWorl
       context.paintChild(child, offset + childParentData.position * constraints.scale);
       child = childParentData.nextSibling;
     }
+    return WorldGeometry(shape: Circle(diameter));
   }
 
   @override
