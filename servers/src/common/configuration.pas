@@ -59,6 +59,7 @@ type
       MaxStarsPerHomeSystem: Cardinal;
       GalaxyDiameter: Double; // meters
       StarGroupingThreshold: Double; // meters
+      GravitionalInfluenceConstant: Double; // meters per kilogram (to compute default hill diameter of children of space features)
       DefaultTimeRate: Double; // game seconds per TAI second
    end;
 
@@ -73,6 +74,7 @@ const
    MaxStarsPerHomeSystemSetting = 'max stars per home system';
    GalaxyDiameterSetting = 'galaxy diameter'; // meters
    StarGroupingThresholdSetting = 'star grouping threshold'; // meters
+   GravitionalInfluenceConstantSetting = 'gravitational influence constant'; // meters per kilogram
    DefaultTimeRateSetting = 'default time rate'; // game seconds per TAI second
 
 function LoadSettingsConfiguration(): PSettings;
@@ -224,6 +226,11 @@ begin
             if (Setting = StarGroupingThresholdSetting) then
             begin
                Result^.StarGroupingThreshold := ReadDoubleSetting(); // $R-
+            end
+            else
+            if (Setting = GravitionalInfluenceConstantSetting) then
+            begin
+               Result^.GravitionalInfluenceConstant := ReadDoubleSetting(); // $R-
             end
             else
             if (Setting = DefaultTimeRateSetting) then

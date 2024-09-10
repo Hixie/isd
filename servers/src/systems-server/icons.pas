@@ -8,6 +8,7 @@ type
    TIcon = String[32];
 
 const
+   // Assets
    SpaceIcon: TIcon = 'outer-space';
    OrbitIcon: TIcon = 'orbit';
    Star2Icon: TIcon = 'star2';
@@ -20,6 +21,9 @@ const
    Star9Icon: TIcon = 'star9';
    Star10Icon: TIcon = 'star10';
    PlaceholderIcon: TIcon = 'placeholder';
+   UnknownIcon: TIcon = 'unknown';
+   // Materials
+   DarkMatterIcon: TIcon = 'material-dark-matter';
 
 implementation
 

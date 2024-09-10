@@ -30,6 +30,7 @@ type
       function GetSize(): Double; override;
       function GetFeatureName(): UTF8String; override;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
+      function HandleBusMessage(Message: TBusMessage): Boolean; override;
       procedure ApplyVisibility(VisibilityHelper: TVisibilityHelper); override;
       procedure InferVisibilityByIndex(DynastyIndex: Cardinal; VisibilityHelper: TVisibilityHelper); override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem); override;
@@ -38,8 +39,8 @@ type
       destructor Destroy(); override;
       procedure RecordSnapshot(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader); override;
-      function GetHillDiameter(Child: TAssetNode): Double;
-      procedure AddOrbitingChild(Child: TAssetNode; SemiMajorAxis: Double; Eccentricity: Double; ThetaZero: Double; Omega: Double);
+      function GetHillDiameter(Child: TAssetNode; ChildPrimaryMass: Double): Double;
+      procedure AddOrbitingChild(Child: TAssetNode; SemiMajorAxis: Double; Eccentricity: Double; Omega: Double; TimeOrigin: Int64; Clockwise: Boolean);
       function IAssetNameProvider.GetAssetName = GetOrbitName;
       property PrimaryChild: TAssetNode read FPrimaryChild;
       property OrbitingChildren[Index: Cardinal]: TAssetNode read GetOrbitingChild;
@@ -49,28 +50,35 @@ type
 implementation
 
 uses
-   sysutils, isdprotocol, encyclopedia;
+   sysutils, isdprotocol, encyclopedia, math;
 
 type
    POrbitData = ^TOrbitData;
    TOrbitData = record
       SemiMajorAxis: Double; // meters, must be less than Size, and more than FPrimaryChild.Size
       Eccentricity: Double; // dimensionless
-      ThetaZero: Double; // radians
       Omega: Double; // radians
-      function GetHillDiameter(Parent: TOrbitFeatureNode; Child: TAssetNode): Double; // meters
+      TimeOrigin: Int64; // milliseconds in system time
+      Clockwise: Boolean;
+      function GetHillDiameter(PrimaryMass, ChildMass: Double): Double; // meters
       function GetCanHaveOrbitalChildren(Parent: TOrbitFeatureNode; Child: TAssetNode): Boolean;
       function GetPeriod(Parent: TOrbitFeatureNode; Child: TAssetNode): Double; // seconds
    end;
 
-function TOrbitData.GetHillDiameter(Parent: TOrbitFeatureNode; Child: TAssetNode): Double;
+function TOrbitData.GetHillDiameter(PrimaryMass, ChildMass: Double): Double;
 begin
-   Result := 2.0 * SemiMajorAxis * (1.0 - Eccentricity) * SqRt(Child.Mass / (3 * Parent.PrimaryChild.Mass)); // m
+   Assert(SemiMajorAxis > 0.0, 'Cannot get hill diameter of asset with zero semimajor axis');
+   Assert(Eccentricity <> 1.0, 'Cannot get hill diameter of asset with 1.0 eccentricity axis');
+   Assert(PrimaryMass > 0.0, 'Cannot get hill diameter of asset orbiting primary with zero mass');
+   Assert(ChildMass > 0.0, 'Cannot get hill diameter of asset with zero mass');
+   Assert(PrimaryMass > ChildMass);
+   Result := 2.0 * SemiMajorAxis * (1.0 - Eccentricity) * ((ChildMass / (3 * (ChildMass + PrimaryMass))) ** 1/3); // m // $R-
 end;
 
 function TOrbitData.GetCanHaveOrbitalChildren(Parent: TOrbitFeatureNode; Child: TAssetNode): Boolean;
 begin
-   Result := GetHillDiameter(Parent, Child) > Child.Size;
+   Assert(Child.Mass > 0.0);
+   Result := GetHillDiameter(Parent.PrimaryChild.Mass, Child.Mass) > Child.Size;
 end;
 
 function TOrbitData.GetPeriod(Parent: TOrbitFeatureNode; Child: TAssetNode): Double;
@@ -101,6 +109,7 @@ constructor TOrbitFeatureNode.Create(APrimaryChild: TAssetNode);
 begin
    inherited Create();
    Assert(Assigned(APrimaryChild));
+   Assert(APrimaryChild.Mass > 0, 'Primary child "' + APrimaryChild.AssetName + '" (class "' + APrimaryChild.AssetClass.Name + '") has zero mass');
    AdoptChild(APrimaryChild);
    FPrimaryChild := APrimaryChild;
 end;
@@ -132,20 +141,23 @@ begin
    DropChild(Child);
 end;
 
-function TOrbitFeatureNode.GetHillDiameter(Child: TAssetNode): Double;
+function TOrbitFeatureNode.GetHillDiameter(Child: TAssetNode; ChildPrimaryMass: Double): Double;
 begin
    Assert(Assigned(Child.ParentData));
-   Result := POrbitData(Child.ParentData)^.GetHillDiameter(Self, Child);
+   Assert(ChildPrimaryMass <= Child.Mass);
+   Assert(ChildPrimaryMass <= PrimaryChild.Mass);
+   Result := POrbitData(Child.ParentData)^.GetHillDiameter(PrimaryChild.Mass, ChildPrimaryMass);
 end;
 
-procedure TOrbitFeatureNode.AddOrbitingChild(Child: TAssetNode; SemiMajorAxis: Double; Eccentricity: Double; ThetaZero: Double; Omega: Double);
+procedure TOrbitFeatureNode.AddOrbitingChild(Child: TAssetNode; SemiMajorAxis: Double; Eccentricity: Double; Omega: Double; TimeOrigin: Int64; Clockwise: Boolean);
 begin
    Assert(Child.AssetClass.ID = idOrbits);
    AdoptOrbitingChild(Child);
    POrbitData(Child.ParentData)^.SemiMajorAxis := SemiMajorAxis;
    POrbitData(Child.ParentData)^.Eccentricity := Eccentricity;
-   POrbitData(Child.ParentData)^.ThetaZero := ThetaZero;
    POrbitData(Child.ParentData)^.Omega := Omega;
+   POrbitData(Child.ParentData)^.TimeOrigin := TimeOrigin;
+   POrbitData(Child.ParentData)^.Clockwise := Clockwise;
    SetLength(FChildren, Length(FChildren) + 1);
    FChildren[High(FChildren)] := Child;
 end;
@@ -172,6 +184,7 @@ var
    Index: Cardinal;
 begin
    Result := PrimaryChild.Mass;
+   Assert(Result > 0.0, 'Primary child of orbit has zero mass.');
    if (OrbitingChildCount > 0) then
       for Index := 0 to OrbitingChildCount-1 do // $R-
          Result := Result + OrbitingChildren[Index].Mass;
@@ -181,7 +194,8 @@ function TOrbitFeatureNode.GetSize(): Double;
 begin
    if (Parent.Parent is IHillDiameterProvider) then
    begin
-      Result := (Parent.Parent as IHillDiameterProvider).GetHillDiameter(Parent);
+      Result := (Parent.Parent as IHillDiameterProvider).GetHillDiameter(Parent, PrimaryChild.Mass);
+      Assert(Result > 0.0, 'Zero hill diameter returned by "' + Parent.Parent.ClassName + '" of asset "' + Parent.Parent.Parent.AssetName + '" (of class "' + Parent.Parent.Parent.AssetClass.Name + '")');
    end
    else
    begin
@@ -202,6 +216,22 @@ begin
    FPrimaryChild.Walk(PreCallback, PostCallback);
    for Child in FChildren do
       Child.Walk(PreCallback, PostCallback);
+end;
+
+function TOrbitFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
+var
+   Child: TAssetNode;
+begin
+   Result := FPrimaryChild.HandleBusMessage(Message);
+   if (not Result) then
+   begin
+      for Child in FChildren do
+      begin
+         Result := Child.HandleBusMessage(Message);
+         if (Result) then
+            exit;
+      end;
+   end;
 end;
 
 procedure TOrbitFeatureNode.ApplyVisibility(VisibilityHelper: TVisibilityHelper);
@@ -234,8 +264,9 @@ begin
    begin
       Writer.WriteDouble(POrbitData(Child.ParentData)^.SemiMajorAxis);
       Writer.WriteDouble(POrbitData(Child.ParentData)^.Eccentricity);
-      Writer.WriteDouble(POrbitData(Child.ParentData)^.ThetaZero);
       Writer.WriteDouble(POrbitData(Child.ParentData)^.Omega);
+      Writer.WriteInt64(POrbitData(Child.ParentData)^.TimeOrigin);
+      Writer.WriteBoolean(POrbitData(Child.ParentData)^.Clockwise);
       Writer.WritePtrUInt(Child.ID(System));
    end;
 end;
@@ -252,8 +283,9 @@ begin
       Journal.WriteAssetNodeReference(Child);
       Journal.WriteDouble(POrbitData(Child.ParentData)^.SemiMajorAxis);
       Journal.WriteDouble(POrbitData(Child.ParentData)^.Eccentricity);
-      Journal.WriteDouble(POrbitData(Child.ParentData)^.ThetaZero);
       Journal.WriteDouble(POrbitData(Child.ParentData)^.Omega);
+      Journal.WriteInt64(POrbitData(Child.ParentData)^.TimeOrigin);
+      Journal.WriteBoolean(POrbitData(Child.ParentData)^.Clockwise);
    end;
 end;
 
@@ -262,14 +294,17 @@ procedure TOrbitFeatureNode.ApplyJournal(Journal: TJournalReader);
    procedure AddChild();
    var
       Child: TAssetNode;
-      SemiMajorAxis, Eccentricity, ThetaZero, Omega: Double;
+      SemiMajorAxis, Eccentricity, Omega: Double;
+      TimeOrigin: Int64;
+      Clockwise: Boolean;
    begin
       Child := Journal.ReadAssetNodeReference();
       SemiMajorAxis := Journal.ReadDouble();
       Eccentricity := Journal.ReadDouble();
-      ThetaZero := Journal.ReadDouble();
       Omega := Journal.ReadDouble();
-      AddOrbitingChild(Child, SemiMajorAxis, Eccentricity, ThetaZero, Omega);
+      TimeOrigin := Journal.ReadInt64();
+      Clockwise := Journal.ReadBoolean();
+      AddOrbitingChild(Child, SemiMajorAxis, Eccentricity, Omega, TimeOrigin, Clockwise);
    end;
 
    procedure DeleteChild(Child: TAssetNode);

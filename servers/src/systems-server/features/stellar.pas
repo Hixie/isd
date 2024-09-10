@@ -23,6 +23,7 @@ type
       function GetSize(): Double; override;
       function GetFeatureName(): UTF8String; override;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
+      function HandleBusMessage(Message: TBusMessage): Boolean; override;
       procedure ApplyVisibility(VisibilityHelper: TVisibilityHelper); override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem); override;
       function GetAssetName(): UTF8String;
@@ -112,6 +113,11 @@ end;
 
 procedure TStarFeatureNode.Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback);
 begin
+end;
+
+function TStarFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
+begin
+   Result := False;
 end;
 
 procedure TStarFeatureNode.ApplyVisibility(VisibilityHelper: TVisibilityHelper);

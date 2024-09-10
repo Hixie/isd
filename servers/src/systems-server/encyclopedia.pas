@@ -14,6 +14,7 @@ type
          FAssetClasses: TAssetClassHashTable; 
          FSpace, FOrbits, FPlaceholder: TAssetClass;
          FStars: array[TStarCategory] of TAssetClass;
+         FDarkMatter: TMaterial;
       function GetStarClass(Category: TStarCategory): TAssetClass;
    protected
       function GetAssetClass(ID: Integer): TAssetClass; override;
@@ -30,10 +31,13 @@ type
    end;
 
 const
+   // built-in asset classes
    idSpace = -1;
    idOrbits = -2;
    idPlaceholder = -3;
    idStars = -100;
+   // built-in materials
+   idDarkMatter = -1;
 
 implementation
 
@@ -58,7 +62,7 @@ begin
       'Space',
       'Space',
       'A region of outer space.',
-      [ TSolarSystemFeatureClass.Create(Settings^.StarGroupingThreshold) ],
+      [ TSolarSystemFeatureClass.Create(Settings^.StarGroupingThreshold, Settings^.GravitionalInfluenceConstant) ],
       SpaceIcon
    );
    RegisterAssetClass(FSpace);
@@ -107,13 +111,24 @@ begin
       if (Assigned(AssetClass)) then
          RegisterAssetClass(AssetClass);
 
+   FDarkMatter := TMaterial.Create(
+      idDarkMatter,
+      'Dark Matter',
+      'A murky black material',
+      'The most fundamental and least useful material in the universe, used only for placeholders.',
+      DarkMatterIcon,
+      ukBulkResource,
+      1e-3, // smallest unit is 1 gram
+      1.0 // kg per m^3
+   );
+   
    FPlaceholder := TAssetClass.Create(
       idPlaceholder,                                   
       'Placeholder', 'Indeterminate item',
       'A McGuffin owned and controlled by a player.',
       [
          TSpaceSensorFeatureClass.Create(1, 1, 1, 4e6, [dmVisibleSpectrum]),
-         TStructureFeatureClass.Create([ ], 0, 200e6)
+         TStructureFeatureClass.Create([TMaterialLineItem.Create('Shell', FDarkMatter, 10000000)], 0, 200e6)
       ],
       PlaceholderIcon
    );
@@ -125,6 +140,7 @@ var
    AssetClass: TAssetClass;
 begin
    FPlaceholder.Free();
+   FDarkMatter.Free();
    for AssetClass in FStars do
       AssetClass.Free();
    FOrbits.Free();

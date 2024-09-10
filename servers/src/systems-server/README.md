@@ -33,7 +33,7 @@ of an <update> sequence:
 
 <systemid>          ::= <integer> ; the star ID of the canonical star, if any
 
-<currenttime>       ::= 64 bit integer ; current time relative to system's t₀
+<currenttime>       ::= <time> ; current time relative to system's t₀
 
 <timefactor>        ::= <double> ; rate of time in system (usually 500.0)
 
@@ -63,6 +63,10 @@ of an <update> sequence:
 
 <string>            ::= <integer> [ <integer> <byte>* ] ; see below
 
+<bitflag>           ::= 8 bits
+
+<time>              ::= 64 bit integer ; milliseconds
+
 <double>            ::= 64 bit float
 
 <integer>           ::= 32 bit unsigned integer
@@ -91,6 +95,8 @@ the asset's mass in kg, the asset's rough diameter in meters, the
 asset's name (if any; this is often the empty string), the icon name,
 a class name (brief description of the object, e.g. "star", "planet",
 "ship"), and a longer description of the object.
+
+The diameter is always bigger than zero.
 
 The class name may vary in precision based on the knowledge that the
 dynasty's observing asset has. The icon generally does not vary.
@@ -149,19 +155,74 @@ child (the angle may be negative).
 ```bnf
 <featuredata>       ::= <assetid> <orbitcount> <orbit>*
 <orbitcount>        ::= <integer>
-<orbit>             ::= <double>{4} <assetid>
+<orbit>             ::= <double>{3} <time> <direction> <assetid>
+<direction>         ::= <bitflag> ; 0x01 or 0x00
 ```
 
 There are as many `<orbit>` repetitions as specified by
 `<orbitcount>`. The first `<assetid>` is the child at the focal point.
 
-The four `<double>` parameters for the `<orbit>` children are the
-semi-major axis (in meters), eccentricity, theta (position around the
-ordit in radians) at time zero (t₀), and omega (tilt of the orbit
-around the focal point in radians clockwise from the positive x axis).
+The three `<double>` parameters for the `<orbit>` children are the
+semi-major axis (in meters), the eccentricity, and _omega_ (tilt of
+the orbit around the focal point in radians clockwise from the
+positive x axis). The `<time>` is the orbit time origin, which is the
+number of milliseconds after the system's zero time at which to
+consider the orbit's zero time (t₀), at which point the child is at
+periapsis. The `<direction>` is 0x01 if the orbit is clockwise, and
+0x00 if it's counter-clockwise. The other 31 bits are reserved for
+future flags.
 
 The current position is computed from the current system time and the
-time factor.
+time factor, as follows:
+
+   Let _t_ be the current system time minus the orbit time origin.
+   Let _a_ be the orbit's semi-major axis.
+   Let _e_ be the orbit's eccentricity.
+   Let _G_ be the gravitational constant, defined for ISD as 6.67430e-11.
+   Let _M_ be the mass of the child at the focal point.
+   Let _T_ be the orbital period,
+     computed as `2*pi*sqrt((a^3)/(G*M))`.
+   Let _tau_ be the fraction of the period,
+     computed as `(t % T) / T`.
+   Let _q_ be the approximation constant,
+     computed as `-0.99*pi/4*(e-3*sqrt(e))`.
+   Let _theta_ be the estimate of the angle from the focal point on the
+     semi major axis to the orbital child, which when e=0.0 is
+     computed as `2*pi*tau`, and when e>0.0 is
+     computed as `2*pi*(tan(tau*2*q - q) - (tan(-q))) / (tan(q)-tan(-q))`,
+     then negated if _direction_ is counter-clockwise.
+   Let _L_ be the semi lactus rectum length,
+     computed as `a * (1 - e*e)`.
+   Let _r_ be the distance between the orbiting child and the child
+     at the focal point,
+     computed as `L / (1 + e * cos(theta))`.
+
+The position of the child relative to the focal point is thus:
+
+    x = r * cos(theta + omega)
+    y = r * sin(theta + omega)
+
+The orbit can be further described by an ellipse whose components are
+computed as follows:
+
+   Let _b_ be computed as `a * sqrt(1 - e*e)`.
+   Let _c_ be computed as `e * a`.
+   Let _w_ be computed as `a * 2`.
+   Let _h_ be computed as `b * 2`.
+
+The orbit itself is the ellipse that fills the rectangle whose center
+is _c_ to the left of the focal point, with width _w_ and _h_, rotated
+about the center by _omega_.
+
+The `q` and `theta` values in particular are vague approximations for
+gameplay purposes and are not empirically accurate.
+
+It is guaranteed that for an orbit that is itself the child of an
+asset's orbit feature, if that parent orbit's focal point child's mass
+is M*, and the parent orbit's semi-major axis is a' and the parent
+orbit's eccentricity is e', then:
+
+    ((1 + e) * a) / ((1 - e') * a') < cuberoot(M / (3 * (M + M*)))
 
 
 #### `fcStructure` (0x04)
@@ -174,7 +235,7 @@ time factor.
 <max>               ::= <integer>
 <componentname>     ::= <string>
 <materialname>      ::= <string>
-<materialid>        ::= <integer> ; non-zero material id
+<materialid>        ::= <integer> ; non-zero material id, or zero if it's not recognized
 <hp>                ::= <integer>
 <minhp>             ::= <integer>
 ```
@@ -189,17 +250,17 @@ following data:
  * how much of the material is present.
  * how much of the material is required (0 if the asset class is not known).
  * the name of the component (an empty string if the asset class is not known).
- * a brief description of the material.
- * the ID of the material.
+ * a brief description of the material (may not be unique).
+ * the ID of the material, or zero if the material is not recognized.
 
 Material IDs (`<materialid>`) are connection-specific.
 
 Material line items that have zero material present are skipped when
 the asset class is not known.
 
-The description of the material in this list can be ignored if the
-material is known, as the material data will have a more detailed
-description.
+The description of the material in this list (`<materialname>`) can be
+ignored if the material is known, as the material data (found in a
+knowledge base) will have a more detailed description.
 
 The list of material line items is terminated by a zero (instead of
 the 0xFFFFFFFF marker).
@@ -216,8 +277,7 @@ material line items (which may be incomplete if the asset class is not
 known). The current structural integrity can't be greater than the sum
 of the quantities of material preset.
 
-TODO: Currently the material IDs are opaque.
-      Currently the structural integrity values have no effect.
+TODO: Currently the structural integrity values have no effect.
 
 
 ### `fcSpaceSensor` (0x05)

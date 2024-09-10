@@ -8,6 +8,15 @@ uses
    systems, serverstream;
 
 type
+   TMaterialLineItem = record // 24 bytes
+      ComponentName: UTF8String;
+      Material: TMaterial;
+      Quantity: Cardinal; // units of material
+      constructor Create(AComponentName: UTF8String; AMaterial: TMaterial; AQuantity: Cardinal);
+   end;
+
+   TMaterialLineItemArray = array of TMaterialLineItem;
+
    TStructureFeatureClass = class(TFeatureClass)
    strict private
       FDefaultSize: Double;
@@ -34,15 +43,19 @@ type
       FFeatureClass: TStructureFeatureClass;
       FMaterialsQuantity: Cardinal; // 0.0 .. TStructureFeatureClass.TotalQuantity
       FStructuralIntegrity: Cardinal; // 0.0 .. FMaterialsQuantity
+      FDynastyKnowledge: array of TKnowledgeSummary; // for each item in the bill of materials, which dynasties know about it here
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass); override;
       function GetMass(): Double; override; // kg
       function GetSize(): Double; override; // m
       function GetFeatureName(): UTF8String; override;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
-      procedure ApplyVisibility(VisibilityHelper: TVisibilityHelper); override;
+      function HandleBusMessage(Message: TBusMessage): Boolean; override;
+      procedure ResetVisibility(DynastyCount: Cardinal); override;
+      procedure HandleVisibility(const DynastyIndex: Cardinal; var Visibility: TVisibility; const Sensors: ISensorProvider; const VisibilityHelper: TVisibilityHelper); override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem); override;
    public
-      constructor Create(AFeatureClass: TStructureFeatureClass);
+      constructor Create(AFeatureClass: TStructureFeatureClass; AMaterialsQuantity: Cardinal; AStructuralIntegrity: Cardinal);
+      destructor Destroy(); override;
       procedure RecordSnapshot(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader); override;
       property MaterialsQuantity: Cardinal read FMaterialsQuantity; // how much of the feature's bill of materials is actually present
@@ -53,6 +66,14 @@ implementation
 
 uses
    isdprotocol, exceptions;
+
+constructor TMaterialLineItem.Create(AComponentName: UTF8String; AMaterial: TMaterial; AQuantity: Cardinal);
+begin
+   ComponentName := AComponentName;
+   Material := AMaterial;
+   Quantity := AQuantity;
+end;
+
 
 constructor TStructureFeatureClass.Create(ABillOfMaterials: TMaterialLineItemArray; AMinimumFunctionalQuantity: Cardinal; ADefaultSize: Double);
 begin
@@ -69,7 +90,7 @@ end;
 
 function TStructureFeatureClass.InitFeatureNode(): TFeatureNode;
 begin
-   Result := TStructureFeatureNode.Create(Self);
+   Result := TStructureFeatureNode.Create(Self, 0, 0);
 end;
 
 function TStructureFeatureClass.GetMaterialLineItem(Index: Cardinal): TMaterialLineItem;
@@ -98,11 +119,23 @@ begin
 end;
 
 
-constructor TStructureFeatureNode.Create(AFeatureClass: TStructureFeatureClass);
+constructor TStructureFeatureNode.Create(AFeatureClass: TStructureFeatureClass; AMaterialsQuantity: Cardinal; AStructuralIntegrity: Cardinal);
+var
+   Index: Cardinal;
 begin
    inherited Create();
    Assert(Assigned(AFeatureClass));
    FFeatureClass := AFeatureClass;
+   FMaterialsQuantity := AMaterialsQuantity;
+   FStructuralIntegrity := AStructuralIntegrity;
+   SetLength(FDynastyKnowledge, FFeatureClass.BillOfMaterialsLength);
+   if (FFeatureClass.BillOfMaterialsLength > 0) then
+   begin
+      for Index := 0 to FFeatureClass.BillOfMaterialsLength - 1 do // $R-
+      begin
+         Assert(not Assigned(FDynastyKnowledge[Index].AsRawPointer));
+      end;
+   end;
 end;
 
 constructor TStructureFeatureNode.CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass);
@@ -110,6 +143,21 @@ begin
    inherited CreateFromJournal(Journal, AFeatureClass);
    Assert(Assigned(AFeatureClass));
    FFeatureClass := AFeatureClass as TStructureFeatureClass;
+   SetLength(FDynastyKnowledge, FFeatureClass.BillOfMaterialsLength);
+end;
+
+destructor TStructureFeatureNode.Destroy();
+var
+   Index: Cardinal;
+begin
+   if (FFeatureClass.BillOfMaterialsLength > 0) then
+   begin
+      for Index := 0 to FFeatureClass.BillOfMaterialsLength - 1 do // $R-
+      begin
+         FDynastyKnowledge[Index].Done();
+      end;
+   end;
+   inherited;
 end;
 
 function TStructureFeatureNode.GetMass(): Double; // kg
@@ -156,8 +204,39 @@ procedure TStructureFeatureNode.Walk(PreCallback: TPreWalkCallback; PostCallback
 begin
 end;
 
-procedure TStructureFeatureNode.ApplyVisibility(VisibilityHelper: TVisibilityHelper);
+function TStructureFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
 begin
+   Result := False;
+end;
+
+procedure TStructureFeatureNode.ResetVisibility(DynastyCount: Cardinal);
+var
+   Index: Cardinal;
+begin
+   Assert(Length(FDynastyKnowledge) = FFeatureClass.BillOfMaterialsLength);
+   if (FFeatureClass.BillOfMaterialsLength > 0) then
+   begin
+      for Index := 0 to FFeatureClass.BillOfMaterialsLength - 1 do // $R-
+      begin
+         FDynastyKnowledge[Index].Init(DynastyCount);
+      end;
+   end;
+end;
+
+procedure TStructureFeatureNode.HandleVisibility(const DynastyIndex: Cardinal; var Visibility: TVisibility; const Sensors: ISensorProvider; const VisibilityHelper: TVisibilityHelper);
+var
+   MaterialLibrary: TMaterialHashSet;
+   Index: Cardinal;
+begin
+   MaterialLibrary := Sensors.GetKnownMaterials();
+   if (FFeatureClass.BillOfMaterialsLength > 0) then
+   begin
+      for Index := 0 to FFeatureClass.BillOfMaterialsLength - 1 do // $R-
+      begin
+         if (MaterialLibrary.Has(FFeatureClass.BillOfMaterials[Index].Material)) then
+            FDynastyKnowledge[Index].SetEntry(DynastyIndex, True);
+      end;
+   end;
 end;
 
 procedure TStructureFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem);
@@ -199,7 +278,14 @@ begin
                Writer.WriteStringReference(''); // component name unknown
             end;
             Writer.WriteStringReference(FFeatureClass.BillOfMaterials[Index].Material.AmbiguousName);
-            Writer.WritePtrUInt(FFeatureClass.BillOfMaterials[Index].Material.ID(System));
+            if (FDynastyKnowledge[Index].GetEntry(DynastyIndex)) then
+            begin
+               Writer.WriteInt32(FFeatureClass.BillOfMaterials[Index].Material.ID);
+            end
+            else
+            begin
+               Writer.WriteInt32(0);
+            end;
          end
          else
             break;

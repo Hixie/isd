@@ -13,12 +13,13 @@ type
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    protected
       FStarGroupingThreshold: Double;
+      FGravitionalInfluenceConstant: Double;
    public
-      constructor Create(AStarGroupingThreshold: Double);
+      constructor Create(AStarGroupingThreshold: Double; AGravitionalInfluenceConstant: Double);
       function InitFeatureNode(): TFeatureNode; override;
    end;
 
-   TSolarSystemFeatureNode = class(TFeatureNode, IAssetNameProvider)
+   TSolarSystemFeatureNode = class(TFeatureNode, IAssetNameProvider, IHillDiameterProvider)
    private
       FFeatureClass: TSolarSystemFeatureClass;
       FChildren: array of TAssetNode;
@@ -30,10 +31,12 @@ type
       procedure AdoptSolarSystemChild(Child: TAssetNode);
       procedure DropSolarSystemChild(Child: TAssetNode);
       procedure MarkAsDirty(DirtyKinds: TDirtyKinds; ChangeKinds: TChangeKinds); override;
+      procedure AddPolarChild(Child: TAssetNode; Distance, Theta: Double; HillDiameter: Double = 0.0); // meters
       function GetMass(): Double; override;
       function GetSize(): Double; override;
       function GetFeatureName(): UTF8String; override;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
+      function HandleBusMessage(Message: TBusMessage): Boolean; override;
       procedure ApplyVisibility(VisibilityHelper: TVisibilityHelper); override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem); override;
    public
@@ -42,8 +45,9 @@ type
       procedure RecordSnapshot(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader); override;
       procedure AddCartesianChild(Child: TAssetNode; X, Y: Double); // meters, first must be at 0,0
-      procedure AddPolarChild(Child: TAssetNode; Distance, Theta: Double); // meters
+      procedure ComputeHillSpheres(); // call this after all stars have been added
       function GetAssetName(): UTF8String;
+      function GetHillDiameter(Child: TAssetNode; ChildPrimaryMass: Double): Double;
       property Children[Index: Cardinal]: TAssetNode read GetChild;
       property ChildCount: Cardinal read GetChildCount;
    end;
@@ -71,12 +75,14 @@ type
    TSolarSystemData = record
       DistanceFromCenter: Double; // meters
       Theta: Double; // radians clockwise from positive x axis
+      HillDiameter: Double; // meters
    end;
 
-constructor TSolarSystemFeatureClass.Create(AStarGroupingThreshold: Double);
+constructor TSolarSystemFeatureClass.Create(AStarGroupingThreshold: Double; AGravitionalInfluenceConstant: Double);
 begin
    inherited Create();
    FStarGroupingThreshold := AStarGroupingThreshold;
+   FGravitionalInfluenceConstant := AGravitionalInfluenceConstant;
 end;
 
 function TSolarSystemFeatureClass.GetFeatureNodeClass(): FeatureNodeReference;
@@ -203,7 +209,7 @@ begin
    end;
 end;
 
-procedure TSolarSystemFeatureNode.AddPolarChild(Child: TAssetNode; Distance, Theta: Double); // meters
+procedure TSolarSystemFeatureNode.AddPolarChild(Child: TAssetNode; Distance, Theta: Double; HillDiameter: Double = 0.0); // meters
 begin
    Assert(Child.AssetClass.ID = idOrbits);
    AdoptSolarSystemChild(Child);
@@ -211,6 +217,7 @@ begin
    FChildren[High(FChildren)] := Child;
    PSolarSystemData(Child.ParentData)^.DistanceFromCenter := Distance;
    PSolarSystemData(Child.ParentData)^.Theta := Theta;
+   PSolarSystemData(Child.ParentData)^.HillDiameter := HillDiameter;
 end;
 
 procedure TSolarSystemFeatureNode.MarkAsDirty(DirtyKinds: TDirtyKinds; ChangeKinds: TChangeKinds);
@@ -253,6 +260,19 @@ begin
       Child.Walk(PreCallback, PostCallback);
 end;
 
+function TSolarSystemFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
+var
+   Child: TAssetNode;
+begin
+   for Child in FChildren do
+   begin
+      Result := Child.HandleBusMessage(Message);
+      if (Result) then
+         exit;
+   end;
+   Result := False;
+end;
+
 procedure TSolarSystemFeatureNode.ApplyVisibility(VisibilityHelper: TVisibilityHelper);
 begin
    Assert(Assigned(Parent));
@@ -289,6 +309,7 @@ begin
       Journal.WriteAssetNodeReference(Child);
       Journal.WriteDouble(PSolarSystemData(Child.ParentData)^.DistanceFromCenter);
       Journal.WriteDouble(PSolarSystemData(Child.ParentData)^.Theta);
+      Journal.WriteDouble(PSolarSystemData(Child.ParentData)^.HillDiameter);
    end;
 end;
 
@@ -297,12 +318,13 @@ procedure TSolarSystemFeatureNode.ApplyJournal(Journal: TJournalReader);
    procedure AddChild();
    var
       AssetNode: TAssetNode;
-      Distance, Theta: Double;
+      Distance, Theta, HillDiameter: Double;
    begin
       AssetNode := Journal.ReadAssetNodeReference();
       Distance := Journal.ReadDouble();
       Theta := Journal.ReadDouble();
-      AddPolarChild(AssetNode, Distance, Theta);
+      HillDiameter := Journal.ReadDouble();
+      AddPolarChild(AssetNode, Distance, Theta, HillDiameter);
    end;
 
    procedure DeleteChild(Child: TAssetNode);
@@ -356,6 +378,46 @@ begin
    end;
 end;
 
+procedure TSolarSystemFeatureNode.ComputeHillSpheres();
+
+   function ComputeDistance(Child1, Child2: TAssetNode): Double; inline;
+   var
+      R1, R2, Theta1, Theta2: Double;
+   begin
+      R1 := PSolarSystemData(Child1.ParentData)^.DistanceFromCenter;
+      Theta1 := PSolarSystemData(Child1.ParentData)^.Theta;
+      R2 := PSolarSystemData(Child2.ParentData)^.DistanceFromCenter;
+      Theta2 := PSolarSystemData(Child2.ParentData)^.Theta;
+      Result := Sqrt(R1 * R1 + R2 * R2 - 2 * R1 * R2 * Cos(Theta1 - Theta2)); // $R-
+   end;
+   
+var
+   CandidateHillRadius: Double;
+   MaxRadius: Double;
+   HalfDistance: Double;
+   Index, SubIndex: Cardinal;
+begin
+   Assert(Length(FChildren) > 0);
+   MaxRadius := FFeatureClass.FStarGroupingThreshold / 2.0;
+   for Index := Low(FChildren) to High(FChildren) do // $R-
+   begin
+      CandidateHillRadius := FChildren[Index].Mass * FFeatureClass.FGravitionalInfluenceConstant / 2.0;
+      if (CandidateHillRadius > MaxRadius) then
+         CandidateHillRadius := MaxRadius;
+      for SubIndex := Low(FChildren) to High(FChildren) do // $R-
+      begin
+         if (Index <> SubIndex) then
+         begin
+            HalfDistance := ComputeDistance(FChildren[Index], FChildren[SubIndex]) / 2.0;
+            if (CandidateHillRadius > HalfDistance) then
+               CandidateHillRadius := HalfDistance;
+         end;
+      end;
+      PSolarSystemData(FChildren[Index].ParentData)^.HillDiameter := CandidateHillRadius * 2.0;
+   end;
+   
+end;
+
 function TSolarSystemFeatureNode.GetAssetName(): UTF8String;
 begin
    if (Length(FChildren) > 0) then
@@ -366,6 +428,11 @@ begin
    begin
       Result := 'Unchartered space'; // TODO: find a better name for this? "Sector 13" or whatever
    end;
+end;
+
+function TSolarSystemFeatureNode.GetHillDiameter(Child: TAssetNode; ChildPrimaryMass: Double): Double;
+begin
+   Result := PSolarSystemData(Child.ParentData)^.HillDiameter;
 end;
 
 end.

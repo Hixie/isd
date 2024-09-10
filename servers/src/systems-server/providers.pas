@@ -9,7 +9,7 @@ uses
 
 type
    IHillDiameterProvider = interface ['IHillDiameterProvider']
-      function GetHillDiameter(Child: TAssetNode): Double;
+      function GetHillDiameter(Child: TAssetNode; ChildPrimaryMass: Double): Double;
    end;
 
    IAssetNameProvider = interface ['IAssetNameProvider']

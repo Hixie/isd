@@ -449,21 +449,24 @@ begin
    begin
       FullBuffer := FIPCBuffer.Serialize(False);
       Reader := TBinaryStreamReader.Create(FullBuffer);
-      BufferLength := Reader.ReadCardinal();
-      if (SizeOf(Cardinal) + BufferLength <= Length(FullBuffer)) then
-      begin
-         FIPCBuffer.Consume(SizeOf(Cardinal) + BufferLength); // $R-
-         Reader.Reset();
-         if (Reader.ReadString() <> GetInternalPassword()) then
+      try
+         BufferLength := Reader.ReadCardinal();
+         if (SizeOf(Cardinal) + BufferLength <= Length(FullBuffer)) then
          begin
-            Disconnect();
-         end
-         else
-         begin
-            FMode := cmControlMessages;
+            FIPCBuffer.Consume(SizeOf(Cardinal) + BufferLength); // $R-
+            Reader.Reset();
+            if (Reader.ReadString() <> GetInternalPassword()) then
+            begin
+               Disconnect();
+            end
+            else
+            begin
+               FMode := cmControlMessages;
+            end;
          end;
+      finally
+         FreeAndNil(Reader);
       end;
-      FreeAndNil(Reader);
    end;
 end;
 

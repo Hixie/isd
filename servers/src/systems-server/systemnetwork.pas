@@ -92,7 +92,7 @@ type
 implementation
 
 uses
-   sysutils, hashfunctions, isdprotocol, passwords, exceptions, space, orbit, errors;
+   sysutils, hashfunctions, isdprotocol, passwords, exceptions, space, orbit, sensors, structure, errors;
 
 constructor TSystemHashTable.Create();
 begin
@@ -176,6 +176,7 @@ begin
       begin
          SolarSystem.AddCartesianChild(FServer.Encyclopedia.CreateStarSystem(Star.StarID), Star.DX, Star.DY); // $R-
       end;
+      SolarSystem.ComputeHillSpheres();
       Write(#$01);
    end
    else
@@ -198,11 +199,17 @@ begin
       end;
       Assert(Dynasty.DynastyServerID = DynastyServerID);
       ((System.RootNode.Features[0] as TSolarSystemFeatureNode).Children[0].Features[0] as TOrbitFeatureNode).AddOrbitingChild(
-         FServer.Encyclopedia.WrapAssetForOrbit(FServer.Encyclopedia.Placeholder.Spawn(Dynasty)),
+         FServer.Encyclopedia.WrapAssetForOrbit(FServer.Encyclopedia.Placeholder.Spawn(
+            Dynasty, [
+               TSpaceSensorFeatureNode.Create(FServer.Encyclopedia.Placeholder.Features[0] as TSpaceSensorFeatureClass),
+               TStructureFeatureNode.Create(FServer.Encyclopedia.Placeholder.Features[1] as TStructureFeatureClass, 10000000, 10000000)
+            ]
+         )),
          1 * AU, // SemiMajorAxis
          0.0, // Eccentricity
-         0.0, // ThetaZero
-         0.0 // Omega
+         0.0, // Omega
+         0, // TimeOffset
+         True // Clockwise
       );
       // TODO: actual plot
       Write(#$01);

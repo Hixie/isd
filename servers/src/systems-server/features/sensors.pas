@@ -19,7 +19,9 @@ type
       function InitFeatureNode(): TFeatureNode; override;
    end;
 
-   TSpaceSensorFeatureNode = class(TFeatureNode)
+   TSpaceSensorFeatureNode = class(TFeatureNode, ISensorProvider)
+   private
+      FKnownMaterials: TMaterialHashSet;
    protected
       FFeatureClass: TSpaceSensorFeatureClass;
       FLastBottom, FLastTop: TAssetNode;
@@ -29,10 +31,12 @@ type
       function GetSize(): Double; override;
       function GetFeatureName(): UTF8String; override;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
+      function HandleBusMessage(Message: TBusMessage): Boolean; override;
       procedure ApplyVisibility(VisibilityHelper: TVisibilityHelper); override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem); override;
    public
       constructor Create(AFeatureClass: TSpaceSensorFeatureClass);
+      function GetKnownMaterials(): TMaterialHashSet;
       procedure RecordSnapshot(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader); override;
    end;
@@ -40,7 +44,7 @@ type
 implementation
 
 uses
-   sysutils, orbit, isdprotocol, typedump;
+   sysutils, orbit, isdprotocol, typedump, knowledge;
 
 constructor TSpaceSensorFeatureClass.Create(AMaxStepsToOrbit, AStepsUpFromOrbit, AStepsDownFromTop: Cardinal; AMinSize: Double; ASensorKind: TVisibility);
 begin
@@ -95,16 +99,26 @@ procedure TSpaceSensorFeatureNode.Walk(PreCallback: TPreWalkCallback; PostCallba
 begin
 end;
 
+function TSpaceSensorFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
+begin
+   Result := False;
+end;
+
 procedure TSpaceSensorFeatureNode.ApplyVisibility(VisibilityHelper: TVisibilityHelper);
 var
    Depth, Target: Cardinal;
+   OwnerIndex: Cardinal;
 
    function SenseDown(Asset: TAssetNode): Boolean;
+   var
+      Visibility: TVisibility;
    begin
       if (Asset.Size >= FFeatureClass.FMinSize) then
       begin
-         VisibilityHelper.AddSpecificVisibility(Parent.Owner, FFeatureClass.FSensorKind, Asset);
-         Inc(FLastCountDetected);
+         Visibility := FFeatureClass.FSensorKind;
+         Asset.HandleVisibility(OwnerIndex, Visibility, Self, VisibilityHelper);
+         if (Visibility <> []) then
+            Inc(FLastCountDetected);
       end;
       Result := Depth < Target;
       Inc(Depth);
@@ -119,11 +133,13 @@ var
    Index, ActualStepsUp: Cardinal;
    NearestOrbit, Feature: TFeatureNode;
 begin
+   Assert(not Assigned(FKnownMaterials));
    FLastBottom := nil;
    FLastTop := nil;
    FLastCountDetected := 0;
    if (not Assigned(Parent.Owner)) then
       exit; // no dynasty owns this sensor, nothing to apply
+   OwnerIndex := VisibilityHelper.GetDynastyIndex(Parent.Owner);
    Feature := Self;
    Index := 0;
    while (Assigned(Feature) and not (Feature is TOrbitFeatureNode) and (Index < FFeatureClass.FMaxStepsToOrbit)) do
@@ -161,6 +177,24 @@ begin
          Dec(Index);
       end;
    end;
+   if (Assigned(FKnownMaterials)) then
+   begin
+      FreeAndNil(FKnownMaterials);
+   end;
+end;
+
+function TSpaceSensorFeatureNode.GetKnownMaterials(): TMaterialHashSet;
+var
+   Message: TCollectKnownMaterialsMessage;
+begin
+   if (not Assigned(FKnownMaterials)) then
+   begin
+      FKnownMaterials := TMaterialHashSet.Create();
+      Message := TCollectKnownMaterialsMessage.Create(FKnownMaterials, Parent.Owner);
+      InjectBusMessage(Message);
+      FreeAndNil(Message);
+   end;
+   Result := FKnownMaterials;
 end;
 
 procedure TSpaceSensorFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem);
