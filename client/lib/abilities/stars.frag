@@ -83,17 +83,17 @@ const vec2 origin = vec2(0.0, 0.0);
 void main() {
   float magnitude = 2.0;
   vec3 spectrum = vec3(10.0, 5.0, 1.0);
-  vec3 colorDelta = vec3(
-    mix(0.5, 1.05, fractalNoise1(time / 500.0)),
-    mix(0.5, 1.05, fractalNoise1(time / 500.0 + 123.0)),
-    mix(0.5, 1.05, fractalNoise1(time / 500.0 + 711.0))
+  spectrum *= vec3(
+    mix(0.4, 1.1, fractalNoise1(time / 500.0)),
+    mix(0.4, 1.0, fractalNoise1(time / 480.0)),
+    mix(0.0, 2.0, fractalNoise1(time / 2000.0))
   );
 
   vec2 pixelPos = FlutterFragCoord().xy;
   float radius = diameter / 2.0;
   float distanceFromCenter = 2.0 * distance(pixelPos, center) / diameter;
-  vec3 starBody = spectrum * clamp(pow(2.0 - distanceFromCenter, magnitude) - 1.0, 0.0, 1.0) * fractalNoise2(pixelPos - center, origin - diameter, origin + diameter) * colorDelta;
-  vec3 starGlow = spectrum * max(2.0 - distanceFromCenter, 0.0) * 0.03 * colorDelta;
+  vec3 starBody = spectrum * clamp(pow(2.0 - distanceFromCenter, magnitude) - 1.0, 0.0, 1.0) * fractalNoise2(pixelPos - center, origin - diameter, origin + diameter);
+  vec3 starGlow = spectrum * max(2.0 - distanceFromCenter, 0.0) * 0.03;
 
   fragColor = vec4(starBody + starGlow, 1.0);
 }
