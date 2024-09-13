@@ -14,7 +14,7 @@ float rand(in float q) {
 }
 
 float rand(in vec2 q) {
-  return rand(rand(q.x + 987123.9) + rand(q.y - 128973.2)); // these numbers come from keyboard smashing
+  return rand(rand(q.x * 1.1) + rand(q.y - 0.1));
 }
 
 float noise1(in float q, in float cellSize) {
@@ -33,14 +33,14 @@ float fractalNoise1(in float q) {
          + noise1(q, 1.0) * 0.4;
 }
 
-float noise2(in vec2 q, in vec2 minRange, in vec2 maxRange, in vec2 cellSize) { // minRange.x <= q.x < maxRange.x; minRange.y <= q.y < maxRange.y
+float noise2(in vec2 q, in vec2 minRange, in vec2 maxRange, in float cellCount) { // minRange.x <= q.x < maxRange.x; minRange.y <= q.y < maxRange.y
   // normalize q to 0..1
   q -= minRange;
   maxRange -= minRange;
   q /= maxRange;
   
-  // divide the grid into chunks of size cellSize
-  q *= cellSize;
+  // divide the grid into cellCount chunks in each direction
+  q *= cellCount;
   
   // find position within chunk
   vec2 p = smoothstep(0.0, 1.0, fract(q));
@@ -60,18 +60,27 @@ float noise2(in vec2 q, in vec2 minRange, in vec2 maxRange, in vec2 cellSize) { 
   return mix(ab, cd, p.y);
 }
 
+#define kIterations 7
+#define kScaleFactor 2.0
+#define kAmplitudeFactor 0.5
+
 float fractalNoise2(in vec2 uv, in vec2 minRange, in vec2 maxRange) {
-  return noise2(uv, minRange, maxRange, vec2(80.0, 80.0)) * 0.1
-       + noise2(uv, minRange, maxRange, vec2(40.0, 40.0)) * 0.2
-       + noise2(uv, minRange, maxRange, vec2(20.0, 20.0)) * 0.3
-       + noise2(uv, minRange, maxRange, vec2(10.0, 10.0)) * 0.4;
+  float cellCount = 10.0;
+  float amplitude = 0.4;
+  float total = 0.0;
+  float max = 0.0;
+  for (int index = 0; index < kIterations; index += 1) {
+    total += noise2(uv, minRange, maxRange, cellCount) * amplitude;
+    max += amplitude;
+    cellCount *= kScaleFactor;
+    amplitude *= kAmplitudeFactor;
+  }
+  return total / max;
 }
 
 const vec2 origin = vec2(0.0, 0.0);
 
 void main() {
-  vec2 currentPos = FlutterFragCoord().xy;
-
   float magnitude = 2.0;
   vec3 spectrum = vec3(10.0, 5.0, 1.0);
   vec3 colorDelta = vec3(
@@ -80,9 +89,10 @@ void main() {
     mix(0.5, 1.05, fractalNoise1(time / 500.0 + 711.0))
   );
 
+  vec2 pixelPos = FlutterFragCoord().xy;
   float radius = diameter / 2.0;
-  float distanceFromCenter = 2.0 * distance(currentPos, center) / diameter;
-  vec3 starBody = spectrum * clamp(pow(2.0 - distanceFromCenter, magnitude) - 1.0, 0.0, 1.0) * fractalNoise2(currentPos - center, origin - diameter, origin + diameter) * colorDelta;
+  float distanceFromCenter = 2.0 * distance(pixelPos, center) / diameter;
+  vec3 starBody = spectrum * clamp(pow(2.0 - distanceFromCenter, magnitude) - 1.0, 0.0, 1.0) * fractalNoise2(pixelPos - center, origin - diameter, origin + diameter) * colorDelta;
   vec3 starGlow = spectrum * max(2.0 - distanceFromCenter, 0.0) * 0.03 * colorDelta;
 
   fragColor = vec4(starBody + starGlow, 1.0);
