@@ -37,7 +37,7 @@ abstract class WorldNode extends ChangeNotifier {
     return parent!.computePosition(callbacks) + parent!.findLocationForChild(this, callbacks);
   }
 
-  final Set<VoidCallback> _transientListeners = {};
+  final Set<VoidCallback> _transientListeners = <VoidCallback>{};
 
   void addTransientListener(VoidCallback callback) {
     _transientListeners.add(callback);
@@ -59,7 +59,7 @@ abstract class WorldNode extends ChangeNotifier {
 
   // returns local system time in seconds
   double computeTime(SpaceTime spaceTime, List<VoidCallback> callbacks) {
-    return spaceTime.computeTime([notifyListeners, ...callbacks]);
+    return spaceTime.computeTime(<VoidCallback>[notifyListeners, ...callbacks]);
   }
 
   Widget build(BuildContext context) {

@@ -81,7 +81,7 @@ class Connection {
   final Map<int, _Conversation> _conversations = <int, _Conversation>{};
 
   Future<void> _loop(String url) async {
-    var connectDelay = const Duration(seconds: 1);
+    Duration connectDelay = const Duration(seconds: 1);
     while (_active) {
       try {
         try {
@@ -133,7 +133,7 @@ class Connection {
   void _textHandler(String message) {
     _resetTimer();
     log('$url received ${prettyText(message)}');
-    final reader = StreamReader(message);
+    final StreamReader reader = StreamReader(message);
     if (reader.readString() == 'reply') {
       final int conversationId = reader.readInt();
       final bool success = reader.readBool();
@@ -170,7 +170,7 @@ class Connection {
   }
 
   _Conversation _prepareConversation(int conversationId, List<Object> messageParts, { required bool queue }) {
-    final message = StreamWriter();
+    final StreamWriter message = StreamWriter();
     message.writeInt(conversationId);
     for (Object value in messageParts) {
       if (value is String) {
@@ -219,7 +219,7 @@ class Connection {
   }
 
   static String prettyText(String message) {
-    final result = StringBuffer();
+    final StringBuffer result = StringBuffer();
     for (int code in message.runes) {
       if (code == 0) {
         result.write('␀');
@@ -233,8 +233,8 @@ class Connection {
   }
 
   static String prettyBytes(Iterable<int> message) {
-    final bits = <String>[];
-    final buffer = <int>[];
+    final List<String> bits = <String>[];
+    final List<int> buffer = <int>[];
     bool? isText;
     int? lastInteger;
 
@@ -243,7 +243,7 @@ class Connection {
       final int thisInteger = (buffer[0]) + (buffer[1] << 8) + (buffer[2] << 16) + (buffer[3] << 24);
       late double value;
       if (lastInteger != null && bits.isNotEmpty) {
-        final scratch = ByteData(8);
+        final ByteData scratch = ByteData(8);
         scratch.setUint32(0, lastInteger!, Endian.little);
         scratch.setUint32(4, thisInteger, Endian.little);
         value = scratch.getFloat64(0, Endian.little);

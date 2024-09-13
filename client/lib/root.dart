@@ -68,7 +68,7 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
   void _centerOn(WorldNode node) {
     _centerNode = node;
     final double zoom = log(widget.rootNode.diameter / _centerNode!.diameter);
-    final Offset pan = -_centerNode!.computePosition([markNeedsBuild]);
+    final Offset pan = -_centerNode!.computePosition(<VoidCallback>[markNeedsBuild]);
     _zoomTween.begin = _zoom.value;
     _zoomTween.end = zoom;
     _panTween.begin = _pan.value;
@@ -102,7 +102,7 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
               final double deltaZoom = max(0.0 - _zoom.value, -event.scrollDelta.dy / 1000.0);
               // I don't understand why I need the negative sign below.
               // All the math I did suggests it should be positive, not negative.
-              final sigma = -Offset(event.localPosition.dx - size.width / 2.0, event.localPosition.dy - size.height / 2.0);
+              final Offset sigma = -Offset(event.localPosition.dx - size.width / 2.0, event.localPosition.dy - size.height / 2.0);
               _lastScale ??= box.layoutScale;
               final double newScale = max(box.minScale, _lastScale! * exp(deltaZoom));
               _updatePan(_pan.value + sigma / _lastScale! - sigma / newScale, newScale, zoom: _zoom.value + deltaZoom);
@@ -141,12 +141,12 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
         child: ZoomProvider(
           state: this,
           child: ListenableBuilder(
-            listenable: Listenable.merge([widget.rootNode, _controller]),
+            listenable: Listenable.merge(<Listenable?>[widget.rootNode, _controller]),
             builder: (BuildContext context, Widget? child) {
               if (_centerNode != null) {
                 _updateTo(
                   log(widget.rootNode.diameter / _centerNode!.diameter),
-                  -_centerNode!.computePosition([markNeedsBuild]),
+                  -_centerNode!.computePosition(<VoidCallback>[markNeedsBuild]),
                 );
               }
               return BoxToWorldAdapter(

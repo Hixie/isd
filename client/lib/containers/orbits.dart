@@ -86,14 +86,14 @@ class OrbitFeature extends ContainerFeature {
 
   @override
   Widget buildRenderer(BuildContext context, Widget? child) {
-    final List<Widget> childList = [
+    final List<Widget> childList = <Widget>[
       OrbitChildData(
         mass: originChild.mass,
         orbit: nilOrbit,
         child: originChild.build(context),
       ),
     ];
-    var radius = 0.0;
+    double radius = 0.0;
     for (AssetNode asset in children.keys) {
       final Orbit orbit = children[asset]!;
       final double childRadius = orbit.a * (1 + orbit.e) + asset.diameter / 2.0;
@@ -234,7 +234,7 @@ class RenderOrbit extends RenderWorld with ContainerRenderObjectMixin<RenderWorl
     assert(child != null);
     final OrbitParentData primaryChildParentData = child!.parentData! as OrbitParentData;
     final double primaryMass = primaryChildParentData.mass;
-    final double time = spaceTime.computeTime([markNeedsPaint]);
+    final double time = spaceTime.computeTime(<VoidCallback>[markNeedsPaint]);
     child = primaryChildParentData.nextSibling;
     while (child != null) {
       final OrbitParentData childParentData = child.parentData! as OrbitParentData;
@@ -244,7 +244,7 @@ class RenderOrbit extends RenderWorld with ContainerRenderObjectMixin<RenderWorl
       if (debugPaintSizeEnabled) {
         final double semiMinorAxis = childParentData.orbit.a * sqrt(1 - childParentData.orbit.e * childParentData.orbit.e);
         final double center = childParentData.orbit.e * childParentData.orbit.a; // distance from focal point to center of ellipse, along major axis
-        final oval = Rect.fromCenter(
+        final Rect oval = Rect.fromCenter(
           center: Offset(center, 0.0) * constraints.scale,
           width: childParentData.orbit.a * 2.0 * constraints.scale,
           height: semiMinorAxis * 2.0 * constraints.scale,

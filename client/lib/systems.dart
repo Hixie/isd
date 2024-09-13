@@ -57,14 +57,14 @@ class SystemServer {
   }
 
   void _handleUpdate(Uint8List message) {
-    final now = DateTime.timestamp();
-    final reader = BinaryStreamReader(message, _connection.codeTables);
+    final DateTime now = DateTime.timestamp();
+    final BinaryStreamReader reader = BinaryStreamReader(message, _connection.codeTables);
     while (!reader.done) {
       final int systemID = reader.readInt32();
       final SystemNode system = _systems.putIfAbsent(systemID, () => SystemNode(id: systemID));
       final int timeOrigin = reader.readInt64();
       final double timeFactor = reader.readDouble();
-      final spaceTime = SpaceTime(timeOrigin, timeFactor, now);
+      final SpaceTime spaceTime = SpaceTime(timeOrigin, timeFactor, now);
       final int rootAssetID = reader.readInt64();
       system.root = _assets.putIfAbsent(rootAssetID, () => AssetNode(id: rootAssetID));
       final double x = reader.readDouble();
@@ -87,13 +87,13 @@ class SystemServer {
           switch (featureCode) {
             case fcStar:
               final int starId = reader.readInt32();
-              oldFeatures.remove(asset.setAbility(StarFeature(starId)));
+              oldFeatures.remove(asset.setAbility(StarFeature(spaceTime, starId)));
             case fcSpace:
-              final Map<AssetNode, SpaceChild> children = {};
+              final Map<AssetNode, SpaceChild> children = <AssetNode, SpaceChild>{};
               final AssetNode primaryChild = _readAsset(reader);
               children[primaryChild] = (r: 0, theta: 0);
               final int childCount = reader.readInt32();
-              for (var index = 0; index < childCount; index += 1) {
+              for (int index = 0; index < childCount; index += 1) {
                 final double distance = reader.readDouble();
                 final double theta = reader.readDouble();
                 final AssetNode child = _readAsset(reader);
@@ -101,10 +101,10 @@ class SystemServer {
               }
               oldFeatures.remove(asset.setContainer(SpaceFeature(children)));
             case fcOrbit:
-              final Map<AssetNode, Orbit> children = {};
+              final Map<AssetNode, Orbit> children = <AssetNode, Orbit>{};
               final AssetNode originChild = _readAsset(reader);
               final int childCount = reader.readInt32();
-              for (var index = 0; index < childCount; index += 1) {
+              for (int index = 0; index < childCount; index += 1) {
                 final double semiMajorAxis = reader.readDouble();
                 final double eccentricity = reader.readDouble();
                 final double omega = reader.readDouble();
@@ -115,9 +115,9 @@ class SystemServer {
               }
               oldFeatures.remove(asset.setContainer(OrbitFeature(spaceTime, originChild, children)));
             case fcStructure:
-              var structuralIntegrityMax = 0;
+              int structuralIntegrityMax = 0;
               int marker;
-              final List<StructuralComponent> components = [];
+              final List<StructuralComponent> components = <StructuralComponent>[];
               while ((marker = reader.readInt32()) != 0) {
                 assert(marker == 0xFFFFFFFF);
                 final int materialCurrent = reader.readInt32();

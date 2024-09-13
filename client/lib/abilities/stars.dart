@@ -1,11 +1,17 @@
+import 'dart:ui';
+
 import 'package:flutter/widgets.dart';
 
 import '../assets.dart';
 import '../layout.dart';
+import '../shaders.dart';
+import '../spacetime.dart';
 
 class StarFeature extends AbilityFeature {
-  StarFeature(this.starId);
+  StarFeature(this.spaceTime, this.starId);
+  
   final int starId;
+  final SpaceTime spaceTime;
 
   @override
   Widget? buildRenderer(BuildContext context, Widget? child) {
@@ -13,6 +19,7 @@ class StarFeature extends AbilityFeature {
       starId: starId,
       diameter: parent.diameter,
       maxDiameter: parent.maxRenderDiameter,
+      spaceTime: spaceTime,
     );
   }
 }
@@ -23,11 +30,13 @@ class StarWidget extends LeafRenderObjectWidget {
     required this.starId,
     required this.diameter,
     required this.maxDiameter,
+    required this.spaceTime,
   });
 
   final int starId;
   final double diameter;
   final double maxDiameter;
+  final SpaceTime spaceTime;
 
   @override
   RenderStar createRenderObject(BuildContext context) {
@@ -35,6 +44,8 @@ class StarWidget extends LeafRenderObjectWidget {
       starId: starId,
       diameter: diameter,
       maxDiameter: maxDiameter,
+      shaders: ShaderProvider.of(context),
+      spaceTime: spaceTime,
     );
   }
 
@@ -43,7 +54,9 @@ class StarWidget extends LeafRenderObjectWidget {
     renderObject
       ..starId = starId
       ..diameter = diameter
-      ..maxDiameter = maxDiameter;
+      ..maxDiameter = maxDiameter
+      ..shaders = ShaderProvider.of(context)
+      ..spaceTime = spaceTime;
   }
 }
 
@@ -52,15 +65,20 @@ class RenderStar extends RenderWorld {
     required int starId,
     required double diameter,
     required double maxDiameter,
+    required ShaderLibrary shaders,
+    required SpaceTime spaceTime,
   }) : _starId = starId,
        _diameter = diameter,
-       _maxDiameter = maxDiameter;
+       _maxDiameter = maxDiameter,
+       _shaders = shaders,
+       _spaceTime = spaceTime;
 
   int get starId => _starId;
   int _starId;
   set starId (int value) {
     if (value != _starId) {
       _starId = value;
+      _starShader = null;
       markNeedsLayout();
     }
   }
@@ -82,18 +100,47 @@ class RenderStar extends RenderWorld {
       markNeedsLayout();
     }
   }
+
+  ShaderLibrary get shaders => _shaders;
+  ShaderLibrary _shaders;
+  set shaders (ShaderLibrary value) {
+    if (value != _shaders) {
+      _shaders = value;
+      _starShader = null;
+      markNeedsPaint();
+    }
+  }
+
+  SpaceTime get spaceTime => _spaceTime;
+  SpaceTime _spaceTime;
+  set spaceTime (SpaceTime value) {
+    if (value != _spaceTime) {
+      _spaceTime = value;
+      markNeedsPaint();
+    }
+  }
   
   @override
   void computeLayout(WorldConstraints constraints) { }
 
-  static final Paint _paint = Paint()
-    ..color = const Color(0xFFEE9900);
-
+  FragmentShader? _starShader;
+  final Paint _starPaint = Paint();
+  
   @override
   WorldGeometry computePaint(PaintingContext context, Offset offset) {
     // TODO: starId-based paint
-    context.canvas.drawCircle(offset, computePaintDiameter(diameter, maxDiameter) / 2.0, _paint);
-    return WorldGeometry(shape: Circle(diameter));
+    _starShader ??= shaders.stars(0); // TODO: use actual star category id
+    final double time = spaceTime.computeTime(<VoidCallback>[markNeedsPaint]);
+    final double actualDiameter = computePaintDiameter(diameter, maxDiameter) / 2.0;
+    _starShader!.setFloat(uT, time);
+    _starShader!.setFloat(uX, offset.dx);
+    _starShader!.setFloat(uY, offset.dy);
+    _starShader!.setFloat(uD, actualDiameter);
+    _starPaint.shader = _starShader;
+    // The texture we draw onto is intentionally much bigger than the star so
+    // that the star can have solar flares and such.
+    context.canvas.drawRect(Rect.fromCircle(center: offset, radius: actualDiameter), _starPaint);
+    return WorldGeometry(shape: Circle(actualDiameter));
   }
   
   @override

@@ -2,8 +2,8 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 class CodeTables {
-  final Map<int, String> _strings = {};
-  final Map<int, Object> _objects = {};
+  final Map<int, String> _strings = <int, String>{};
+  final Map<int, Object> _objects = <int, Object>{};
 }
 
 typedef ObjectReader = Object Function();
@@ -87,9 +87,9 @@ class BinaryStreamReader {
 }
 
 String hexDump(Uint8List bytes) {
-  final out = StringBuffer('creating binary stream from:\n');
-  final s = StringBuffer();
-  for (var index = 0; index < bytes.length; index += 1) {
+  final StringBuffer out = StringBuffer('creating binary stream from:\n');
+  final StringBuffer s = StringBuffer();
+  for (int index = 0; index < bytes.length; index += 1) {
     final int c = bytes[index];
     out.write(' ${c.toRadixString(16).padLeft(2, "0")}');
     if (c >= 0x20 && c <= 0x7e) {

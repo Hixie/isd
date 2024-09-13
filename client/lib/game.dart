@@ -37,7 +37,7 @@ class Game {
 
   final GalaxyNode rootNode = GalaxyNode();
 
-  final Set<ErrorHandler> _errorHandlers = {};
+  final Set<ErrorHandler> _errorHandlers = <ErrorHandler>{};
   void addErrorHandler(ErrorHandler handler) {
     assert(!_errorHandlers.contains(handler));
     _errorHandlers.add(handler);
@@ -201,7 +201,7 @@ class Game {
       final StreamReader reader = await _dynastyServer!.send(<String>['login', _currentToken!], queue: false);
       rootNode.setCurrentDynastyId(reader.readInt());
       final int serverCount = reader.readInt();
-      for (var index = 0; index < serverCount; index += 1) {
+      for (int index = 0; index < serverCount; index += 1) {
         systemServers.add(SystemServer(
           reader.readString(),
           _currentToken!,

@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 import 'connection.dart';
 import 'game.dart';
 import 'root.dart';
+import 'shaders.dart';
 
 void main() async {
   print('INTERSTELLAR DYNASTIES CLIENT');
@@ -18,8 +19,12 @@ void main() async {
         return true;
       return false;
     };
+  final ShaderLibrary shaders = await ShaderLibrary.initialize();
   final LocalStorageInterface localStorage = await LocalStorage.getInstance();
-  final game = Game(localStorage.getString('username'), localStorage.getString('password'));
+  final Game game = Game(
+    localStorage.getString('username'),
+    localStorage.getString('password'),
+  );
   game.credentials.addListener(() {
     final Credentials? value = game.credentials.value;
     if (value == null) {
@@ -30,13 +35,14 @@ void main() async {
       localStorage.setString('password', value.password);
     }
   });
-  runApp(GameRoot(game: game));
+  runApp(GameRoot(game: game, shaders: shaders));
 }
 
 class GameRoot extends StatelessWidget {
-  const GameRoot({super.key, required this.game});
+  const GameRoot({super.key, required this.game, required this.shaders});
 
   final Game game;
+  final ShaderLibrary shaders;
 
   @override
   Widget build(BuildContext context) {
@@ -49,7 +55,10 @@ class GameRoot extends StatelessWidget {
           value: SystemUiOverlayStyle.light, // TODO: make this depend on the actual UI
           child: Material(
             type: MaterialType.transparency,
-            child: InterstellarDynasties(game: game),
+            child: ShaderProvider(
+              shaders: shaders,
+              child: InterstellarDynasties(game: game),
+            ),
           ),
         ),
       ),

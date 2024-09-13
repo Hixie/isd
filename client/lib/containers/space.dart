@@ -49,7 +49,7 @@ class SpaceFeature extends ContainerFeature {
       diameter: parent.diameter,
       children: children.keys.map((AssetNode assetChild) {
         return SpaceChildData(
-          position: findLocationForChild(assetChild, [parent.notifyListeners]),
+          position: findLocationForChild(assetChild, <VoidCallback>[parent.notifyListeners]),
           child: assetChild.build(context, ),
         );
       }).toList(),
@@ -152,7 +152,7 @@ class RenderSpace extends RenderWorld with ContainerRenderObjectMixin<RenderWorl
   TransformLayer? _transformLayer;
 
   Paint _blackFadePaint(double fade, Offset offset, double radius) {
-    final Color black = const Color(0xFF000000).withOpacity(fade);
+    final Color black = const Color(0xFF000000).withValues(alpha: fade);
     return Paint()
       ..shader = Gradient.radial(
         offset,

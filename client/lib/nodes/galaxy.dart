@@ -29,11 +29,11 @@ class Galaxy {
     final Uint32List data = rawdata.buffer.asUint32List();
     assert(data[0] == 1, 'galaxy raw data first dword is ${data[0]}');
     final int categoryCount = data[1];
-    final categories = <Float32List>[];
+    final List<Float32List> categories = <Float32List>[];
     int indexSource = 2 + categoryCount;
-    for (var category = 0; category < categoryCount; category += 1) {
-      final target = Float32List(data[2 + category] * 2);
-      var indexTarget = 0;
+    for (int category = 0; category < categoryCount; category += 1) {
+      final Float32List target = Float32List(data[2 + category] * 2);
+      int indexTarget = 0;
       while (indexTarget < target.length) {
         target[indexTarget] = data[indexSource] * diameter / _maxCoordinate;
         indexTarget += 1;
@@ -65,8 +65,8 @@ class Galaxy {
 
   List<int> hitTest(Offset target, double threshold) {
     // in meters
-    final result = <int>[];
-    for (var category = 0; category < stars.length; category += 1) {
+    final List<int> result = <int>[];
+    for (int category = 0; category < stars.length; category += 1) {
       final int firstCandidate = _binarySearchY(stars[category], target.dy - threshold);
       final int lastCandidate = _binarySearchY(stars[category], target.dy + threshold, firstCandidate);
       for (int index = firstCandidate; index < lastCandidate; index += 1) {
@@ -95,9 +95,9 @@ class Galaxy {
       }
       return false;
     }
-    for (var category = 0; category < stars.length; category += 1) {
+    for (int category = 0; category < stars.length; category += 1) {
       final int index = _binarySearchY(stars[category], target.dy);
-      var subindex = 1;
+      int subindex = 1;
       while ((index - subindex) >= 0) {
         if (test(category, index - subindex)) {
           break;
@@ -226,7 +226,7 @@ class GalaxyNode extends WorldNode {
         builder: (BuildContext context, Widget? child) {
           final bool visible = childNode.diameter * scale >= WorldGeometry.minSystemRenderDiameter;
           return GalaxyChildData(
-            position: findLocationForChild(childNode, [markChildrenDirty]),
+            position: findLocationForChild(childNode, <VoidCallback>[markChildrenDirty]),
             label: childNode.label,
             child: visible ? child! : const WorldNull(),
             onTap: () {
@@ -508,9 +508,9 @@ class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWor
   double _legendLength = 0.0;
 
   Rect? _preparedStarsRect;
-  final List<Float32List> _starPoints = [];
-  final List<Vertices?> _starVertices = [];
-  final List<Color> _adjustedStarTypeColors = [];
+  final List<Float32List> _starPoints = <Float32List>[];
+  final List<Vertices?> _starVertices = <Vertices?>[];
+  final List<Color> _adjustedStarTypeColors = <Color>[];
 
   @override
   void computeLayout(WorldConstraints constraints) {
@@ -538,17 +538,17 @@ class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWor
     final double dy = offset.dy - radius;
     // filter galaxy to visible stars
     _starPoints.clear();
-    for (var categoryIndex = 0; categoryIndex < galaxy!.stars.length; categoryIndex += 1) {
+    for (int categoryIndex = 0; categoryIndex < galaxy!.stars.length; categoryIndex += 1) {
       final StarType starType = _starTypes[categoryIndex];
       final Float32List allStars = galaxy!.stars[categoryIndex];
       final double maxStarDiameter = max(starType.strokeWidth(constraints.zoom), starType.blurWidth(constraints.zoomFactor) ?? 0.0);
-      final xMin = visibleRect.left + radius - maxStarDiameter;
-      final xMax = visibleRect.right + radius + maxStarDiameter;
-      final yMin = visibleRect.top + radius - maxStarDiameter;
-      final yMax = visibleRect.bottom + radius + maxStarDiameter;
-      final visibleStars = Float32List(allStars.length);
-      var count = 0;
-      for (var starIndex = 0; starIndex < allStars.length; starIndex += 2) {
+      final double xMin = visibleRect.left + radius - maxStarDiameter;
+      final double xMax = visibleRect.right + radius + maxStarDiameter;
+      final double yMin = visibleRect.top + radius - maxStarDiameter;
+      final double yMax = visibleRect.bottom + radius + maxStarDiameter;
+      final Float32List visibleStars = Float32List(allStars.length);
+      int count = 0;
+      for (int starIndex = 0; starIndex < allStars.length; starIndex += 2) {
         if (allStars[starIndex] >= xMin && allStars[starIndex] < xMax &&
             allStars[starIndex + 1] >= yMin && allStars[starIndex + 1] < yMax) {
           visibleStars[count] = allStars[starIndex] + dx;
@@ -561,17 +561,17 @@ class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWor
     // prepare vertices for tiny stars
     _starVertices.clear();
     _adjustedStarTypeColors.clear();
-    for (var categoryIndex = 0; categoryIndex < galaxy!.stars.length; categoryIndex += 1) {
+    for (int categoryIndex = 0; categoryIndex < galaxy!.stars.length; categoryIndex += 1) {
       final StarType starType = _starTypes[categoryIndex];
       final double starDiameter = starType.strokeWidth(constraints.zoom);
-      const pixelTriangleRadius = 1.0;
+      const double pixelTriangleRadius = 1.0;
       if (starType.blur == null && (starDiameter * constraints.scale < pixelTriangleRadius * 2.0)) {
         final double triangleRadius = pixelTriangleRadius / constraints.scale;
         assert((triangleRadius * 2) > starDiameter, '$triangleRadius vs $starDiameter');
         final Float32List points = _starPoints[categoryIndex];
         final int count = points.length ~/ 2;
-        final vertices = Float32List(count * 12);
-        for (var starIndex = 0; starIndex < count; starIndex += 1) {
+        final Float32List vertices = Float32List(count * 12);
+        for (int starIndex = 0; starIndex < count; starIndex += 1) {
           vertices[starIndex * 12 + 0] = points[starIndex * 2 + 0];
           vertices[starIndex * 12 + 1] = points[starIndex * 2 + 1] - triangleRadius;
           vertices[starIndex * 12 + 2] = points[starIndex * 2 + 0] - triangleRadius;
@@ -585,10 +585,10 @@ class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWor
           vertices[starIndex * 12 + 10] = points[starIndex * 2 + 0] + triangleRadius;
           vertices[starIndex * 12 + 11] = points[starIndex * 2 + 1];
         }
-        _adjustedStarTypeColors.add(starType.color.withOpacity(starType.color.opacity * min(starDiameter / (triangleRadius * 2.0), 1.0)));
+        _adjustedStarTypeColors.add(starType.color.withValues(alpha: starType.color.a * min(starDiameter / (triangleRadius * 2.0), 1.0)));
         _starVertices.add(Vertices.raw(VertexMode.triangles, vertices));
       } else {
-        _adjustedStarTypeColors.add(starType.color.withOpacity(starType.color.opacity));
+        _adjustedStarTypeColors.add(starType.color.withValues(alpha: starType.color.a));
         _starVertices.add(null);
       }
     }
@@ -599,7 +599,7 @@ class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWor
   @override
   WorldGeometry computePaint(PaintingContext context, Offset offset) {
     if (galaxy != null) {
-      final transform = Matrix4.identity()
+      final Matrix4 transform = Matrix4.identity()
         ..translate(offset.dx, offset.dy)
         ..scale(constraints.scale);
       _transformLayer.layer = context.pushTransform(
@@ -622,8 +622,8 @@ class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWor
 
   void _drawStars(PaintingContext context, Offset offset) {
     assert(offset == Offset.zero);
-    final Color galaxyGlowColor = const Color(0xFF66BBFF).withOpacity((0x33/0xFF) * (1.0 / constraints.zoom).clamp(0.0, 1.0));
-    if (galaxyGlowColor.alpha > 0) {
+    final Color galaxyGlowColor = const Color(0xFF66BBFF).withValues(alpha: (0x33/0xFF) * (1.0 / constraints.zoom).clamp(0.0, 1.0));
+    if (galaxyGlowColor.a > 0) {
       context.canvas.drawOval(
         Rect.fromCircle(
           center: constraints.scaledPan,
@@ -634,10 +634,10 @@ class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWor
           ..maskFilter = MaskFilter.blur(BlurStyle.normal, 500.0 / constraints.scale),
       );
     }
-    for (var index = 0; index < _starPoints.length; index += 1) {
+    for (int index = 0; index < _starPoints.length; index += 1) {
       if (_starPoints[index].isNotEmpty) {
         final StarType starType = _starTypes[index];
-        final paint = Paint()
+        final Paint paint = Paint()
           ..color = _adjustedStarTypeColors[index];
         if (_starVertices[index] != null) {
           context.canvas.drawVertices(_starVertices[index]!, BlendMode.src, paint);
@@ -733,7 +733,7 @@ class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWor
         }
       }
     }
-    const sigfig = 1;
+    const int sigfig = 1;
     final double scale = pow(10, sigfig - (log(value) / ln10).ceil()).toDouble();
     final double roundValue = (value * scale).round() / scale;
     return (length * roundValue / value, '${roundValue.toStringAsFixed(1)} $units');
@@ -774,18 +774,18 @@ class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWor
       final double reticuleOpacity = constraints.zoom < reticuleFadeZoom ? 1.0 : lerpDouble(1.0, 0.0, (constraints.zoom - reticuleFadeZoom) / (minReticuleZoom - reticuleFadeZoom))!;
       final double lineOpacity = constraints.zoom < lineFadeZoom ? 1.0 : lerpDouble(1.0, 0.0, (constraints.zoom - lineFadeZoom) / (minReticuleZoom - lineFadeZoom))!;
 
-      final hudReticulePaint = Paint()
-        ..color = const Color(0xFFFFFFFF).withOpacity(reticuleOpacity)
+      final Paint hudReticulePaint = Paint()
+        ..color = const Color(0xFFFFFFFF).withValues(alpha: reticuleOpacity)
         ..strokeWidth = hudReticuleStrokeWidth
         ..style = PaintingStyle.stroke;
 
-      final hudLinePaint = Paint()
-        ..color = const Color(0xFFFFFF00).withOpacity(lineOpacity)
+      final Paint hudLinePaint = Paint()
+        ..color = const Color(0xFFFFFF00).withValues(alpha: lineOpacity)
         ..strokeWidth = 0.0
         ..style = PaintingStyle.stroke;
 
       RenderWorld? child;
-      final List<Rect> avoidanceRects = [];
+      final List<Rect> avoidanceRects = <Rect>[];
 
       // compute reticule centers and draw reticule circles on bottom layer
       child = firstChild;
@@ -802,7 +802,7 @@ class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWor
           context.canvas.save();
           context.canvas.translate(center.dx, center.dy);
           context.canvas.rotate(childParentData.active * pi / 2);
-          context.canvas.drawPoints(PointMode.lines, [
+          context.canvas.drawPoints(PointMode.lines, <Offset>[
             Offset(0.0, hudCenterRadius - length), Offset(0.0, hudCenterRadius + length),
             Offset(0.0, -hudCenterRadius + length), Offset(0.0, -hudCenterRadius - length),
             Offset(hudCenterRadius - length, 0.0), Offset(hudCenterRadius + length, 0.0),
@@ -823,7 +823,7 @@ class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWor
         final Size labelSize = label.size;
         Offset target;
         Rect candidateRect;
-        var attempt = 0;
+        int attempt = 0;
         do {
           final double r = hudOuterRadius + hudLineExtension * (attempt ~/ hudRadials);
           final double theta = -pi / 4.0 + (attempt % hudRadials) * pi / (hudRadials / 2.0);
@@ -850,7 +850,7 @@ class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWor
         final GalaxyParentData childParentData = child.parentData! as GalaxyParentData;
         final Offset center = childParentData._reticuleCenter!;
         final Rect rect = childParentData._labelRect!;
-        final List<Offset> line = [];
+        final List<Offset> line = <Offset>[];
         if ((rect.bottom > center.dy) &&
             (rect.left < center.dx) &&
             (rect.right > center.dx)) {
@@ -879,7 +879,7 @@ class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWor
         final GalaxyParentData childParentData = child.parentData! as GalaxyParentData;
         final TextPainter painter = childParentData._label!;
         if (lineOpacity < 1.0) {
-          painter.text = TextSpan(text: childParentData.label, style: _hudStyle.copyWith(color: _hudStyle.color!.withOpacity(lineOpacity)));
+          painter.text = TextSpan(text: childParentData.label, style: _hudStyle.copyWith(color: _hudStyle.color!.withValues(alpha: lineOpacity)));
           painter.layout();
         }
         painter.paint(context.canvas, childParentData._labelRect!.topLeft);
@@ -887,7 +887,7 @@ class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWor
       }
 
       if (debugPaintSizeEnabled) {
-        final debugPaintSizePaint = Paint()
+        final Paint debugPaintSizePaint = Paint()
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1.0
           ..color = const Color(0xFF00FFFF);

@@ -10,7 +10,7 @@ class SpaceTime {
   final DateTime _origin;
 
   static DateTime? _lastFrameTime;
-  static final Set<VoidCallback> _callbacks = {};
+  static final Set<VoidCallback> _callbacks = <VoidCallback>{};
   static bool _pending = false;
 
   void _handler(Duration timestamp) {
