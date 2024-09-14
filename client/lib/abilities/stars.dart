@@ -131,14 +131,15 @@ class RenderStar extends RenderWorld {
     // TODO: starId-based paint
     _starShader ??= shaders.stars(0); // TODO: use actual star category id
     final double time = spaceTime.computeTime(<VoidCallback>[markNeedsPaint]);
-    final double actualDiameter = computePaintDiameter(diameter, maxDiameter) / 2.0;
+    final double actualDiameter = computePaintDiameter(diameter, maxDiameter);
     _starShader!.setFloat(uT, time);
     _starShader!.setFloat(uX, offset.dx);
     _starShader!.setFloat(uY, offset.dy);
     _starShader!.setFloat(uD, actualDiameter);
     _starPaint.shader = _starShader;
-    // The texture we draw onto is intentionally much bigger than the star so
-    // that the star can have solar flares and such.
+    // The texture we draw onto is intentionally much bigger than the star
+    // (radius is twice the star's radius) so that the star can have solar
+    // flares and such.
     context.canvas.drawRect(Rect.fromCircle(center: offset, radius: actualDiameter), _starPaint);
     return WorldGeometry(shape: Circle(actualDiameter));
   }
