@@ -29,7 +29,6 @@ class SpaceFeature extends ContainerFeature {
   void attach(WorldNode parent) {
     super.attach(parent);
     for (AssetNode child in children.keys) {
-      assert(child.parent == null);
       child.parent = parent;
     }
   }
@@ -37,8 +36,11 @@ class SpaceFeature extends ContainerFeature {
   @override
   void detach() {
     for (AssetNode child in children.keys) {
-      assert(child.parent == parent);
-      child.parent = null;
+      if (child.parent == parent) {
+        child.parent = null;
+        // if its parent is not the same as our parent,
+        // then maybe it was already added to some other container
+      }
     }
     super.detach();
   }

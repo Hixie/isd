@@ -417,6 +417,7 @@ class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWor
   set galaxy (Galaxy? value) {
     if (value != _galaxy) {
       _galaxy = value;
+      _preparedStarsRect = null;
       markNeedsLayout();
     }
   }
@@ -614,7 +615,7 @@ class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWor
     }
     _drawChildren(context, offset);
     if (galaxy != null) {
-      _drawLegend(context, Offset.zero);
+      _drawLegend(context, offset);
       _drawHud(context, offset);
     }
     return WorldGeometry(shape: Circle(diameter));

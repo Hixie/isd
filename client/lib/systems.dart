@@ -45,6 +45,9 @@ class SystemServer {
     if (version > expectedVersion) {
       onError(NetworkError('WARNING: Client out of date; server is on version $version but we only support version $expectedVersion'), Duration.zero);
     }
+    _systems.values.forEach(galaxy.removeSystem);
+    _systems.clear();
+    _assets.clear();
   }
 
   final Map<int, SystemNode> _systems = <int, SystemNode>{};

@@ -25,7 +25,6 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
   static const double _initialZoom = 4.0;
   static const Offset _initialPan = Offset(-3582946788187048960.0, -179685314906842080.0);
   
-  
   final Tween<double> _zoomTween = Tween<double>(begin: _initialZoom, end: _initialZoom);
   late final Animation<double> _zoom = _controller.drive(CurveTween(curve: Curves.easeInBack)).drive(_zoomTween);
   
