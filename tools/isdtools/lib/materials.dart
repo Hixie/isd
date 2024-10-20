@@ -64,13 +64,14 @@ class MaterialNode implements Comparable<MaterialNode> {
 }
 
 class Material {
-  Material(this.label, this.description, this.color, this.tags, this.abundanceDistribution);
-  
-  String label;
-  String description;
-  Color color;
-  Set<String> tags;
+  Material(this.id, this.label, this.description, this.color, this.tags, this.density, this.abundanceDistribution);
 
+  final int id;
+  final String label;
+  final String description;
+  final Color color;
+  final Set<String> tags;
+  final double density;
   final List<MaterialNode> abundanceDistribution;
 
   double abundanceAt(double distance) {
@@ -116,10 +117,10 @@ class _MaterialsPaneState extends State<MaterialsPane> {
   final Random random = Random(0);
 
   static String encodeColor(Color color) {
-    int value = ((color.r * 255).truncate() << 16)
-              + ((color.g * 255).truncate() << 8)
-              + ((color.b * 255).truncate());
-    return value.toRadixString(16);
+    final int value = ((color.r * 255).truncate() << 16)
+                    + ((color.g * 255).truncate() << 8)
+                    + ((color.b * 255).truncate());
+    return value.toRadixString(16).padLeft(6, '0');
   }
 
   @override
@@ -129,47 +130,53 @@ class _MaterialsPaneState extends State<MaterialsPane> {
   }
 
   void _readFile() {
-    try {
-      final List<String> lines = File('materials.dat').readAsLinesSync();
-      int index = 0;
-      String readLine() {
-        if (index >= lines.length) {
-          return '';
+    setState(() {
+      try {
+        final List<String> lines = File('materials.dat').readAsLinesSync();
+        int index = 0;
+        String readLine() {
+          if (index >= lines.length) {
+            return '';
+          }
+          final String result = lines[index];
+          index += 1;
+          return result;
         }
-        final String result = lines[index];
-        index += 1;
-        return result;
-      }
-      _materials.clear();
-      while (index < lines.length) {
-        final String name = readLine();
-        final String description = readLine();
-        final Color color = Color(int.parse(readLine(), radix: 16) | 0xFF000000);
-        final Set<String> tags = readLine().split(',').toSet();
-        String line;
-        final List<MaterialNode> abundanceDistribution = <MaterialNode>[];
-        while ((line = readLine()) != '') {
-          final List<double> parts = line.split(',').map(double.parse).toList();
-          abundanceDistribution.add(MaterialNode(distance: parts[0], abundance: parts[1]));
+        _materials.clear();
+        while (index < lines.length) {
+          final int id = int.parse(readLine(), radix: 10);
+          final String name = readLine();
+          final String description = readLine();
+          final Color color = Color(int.parse(readLine(), radix: 16) | 0xFF000000);
+          final Set<String> tags = readLine().split(',').toSet();
+          final double density = double.parse(readLine());
+          String line;
+          final List<MaterialNode> abundanceDistribution = <MaterialNode>[];
+          while ((line = readLine()) != '') {
+            final List<double> parts = line.split(',').map(double.parse).toList();
+            abundanceDistribution.add(MaterialNode(distance: parts[0], abundance: parts[1]));
+          }
+          _materials.add(Material(id, name, description, color, tags, density, abundanceDistribution));
         }
-        _materials.add(Material(name, description, color, tags, abundanceDistribution));
+      } on FileSystemException catch (e) {
+        print('$e');
+        _materials.clear();
+      } on FormatException catch (e) {
+        print('$e');
+        _materials.clear();
       }
-    } on FileSystemException catch (e) {
-      print('$e');
-      _materials.clear();
-    } on FormatException catch (e) {
-      print('$e');
-      _materials.clear();
-    }
+    });
   }
 
   void _writeFile() {
     final StringBuffer buffer = StringBuffer();
     for (Material material in _materials) {
+      buffer.writeln(material.id);
       buffer.writeln(material.label);
       buffer.writeln(material.description);
       buffer.writeln(encodeColor(material.color));
       buffer.writeln(material.tags.join(','));
+      buffer.writeln(material.density);
       for (MaterialNode node in material.abundanceDistribution) {
         buffer.writeln('${node.distance},${node.abundance}');
       }
@@ -182,10 +189,12 @@ class _MaterialsPaneState extends State<MaterialsPane> {
     setState(() {
       _materials.add(
         Material(
+          0,
           'Material #${_materials.length}',
           'Unknown material.',
           Color(0xFF303030 | random.nextInt(0xFFFFFF)),
           <String>{'matter'},
+          1000.0,
           <MaterialNode>[
             MaterialNode(distance: minDistance, abundance: 0.0),
           ],
@@ -193,7 +202,7 @@ class _MaterialsPaneState extends State<MaterialsPane> {
       );
     });
   }
-  
+
   void _handleChange(Material material) {
     setState(() {
       material.abundanceDistribution.sort();
@@ -364,7 +373,7 @@ class _MaterialsPaneState extends State<MaterialsPane> {
                                 if (ghostMaterial != null) {
                                   ghostAbundance = bestAbundance;
                                   ghostX = graph.left + graph.width * x;
-                                  ghostY = graph.top + graph.height - graph.height * bestY;
+                                  ghostY = graph.top + graph.height - graph.height * bestY * _zoom;
                                 }
                               });
                             },
@@ -392,21 +401,6 @@ class _MaterialsPaneState extends State<MaterialsPane> {
                                       ),
                                     ),
                                   ),
-                                if (ghostMaterial != null)
-                                  Positioned(
-                                    left: ghostX + spacing * 5.0,
-                                    top: ghostY + spacing * 5.0,
-                                    child: DecoratedBox(
-                                      decoration: ShapeDecoration(
-                                        shape: const StadiumBorder(),
-                                        color: ghostMaterial!.color.withValues(alpha: 0.35),
-                                      ),
-                                      child: Padding(
-                                        padding: const EdgeInsets.symmetric(horizontal: spacing * 2.0, vertical: spacing / 2.0),
-                                        child: Text(ghostMaterial!.label),
-                                      ),
-                                    ),
-                                  ),
                                 ..._materials.expand((Material material) => material.abundanceDistribution.map(
                                   (MaterialNode node) => node.build(
                                     context,
@@ -423,6 +417,25 @@ class _MaterialsPaneState extends State<MaterialsPane> {
                                     pinned: node == material.abundanceDistribution.first,
                                   ),
                                 )),
+                                if (ghostMaterial != null)
+                                  Positioned(
+                                    left: ghostX < graph.width / 2.0 ? ghostX : null,
+                                    right: ghostX < graph.width / 2.0 ? null : graph.right - ghostX,
+                                    top: ghostY < graph.height / 2.0 ? ghostY : ghostY - spacing * 10.0,
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(spacing * 5.0),
+                                      child: DecoratedBox(
+                                        decoration: ShapeDecoration(
+                                          shape: const StadiumBorder(),
+                                          color: ghostMaterial!.color.withValues(alpha: 0.35),
+                                        ),
+                                        child: Padding(
+                                          padding: const EdgeInsets.symmetric(horizontal: spacing * 2.0, vertical: spacing / 2.0),
+                                          child: Text(ghostMaterial!.label),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
                               ],
                             ),
                           ),
