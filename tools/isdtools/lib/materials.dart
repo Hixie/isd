@@ -64,10 +64,11 @@ class MaterialNode implements Comparable<MaterialNode> {
 }
 
 class Material {
-  Material(this.id, this.label, this.description, this.color, this.tags, this.density, this.abundanceDistribution);
+  Material(this.id, this.label, this.ambiguousName, this.description, this.color, this.tags, this.density, this.abundanceDistribution);
 
   final int id;
   final String label;
+  final String ambiguousName;
   final String description;
   final Color color;
   final Set<String> tags;
@@ -146,6 +147,7 @@ class _MaterialsPaneState extends State<MaterialsPane> {
         while (index < lines.length) {
           final int id = int.parse(readLine(), radix: 10);
           final String name = readLine();
+          final String ambiguousName = readLine();
           final String description = readLine();
           final Color color = Color(int.parse(readLine(), radix: 16) | 0xFF000000);
           final Set<String> tags = readLine().split(',').toSet();
@@ -156,7 +158,7 @@ class _MaterialsPaneState extends State<MaterialsPane> {
             final List<double> parts = line.split(',').map(double.parse).toList();
             abundanceDistribution.add(MaterialNode(distance: parts[0], abundance: parts[1]));
           }
-          _materials.add(Material(id, name, description, color, tags, density, abundanceDistribution));
+          _materials.add(Material(id, name, ambiguousName, description, color, tags, density, abundanceDistribution));
         }
       } on FileSystemException catch (e) {
         print('$e');
@@ -173,6 +175,7 @@ class _MaterialsPaneState extends State<MaterialsPane> {
     for (Material material in _materials) {
       buffer.writeln(material.id);
       buffer.writeln(material.label);
+      buffer.writeln(material.ambiguousName);
       buffer.writeln(material.description);
       buffer.writeln(encodeColor(material.color));
       buffer.writeln(material.tags.join(','));
