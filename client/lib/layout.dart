@@ -140,13 +140,19 @@ abstract class RenderWorld extends RenderObject {
   // offset is the distance from the canvas origin to the asset origin, in pixels
   WorldGeometry computePaint(PaintingContext context, Offset offset);
 
-  static const double _minDiameter = 40.0;
+  static const double _minDiameter = 20.0;
   static const double _maxDiameterRatio = 0.1;
 
+  static double get _minCartoonDiameter => log(10e6); // 10,000 km, a bit smaller than earth
+  static double get _maxCartoonDiameter => log( 1e9); // 2 million km, a bit bigger than our sun
+  
   double computePaintDiameter(double diameter, double maxDiameter) {
+    double cartoonScale = ((log(diameter) - _minCartoonDiameter) / (_maxCartoonDiameter - _minCartoonDiameter)).clamp(0.0, 1.0) * 2.5 + 1.0;
+    assert(cartoonScale >= 1.0);
+    assert(cartoonScale <= 3.5);
     return min(
       max(
-        _minDiameter,
+        _minDiameter * cartoonScale,
         diameter * constraints.scale,
       ),
       maxDiameter * _maxDiameterRatio * constraints.scale,
