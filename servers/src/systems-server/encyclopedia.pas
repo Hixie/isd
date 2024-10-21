@@ -290,6 +290,7 @@ procedure TEncyclopedia.CondenseProtoplanetaryDisks(Space: TSolarSystemFeatureNo
       begin
          for Satellite in Body.Moons^ do
             AddBody(Satellite, OrbitNode.GetFeatureByClass(TOrbitFeatureClass) as TOrbitFeatureNode);
+         Dispose(Body.Moons);
       end;
    end;
    

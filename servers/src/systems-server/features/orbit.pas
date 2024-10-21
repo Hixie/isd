@@ -43,6 +43,7 @@ type
       function GetRocheLimit(ChildRadius, ChildMass: Double): Double; // returns minimum semi-major axis for a hypothetical rigid child body orbitting our primary
       // given child should have a TOrbitFeatureNode, use Encyclopedia.WrapAssetForOrbit
       procedure AddOrbitingChild(Child: TAssetNode; SemiMajorAxis: Double; Eccentricity: Double; Omega: Double; TimeOrigin: Int64; Clockwise: Boolean);
+      procedure UpdateOrbitingChild(Child: TAssetNode; SemiMajorAxis: Double; Eccentricity: Double; Omega: Double; TimeOrigin: Int64; Clockwise: Boolean);
       function IAssetNameProvider.GetAssetName = GetOrbitName;
       property PrimaryChild: TAssetNode read FPrimaryChild;
       property OrbitingChildren[Index: Cardinal]: TAssetNode read GetOrbitingChild;
@@ -165,15 +166,22 @@ end;
 procedure TOrbitFeatureNode.AddOrbitingChild(Child: TAssetNode; SemiMajorAxis: Double; Eccentricity: Double; Omega: Double; TimeOrigin: Int64; Clockwise: Boolean);
 begin
    Assert(Child.AssetClass.ID = idOrbits);
-   Assert(SemiMajorAxis >= GetRocheLimit(Child.Size / 2.0, Child.Mass), 'roche limit violation'); // TODO: check this before calling AddOrbitingChild!
+   Assert(not Assigned(Child.Parent));
    AdoptOrbitingChild(Child);
+   SetLength(FChildren, Length(FChildren) + 1);
+   FChildren[High(FChildren)] := Child;
+   UpdateOrbitingChild(Child, SemiMajorAxis, Eccentricity, Omega, TimeOrigin, Clockwise);
+end;
+
+procedure TOrbitFeatureNode.UpdateOrbitingChild(Child: TAssetNode; SemiMajorAxis: Double; Eccentricity: Double; Omega: Double; TimeOrigin: Int64; Clockwise: Boolean);
+begin
+   Assert(Child.Parent = Self);
+   Assert(Assigned(Child.ParentData));
    POrbitData(Child.ParentData)^.SemiMajorAxis := SemiMajorAxis;
    POrbitData(Child.ParentData)^.Eccentricity := Eccentricity;
    POrbitData(Child.ParentData)^.Omega := Omega;
    POrbitData(Child.ParentData)^.TimeOrigin := TimeOrigin;
    POrbitData(Child.ParentData)^.Clockwise := Clockwise;
-   SetLength(FChildren, Length(FChildren) + 1);
-   FChildren[High(FChildren)] := Child;
 end;
 
 function TOrbitFeatureNode.GetOrbitingChild(Index: Cardinal): TAssetNode;
@@ -318,7 +326,15 @@ procedure TOrbitFeatureNode.ApplyJournal(Journal: TJournalReader);
       Omega := Journal.ReadDouble();
       TimeOrigin := Journal.ReadInt64();
       Clockwise := Journal.ReadBoolean();
-      AddOrbitingChild(Child, SemiMajorAxis, Eccentricity, Omega, TimeOrigin, Clockwise);
+      if (not Assigned(Child.Parent)) then
+      begin
+         AddOrbitingChild(Child, SemiMajorAxis, Eccentricity, Omega, TimeOrigin, Clockwise);
+      end
+      else
+      begin
+         Assert(Child.Parent = Self);
+         UpdateOrbitingChild(Child, SemiMajorAxis, Eccentricity, Omega, TimeOrigin, Clockwise);
+      end;
    end;
 
    procedure DeleteChild(Child: TAssetNode);
@@ -365,9 +381,10 @@ begin
    if (not Assigned(FPrimaryChild)) then
    begin
       AdoptChild(Child);
+      FPrimaryChild := Child;
    end;
    Assert(Child.Parent = Self);
-   FPrimaryChild := Child;
+   Assert(Child = FPrimaryChild);
    Count := Journal.ReadCardinal();
    while (Count > 0) do
    begin
