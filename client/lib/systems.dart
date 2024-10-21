@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'dart:ui' show Offset;
 
+import 'abilities/planets.dart';
 import 'abilities/sensors.dart';
 import 'abilities/stars.dart';
 import 'abilities/structure.dart';
@@ -37,6 +38,7 @@ class SystemServer {
   static const int fcStructure = 4;
   static const int fcSpaceSensors = 5;
   static const int fcSpaceSensorsStatus = 6;
+  static const int fcPlanet = 7;
   static const int expectedVersion = fcSpaceSensorsStatus;
 
   Future<void> _handleLogin() async {
@@ -91,6 +93,9 @@ class SystemServer {
             case fcStar:
               final int starId = reader.readInt32();
               oldFeatures.remove(asset.setAbility(StarFeature(spaceTime, starId)));
+            case fcPlanet:
+              final int hp = reader.readInt32();
+              oldFeatures.remove(asset.setAbility(PlanetFeature(spaceTime, hp)));
             case fcSpace:
               final Map<AssetNode, SpaceChild> children = <AssetNode, SpaceChild>{};
               final AssetNode primaryChild = _readAsset(reader);

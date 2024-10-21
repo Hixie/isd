@@ -32,7 +32,6 @@ class WebSocket {
   bool _closed = false;
 
   void close() {
-    assert(!_closed);
     assert(_socket.readyState < io.WebSocket.closing);
     _socket.close();
     _subscription.cancel();
