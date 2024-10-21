@@ -240,7 +240,6 @@ class RenderOrbit extends RenderWorld with ContainerRenderObjectMixin<RenderWorl
       final OrbitParentData childParentData = child.parentData! as OrbitParentData;
       final Offset childPosition = _computeOrbit(childParentData.orbit, primaryMass, time);
       assert(childPosition.isFinite);
-
       if (debugPaintSizeEnabled) {
         final double semiMinorAxis = childParentData.orbit.a * sqrt(1 - childParentData.orbit.e * childParentData.orbit.e);
         final double center = childParentData.orbit.e * childParentData.orbit.a; // distance from focal point to center of ellipse, along major axis
@@ -255,7 +254,6 @@ class RenderOrbit extends RenderWorld with ContainerRenderObjectMixin<RenderWorl
         context.canvas.drawOval(oval, Paint()..style= PaintingStyle.stroke..color = const Color(0x40FFFFFF));
         context.canvas.restore();
       }
-
       context.paintChild(child, offset + childPosition * constraints.scale);
       child = childParentData.nextSibling;
     }

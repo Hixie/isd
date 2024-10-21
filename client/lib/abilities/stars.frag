@@ -13,7 +13,7 @@ const float period = 50000.0;
 
 void main() {
   float magnitude = 2.0;
-  vec4 spectrum = vec4(10.0, 5.0, 1.0, 1.0);
+  vec4 spectrum = vec4(10.0, 5.0, 1.0, 10.0);
   spectrum *= vec4(
     mix(0.8, 1.1, fractalNoise1(time / 500.0)),
     mix(0.8, 1.0, fractalNoise1(time / 480.0)),
