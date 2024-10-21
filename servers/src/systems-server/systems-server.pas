@@ -2,7 +2,7 @@
 {$INCLUDE settings.inc}
 program main;
 
-uses sysutils, systemnetwork, configuration, csvdocument, servers;
+uses sysutils, systemnetwork, configuration, csvdocument, servers, materials;
 
 var
    Server: TServer;
@@ -11,6 +11,8 @@ var
    Port, ServerIndex, ServerCount: Integer;
    Password: UTF8String;
    Settings: PSettings;
+   MaterialRecords: TMaterialHashSet;
+   Material: TMaterial;
 begin
    if (ParamCount() <> 1) then
    begin
@@ -43,9 +45,13 @@ begin
    ServerFile := LoadDynastiesServersConfiguration();
    DynastyServerDatabase := TServerDatabase.Create(ServerFile);
    FreeAndNil(ServerFile);
-   Server := TServer.Create(Port, Password, ServerIndex, Settings, DynastyServerDatabase, SystemServersDirectory + IntToStr(ServerIndex) + '/'); // $R-
+   MaterialRecords := LoadMaterialRecords(MaterialRecordsFilename);
+   Server := TServer.Create(Port, Password, ServerIndex, Settings, MaterialRecords, DynastyServerDatabase, SystemServersDirectory + IntToStr(ServerIndex) + '/'); // $R-
    Server.Run();
    Writeln('Exiting...');
+   for Material in MaterialRecords do
+      Material.Free();
+   FreeAndNil(MaterialRecords);
    FreeAndNil(Server);
    FreeAndNil(DynastyServerDatabase);
    Dispose(Settings);

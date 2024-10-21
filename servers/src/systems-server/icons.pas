@@ -20,6 +20,7 @@ const
    Star8Icon: TIcon = 'star8';
    Star9Icon: TIcon = 'star9';
    Star10Icon: TIcon = 'star10';
+   PlanetIcon: TIcon = 'planet';
    PlaceholderIcon: TIcon = 'placeholder';
    UnknownIcon: TIcon = 'unknown';
    // Materials

@@ -5,7 +5,7 @@ unit sensors;
 interface
 
 uses
-   systems, serverstream;
+   systems, serverstream, materials;
 
 type
    TSpaceSensorFeatureClass = class(TFeatureClass)

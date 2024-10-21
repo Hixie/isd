@@ -5,7 +5,7 @@ unit systems;
 interface
 
 uses
-   systemdynasty, configuration, hashtable, hashset, genericutils, icons, serverstream;
+   systemdynasty, configuration, hashtable, hashset, genericutils, icons, serverstream, random, materials;
 
 // VISIBILITY
 //
@@ -18,7 +18,7 @@ uses
 // the system (essentially an arena).
 //
 // Systems consider whether to TSystem.ReportChanges after each
-// incoming message. If anything was marked as ckAffectsVisibilitythen
+// incoming message. If anything was marked as ckAffectsVisibility then
 // the system calls TSystem.RecomputeVisibility. If the dynasties
 // present changed, this renumbers all the dynasties, and calls
 // TAssetNode.ResetVisibility on every asset in the system with the
@@ -96,13 +96,11 @@ const
    dmOwnership = [dmInference, dmVisibleSpectrum, dmInternals];
    
 type
-   TMaterial = class;
    TAssetClass = class;
    TAssetNode = class;
    TFeatureNode = class;
    TSystem = class;
 
-   TMaterialID = LongInt; // signed because negative values are built-in, and positive values are in tech tree
    TAssetClassID = LongInt; // signed because negative values are built-in, and positive values are in tech tree
    
    TDynastyIndexHashTable = class(specialize THashTable<TDynasty, Cardinal, TObjectUtils>)
@@ -110,10 +108,6 @@ type
    end;
 
    TDynastyHashSet = class(specialize THashSet<TDynasty, TObjectUtils>)
-      constructor Create();
-   end;
-
-   TMaterialHashSet = class(specialize THashSet<TMaterial, TObjectUtils>)
       constructor Create();
    end;
 
@@ -193,6 +187,7 @@ type
       function ReadBoolean(): Boolean;
       function ReadCardinal(): Cardinal;
       function ReadInt64(): Int64;
+      function ReadUInt64(): UInt64;
       function ReadPtrUInt(): PtrUInt;
       function ReadDouble(): Double;
       function ReadString(): UTF8String;
@@ -200,6 +195,7 @@ type
       function ReadAssetNodeReference(): TAssetNode;
       function ReadAssetClassReference(): TAssetClass;
       function ReadDynastyReference(): TDynasty;
+      function ReadMaterialReference(): TMaterial;
    end;
 
    TJournalWriter = class sealed
@@ -210,6 +206,7 @@ type
       procedure WriteBoolean(Value: Boolean); // {BOGUS Hint: Value parameter "Value" is assigned but never used}
       procedure WriteCardinal(Value: Cardinal); // {BOGUS Hint: Value parameter "Value" is assigned but never used}
       procedure WriteInt64(Value: Int64); // {BOGUS Hint: Value parameter "Value" is assigned but never used}
+      procedure WriteUInt64(Value: UInt64); // {BOGUS Hint: Value parameter "Value" is assigned but never used}
       procedure WritePtrUInt(Value: PtrUInt); // {BOGUS Hint: Value parameter "Value" is assigned but never used}
       procedure WriteDouble(Value: Double); // {BOGUS Hint: Value parameter "Value" is assigned but never used}
       procedure WriteString(Value: UTF8String);
@@ -217,36 +214,12 @@ type
       procedure WriteAssetNodeReference(AssetNode: TAssetNode);
       procedure WriteAssetClassReference(AssetClass: TAssetClass);
       procedure WriteDynastyReference(Dynasty: TDynasty);
+      procedure WriteMaterialReference(Material: TMaterial);
    end;
 
    TBusMessage = class abstract
    public
       procedure Unhandled(); virtual;
-   end;
-   
-   TUnitKind = (
-      ukBulkResource, // UI shows it in kilograms
-      ukComponent // UI shows it as number of units
-   );
-   
-   TMaterial = class
-   protected
-      FID: TMaterialID;
-      FName, FAmbiguousName, FDescription: UTF8String;
-      FIcon: TIcon;
-      FUnitKind: TUnitKind;
-      FMassPerUnit: Double; // kg
-      FDensity: Double; // m^3
-   public
-      constructor Create(AID: TMaterialID; AName, AAmbiguousName, ADescription: UTF8String; AIcon: TIcon; AUnitKind: TUnitKind; AMassPerUnit: Double; ADensity: Double);
-      property ID: TMaterialID read FID;
-      property AmbiguousName: UTF8String read FAmbiguousName;
-      property Name: UTF8String read FName;
-      property Description: UTF8String read FDescription;
-      property Icon: TIcon read FIcon;
-      property UnitKind: TUnitKind read FUnitKind;
-      property MassPerUnit: Double read FMassPerUnit; // kg
-      property Density: Double read FDensity; // kg/m^3
    end;
    
    // The pre-walk callback is called for each asset in a depth-first
@@ -257,7 +230,7 @@ type
    TPreWalkCallback = function(Asset: TAssetNode): Boolean is nested;
    TPostWalkCallback = procedure(Asset: TAssetNode) is nested;
 
-   //FeatureClassReference = class of TFeatureClass;
+   FeatureClassReference = class of TFeatureClass;
    FeatureNodeReference = class of TFeatureNode;
 
    TFeatureClass = class abstract
@@ -354,11 +327,13 @@ type
       property AmbiguousName: UTF8String read FAmbiguousName;
    end;
 
-   TAssetClassDatabase = class
+   TEncyclopediaView = class
    protected
       function GetAssetClass(ID: TAssetClassID): TAssetClass; virtual; abstract;
+      function GetMaterial(ID: TMaterialID): TMaterial; virtual; abstract;
    public
       property AssetClasses[ID: TAssetClassID]: TAssetClass read GetAssetClass;
+      property Materials[ID: TMaterialID]: TMaterial read GetMaterial;
    end;
    
    TAssetNode = class
@@ -374,6 +349,7 @@ type
       function GetFeature(Index: Cardinal): TFeatureNode;
       function GetMass(): Double; // kg
       function GetSize(): Double; // m
+      function GetDensity(): Double; // kg/m^3
       function GetAssetName(): UTF8String;
       procedure MarkAsDirty(DirtyKinds: TDirtyKinds; ChangeKinds: TChangeKinds); virtual;
    public
@@ -382,7 +358,7 @@ type
       constructor Create(); unimplemented;
       destructor Destroy(); override;
       procedure HandleImminentDeath();
-      //function GetFeature(Key: FeatureClassReference): TFeatureNode;
+      function GetFeatureByClass(FeatureClass: FeatureClassReference): TFeatureNode;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback);
       procedure InjectBusMessage(Message: TBusMessage);
       function HandleBusMessage(Message: TBusMessage): Boolean;
@@ -401,22 +377,24 @@ type
       property Features[Index: Cardinal]: TFeatureNode read GetFeature;
       property Mass: Double read GetMass; // kg
       property Size: Double read GetSize; // meters, must be greater than zero
+      property Density: Double read GetDensity; // kg/m^3; computed from mass and size, assuming spherical shape
       property AssetName: UTF8String read GetAssetName;
    end;
 
    TSystem = class sealed
    strict private
       FDynastyDatabase: TDynastyDatabase;
-      FAssetClassDatabase: TAssetClassDatabase;
+      FEncyclopedia: TEncyclopediaView;
       FAssets: TAssetNodeHashTable;
       FConfigurationDirectory: UTF8String;
       FSystemID: Cardinal;
+      FRandomNumberGenerator: TRandomNumberGenerator;
       FX, FY: Double;
       FTimeOrigin: TDateTime;
       FTimeFactor: Double;
       FRoot: TAssetNode;
       FChanges: TChangeKinds;
-      procedure Init(AConfigurationDirectory: UTF8String; ASystemID: Cardinal; ARootClass: TAssetClass; ADynastyDatabase: TDynastyDatabase; AAssetClassDatabase: TAssetClassDatabase);
+      procedure Init(AConfigurationDirectory: UTF8String; ASystemID: Cardinal; ARootClass: TAssetClass; ADynastyDatabase: TDynastyDatabase; AEncyclopedia: TEncyclopediaView);
       procedure ApplyJournal(FileName: UTF8String);
       procedure OpenJournal(FileName: UTF8String);
       procedure RecordUpdate();
@@ -433,8 +411,8 @@ type
    protected
       procedure MarkAsDirty(ChangeKinds: TChangeKinds);
    public
-      constructor Create(AConfigurationDirectory: UTF8String; ASystemID: Cardinal; AX, AY: Double; ARootClass: TAssetClass; ADynastyDatabase: TDynastyDatabase; AAssetClassDatabase: TAssetClassDatabase; Settings: PSettings);
-      constructor CreateFromDisk(AConfigurationDirectory: UTF8String; ASystemID: Cardinal; ARootClass: TAssetClass; ADynastyDatabase: TDynastyDatabase; AAssetClassDatabase: TAssetClassDatabase);
+      constructor Create(AConfigurationDirectory: UTF8String; ASystemID: Cardinal; AX, AY: Double; ARootClass: TAssetClass; ADynastyDatabase: TDynastyDatabase; AEncyclopedia: TEncyclopediaView; Settings: PSettings);
+      constructor CreateFromDisk(AConfigurationDirectory: UTF8String; ASystemID: Cardinal; ARootClass: TAssetClass; ADynastyDatabase: TDynastyDatabase; AEncyclopedia: TEncyclopediaView);
       destructor Destroy(); override;
       function SerializeSystem(Dynasty: TDynasty; Writer: TServerStreamWriter; DirtyOnly: Boolean): Boolean; // true if anything was dkSelf dirty
       procedure ReportChanges();
@@ -442,9 +420,10 @@ type
       property RootNode: TAssetNode read FRoot;
       property Dirty: Boolean read GetDirty;
       property SystemID: Cardinal read FSystemID;
+      property RandomNumberGenerator: TRandomNumberGenerator read FRandomNumberGenerator;
       property IsLongVisibilityMode: Boolean read GetIsLongVisibilityMode;
       property DynastyDatabase: TDynastyDatabase read FDynastyDatabase;
-      property AssetClassDatabase: TAssetClassDatabase read FAssetClassDatabase; // used by TJournalReader/TJournalWriter
+      property Encyclopedia: TEncyclopediaView read FEncyclopedia; // used by TJournalReader/TJournalWriter
       property Journal: TJournalWriter read FJournalWriter;
    end;
    
@@ -467,11 +446,6 @@ begin
    Result := PtrUIntHash32(PtrUInt(Key));
 end;
 
-function MaterialHash32(const Key: TMaterial): DWord;
-begin
-   Result := PtrUIntHash32(PtrUInt(Key));
-end;
-
 constructor TDynastyIndexHashTable.Create();
 begin
    inherited Create(@DynastyHash32);
@@ -480,11 +454,6 @@ end;
 constructor TDynastyHashSet.Create();
 begin
    inherited Create(@DynastyHash32);
-end;
-
-constructor TMaterialHashSet.Create();
-begin
-   inherited Create(@MaterialHash32);
 end;
 
 constructor TAssetClassHashTable.Create();
@@ -499,6 +468,7 @@ end;
 
 
 const
+   jcSystemUpdate = $00EDD1E5; // (in the space-time continuum)
    jcNewAsset = $000A55E7;
    jcAssetChange = $000D317A;
    jcEndOfAsset = $CAB005ED;
@@ -533,6 +503,11 @@ begin
 end;
 
 function TJournalReader.ReadInt64(): Int64;
+begin
+   BlockRead(FSystem.FJournalFile, Result, SizeOf(Result)); {BOGUS Hint: Function result variable does not seem to be initialized}
+end;
+
+function TJournalReader.ReadUInt64(): UInt64;
 begin
    BlockRead(FSystem.FJournalFile, Result, SizeOf(Result)); {BOGUS Hint: Function result variable does not seem to be initialized}
 end;
@@ -584,7 +559,7 @@ var
 begin
    Assert(SizeOf(Cardinal) = SizeOf(TAssetClassID));
    ID := TAssetClassID(ReadCardinal());
-   Result := FSystem.AssetClassDatabase.AssetClasses[ID];
+   Result := FSystem.Encyclopedia.AssetClasses[ID];
 end;
 
 function TJournalReader.ReadDynastyReference(): TDynasty;
@@ -600,6 +575,15 @@ begin
    begin
       Result := nil;
    end;
+end;
+
+function TJournalReader.ReadMaterialReference(): TMaterial;
+var
+   ID: TMaterialID;
+begin
+   Assert(SizeOf(Cardinal) = SizeOf(TMaterialID));
+   ID := TMaterialID(ReadCardinal());
+   Result := FSystem.Encyclopedia.Materials[ID];
 end;
 
 
@@ -620,6 +604,11 @@ begin
 end;
 
 procedure TJournalWriter.WriteInt64(Value: Int64);
+begin
+   BlockWrite(FSystem.FJournalFile, Value, SizeOf(Value));
+end;
+
+procedure TJournalWriter.WriteUInt64(Value: UInt64);
 begin
    BlockWrite(FSystem.FJournalFile, Value, SizeOf(Value));
 end;
@@ -675,6 +664,13 @@ begin
    begin
       WriteCardinal(0);
    end;
+end;
+
+procedure TJournalWriter.WriteMaterialReference(Material: TMaterial);
+begin
+   Assert(Assigned(Material));
+   Assert(Material.ID <> 0);
+   WriteCardinal(Cardinal(Material.ID));
 end;
 
 
@@ -745,26 +741,7 @@ end;
 procedure TBusMessage.Unhandled();
 begin
 end;
-
       
-constructor TMaterial.Create(AID: TMaterialID; AName, AAmbiguousName, ADescription: UTF8String; AIcon: TIcon; AUnitKind: TUnitKind; AMassPerUnit: Double; ADensity: Double);
-begin
-   inherited Create();
-   Assert(AID <> 0); // zero means "not recognized"
-   FID := AID;
-   FName := AName;
-   Assert(FName <> '');
-   FAmbiguousName := AAmbiguousName;
-   Assert(FAmbiguousName <> '');
-   FDescription := ADescription;
-   Assert(FDescription <> '');
-   FIcon := AIcon;
-   Assert(FIcon <> '');
-   FUnitKind := AUnitKind;
-   FMassPerUnit := AMassPerUnit;
-   FDensity := ADensity;
-end;
-
 
 constructor TAssetClass.Create(AID: TAssetClassID; AName, AAmbiguousName, ADescription: UTF8String; AFeatures: TFeatureClassArray; AIcon: TIcon);
 begin
@@ -786,7 +763,7 @@ var
    Index: Cardinal;
 begin
    if (Length(FFeatures) > 0) then
-      for Index := 0 to High(FFeatures) do // $R-
+      for Index := Low(FFeatures) to High(FFeatures) do // $R-
          FFeatures[Index].Free();
    inherited;
 end;
@@ -976,6 +953,23 @@ begin
       FOwner.DecRef();
 end;
 
+function TAssetNode.GetFeatureByClass(FeatureClass: FeatureClassReference): TFeatureNode;
+var
+   Index: Cardinal;
+begin
+   Assert(FAssetClass.FeatureCount > 0);
+   for Index := 0 to FAssetClass.FeatureCount - 1 do // $R-
+   begin
+      if (FAssetClass.Features[Index] is FeatureClass) then
+      begin
+         Result := FFeatures[Index];
+         exit;
+      end;
+   end;
+   Result := nil;
+   Assert(False);
+end;
+
 function TAssetNode.GetFeature(Index: Cardinal): TFeatureNode;
 begin
    Result := FFeatures[Index];
@@ -1003,6 +997,15 @@ begin
          Result := Candidate;
    end;
    Assert(Result > 0.0, 'Asset "' + AssetName + '" of class "' + FAssetClass.Name + '" has zero size.');
+end;
+
+function TAssetNode.GetDensity(): Double;
+var
+   Radius: Double;
+begin
+   Radius := Size / 2.0;
+   Assert(Radius > 0);
+   Result := Mass / (4.0 / 3.0 * Pi * Radius * Radius * Radius); // $R-
 end;
 
 function TAssetNode.GetAssetName(): UTF8String;
@@ -1182,10 +1185,10 @@ begin
 end;
 
 
-constructor TSystem.Create(AConfigurationDirectory: UTF8String; ASystemID: Cardinal; AX, AY: Double; ARootClass: TAssetClass; ADynastyDatabase: TDynastyDatabase; AAssetClassDatabase: TAssetClassDatabase; Settings: PSettings);
+constructor TSystem.Create(AConfigurationDirectory: UTF8String; ASystemID: Cardinal; AX, AY: Double; ARootClass: TAssetClass; ADynastyDatabase: TDynastyDatabase; AEncyclopedia: TEncyclopediaView; Settings: PSettings);
 begin
    inherited Create();
-   Init(AConfigurationDirectory, ASystemID, ARootClass, ADynastyDatabase, AAssetClassDatabase);
+   Init(AConfigurationDirectory, ASystemID, ARootClass, ADynastyDatabase, AEncyclopedia);
    FX := AX;
    FY := AY;
    FTimeOrigin := Now();
@@ -1200,20 +1203,21 @@ begin
    OpenJournal(FConfigurationDirectory + JournalDatabaseFileName);
 end;
 
-constructor TSystem.CreateFromDisk(AConfigurationDirectory: UTF8String; ASystemID: Cardinal; ARootClass: TAssetClass; ADynastyDatabase: TDynastyDatabase; AAssetClassDatabase: TAssetClassDatabase);
+constructor TSystem.CreateFromDisk(AConfigurationDirectory: UTF8String; ASystemID: Cardinal; ARootClass: TAssetClass; ADynastyDatabase: TDynastyDatabase; AEncyclopedia: TEncyclopediaView);
 begin
-   Init(AConfigurationDirectory, ASystemID, ARootClass, ADynastyDatabase, AAssetClassDatabase);
+   Init(AConfigurationDirectory, ASystemID, ARootClass, ADynastyDatabase, AEncyclopedia);
    ApplyJournal(FConfigurationDirectory + JournalDatabaseFileName);
    OpenJournal(FConfigurationDirectory + JournalDatabaseFileName);
 end;
 
-procedure TSystem.Init(AConfigurationDirectory: UTF8String; ASystemID: Cardinal; ARootClass: TAssetClass; ADynastyDatabase: TDynastyDatabase; AAssetClassDatabase: TAssetClassDatabase);
+procedure TSystem.Init(AConfigurationDirectory: UTF8String; ASystemID: Cardinal; ARootClass: TAssetClass; ADynastyDatabase: TDynastyDatabase; AEncyclopedia: TEncyclopediaView);
 begin
    FConfigurationDirectory := AConfigurationDirectory;
    FSystemID := ASystemID;
+   FRandomNumberGenerator := TRandomNumberGenerator.Create(FSystemID);
    FDynastyDatabase := ADynastyDatabase;
    FDynastyIndices := TDynastyIndexHashTable.Create();
-   FAssetClassDatabase := AAssetClassDatabase;
+   FEncyclopedia := AEncyclopedia;
    FRoot := TRootAssetNode.Create(ARootClass, Self, ARootClass.SpawnFeatureNodes());
    FAssets := TAssetNodeHashTable.Create();
    FAssets.Add(FRoot.ID(Self), FRoot);
@@ -1234,6 +1238,7 @@ begin
       FreeMem(FVisibilityBuffer);
       FVisibilityBuffer := nil;
    end;
+   FRandomNumberGenerator.Free();
    inherited Destroy();
 end;
 
@@ -1259,18 +1264,22 @@ begin
    FX := JournalReader.ReadDouble();
    FY := JournalReader.ReadDouble();
    FTimeOrigin := TDateTime(JournalReader.ReadDouble());
-   FTimeFactor := JournalReader.ReadDouble();
    JournalReader.FAssetMap[ID] := FRoot;
    while (not EOF(FJournalFile)) do
    begin
       Code := JournalReader.ReadCardinal();
-      ID := JournalReader.ReadPtrUInt();
       case (Code) of
+         jcSystemUpdate: begin
+            FRandomNumberGenerator.Reset(JournalReader.ReadUInt64());
+            FTimeFactor := JournalReader.ReadDouble();
+         end;
          jcNewAsset: begin
+            ID := JournalReader.ReadPtrUInt();
             Asset := TAssetNode.Create(JournalReader);
             JournalReader.FAssetMap[ID] := Asset;
          end;
          jcAssetChange: begin
+            ID := JournalReader.ReadPtrUInt();
             Asset := JournalReader.FAssetMap[ID];
             Asset.ApplyJournal(JournalReader);               
          end;
@@ -1312,6 +1321,8 @@ begin
       JournalWriter.WriteDouble(FX);
       JournalWriter.WriteDouble(FY);
       JournalWriter.WriteDouble(FTimeOrigin);
+      JournalWriter.WriteCardinal(jcSystemUpdate);
+      JournalWriter.WriteUInt64(FRandomNumberGenerator.State);
       JournalWriter.WriteDouble(FTimeFactor);
       FRoot.Walk(nil, @RecordAsset);
       Close(FJournalFile);
@@ -1354,6 +1365,13 @@ procedure TSystem.RecordUpdate();
    end;
    
 begin
+   // TODO: have an FChanges for tracking when the system itself needs updating
+   if (False) then
+   begin
+      Journal.WriteCardinal(jcSystemUpdate);
+      Journal.WriteUInt64(FRandomNumberGenerator.State);
+      Journal.WriteDouble(FTimeFactor);
+   end;
    FRoot.Walk(@SkipCleanChildren, @RecordDirtyAsset);
 end;
 

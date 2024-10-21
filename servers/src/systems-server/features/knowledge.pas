@@ -5,7 +5,7 @@ unit knowledge;
 interface
 
 uses
-   systems, systemdynasty, serverstream;
+   systems, systemdynasty, serverstream, materials;
 
 type
    TKnowledgeBusMessage = class abstract(TBusMessage) end;

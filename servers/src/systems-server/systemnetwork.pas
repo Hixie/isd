@@ -5,9 +5,10 @@ unit systemnetwork;
 interface
 
 uses
-   corenetwork, binarystream, basenetwork, systemdynasty, astronomy,
-   systems, hashtable, genericutils, basedynasty, encyclopedia,
-   configuration, servers, baseunix, authnetwork, serverstream;
+   configuration, servers, baseunix, authnetwork, serverstream,
+   materials, corenetwork, binarystream, basenetwork, systemdynasty,
+   astronomy, systems, hashtable, genericutils, basedynasty,
+   encyclopedia;
 
 type
    TSystemHashTable = class(specialize THashTable<Cardinal, TSystem, CardinalUtils>)
@@ -78,7 +79,7 @@ type
       function CreateSystem(SystemID: Cardinal; X, Y: Double): TSystem;
       procedure ReportChanges(); override;
    public
-      constructor Create(APort: Word; APassword: UTF8String; ASystemServerID: Cardinal; ASettings: PSettings; ADynastyServers: TServerDatabase; AConfigurationDirectory: UTF8String);
+      constructor Create(APort: Word; APassword: UTF8String; ASystemServerID: Cardinal; ASettings: PSettings; AMaterials: TMaterialHashSet; ADynastyServers: TServerDatabase; AConfigurationDirectory: UTF8String);
       destructor Destroy(); override;
       function SerializeAllSystemsFor(Dynasty: TDynasty; Writer: TServerStreamWriter): RawByteString;
       property Password: UTF8String read FPassword;
@@ -174,9 +175,10 @@ begin
       SolarSystem := System.RootNode.Features[0] as TSolarSystemFeatureNode;
       for Star in Stars do
       begin
-         SolarSystem.AddCartesianChild(FServer.Encyclopedia.CreateStarSystem(Star.StarID), Star.DX, Star.DY); // $R-
+         SolarSystem.AddCartesianChild(FServer.Encyclopedia.WrapAssetForOrbit(FServer.Encyclopedia.CreateLoneStar(Star.StarID)), Star.DX, Star.DY); // $R-
       end;
       SolarSystem.ComputeHillSpheres();
+      FServer.Encyclopedia.CondenseProtoplanetaryDisks(SolarSystem, System.RandomNumberGenerator);
       Write(#$01);
    end
    else
@@ -202,7 +204,7 @@ begin
          FServer.Encyclopedia.WrapAssetForOrbit(FServer.Encyclopedia.Placeholder.Spawn(
             Dynasty, [
                TSpaceSensorFeatureNode.Create(FServer.Encyclopedia.Placeholder.Features[0] as TSpaceSensorFeatureClass),
-               TStructureFeatureNode.Create(FServer.Encyclopedia.Placeholder.Features[1] as TStructureFeatureClass, 10000000, 10000000)
+               TStructureFeatureNode.Create(FServer.Encyclopedia.Placeholder.Features[1] as TStructureFeatureClass, 10000 { materials quantity }, 10000 { hp })
             ]
          )),
          1 * AU, // SemiMajorAxis
@@ -433,7 +435,7 @@ begin
 end;
 
 
-constructor TServer.Create(APort: Word; APassword: UTF8String; ASystemServerID: Cardinal; ASettings: PSettings; ADynastyServers: TServerDatabase; AConfigurationDirectory: UTF8String);
+constructor TServer.Create(APort: Word; APassword: UTF8String; ASystemServerID: Cardinal; ASettings: PSettings; AMaterials: TMaterialHashSet; ADynastyServers: TServerDatabase; AConfigurationDirectory: UTF8String);
 var
    SystemsFile: File of Cardinal;
    SystemID: Cardinal;
@@ -444,7 +446,7 @@ begin
    FSettings := ASettings;
    FDynastyServers := ADynastyServers;
    FConfigurationDirectory := AConfigurationDirectory;
-   FEncyclopedia := TEncyclopedia.Create(ASettings);
+   FEncyclopedia := TEncyclopedia.Create(ASettings, AMaterials);
    FDynastyManager := TDynastyManager.Create(FConfigurationDirectory + DynastyDataSubDirectory, Self);
    FSystems := TSystemHashTable.Create();
    if (DirectoryExists(FConfigurationDirectory)) then

@@ -134,6 +134,22 @@ features cannot decode server data.
 ```
 
 
+#### `fcPlanetaryBody` (0x07)
+
+```bnf
+<featuredata>       ::= <hp>
+<hp>                ::= <integer>
+```
+
+The planetary body feature describes a non-stellar celestial feature
+such as a planet, moon, dwarf planet, asteroid, etc.
+
+The `<hp>` number indicates the structural integrity of the body. It
+is reduced when the planet is mined, bombarded, or otherwise
+compromised. At zero, the planet will disintegrate, probably forming a
+new planetary body with no structures on it.
+
+
 #### `fcSpace` (0x02)
 
 ```bnf
@@ -148,6 +164,8 @@ There are many `<child>` repetitions as `<childcount>`. These children
 have two `<double>` parameters which are the distance from the origin,
 and the angle in radians clockwise from the positive x axis to that
 child (the angle may be negative).
+
+> TODO: the first child might not be at the origin either
 
 
 #### `fcOrbit` (0x03)

@@ -40,6 +40,8 @@ type
       procedure RecordSnapshot(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader); override;
       function GetHillDiameter(Child: TAssetNode; ChildPrimaryMass: Double): Double;
+      function GetRocheLimit(ChildRadius, ChildMass: Double): Double; // returns minimum semi-major axis for a hypothetical rigid child body orbitting our primary
+      // given child should have a TOrbitFeatureNode, use Encyclopedia.WrapAssetForOrbit
       procedure AddOrbitingChild(Child: TAssetNode; SemiMajorAxis: Double; Eccentricity: Double; Omega: Double; TimeOrigin: Int64; Clockwise: Boolean);
       function IAssetNameProvider.GetAssetName = GetOrbitName;
       property PrimaryChild: TAssetNode read FPrimaryChild;
@@ -60,7 +62,11 @@ type
       Omega: Double; // radians
       TimeOrigin: Int64; // milliseconds in system time
       Clockwise: Boolean;
+      // Returns hill diameter of the child body in this orbit, with mass ChildMass, assuming the orbit is around a body of mass PrimaryMass.
       function GetHillDiameter(PrimaryMass, ChildMass: Double): Double; // meters
+      // Returns whether Child can have children if it is in this orbit, around a primary Parent
+      // (which must be the feature node containing the primary around which we're orbiting).
+      // Child must be the actual body (not the orbit asset) that is orbiting Parent.
       function GetCanHaveOrbitalChildren(Parent: TOrbitFeatureNode; Child: TAssetNode): Boolean;
       function GetPeriod(Parent: TOrbitFeatureNode; Child: TAssetNode): Double; // seconds
    end;
@@ -143,15 +149,23 @@ end;
 
 function TOrbitFeatureNode.GetHillDiameter(Child: TAssetNode; ChildPrimaryMass: Double): Double;
 begin
+   // Child is the Orbit asset that is spinning around our primary.
    Assert(Assigned(Child.ParentData));
-   Assert(ChildPrimaryMass <= Child.Mass);
-   Assert(ChildPrimaryMass <= PrimaryChild.Mass);
+   Assert(ChildPrimaryMass <= Child.Mass); // Child.Mass includes the mass of child's satellites.
+   Assert(ChildPrimaryMass <= PrimaryChild.Mass); // otherwise it wouldn't be orbiting us, we'd be orbiting it
    Result := POrbitData(Child.ParentData)^.GetHillDiameter(PrimaryChild.Mass, ChildPrimaryMass);
+end;
+
+function TOrbitFeatureNode.GetRocheLimit(ChildRadius, ChildMass: Double): Double;
+begin
+   Assert(ChildMass > 0);
+   Result := ChildRadius * ((2 * PrimaryChild.Mass / ChildMass) ** (1.0 / 3.0)); // $R-
 end;
 
 procedure TOrbitFeatureNode.AddOrbitingChild(Child: TAssetNode; SemiMajorAxis: Double; Eccentricity: Double; Omega: Double; TimeOrigin: Int64; Clockwise: Boolean);
 begin
    Assert(Child.AssetClass.ID = idOrbits);
+   Assert(SemiMajorAxis >= GetRocheLimit(Child.Size / 2.0, Child.Mass), 'roche limit violation'); // TODO: check this before calling AddOrbitingChild!
    AdoptOrbitingChild(Child);
    POrbitData(Child.ParentData)^.SemiMajorAxis := SemiMajorAxis;
    POrbitData(Child.ParentData)^.Eccentricity := Eccentricity;
@@ -244,7 +258,7 @@ begin
    inherited;
    // The following is not an infinite loop only because the child's asset parent already has dmInference by the time we get here.
    Assert(dmInference in Parent.ReadVisibilityFor(DynastyIndex, VisibilityHelper.System));
-   VisibilityHelper.AddSpecificVisibilityByIndex(DynastyIndex, [dmInference], PrimaryChild);
+   VisibilityHelper.AddSpecificVisibilityByIndex(DynastyIndex, [dmInference] + PrimaryChild.ReadVisibilityFor(DynastyIndex, VisibilityHelper.System), Parent);
 end;
 
 function TOrbitFeatureNode.GetOrbitName(): UTF8String;

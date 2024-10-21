@@ -5,7 +5,7 @@ unit structure;
 interface
 
 uses
-   systems, serverstream;
+   systems, serverstream, materials;
 
 type
    TMaterialLineItem = record // 24 bytes

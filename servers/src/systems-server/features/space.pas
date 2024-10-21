@@ -284,6 +284,7 @@ var
    Child: TAssetNode;
    Index: Cardinal;
 begin
+   // TODO: the first child might not be at the origin
    Writer.WriteCardinal(fcSpace);
    Assert(Length(FChildren) > 0);
    Writer.WritePtrUInt(FChildren[0].ID(System));
@@ -415,7 +416,6 @@ begin
       end;
       PSolarSystemData(FChildren[Index].ParentData)^.HillDiameter := CandidateHillRadius * 2.0;
    end;
-   
 end;
 
 function TSolarSystemFeatureNode.GetAssetName(): UTF8String;
