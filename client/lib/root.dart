@@ -1,5 +1,6 @@
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
@@ -8,9 +9,10 @@ import 'assets.dart' show WorldNode;
 import 'layout.dart';
 
 class WorldRoot extends StatefulWidget {
-  const WorldRoot({super.key, required this.rootNode});
+  const WorldRoot({super.key, required this.rootNode, required this.recommendedFocus });
 
   final WorldNode rootNode;
+  final ValueListenable<WorldNode?> recommendedFocus;
 
   @override
   _WorldRootState createState() => _WorldRootState();
@@ -42,15 +44,30 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
     setState(() { });
   }
 
+  @override
+  void initState() {
+    super.initState();
+    widget.recommendedFocus.addListener(_handleRecommendedFocus);
+  }
+
+  @override
+  void didUpdateWidget(WorldRoot oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.recommendedFocus != oldWidget.recommendedFocus) {
+      oldWidget.recommendedFocus.removeListener(_handleRecommendedFocus);
+      widget.recommendedFocus.addListener(_handleRecommendedFocus);
+    }
+  }
+  
   void _updateTo(double zoom, Offset pan) {
     _zoomTween.end = zoom;
     _panTween.end = pan;
   }
 
   void _updateSnap(double zoom, Offset pan) {
-    _centerNode = null;
     _zoomTween.begin = zoom;
     _zoomTween.end = zoom;
+    _centerNode = null;
     _panTween.begin = pan;
     _panTween.end = pan;
     _controller.reset();
@@ -84,8 +101,20 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
 
   @override
   void dispose() {
+    widget.recommendedFocus.removeListener(_handleRecommendedFocus);
     _controller.dispose();
     super.dispose();
+  }
+
+  bool _shouldAutofocus = true;
+  
+  void _handleRecommendedFocus() {
+    if (widget.recommendedFocus.value == null) {
+      _shouldAutofocus = true;
+    } else if (_shouldAutofocus) {
+      _shouldAutofocus = false;
+      _centerOn(widget.recommendedFocus.value!);
+    }
   }
   
   @override
@@ -104,6 +133,7 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
               final Offset sigma = -Offset(event.localPosition.dx - size.width / 2.0, event.localPosition.dy - size.height / 2.0);
               _lastScale ??= box.layoutScale;
               final double newScale = max(box.minScale, _lastScale! * exp(deltaZoom));
+              // TODO: don't unlock the pan if we have a _centerNode
               _updatePan(_pan.value + sigma / _lastScale! - sigma / newScale, newScale, zoom: _zoom.value + deltaZoom);
               _lastScale = newScale;
             });
@@ -119,6 +149,7 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
               _lastScale ??= box.layoutScale;
               final double newScale = max(box.minScale, _lastScale! * details.scale);
               // TODO: check that this works when you pan AND zoom
+              // TODO: make the pan relative to the _centerNode if we have one
               _updatePan(_pan.value + details.focalPointDelta / _lastScale!, newScale, zoom: _zoom.value + log(details.scale));
               _lastScale = newScale;
             });
@@ -144,7 +175,7 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
             builder: (BuildContext context, Widget? child) {
               if (_centerNode != null) {
                 _updateTo(
-                  log(widget.rootNode.diameter / _centerNode!.diameter),
+                  log(widget.rootNode.diameter / _centerNode!.diameter) / 1.5,
                   -_centerNode!.computePosition(<VoidCallback>[markNeedsBuild]),
                 );
               }

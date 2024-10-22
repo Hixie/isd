@@ -165,7 +165,7 @@ class _InterstellarDynastiesState extends State<InterstellarDynasties> {
       builder: (BuildContext context, bool loggedIn, Widget? child) => Stack(
         fit: StackFit.expand,
         children: <Widget>[
-          WorldRoot(rootNode: widget.game.rootNode),
+          WorldRoot(rootNode: widget.game.rootNode, recommendedFocus: widget.game.recommendedFocus),
           DisableSubtree(
             disabled: loggedIn,
             child: ValueListenableBuilder<bool>(

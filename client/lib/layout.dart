@@ -147,7 +147,7 @@ abstract class RenderWorld extends RenderObject {
   static double get _maxCartoonDiameter => log( 1e9); // 2 million km, a bit bigger than our sun
   
   double computePaintDiameter(double diameter, double maxDiameter) {
-    double cartoonScale = ((log(diameter) - _minCartoonDiameter) / (_maxCartoonDiameter - _minCartoonDiameter)).clamp(0.0, 1.0) * 2.5 + 1.0;
+    final double cartoonScale = ((log(diameter) - _minCartoonDiameter) / (_maxCartoonDiameter - _minCartoonDiameter)).clamp(0.0, 1.0) * 2.5 + 1.0;
     assert(cartoonScale >= 1.0);
     assert(cartoonScale <= 3.5);
     return min(

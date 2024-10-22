@@ -15,8 +15,10 @@ import 'nodes/galaxy.dart';
 import 'spacetime.dart';
 import 'stringstream.dart';
 
+typedef ColonyShipHandler = void Function(AssetNode colonyShip);
+
 class SystemServer {
-  SystemServer(this.url, this.token, this.galaxy, { required this.onError }) {
+  SystemServer(this.url, this.token, this.galaxy, { required this.onError, required this.onColonyShip }) {
     _connection = Connection(
       url,
       onConnected: _handleLogin,
@@ -27,8 +29,9 @@ class SystemServer {
 
   final String url;
   final String token;
-  final ErrorCallback onError;
   final GalaxyNode galaxy;
+  final ErrorCallback onError;
+  final ColonyShipHandler onColonyShip;
 
   late final Connection _connection;
 
@@ -39,6 +42,7 @@ class SystemServer {
   static const int fcSpaceSensors = 5;
   static const int fcSpaceSensorsStatus = 6;
   static const int fcPlanet = 7;
+  static const int fcPlotControl = 8;
   static const int expectedVersion = fcSpaceSensorsStatus;
 
   Future<void> _handleLogin() async {
@@ -64,6 +68,7 @@ class SystemServer {
   void _handleUpdate(Uint8List message) {
     final DateTime now = DateTime.timestamp();
     final BinaryStreamReader reader = BinaryStreamReader(message, _connection.codeTables);
+    AssetNode? colonyShip;
     while (!reader.done) {
       final int systemID = reader.readInt32();
       final SystemNode system = _systems.putIfAbsent(systemID, () => SystemNode(id: systemID));
@@ -71,7 +76,7 @@ class SystemServer {
       final double timeFactor = reader.readDouble();
       final SpaceTime spaceTime = SpaceTime(timeOrigin, timeFactor, now);
       final int rootAssetID = reader.readInt64();
-      system.root = _assets.putIfAbsent(rootAssetID, () => AssetNode(id: rootAssetID));
+      system.root = _assets.putIfAbsent(rootAssetID, () => AssetNode(id: rootAssetID, parent: system));
       final double x = reader.readDouble();
       final double y = reader.readDouble();
       system.offset = Offset(x - galaxy.diameter / 2.0, y - galaxy.diameter / 2.0);
@@ -176,12 +181,22 @@ class SystemServer {
                 topOrbit: top,
                 detectedCount: count,
               )));
+            case fcPlotControl:
+              final int signal = reader.readInt32();
+              switch (signal) {
+                case 0: ; // nothing
+                case 1: assert(colonyShip == null); colonyShip = asset;
+                default: throw NetworkError('Client does not support plot code 0x${signal.toRadixString(16).padLeft(8, "0")}');
+              }
             default:
               throw NetworkError('Client does not support feature code 0x${featureCode.toRadixString(16).padLeft(8, "0")}');
           }
         }
         asset.removeFeatures(oldFeatures);
       }
+    }
+    if (colonyShip != null) {
+      onColonyShip(colonyShip);
     }
   }
 

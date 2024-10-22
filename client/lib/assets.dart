@@ -118,7 +118,7 @@ class SystemNode extends WorldNode {
 
   @override
   Offset findLocationForChild(WorldNode child, List<VoidCallback> callbacks) {
-    return root.findLocationForChild(child, callbacks);
+    return Offset.zero;
   }
 
   @override
@@ -291,7 +291,7 @@ class AssetNode extends WorldNode {
 
   @override
   Offset findLocationForChild(WorldNode child, List<VoidCallback> callbacks) {
-    assert(child.parent == this);
+    assert(child.parent == this, '$this was asked for location of child $child but that child\'s parent is ${child.parent}');
     assert(child is AssetNode);
     if (_containers.length == 1) {
       return _containers.values.single.findLocationForChild(child as AssetNode, callbacks);
@@ -317,4 +317,7 @@ class AssetNode extends WorldNode {
     }
     return WorldPlaceholder(diameter: diameter, maxDiameter: maxRenderDiameter, color: const Color(0xFFFF0000));
   }
+
+  @override
+  String toString() => '<$className:$name>';
 }

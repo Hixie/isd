@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:fs_shim/fs_shim.dart';
 
+import 'assets.dart';
 import 'connection.dart';
 import 'nodes/galaxy.dart';
 import 'stringstream.dart';
@@ -70,6 +71,9 @@ class Game {
 
   ValueListenable<bool> get loggedIn => _loggedIn;
   final ValueNotifier<bool> _loggedIn = ValueNotifier<bool>(false);
+
+  ValueListenable<WorldNode?> get recommendedFocus => _recommendedFocus;
+  final ValueNotifier<WorldNode?> _recommendedFocus = ValueNotifier<WorldNode?>(null);
 
   void _connectToLoginServer() {
     _loginServer = Connection(
@@ -171,6 +175,7 @@ class Game {
   void _clearCredentials() {
     _loggedIn.value = false;
     _credentials.value = null;
+    _recommendedFocus.value = null;
     _currentToken = null;
     rootNode.setCurrentDynastyId(null);
     rootNode.clearSystems();
@@ -207,6 +212,9 @@ class Game {
           _currentToken!,
           rootNode,
           onError: _handleSystemServerError,
+          onColonyShip: (WorldNode? node) {
+            _recommendedFocus.value = node;
+          },
         ));
       }
     } on Exception catch (e) {
@@ -217,7 +225,7 @@ class Game {
   void _handleDynastyServerMessage(StreamReader reader) {
     debugPrint('dynasty server: received unexpected message: $reader');
   }
-
+  
   void _handleDynastyServerError(Exception error, Duration duration) {
     debugPrint('dynasty server: $error');
     if (duration > Duration.zero)

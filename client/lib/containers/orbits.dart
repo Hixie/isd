@@ -117,6 +117,10 @@ class OrbitFeature extends ContainerFeature {
 
   @override
   Offset findLocationForChild(AssetNode child, List<VoidCallback> callbacks) {
+    if (child == originChild) {
+      return Offset.zero;
+    }
+    assert(children.containsKey(child), '$parent has no child $child; children are ${children.keys} and $originChild');
     parent.addTransientListeners(callbacks);
     final double time = parent.computeTime(spaceTime, callbacks);
     return _computeOrbit(children[child]!, originChild.mass, time);
