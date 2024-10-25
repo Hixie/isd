@@ -951,6 +951,7 @@ procedure TAssetNode.HandleImminentDeath();
 begin
    if (Assigned(FOwner)) then
       FOwner.DecRef();
+   // TODO: tell feature nodes that we're going away
 end;
 
 function TAssetNode.GetFeatureByClass(FeatureClass: FeatureClassReference): TFeatureNode;

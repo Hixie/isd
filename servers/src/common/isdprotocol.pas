@@ -28,7 +28,8 @@ const
    fcSpaceSensor = 5;
    fcSpaceSensorStatus = 6;
    fcPlanetaryBody = 7;
-   fcHighestKnownFeatureCode = fcPlanetaryBody;
+   fcPlotControl = 8;
+   fcHighestKnownFeatureCode = fcPlotControl;
    
 implementation
 

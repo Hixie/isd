@@ -10,8 +10,8 @@ Response:
 
  * A number giving the server version. This number is actually the
    highest known feature code that the server will use. If this number
-   is higher than expected by the client, the client may fail to parse
-   some server messages.
+   is higher than expected by the client, the client might fail to
+   parse some server messages.
 
 The server will subsequently begin sending updates about the systems
 it supports that have the dynasty's presence, starting with a complete
@@ -122,9 +122,13 @@ Each feature has a code, which is one of the fcXXXX constants in
 The highest number reported by the server is the one reported in
 response to the `login` message.
 
-Each feature then has a specific form of data. The data is not
-self-describing, so a client that does not support all current
-features cannot decode server data.
+Each feature then has a specific form of data. The data format is not
+self-describing (i.e. there is no way to know when a feature's data
+ends and the next feature's begins), so a client that does not support
+all current features cannot decode server data.
+
+Features may appear multiple times per asset. For example, an asset
+could have multiple `fcSpaceSensor` features with different settings.
 
 #### `fcStar` (0x01)
 
@@ -331,10 +335,35 @@ feature, documented next.
 ```
 
 Reports the "top" and "bottom" nodes of the tree that were affected by
-the sensor sweep (see `fcSpaceSensor`), as well as the total number
-of detected nodes.
+the sensor sweep of the immedietaly preceding `fcSpaceSensor` feature
+(see `fcSpaceSensor`), as well as the total number of detected nodes.
 
-This feature, if present, always follows a `fcSpaceSensor` feature.
+This feature, if present, always follows a `fcSpaceSensor` feature. If
+there are multiple sensors, they may each have a trailing
+`fcSpaceSensorStatus`; each status applies to the immediately
+preceding sensor.
+
+
+### `fcPlotControl` (0x08)
+
+```bnf
+<featuredata>       ::= <integer>
+```
+
+Indicates to the client that the asset has, or could have, some
+important plot relevance. The server will send a single integer as the
+feature's data, which will be one of the following:
+
+ 0: Nothing. (Normally the feature would just be omitted in this case.)
+ 
+ 1: This is the colony ship, or possibly the remnants of the colony
+    ship, that started the dynasty's story. Only one asset in the
+    entire galaxy will ever have this flag set for a particular
+    dynasty (even if they somehow obtain another colony ship, e.g. by
+    taking over another dynasty; the other dynasty's ship will not
+    have this set). When a client sees an asset with this code for the
+    first time during a session, it is reasonable to center on the
+    associated asset.
 
 
 # Systems Server Internal Protocol

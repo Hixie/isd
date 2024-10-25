@@ -93,7 +93,7 @@ type
 implementation
 
 uses
-   sysutils, hashfunctions, isdprotocol, passwords, exceptions, space, orbit, sensors, structure, errors;
+   sysutils, hashfunctions, isdprotocol, passwords, exceptions, space, orbit, sensors, structure, errors, plot;
 
 constructor TSystemHashTable.Create();
 begin
@@ -201,10 +201,11 @@ begin
       end;
       Assert(Dynasty.DynastyServerID = DynastyServerID);
       ((System.RootNode.Features[0] as TSolarSystemFeatureNode).Children[0].Features[0] as TOrbitFeatureNode).AddOrbitingChild(
-         FServer.Encyclopedia.WrapAssetForOrbit(FServer.Encyclopedia.Placeholder.Spawn(
+         FServer.Encyclopedia.WrapAssetForOrbit(FServer.Encyclopedia.PlaceholderShip.Spawn(
             Dynasty, [
-               TSpaceSensorFeatureNode.Create(FServer.Encyclopedia.Placeholder.Features[0] as TSpaceSensorFeatureClass),
-               TStructureFeatureNode.Create(FServer.Encyclopedia.Placeholder.Features[1] as TStructureFeatureClass, 10000 { materials quantity }, 10000 { hp })
+               TSpaceSensorFeatureNode.Create(FServer.Encyclopedia.PlaceholderShip.Features[0] as TSpaceSensorFeatureClass),
+               TStructureFeatureNode.Create(FServer.Encyclopedia.PlaceholderShip.Features[1] as TStructureFeatureClass, 10000 { materials quantity }, 10000 { hp }),
+               TDynastyOriginalColonyShipFeatureNode.Create(Dynasty)
             ]
          )),
          1 * AU, // SemiMajorAxis

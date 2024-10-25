@@ -13,7 +13,7 @@ type
       var
          FAssetClasses: TAssetClassHashTable; 
          FSpace, FOrbits: TAssetClass;
-         FPlaceholder: TAssetClass;
+         FPlaceholderShip: TAssetClass;
          FStars: array[TStarCategory] of TAssetClass;
          FPlanetaryBody: TAssetClass;
          FProtoplanetaryMaterials: TMaterialHashSet;
@@ -28,7 +28,7 @@ type
       constructor Create(Settings: PSettings; AMaterials: TMaterialHashSet);
       destructor Destroy(); override;
       property SpaceClass: TAssetClass read FSpace;
-      property Placeholder: TAssetClass read FPlaceholder;
+      property PlaceholderShip: TAssetClass read FPlaceholderShip;
       property StarClass[Category: TStarCategory]: TAssetClass read GetStarClass;
       function WrapAssetForOrbit(Child: TAssetNode): TAssetNode;
       function CreateLoneStar(StarID: TStarID): TAssetNode;
@@ -40,7 +40,7 @@ const
    // built-in asset classes
    idSpace = -1;
    idOrbits = -2;
-   idPlaceholder = -3;
+   idPlaceholderShip = -3;
    idStars = -100; // -100..-199
    idPlanetaryBody = -200;
 
@@ -51,7 +51,7 @@ const
 implementation
 
 uses
-   icons, orbit, structure, stellar, name, sensors, exceptions, planetary, protoplanetary;
+   icons, orbit, structure, stellar, name, sensors, exceptions, planetary, protoplanetary, plot;
 
 function RoundAboveZero(Value: Double): Cardinal;
 begin
@@ -158,24 +158,25 @@ begin
    );
    RegisterAssetClass(FPlanetaryBody);
    
-   FPlaceholder := TAssetClass.Create(
-      idPlaceholder,                                   
-      'Placeholder', 'Indeterminate item',
-      'A McGuffin owned and controlled by a player.',
+   FPlaceholderShip := TAssetClass.Create(
+      idPlaceholderShip,                                   
+      'Colony Ship', 'Unidentified Flying Object',
+      'The ship that your people used to escape their dying star.',
       [
          TSpaceSensorFeatureClass.Create(10 { max steps to orbit }, 10 { steps up from orbit }, 10 { steps down from top}, 0.01 { min size }, [dmVisibleSpectrum, dmClassKnown, dmInternals]),
-         TStructureFeatureClass.Create([TMaterialLineItem.Create('Shell', FDarkMatter, 10000 { mass in units (g): 10kg })], 1 { min functional quantity }, 1.0 { default diameter, m })
+         TStructureFeatureClass.Create([TMaterialLineItem.Create('Shell', FDarkMatter, 10000 { mass in units (g): 10kg })], 1 { min functional quantity }, 1.0 { default diameter, m }),
+         TDynastyOriginalColonyShipFeatureClass.Create()
       ],
       PlaceholderIcon
    );
-   RegisterAssetClass(FPlaceholder);
+   RegisterAssetClass(FPlaceholderShip);
 end;
 
 destructor TEncyclopedia.Destroy();
 var
    AssetClass: TAssetClass;
 begin
-   FPlaceholder.Free();
+   FPlaceholderShip.Free();
    FDarkMatter.Free();
    FMaterials.Free();
    for AssetClass in FStars do
