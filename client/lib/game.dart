@@ -3,11 +3,11 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:fs_shim/fs_shim.dart';
 
-import 'assets.dart';
 import 'connection.dart';
 import 'nodes/galaxy.dart';
 import 'stringstream.dart';
 import 'systems.dart';
+import 'world.dart';
 
 class Credentials {
   Credentials(this.username, this.password);

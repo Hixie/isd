@@ -1,15 +1,18 @@
 import 'package:flutter/widgets.dart';
 
 import '../layout.dart';
+import '../world.dart';
 
 class WorldPlaceholder extends LeafRenderObjectWidget {
   const WorldPlaceholder({
     super.key,
+    required this.node,
     required this.diameter,
     required this.maxDiameter,
     required this.color,
   }) : assert(maxDiameter > 0.0);
 
+  final WorldNode node;
   final double diameter;
   final double maxDiameter;
   final Color color;
@@ -17,6 +20,7 @@ class WorldPlaceholder extends LeafRenderObjectWidget {
   @override
   RenderWorldPlaceholder createRenderObject(BuildContext context) {
     return RenderWorldPlaceholder(
+      node: node,
       diameter: diameter,
       maxDiameter: maxDiameter,
       color: color,
@@ -26,14 +30,16 @@ class WorldPlaceholder extends LeafRenderObjectWidget {
   @override
   void updateRenderObject(BuildContext context, RenderWorldPlaceholder renderObject) {
     renderObject
+      ..node = node
       ..diameter = diameter
       ..maxDiameter = maxDiameter
       ..color = color;
   }
 }
 
-class RenderWorldPlaceholder extends RenderWorld {
+class RenderWorldPlaceholder extends RenderWorldNode {
   RenderWorldPlaceholder({
+    required super.node,
     required double diameter,
     required double maxDiameter,
     Color color = const Color(0xFFFFFFFF),

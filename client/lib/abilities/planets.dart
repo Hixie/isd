@@ -3,6 +3,7 @@ import 'package:flutter/widgets.dart';
 import '../assets.dart';
 import '../layout.dart';
 import '../spacetime.dart';
+import '../world.dart';
 
 class PlanetFeature extends AbilityFeature {
   PlanetFeature(this.spaceTime, this.hp);
@@ -13,6 +14,7 @@ class PlanetFeature extends AbilityFeature {
   @override
   Widget? buildRenderer(BuildContext context, Widget? child) {
     return PlanetWidget(
+      node: parent,
       diameter: parent.diameter,
       maxDiameter: parent.maxRenderDiameter,
       spaceTime: spaceTime,
@@ -23,11 +25,13 @@ class PlanetFeature extends AbilityFeature {
 class PlanetWidget extends LeafRenderObjectWidget {
   const PlanetWidget({
     super.key,
+    required this.node,
     required this.diameter,
     required this.maxDiameter,
     required this.spaceTime,
   });
 
+  final WorldNode node;
   final double diameter;
   final double maxDiameter;
   final SpaceTime spaceTime;
@@ -35,6 +39,7 @@ class PlanetWidget extends LeafRenderObjectWidget {
   @override
   RenderPlanet createRenderObject(BuildContext context) {
     return RenderPlanet(
+      node: node,
       diameter: diameter,
       maxDiameter: maxDiameter,
       spaceTime: spaceTime,
@@ -44,14 +49,16 @@ class PlanetWidget extends LeafRenderObjectWidget {
   @override
   void updateRenderObject(BuildContext context, RenderPlanet renderObject) {
     renderObject
+      ..node = node
       ..diameter = diameter
       ..maxDiameter = maxDiameter
       ..spaceTime = spaceTime;
   }
 }
 
-class RenderPlanet extends RenderWorld {
+class RenderPlanet extends RenderWorldNode {
   RenderPlanet({
+    required super.node,
     required double diameter,
     required double maxDiameter,
     required SpaceTime spaceTime,

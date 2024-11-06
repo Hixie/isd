@@ -6,6 +6,7 @@ import '../assets.dart';
 import '../layout.dart';
 import '../shaders.dart';
 import '../spacetime.dart';
+import '../world.dart';
 
 class StarFeature extends AbilityFeature {
   StarFeature(this.spaceTime, this.starId);
@@ -16,6 +17,7 @@ class StarFeature extends AbilityFeature {
   @override
   Widget? buildRenderer(BuildContext context, Widget? child) {
     return StarWidget(
+      node: parent,
       starId: starId,
       diameter: parent.diameter,
       maxDiameter: parent.maxRenderDiameter,
@@ -27,12 +29,14 @@ class StarFeature extends AbilityFeature {
 class StarWidget extends LeafRenderObjectWidget {
   const StarWidget({
     super.key,
+    required this.node,
     required this.starId,
     required this.diameter,
     required this.maxDiameter,
     required this.spaceTime,
   });
 
+  final WorldNode node;
   final int starId;
   final double diameter;
   final double maxDiameter;
@@ -41,6 +45,7 @@ class StarWidget extends LeafRenderObjectWidget {
   @override
   RenderStar createRenderObject(BuildContext context) {
     return RenderStar(
+      node: node,
       starId: starId,
       diameter: diameter,
       maxDiameter: maxDiameter,
@@ -52,6 +57,7 @@ class StarWidget extends LeafRenderObjectWidget {
   @override
   void updateRenderObject(BuildContext context, RenderStar renderObject) {
     renderObject
+      ..node = node
       ..starId = starId
       ..diameter = diameter
       ..maxDiameter = maxDiameter
@@ -60,8 +66,9 @@ class StarWidget extends LeafRenderObjectWidget {
   }
 }
 
-class RenderStar extends RenderWorld {
+class RenderStar extends RenderWorldNode {
   RenderStar({
+    required super.node,
     required int starId,
     required double diameter,
     required double maxDiameter,

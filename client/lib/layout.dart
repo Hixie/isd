@@ -3,24 +3,22 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
 
+import 'world.dart';
+
 // CONSTRAINTS
 
 class WorldConstraints extends Constraints {
   const WorldConstraints({
-    required this.viewport,
+    required this.viewportSize,
     required this.zoom,
     required this.scale,
-    required this.pan,
-    required this.scaledPan,
-    required this.scaledViewport,
-  });
+    required Map<WorldNode, Offset> precomputedPositions,
+  }) : _precomputedPositions = precomputedPositions;
 
-  final Rect viewport; // visible area relative to canvas origin, in pixels
+  final Size viewportSize; // size of visible area in pixels; by definition, center of viewport is at Offset.zero in the coordinate space that the paint method's offset is in
   final double zoom; // logarithmic scale (0..)
   final double scale; // pixels per meter with zoom applied
-  final Offset pan; // center of root node relative to canvas origin, in pixels
-  final Offset scaledPan; // center of root node relative to canvas origin, in meters
-  final Rect scaledViewport; // visible area relative to center of root node, in meters
+  final Map<WorldNode, Offset> _precomputedPositions; // offsets from viewport center in meters; see paintPositionFor below
 
   double get zoomFactor => exp(zoom);
 
@@ -38,8 +36,20 @@ class WorldConstraints extends Constraints {
     return true;
   }
 
+  // Offset to pass to paint method for render objects of specific nodes, giving
+  // the pixel offset from the canvas center to the node center.
+  // For some nodes, this is precomputed. For others, it's a delta from the parent's offset.
+  // This includes the pan (because that's baked into the parent offset).
+  Offset paintPositionFor(WorldNode node, Offset parentOffset, List<VoidCallback> callbacks) {
+    if (_precomputedPositions.containsKey(node)) {
+      return _precomputedPositions[node]! * scale;
+    }
+    assert(node.parent != null); // root should always be precomputed
+    return parentOffset + node.parent!.findLocationForChild(node, callbacks) * scale;
+  }
+  
   @override
-  String toString() => 'WorldConstraints(x$zoom, scale=${scale}px/m, pan=${scaledPan}m viewport=${viewport}px or ${scaledViewport}m)';
+  String toString() => 'WorldConstraints(x$zoom, scale=${scale}px/m, viewport=${viewportSize}px)';
 }
 
 @immutable
@@ -92,8 +102,8 @@ class WorldGeometry {
 
   final WorldShape shape;
 
-  static const double minSystemRenderDiameter = 24.0; // a system less than this size is not rendered at all, and fades in...
-  static const double fullyVisibleRenderDiameter = 96.0; // ...up to the point where it's at least this size.
+  static const double minSystemRenderDiameter = 4.0; // a system less than this size is not rendered at all, and fades in...
+  static const double fullyVisibleRenderDiameter = 48.0; // ...up to the point where it's at least this size.
 
   bool contains(Offset center, Offset point) => shape.contains(center, point);
 }
@@ -111,6 +121,10 @@ abstract interface class WorldTapTarget {
 // ABSTRACT RENDER OBJECTS
 
 abstract class RenderWorld extends RenderObject {
+  RenderWorld();
+
+  WorldNode get node;
+  
   @override
   WorldConstraints get constraints => super.constraints as WorldConstraints;
 
@@ -137,7 +151,8 @@ abstract class RenderWorld extends RenderObject {
     _geometry = computePaint(context, offset);
   }
 
-  // offset is the distance from the canvas origin to the asset origin, in pixels
+  // The offset parameter is the distance from the canvas origin to the asset origin, in pixels.
+  // Canvas origin is the center of the viewport, whose size is constraints.viewportSize.
   WorldGeometry computePaint(PaintingContext context, Offset offset);
 
   static const double _minDiameter = 20.0;
@@ -169,4 +184,18 @@ abstract class RenderWorld extends RenderObject {
   void debugAssertDoesMeetConstraints() { }
 
   WorldTapTarget? routeTap(Offset offset);
+}
+
+abstract class RenderWorldNode extends RenderWorld {
+  RenderWorldNode({ required WorldNode node }) : _node = node;
+
+  @override
+  WorldNode get node => _node;
+  WorldNode _node;
+  set node (WorldNode value) {
+    if (value != _node) {
+      _node = value;
+      markNeedsLayout();
+    }
+  }
 }

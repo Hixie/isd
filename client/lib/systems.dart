@@ -12,6 +12,7 @@ import 'connection.dart';
 import 'containers/orbits.dart';
 import 'containers/space.dart';
 import 'nodes/galaxy.dart';
+import 'nodes/system.dart';
 import 'spacetime.dart';
 import 'stringstream.dart';
 
@@ -43,7 +44,7 @@ class SystemServer {
   static const int fcSpaceSensorsStatus = 6;
   static const int fcPlanet = 7;
   static const int fcPlotControl = 8;
-  static const int expectedVersion = fcSpaceSensorsStatus;
+  static const int expectedVersion = fcPlotControl;
 
   Future<void> _handleLogin() async {
     final StreamReader reader = await _connection.send(<String>['login', token], queue: false);

@@ -2,6 +2,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
 import 'layout.dart';
+import 'world.dart';
 
 class WorldLayoutBuilder extends ConstrainedLayoutBuilder<WorldConstraints> {
   const WorldLayoutBuilder({ super.key, required super.builder });
@@ -13,6 +14,9 @@ class WorldLayoutBuilder extends ConstrainedLayoutBuilder<WorldConstraints> {
 class _RenderWorldLayoutBuilder extends RenderWorld
       with RenderObjectWithChildMixin<RenderWorld>, RenderConstrainedLayoutBuilder<WorldConstraints, RenderWorld> {
   _RenderWorldLayoutBuilder();
+
+  @override
+  WorldNode get node => child!.node;
 
   @override
   void computeLayout(WorldConstraints constraints) {
@@ -37,20 +41,22 @@ class _RenderWorldLayoutBuilder extends RenderWorld
   }
 }
 
-
 class WorldNull extends LeafRenderObjectWidget {
   const WorldNull({
     super.key,
+    required this.node,
   });
 
+  final WorldNode node;
+  
   @override
   RenderWorldNull createRenderObject(BuildContext context) {
-    return RenderWorldNull();
+    return RenderWorldNull(node: node);
   }
 }
 
-class RenderWorldNull extends RenderWorld {
-  RenderWorldNull();
+class RenderWorldNull extends RenderWorldNode {
+  RenderWorldNull({ required super.node });
 
   @override
   void computeLayout(WorldConstraints constraints) { }

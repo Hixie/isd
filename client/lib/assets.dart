@@ -3,129 +3,7 @@ import 'package:flutter/widgets.dart';
 import 'containers/orbits.dart';
 import 'dynasty.dart';
 import 'nodes/placeholder.dart';
-import 'spacetime.dart';
-
-abstract class WorldNode extends ChangeNotifier {
-  WorldNode({ this.parent });
-
-  // The node that considers this node a child.
-  //
-  // For orphan nodes (e.g. while nodes are being parsed in an update message)
-  // and for the root node, this will be null.
-  //
-  // Changing this does _not_ trigger notifications. This is expected to be set
-  // before the node is used in the render tree. When a node's parent changes,
-  // the parent is expected to trigger notifications so that _it_ can be
-  // rebuilt; the child does not need to update.
-  WorldNode? parent;
-
-  // in meters
-  double get diameter;
-
-  // in meters
-  double get maxRenderDiameter => diameter;
-
-  // in meters relative to parent, used by computePosition
-  Offset findLocationForChild(WorldNode child, List<VoidCallback> callbacks);
-
-  // absolute position in meters - used e.g. for centering on the child
-  Offset computePosition(List<VoidCallback> callbacks) {
-    addTransientListeners(callbacks);
-    if (parent == null) {
-      return Offset.zero;
-    }
-    return parent!.computePosition(callbacks) + parent!.findLocationForChild(this, callbacks);
-  }
-
-  final Set<VoidCallback> _transientListeners = <VoidCallback>{};
-
-  void addTransientListener(VoidCallback callback) {
-    _transientListeners.add(callback);
-  }
-
-  void addTransientListeners(List<VoidCallback> callbacks) {
-    _transientListeners.addAll(callbacks);
-  }
-
-  @override
-  void notifyListeners() {
-    final List<VoidCallback> listeners = _transientListeners.toList();
-    _transientListeners.clear();
-    for (VoidCallback callback in listeners) {
-      callback();
-    }
-    super.notifyListeners();
-  }
-
-  // returns local system time in seconds
-  double computeTime(SpaceTime spaceTime, List<VoidCallback> callbacks) {
-    return spaceTime.computeTime(<VoidCallback>[notifyListeners, ...callbacks]);
-  }
-
-  Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: this,
-      builder: buildRenderer,
-    );
-  }
-
-  @protected
-  Widget buildRenderer(BuildContext context, Widget? child);
-
-  @override
-  String toString() => '<$runtimeType>';
-}
-
-class SystemNode extends WorldNode {
-  SystemNode({ super.parent, required this.id });
-
-  final int id;
-
-  String get label => _label;
-  String _label = '';
-
-  void _updateLabel() {
-    assert(_root != null);
-    if (_root!.name != _label) {
-      _label = _root!.name;
-      notifyListeners();
-    }
-  }
-
-  AssetNode get root => _root!;
-  AssetNode? _root;
-  set root(AssetNode value) {
-    if (_root != value) {
-      _root?.removeListener(_updateLabel);
-      _root = value;
-      _label = _root!.name;
-      notifyListeners();
-      _root!.addListener(_updateLabel);
-    }
-  }
-
-  Offset get offset => _offset!;
-  Offset? _offset;
-  set offset(Offset value) {
-    if (_offset != value) {
-      _offset = value;
-      notifyListeners();
-    }
-  }
-
-  @override
-  double get diameter => root.diameter;
-
-  @override
-  Offset findLocationForChild(WorldNode child, List<VoidCallback> callbacks) {
-    return Offset.zero;
-  }
-
-  @override
-  Widget buildRenderer(BuildContext context, Widget? child) {
-    return root.build(context);
-  }
-}
+import 'world.dart';
 
 abstract class Feature {
   Feature();
@@ -300,7 +178,7 @@ class AssetNode extends WorldNode {
   }
 
   @override
-  Widget buildRenderer(BuildContext context, Widget? child) {
+  Widget buildRenderer(BuildContext context, Widget? nil) {
     if (_containers.length == 1) {
       return _containers.values.single.buildRenderer(context, null);
     }
@@ -313,9 +191,19 @@ class AssetNode extends WorldNode {
     if (parent != null) {
       parent!.addTransientListener(notifyListeners);
       assert(parent!.diameter > 0.0, 'parent $parent has zero diameter');
-      return WorldPlaceholder(diameter: diameter, maxDiameter: parent!.maxRenderDiameter, color: const Color(0xFFFFFF00));
+      return WorldPlaceholder(
+        node: this,
+        diameter: diameter,
+        maxDiameter: parent!.maxRenderDiameter,
+        color: const Color(0xFFFFFF00),
+      );
     }
-    return WorldPlaceholder(diameter: diameter, maxDiameter: maxRenderDiameter, color: const Color(0xFFFF0000));
+    return WorldPlaceholder(
+      node: this,
+      diameter: diameter,
+      maxDiameter: maxRenderDiameter,
+      color: const Color(0xFFFF0000),
+    );
   }
 
   @override

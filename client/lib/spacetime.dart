@@ -16,10 +16,11 @@ class SpaceTime {
   void _handler(Duration timestamp) {
     _lastFrameTime = DateTime.now();
     _pending = false;
-    for (VoidCallback callback in _callbacks) {
+    final List<VoidCallback> oldCallbacks = _callbacks.toList();
+    _callbacks.clear();
+    for (VoidCallback callback in oldCallbacks) {
       callback();
     }
-    _callbacks.clear();
   }
 
   // returns local system time in seconds
@@ -27,7 +28,7 @@ class SpaceTime {
     _lastFrameTime ??= DateTime.now();
     _callbacks.addAll(callbacks);
     if (!_pending) {
-      SchedulerBinding.instance.scheduleFrameCallback(_handler);
+//      SchedulerBinding.instance.scheduleFrameCallback(_handler);
       _pending = true;
     }
     assert(_origin.isUtc);

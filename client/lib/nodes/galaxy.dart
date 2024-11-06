@@ -6,11 +6,13 @@ import 'dart:ui';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
-import '../assets.dart';
 import '../dynasty.dart';
 import '../layout.dart';
 import '../root.dart';
 import '../widgets.dart';
+import '../world.dart';
+
+import 'system.dart';
 
 // Parsed version of the stars data.
 // Does not handle anything other than stars.
@@ -200,7 +202,7 @@ class GalaxyNode extends WorldNode {
   double? _lastScale;
 
   @override
-  Widget buildRenderer(BuildContext context, Widget? child) {
+  Widget buildRenderer(BuildContext context, Widget? nil) {
     if (galaxy != null) {
       return WorldLayoutBuilder(
         builder: (BuildContext context, WorldConstraints constraints) {
@@ -209,6 +211,7 @@ class GalaxyNode extends WorldNode {
           }
           _lastScale = constraints.scale;
           return GalaxyWidget(
+            node: this,
             galaxy: galaxy!,
             diameter: galaxy!.diameter,
             children: _children ??= _rebuildChildren(context, constraints.scale),
@@ -216,7 +219,7 @@ class GalaxyNode extends WorldNode {
         },
       );
     }
-    return const WorldNull();
+    return WorldNull(node: this);
   }
 
   List<Widget> _rebuildChildren(BuildContext context, double scale) {
@@ -224,11 +227,12 @@ class GalaxyNode extends WorldNode {
       return ListenableBuilder(
         listenable: childNode,
         builder: (BuildContext context, Widget? child) {
+          assert(child != null);
           final bool visible = childNode.diameter * scale >= WorldGeometry.minSystemRenderDiameter;
           return GalaxyChildData(
             position: findLocationForChild(childNode, <VoidCallback>[markChildrenDirty]),
             label: childNode.label,
-            child: visible ? child! : const WorldNull(),
+            child: visible ? child! : WorldNull(node: childNode),
             onTap: () {
               ZoomProvider.centerOn(context, childNode);
             },
@@ -243,12 +247,14 @@ class GalaxyNode extends WorldNode {
 class GalaxyWidget extends MultiChildRenderObjectWidget {
   const GalaxyWidget({
     super.key,
+    required this.node,
     required this.galaxy,
     required this.diameter,
     this.onTap,
     super.children,
   });
 
+  final WorldNode node;
   final Galaxy galaxy;
   final double diameter;
   final GalaxyTapHandler? onTap;
@@ -256,6 +262,7 @@ class GalaxyWidget extends MultiChildRenderObjectWidget {
   @override
   RenderGalaxy createRenderObject(BuildContext context) {
     return RenderGalaxy(
+      node: node,
       galaxy: galaxy,
       diameter: diameter,
     );
@@ -264,6 +271,7 @@ class GalaxyWidget extends MultiChildRenderObjectWidget {
   @override
   void updateRenderObject(BuildContext context, RenderGalaxy renderObject) {
     renderObject
+      ..node = node
       ..galaxy = galaxy
       ..diameter = diameter;
   }
@@ -398,6 +406,7 @@ class StarType {
   final double? blur;
 
   double strokeWidth(double zoom) {
+    // TODO: shouldn't ever render bigger than the actual star, when there is one
     return 8e8 * magnitude / ((zoom + 1) * (zoom + 1) * max(1, zoom - 7.0));
   }
   double? blurWidth(double zoomFactor) => blur == null ? null : 8e8 * blur! / zoomFactor;
@@ -405,8 +414,9 @@ class StarType {
 
 typedef GalaxyTapHandler = void Function(Offset offset, double zoomFactor);
 
-class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWorld, GalaxyParentData> {
+class RenderGalaxy extends RenderWorldNode with ContainerRenderObjectMixin<RenderWorld, GalaxyParentData> {
   RenderGalaxy({
+    required super.node,
     required Galaxy galaxy,
     required double diameter,
   }) : _galaxy = galaxy,
@@ -508,11 +518,6 @@ class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWor
 
   double _legendLength = 0.0;
 
-  Rect? _preparedStarsRect;
-  final List<Float32List> _starPoints = <Float32List>[];
-  final List<Vertices?> _starVertices = <Vertices?>[];
-  final List<Color> _adjustedStarTypeColors = <Color>[];
-
   @override
   void computeLayout(WorldConstraints constraints) {
     RenderWorld? child = firstChild;
@@ -526,17 +531,67 @@ class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWor
       }
       child = childParentData.nextSibling;
     }
-    if (_preparedStarsRect != constraints.scaledViewport) {
-      _prepareStars(constraints.scaledViewport, constraints.scaledPan);
-      _preparedStarsRect = constraints.scaledViewport;
-    }
     _layoutLegend(constraints);
   }
 
-  void _prepareStars(Rect visibleRect, Offset offset) { // visibleRect and offset are in meters
+  final LayerHandle<TransformLayer> _starsLayer = LayerHandle<TransformLayer>();
+
+  Rect? _preparedStarsRect;
+  final List<Float32List> _starPoints = <Float32List>[];
+  final List<Vertices?> _starVertices = <Vertices?>[];
+  final List<Color> _adjustedStarTypeColors = <Color>[];
+
+  @override
+  WorldGeometry computePaint(PaintingContext context, Offset offset) {
+    if (galaxy != null) {
+      _drawGalaxyHalo(context, offset);
+      final Rect wholeGalaxy = Rect.fromCircle(center: Offset.zero, radius: diameter / 2.0);
+      final Rect viewport = Rect.fromCenter(center: -offset / constraints.scale, width: constraints.viewportSize.width / constraints.scale, height: constraints.viewportSize.height / constraints.scale);
+      final Rect visibleGalaxy = wholeGalaxy.intersect(viewport);
+      if (_preparedStarsRect != visibleGalaxy) {
+        _prepareStars(visibleGalaxy);
+        _preparedStarsRect = visibleGalaxy;
+      }
+      final Matrix4 transform = Matrix4.identity()
+        ..translate(offset.dx, offset.dy)
+        ..scale(constraints.scale);
+      _starsLayer.layer = context.pushTransform(
+        needsCompositing,
+        Offset.zero,
+        transform,
+        _drawStars,
+        oldLayer: _starsLayer.layer,
+      );
+    } else {
+      _starsLayer.layer = null;
+    }
+    _drawChildren(context, offset);
+    if (galaxy != null) {
+      _drawLegend(context);
+      _drawHud(context, offset);
+    }
+    return WorldGeometry(shape: Circle(diameter));
+  }
+
+  void _drawGalaxyHalo(PaintingContext context, Offset offset) {
+    final Color galaxyGlowColor = const Color(0xFF66BBFF).withValues(alpha: (0x33/0xFF) * (1.0 / constraints.zoom).clamp(0.0, 1.0));
+    if (galaxyGlowColor.a > 0) {
+      context.canvas.drawOval(
+        Rect.fromCircle(
+          center: offset,
+          radius: diameter * constraints.scale / 2.0,
+        ),
+        Paint()
+          ..color = galaxyGlowColor
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 500.0),
+      );
+    }
+  }
+
+  void _prepareStars(Rect visibleRect) { // arguments are in meters
     assert(galaxy != null);
-    final double dx = offset.dx - radius;
-    final double dy = offset.dy - radius;
+    final double dx = -radius;
+    final double dy = -radius;
     // filter galaxy to visible stars
     _starPoints.clear();
     for (int categoryIndex = 0; categoryIndex < galaxy!.stars.length; categoryIndex += 1) {
@@ -595,46 +650,11 @@ class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWor
     }
   }
 
-  final LayerHandle<TransformLayer> _transformLayer = LayerHandle<TransformLayer>();
-
-  @override
-  WorldGeometry computePaint(PaintingContext context, Offset offset) {
-    if (galaxy != null) {
-      final Matrix4 transform = Matrix4.identity()
-        ..translate(offset.dx, offset.dy)
-        ..scale(constraints.scale);
-      _transformLayer.layer = context.pushTransform(
-        needsCompositing,
-        Offset.zero,
-        transform,
-        _drawStars,
-        oldLayer: _transformLayer.layer,
-      );
-    } else {
-      _transformLayer.layer = null;
-    }
-    _drawChildren(context, offset);
-    if (galaxy != null) {
-      _drawLegend(context, offset);
-      _drawHud(context, offset);
-    }
-    return WorldGeometry(shape: Circle(diameter));
-  }
-
+  // TODO: paint the category 0 and 1 stars in a parallax layer, spread across
+  // the entire viewport, rather than pinned to the galaxy plane
+  
   void _drawStars(PaintingContext context, Offset offset) {
     assert(offset == Offset.zero);
-    final Color galaxyGlowColor = const Color(0xFF66BBFF).withValues(alpha: (0x33/0xFF) * (1.0 / constraints.zoom).clamp(0.0, 1.0));
-    if (galaxyGlowColor.a > 0) {
-      context.canvas.drawOval(
-        Rect.fromCircle(
-          center: constraints.scaledPan,
-          radius: diameter / 2.0,
-        ),
-        Paint()
-          ..color = galaxyGlowColor
-          ..maskFilter = MaskFilter.blur(BlurStyle.normal, 500.0 / constraints.scale),
-      );
-    }
     for (int index = 0; index < _starPoints.length; index += 1) {
       if (_starPoints[index].isNotEmpty) {
         final StarType starType = _starTypes[index];
@@ -659,7 +679,7 @@ class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWor
     RenderWorld? child = firstChild;
     while (child != null) {
       final GalaxyParentData childParentData = child.parentData! as GalaxyParentData;
-      context.paintChild(child, offset + (childParentData.position + constraints.scaledPan) * constraints.scale);
+      context.paintChild(child, constraints.paintPositionFor(child.node, offset, <VoidCallback>[markNeedsPaint]));
       child = childParentData.nextSibling;
     }
   }
@@ -713,16 +733,46 @@ class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWor
                       units = 'Å';
                     } else {
                       final double fm = m * 1e15;
-                      if (fm > 0.05) {
+                      if (fm > 0.9) {
                         value = fm;
                         units = 'fm';
                       } else {
-                        final double lp = m / 1.616255e-35;
-                        if (lp > 0.9) {
-                          value = lp;
-                          units = 'ℓₚ';
+                        final double am = m * 1e18;
+                        if (am > 0.9) {
+                          value = am;
+                          units = 'am';
                         } else {
-                          return (length, 'uncertain');
+                          final double zm = m * 1e21;
+                          if (zm > 0.9) {
+                            value = zm;
+                            units = 'zm';
+                          } else {
+                            final double ym = m * 1e24;
+                            if (ym > 0.9) {
+                              value = ym;
+                              units = 'ym';
+                            } else {
+                              final double rm = m * 1e27;
+                              if (rm > 0.9) {
+                                value = rm;
+                                units = 'rm';
+                              } else {
+                                final double rm = m * 1e30;
+                                if (rm > 0.1) {
+                                  value = rm;
+                                  units = 'qm';
+                                } else {
+                                  final double lp = m / 1.616255e-35;
+                                  if (lp > 0.9) {
+                                    value = lp;
+                                    units = 'ℓₚ';
+                                  } else {
+                                    return (length, 'uncertain');
+                                  }
+                                }
+                              }
+                            }
+                          }
                         }
                       }
                     }
@@ -741,24 +791,24 @@ class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWor
   }
 
   void _layoutLegend(WorldConstraints constraints) {
-    final (double legendLength, String legendText) = _selectLegend(constraints.viewport.width * 0.2, diameter * 0.2 / constraints.zoomFactor);
+    final (double legendLength, String legendText) = _selectLegend(constraints.viewportSize.width * 0.2, diameter * 0.2 / constraints.zoomFactor);
     _legendLength = legendLength;
     final TextStyle style = _legendStyle;
     _legendLabel.text = TextSpan(text: legendText, style: style);
     _legendLabel.layout();
   }
 
-  void _drawLegend(PaintingContext context, Offset offset) {
+  void _drawLegend(PaintingContext context) {
     final double d = _legendStyle.fontSize!;
     final double length = _legendLength;
     final Paint paint = _legendPaint;
     context.canvas.drawPoints(PointMode.polygon, <Offset>[
-      offset + Offset(d, constraints.viewport.height - d * 2.0),
-      offset + Offset(d, constraints.viewport.height - d),
-      offset + Offset(d + length, constraints.viewport.height - d),
-      offset + Offset(d + length, constraints.viewport.height - d * 2.0),
+      Offset(d - constraints.viewportSize.width / 2.0, constraints.viewportSize.height / 2.0 - d * 2.0),
+      Offset(d - constraints.viewportSize.width / 2.0, constraints.viewportSize.height / 2.0 - d),
+      Offset(d + length - constraints.viewportSize.width / 2.0, constraints.viewportSize.height / 2.0 - d),
+      Offset(d + length - constraints.viewportSize.width / 2.0, constraints.viewportSize.height / 2.0 - d * 2.0),
     ], paint);
-    _legendLabel.paint(context.canvas, offset + Offset(d + length - _legendLabel.width / 2.0, constraints.viewport.height - d * 3.0));
+    _legendLabel.paint(context.canvas, Offset(d + length - _legendLabel.width / 2.0 - constraints.viewportSize.width / 2.0, constraints.viewportSize.height / 2.0 - d * 3.0));
   }
 
   bool _hasOverlap(Iterable<Rect> rects, Rect candidate) {
@@ -792,7 +842,7 @@ class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWor
       child = firstChild;
       while (child != null) {
         final GalaxyParentData childParentData = child.parentData! as GalaxyParentData;
-        final Offset center = offset + (childParentData.position + constraints.scaledPan) * constraints.scale;
+        final Offset center = offset + childParentData.position * constraints.scale;
         childParentData._reticuleCenter = center;
         childParentData._reticuleRadius = hudAvoidanceRadius;
         context.canvas.drawCircle(center, hudOuterRadius, hudReticulePaint);
@@ -900,6 +950,13 @@ class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWor
   }
 
   @override
+  void reassemble() {
+    super.reassemble();
+    _preparedStarsRect = null;
+  }
+    
+
+  @override
   WorldTapTarget? routeTap(Offset offset) {
     if (constraints.zoom < minReticuleZoom) {
       RenderWorld? child = firstChild;
@@ -923,7 +980,7 @@ class RenderGalaxy extends RenderWorld with ContainerRenderObjectMixin<RenderWor
     for (Vertices? vertices in _starVertices) {
       vertices?.dispose();
     }
-    _transformLayer.layer = null;
+    _starsLayer.layer = null;
     super.dispose();
   }
 }

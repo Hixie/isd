@@ -1,11 +1,11 @@
 import 'dart:math';
-import 'dart:ui';
 
 import 'package:flutter/rendering.dart' hide Gradient;
 import 'package:flutter/widgets.dart' hide Gradient;
 
 import '../assets.dart';
 import '../layout.dart';
+import '../world.dart';
 
 typedef SpaceChild = ({ double r, double theta });
 
@@ -48,13 +48,9 @@ class SpaceFeature extends ContainerFeature {
   @override
   Widget buildRenderer(BuildContext context, Widget? child) {
     return SpaceWidget(
+      node: parent,
       diameter: parent.diameter,
-      children: children.keys.map((AssetNode assetChild) {
-        return SpaceChildData(
-          position: findLocationForChild(assetChild, <VoidCallback>[parent.notifyListeners]),
-          child: assetChild.build(context, ),
-        );
-      }).toList(),
+      children: children.keys.map((AssetNode assetChild) => assetChild.build(context)).toList(),
     );
   }
 }
@@ -62,15 +58,18 @@ class SpaceFeature extends ContainerFeature {
 class SpaceWidget extends MultiChildRenderObjectWidget {
   const SpaceWidget({
     super.key,
+    required this.node,
     required this.diameter,
     super.children,
   });
 
+  final WorldNode node;
   final double diameter;
 
   @override
   RenderSpace createRenderObject(BuildContext context) {
     return RenderSpace(
+      node: node,
       diameter: diameter,
     );
   }
@@ -78,38 +77,16 @@ class SpaceWidget extends MultiChildRenderObjectWidget {
   @override
   void updateRenderObject(BuildContext context, RenderSpace renderObject) {
     renderObject
+      ..node = node
       ..diameter = diameter;
   }
 }
 
-class SpaceChildData extends ParentDataWidget<SpaceParentData> {
-  const SpaceChildData({
-    super.key, // ignore: unused_element
-    required this.position,
-    required super.child,
-  });
+class SpaceParentData extends ParentData with ContainerParentDataMixin<RenderWorld> { }
 
-  final Offset position;
-
-  @override
-  void applyParentData(RenderObject renderObject) {
-    final SpaceParentData parentData = renderObject.parentData! as SpaceParentData;
-    if (parentData.position != position) {
-      parentData.position = position;
-      renderObject.parent!.markNeedsLayout();
-    }
-  }
-
-  @override
-  Type get debugTypicalAncestorWidgetClass => RenderSpace;
-}
-
-class SpaceParentData extends ParentData with ContainerParentDataMixin<RenderWorld> {
-  Offset position = Offset.zero; // in meters
-}
-
-class RenderSpace extends RenderWorld with ContainerRenderObjectMixin<RenderWorld, SpaceParentData> {
+class RenderSpace extends RenderWorldNode with ContainerRenderObjectMixin<RenderWorld, SpaceParentData> {
   RenderSpace({
+    required super.node,
     required double diameter,
   }) : _diameter = diameter;
 
@@ -132,16 +109,6 @@ class RenderSpace extends RenderWorld with ContainerRenderObjectMixin<RenderWorl
   }
 
   @override
-  void visitChildren(RenderObjectVisitor visitor) {
-    RenderWorld? child = firstChild;
-    while (child != null) {
-      visitor(child);
-      final SpaceParentData childParentData = child.parentData! as SpaceParentData;
-      child = childParentData.nextSibling;
-    }
-  }
-
-  @override
   void computeLayout(WorldConstraints constraints) {
     RenderWorld? child = firstChild;
     while (child != null) {
@@ -151,39 +118,15 @@ class RenderSpace extends RenderWorld with ContainerRenderObjectMixin<RenderWorl
     }
   }
 
-  TransformLayer? _transformLayer;
-
-  Paint _blackFadePaint(double fade, Offset offset, double radius) {
-    final Color black = const Color(0xFF000000).withValues(alpha: fade);
-    return Paint()
-      ..shader = Gradient.radial(
-        offset,
-        radius,
-        <Color>[ black, black, const Color(0x00000000) ],
-        <double>[ 0.0, 0.8, 1.0 ],
-        TileMode.decal,
-      );
-  }
-
   @override
   WorldGeometry computePaint(PaintingContext context, Offset offset) {
-    final double visibleDiameter = diameter * constraints.scale;
-    assert(visibleDiameter >= WorldGeometry.minSystemRenderDiameter);
-    final double fade = ((visibleDiameter - WorldGeometry.minSystemRenderDiameter) / (WorldGeometry.fullyVisibleRenderDiameter - WorldGeometry.minSystemRenderDiameter)).clamp(0.0, 1.0);
-    final double renderRadius = radius * constraints.scale;
-    context.canvas.drawRect(Rect.fromCircle(center: offset, radius: renderRadius), _blackFadePaint(fade, offset, renderRadius));
     RenderWorld? child = firstChild;
     while (child != null) {
       final SpaceParentData childParentData = child.parentData! as SpaceParentData;
-      context.paintChild(child, offset + childParentData.position * constraints.scale);
+      context.paintChild(child, constraints.paintPositionFor(child.node, offset, <VoidCallback>[markNeedsPaint]));
       child = childParentData.nextSibling;
     }
     return WorldGeometry(shape: Circle(diameter));
-  }
-
-  @override
-  void applyPaintTransform(RenderWorld child, Matrix4 transform) {
-    transform.multiply(_transformLayer!.transform!);
   }
 
   @override

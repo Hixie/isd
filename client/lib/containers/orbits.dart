@@ -6,6 +6,7 @@ import 'package:flutter/widgets.dart' hide Gradient;
 import '../assets.dart';
 import '../layout.dart';
 import '../spacetime.dart';
+import '../world.dart';
 
 typedef Orbit = ({
   double a, // semi-major axis
@@ -109,6 +110,7 @@ class OrbitFeature extends ContainerFeature {
       );
     }
     return OrbitWidget(
+      node: parent,
       diameter: radius * 2.0,
       spaceTime: spaceTime,
       children: childList,
@@ -130,24 +132,32 @@ class OrbitFeature extends ContainerFeature {
 class OrbitWidget extends MultiChildRenderObjectWidget {
   const OrbitWidget({
     super.key,
+    required this.node,
     required this.diameter,
     required this.spaceTime,
     required super.children,
   });
 
+  final WorldNode node;
   final double diameter;
   final SpaceTime spaceTime;
   
   @override
   RenderOrbit createRenderObject(BuildContext context) {
     return RenderOrbit(
+      node: node,
       diameter: diameter,
       spaceTime: spaceTime,
     );
   }
 
   @override
-  void updateRenderObject(BuildContext context, RenderOrbit renderObject) { }
+  void updateRenderObject(BuildContext context, RenderOrbit renderObject) {
+    renderObject
+      ..node = node
+      ..diameter = diameter
+      ..spaceTime = spaceTime;
+  }
 }
 
 class OrbitChildData extends ParentDataWidget<OrbitParentData> {
@@ -180,8 +190,9 @@ class OrbitParentData extends ParentData with ContainerParentDataMixin<RenderWor
   Orbit orbit = nilOrbit;
 }
 
-class RenderOrbit extends RenderWorld with ContainerRenderObjectMixin<RenderWorld, OrbitParentData> {
+class RenderOrbit extends RenderWorldNode with ContainerRenderObjectMixin<RenderWorld, OrbitParentData> {
   RenderOrbit({
+    required super.node,
     required double diameter,
     required SpaceTime spaceTime,
   }) : _diameter = diameter,
@@ -213,16 +224,6 @@ class RenderOrbit extends RenderWorld with ContainerRenderObjectMixin<RenderWorl
   }
 
   @override
-  void visitChildren(RenderObjectVisitor visitor) {
-    RenderWorld? child = firstChild;
-    while (child != null) {
-      visitor(child);
-      final OrbitParentData childParentData = child.parentData! as OrbitParentData;
-      child = childParentData.nextSibling;
-    }
-  }
-
-  @override
   void computeLayout(WorldConstraints constraints) {
     RenderWorld? child = firstChild;
     while (child != null) {
@@ -238,12 +239,9 @@ class RenderOrbit extends RenderWorld with ContainerRenderObjectMixin<RenderWorl
     assert(child != null);
     final OrbitParentData primaryChildParentData = child!.parentData! as OrbitParentData;
     final double primaryMass = primaryChildParentData.mass;
-    final double time = spaceTime.computeTime(<VoidCallback>[markNeedsPaint]);
     child = primaryChildParentData.nextSibling;
     while (child != null) {
       final OrbitParentData childParentData = child.parentData! as OrbitParentData;
-      final Offset childPosition = _computeOrbit(childParentData.orbit, primaryMass, time);
-      assert(childPosition.isFinite);
       if (debugPaintSizeEnabled) {
         final double semiMinorAxis = childParentData.orbit.a * sqrt(1 - childParentData.orbit.e * childParentData.orbit.e);
         final double center = childParentData.orbit.e * childParentData.orbit.a; // distance from focal point to center of ellipse, along major axis
@@ -258,7 +256,7 @@ class RenderOrbit extends RenderWorld with ContainerRenderObjectMixin<RenderWorl
         context.canvas.drawOval(oval, Paint()..style= PaintingStyle.stroke..color = const Color(0x40FFFFFF));
         context.canvas.restore();
       }
-      context.paintChild(child, offset + childPosition * constraints.scale);
+      context.paintChild(child, constraints.paintPositionFor(child.node, offset, <VoidCallback>[markNeedsPaint]));
       child = childParentData.nextSibling;
     }
     context.paintChild(firstChild!, offset);
