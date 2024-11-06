@@ -54,7 +54,7 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
 
   static const double _initialZoom = 4.0;
   static const Offset _initialPan = Offset(-3582946788187048960.0, -179685314906842080.0);
-  
+
   final Tween<double> _zoomTween = Tween<double>(begin: _initialZoom, end: _initialZoom);
   late final Animation<double> _zoom = _controller.drive(CurveTween(curve: const ZoomCurve())).drive(_zoomTween);
 
@@ -182,6 +182,10 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
   void _handleRecommendedFocus() {
     if (widget.recommendedFocus.value == null) {
       _shouldAutofocus = true;
+      _changeCenterNode(widget.rootNode);
+      _zoomTween.end = _initialZoom;
+      _panTween.end = _initialPan;
+      _controller.forward(from: 0.0);
     } else if (_shouldAutofocus) {
       _shouldAutofocus = false;
       _centerOn(widget.recommendedFocus.value!);
