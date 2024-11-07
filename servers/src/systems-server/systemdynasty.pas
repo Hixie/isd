@@ -5,7 +5,7 @@ unit systemdynasty;
 interface
 
 uses
-   sysutils, passwords, basedynasty, basenetwork;
+   sysutils, passwords, basedynasty;
 
 type
    TDynasty = class(TBaseDynasty)

@@ -342,7 +342,7 @@ var
    DynastyID: Cardinal;
    Dynasty: TDynasty;
 begin
-   inherited Create(APort);
+   inherited Create(APort, nil);
    FPassword := APassword;
    FSystemServers := ASystemServers;
    FDynasties := TDynastyHashTable.Create();

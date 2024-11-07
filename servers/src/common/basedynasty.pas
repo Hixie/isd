@@ -91,14 +91,23 @@ end;
 procedure TBaseDynasty.Reload();
 var
    TokensFile: File of TToken;
+   FileName: RawByteString;
 begin
-   Assign(TokensFile, FConfigurationDirectory + TokensDatabaseFileName);
-   FileMode := 0;
-   Reset(TokensFile);
-   SetLength(FTokens, FileSize(TokensFile));
-   if (Length(FTokens) > 0) then
-      BlockRead(TokensFile, FTokens[0], Length(FTokens));
-   Close(TokensFile);
+   FileName := FConfigurationDirectory + TokensDatabaseFileName;
+   if (FileExists(FileName)) then
+   begin
+      Assign(TokensFile, FileName);
+      FileMode := 0;
+      Reset(TokensFile);
+      SetLength(FTokens, FileSize(TokensFile));
+      if (Length(FTokens) > 0) then
+         BlockRead(TokensFile, FTokens[0], Length(FTokens));
+      Close(TokensFile);
+   end
+   else
+   begin
+      SetLength(FTokens, 0);
+   end;
 end;
 
 procedure TBaseDynasty.SaveTokens();

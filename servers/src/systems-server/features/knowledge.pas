@@ -38,7 +38,7 @@ type
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem); override;
    public
       procedure RecordSnapshot(Journal: TJournalWriter); override;
-      procedure ApplyJournal(Journal: TJournalReader); override;
+      procedure ApplyJournal(Journal: TJournalReader; System: TSystem); override;
    end;
 
 implementation
@@ -114,7 +114,7 @@ procedure TKnowledgeBusFeatureNode.RecordSnapshot(Journal: TJournalWriter);
 begin
 end;
 
-procedure TKnowledgeBusFeatureNode.ApplyJournal(Journal: TJournalReader);
+procedure TKnowledgeBusFeatureNode.ApplyJournal(Journal: TJournalReader; System: TSystem);
 begin
 end;
 

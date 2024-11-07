@@ -32,7 +32,7 @@ type
    public
       constructor Create(ADynasty: TDynasty);
       procedure RecordSnapshot(Journal: TJournalWriter); override;
-      procedure ApplyJournal(Journal: TJournalReader); override;
+      procedure ApplyJournal(Journal: TJournalReader; System: TSystem); override;
       property Dynasty: TDynasty read FDynasty;
    end;
 
@@ -99,10 +99,9 @@ begin
    Journal.WriteDynastyReference(FDynasty);
 end;
 
-procedure TDynastyOriginalColonyShipFeatureNode.ApplyJournal(Journal: TJournalReader);
+procedure TDynastyOriginalColonyShipFeatureNode.ApplyJournal(Journal: TJournalReader; System: TSystem);
 begin
    FDynasty := Journal.ReadDynastyReference();
-   Assert(Parent.Owner = FDynasty); // see RecordSnapshot
 end;
 
 end.

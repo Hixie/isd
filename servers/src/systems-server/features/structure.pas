@@ -44,7 +44,7 @@ type
       FMaterialsQuantity: Cardinal; // 0.0 .. TStructureFeatureClass.TotalQuantity
       FStructuralIntegrity: Cardinal; // 0.0 .. FMaterialsQuantity
       FDynastyKnowledge: array of TKnowledgeSummary; // for each item in the bill of materials, which dynasties know about it here
-      constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass); override;
+      constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
       function GetMass(): Double; override; // kg
       function GetSize(): Double; override; // m
       function GetFeatureName(): UTF8String; override;
@@ -57,7 +57,7 @@ type
       constructor Create(AFeatureClass: TStructureFeatureClass; AMaterialsQuantity: Cardinal; AStructuralIntegrity: Cardinal);
       destructor Destroy(); override;
       procedure RecordSnapshot(Journal: TJournalWriter); override;
-      procedure ApplyJournal(Journal: TJournalReader); override;
+      procedure ApplyJournal(Journal: TJournalReader; System: TSystem); override;
       property MaterialsQuantity: Cardinal read FMaterialsQuantity; // how much of the feature's bill of materials is actually present
       property StructuralIntegrity: Cardinal read FStructuralIntegrity; // how much of the materials are actually in good shape (affects efficiency)
    end;
@@ -138,9 +138,9 @@ begin
    end;
 end;
 
-constructor TStructureFeatureNode.CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass);
+constructor TStructureFeatureNode.CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem);
 begin
-   inherited CreateFromJournal(Journal, AFeatureClass);
+   inherited CreateFromJournal(Journal, AFeatureClass, ASystem);
    Assert(Assigned(AFeatureClass));
    FFeatureClass := AFeatureClass as TStructureFeatureClass;
    SetLength(FDynastyKnowledge, FFeatureClass.BillOfMaterialsLength);
@@ -309,7 +309,7 @@ begin
    Journal.WriteCardinal(StructuralIntegrity);
 end;
 
-procedure TStructureFeatureNode.ApplyJournal(Journal: TJournalReader);
+procedure TStructureFeatureNode.ApplyJournal(Journal: TJournalReader; System: TSystem);
 begin
    FMaterialsQuantity := Journal.ReadCardinal();
    FStructuralIntegrity := Journal.ReadCardinal();

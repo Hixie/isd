@@ -6,7 +6,7 @@ interface
 
 uses
    corenetwork, corewebsocket, genericutils, hashset, binarystream,
-   stringstream, sharedpointer, servers, baseunix;
+   stringstream, sharedpointer, servers, baseunix, clock;
 
 type
    TBaseIncomingCapableConnection = class;
@@ -117,14 +117,41 @@ type
       procedure ReportConnectionError(ErrorCode: cint); override;
    end;
 
+   TBaseServer = class;
+   
+   TEventCallback = procedure (var Data) of object;
+
+   PEvent = ^TEvent;
+   TEvent = record
+   private
+      FTime: TDateTime;
+      FCallback: TEventCallback;
+      FData: Pointer;
+   end;
+
+   TEventSet = specialize THashSet<PEvent, PointerUtils>;
+   
    TBaseServer = class(TNetworkServer)
+   private
+      FClock: TStableClock;
+      FScheduledEvents: TEventSet;
+      FNextEvent: PEvent;
+      function GetClock(): TClock; inline;
+      procedure RunEvent(Event: PEvent);
+      function EventIsDueBefore(Event: PEvent; Time: TDateTime): Boolean;
+      function FindNextEvent(): PEvent;
    protected
       FDeadObjects: array of TObject;
       procedure ReportChanges(); virtual;
    public
+      constructor Create(APort: Word; AClock: TClock);
+      destructor Destroy(); override;
       procedure ScheduleDemolition(Victim: TObject);
       procedure CompleteDemolition();
+      function ScheduleEvent(Time: TDateTime; Callback: TEventCallback; var Data): PEvent;
+      procedure CancelEvent(var Event: PEvent);
       procedure Run();
+      property Clock: TClock read GetClock;
    end;
 
    procedure ConsoleWriteln(const Prefix, S: UTF8String);
@@ -132,7 +159,15 @@ type
 implementation
 
 uses
-   sysutils, isderrors, utf8, unicode, exceptions, hashfunctions, sigint, errors;
+   sysutils, isderrors, utf8, unicode, exceptions, hashfunctions,
+   sigint, errors, dateutils;
+
+function PEventHash32(const Key: PEvent): DWord;
+begin
+   {$HINTS OFF} // Otherwise it complains that casting PEvent to PtrUInt is not portable, but it is portable, by definition
+   Result := PtrUIntHash32(PtrUInt(Key));
+   {$HINTS ON}
+end;
 
 procedure ConsoleWriteln(const Prefix, S: UTF8String);
 var
@@ -455,6 +490,7 @@ begin
          begin
             FIPCBuffer.Consume(SizeOf(Cardinal) + BufferLength); // $R-
             Reader.Reset();
+
             if (Reader.ReadString() <> GetInternalPassword()) then
             begin
                Disconnect();
@@ -599,6 +635,22 @@ begin
 end;
 
 
+constructor TBaseServer.Create(APort: Word; AClock: TClock);
+begin
+   inherited Create(APort);
+   FClock := TStableClock.Create(AClock);
+end;
+
+destructor TBaseServer.Destroy();
+begin
+   Assert((not Assigned(FScheduledEvents)) or (FScheduledEvents.Count = 0));
+   Assert(not Assigned(FNextEvent));
+   FScheduledEvents.Free();
+   Assert(Length(FDeadObjects) = 0);
+   FClock.Free();
+   inherited Destroy();
+end;
+
 procedure TBaseServer.ScheduleDemolition(Victim: TObject);
 begin
    SetLength(FDeadObjects, Length(FDeadObjects) + 1);
@@ -615,9 +667,33 @@ begin
 end;
 
 procedure TBaseServer.Run();
+var
+   NextTime: Int64;
 begin
    repeat
-      Select(-1);
+      FClock.Unlatch();
+      if (not Assigned(FNextEvent)) then
+      begin
+         Select(-1);
+      end
+      else
+      begin
+         Assert(Assigned(FClock));
+         if (not EventIsDueBefore(FNextEvent, FClock.Now())) then
+         begin
+            Writeln('Scheduling alarm for ', MillisecondsBetween(FNextEvent^.FTime, FClock.Now()), 'ms from now...');
+            NextTime := MillisecondsBetween(FNextEvent^.FTime, FClock.Now());
+            Assert(NextTime >= 0);
+            if (NextTime > High(cint)) then
+               NextTime := High(cint);
+            FClock.Unlatch();
+            Select(NextTime); // $R-
+         end;
+         if (Assigned(FNextEvent) and EventIsDueBefore(FNextEvent, FClock.Now())) then
+         begin
+            RunEvent(FNextEvent);
+         end;
+      end;
       ReportChanges();
       CompleteDemolition();
    until Aborted;
@@ -625,6 +701,73 @@ end;
 
 procedure TBaseServer.ReportChanges();
 begin
+end;
+
+function TBaseServer.EventIsDueBefore(Event: PEvent; Time: TDateTime): Boolean;
+begin
+   Result := Event^.FTime <= Time;
+end;
+
+function TBaseServer.FindNextEvent(): PEvent;
+var
+   Event: PEvent;
+begin
+   Result := nil;
+   if (Assigned(FScheduledEvents) and (FScheduledEvents.Count > 0)) then
+   begin
+      for Event in FScheduledEvents do
+      begin
+         if ((not Assigned(Result)) or (Event^.FTime < Result^.FTime)) then
+         begin
+            Result := Event;
+         end;
+      end;
+   end;
+end;
+
+function TBaseServer.GetClock(): TClock;
+begin
+   Result := FClock;
+end;
+
+procedure TBaseServer.RunEvent(Event: PEvent);
+begin
+   Assert(Event = FNextEvent);
+   Assert(EventIsDueBefore(Event, FClock.Now()));
+   Assert(Assigned(FScheduledEvents));
+   Assert(FScheduledEvents.Has(Event));
+   FScheduledEvents.Remove(Event);
+   FNextEvent := FindNextEvent();
+   Event^.FCallback(Event^.FData);
+   Dispose(Event);
+end;
+
+function TBaseServer.ScheduleEvent(Time: TDateTime; Callback: TEventCallback; var Data): PEvent;
+begin
+   Assert(Assigned(FClock));
+   Assert(Time >= 0);
+   if (not Assigned(FScheduledEvents)) then
+   begin
+      FScheduledEvents := TEventSet.Create(@PEventHash32);
+   end;
+   New(Result);
+   Result^.FTime := Time;
+   Result^.FCallback := Callback;
+   Result^.FData := Pointer(Data);
+   FScheduledEvents.Add(Result);
+   if ((not Assigned(FNextEvent)) or (FNextEvent^.FTime > Result^.FTime)) then
+      FNextEvent := Result;
+end;
+
+procedure TBaseServer.CancelEvent(var Event: PEvent);
+begin
+   Assert(Assigned(FScheduledEvents));
+   Assert(FScheduledEvents.Has(Event));
+   FScheduledEvents.Remove(Event);
+   Dispose(Event);
+   Event := nil;
+   if (FNextEvent = Event) then
+      FNextEvent := FindNextEvent();
 end;
 
 initialization

@@ -63,7 +63,7 @@ const
       'Herculis', 'Lalande', 'Leporis', 'Pavonis', 'Pillaris',
       'Treeplatis', 'Ursae', 'Wolf', 'Zeta');
    Words2: array[0..$1F] of UTF8String = ('Galaxy', 'Galaxy Cluster',
-      '', 'Prime', 'Xi', 'Posterior', 'Prior', 'Polaris', 'Carina',
+      '', 'Prime', 'Xi', 'Gamma', 'Prior', 'Polaris', 'Carina',
       'Center', 'Red Giant', 'Nebula', 'Toobe', 'Mount', 'Flick',
       'Cluster', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J',
       'K', 'L', 'M', 'N', 'O', 'P');

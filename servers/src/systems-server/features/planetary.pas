@@ -28,6 +28,7 @@ type
       FComposition: TPlanetaryComposition;
       FStructuralIntegrity: Cardinal;
       FDiameter: Double;
+      FConsiderForDynastyStart: Boolean;
       function GetMass(): Double; override; // kg
       function GetSize(): Double; override; // m
       function GetFeatureName(): UTF8String; override;
@@ -36,10 +37,11 @@ type
       procedure ResetVisibility(DynastyCount: Cardinal); override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem); override;
    public
-      constructor Create(ADiameter: Double; AComposition: TPlanetaryComposition; AStructuralIntegrity: Cardinal);
+      constructor Create(ADiameter: Double; AComposition: TPlanetaryComposition; AStructuralIntegrity: Cardinal; AConsiderForDynastyStart: Boolean);
       procedure RecordSnapshot(Journal: TJournalWriter); override;
-      procedure ApplyJournal(Journal: TJournalReader); override;
+      procedure ApplyJournal(Journal: TJournalReader; System: TSystem); override;
       property StructuralIntegrity: Cardinal read FStructuralIntegrity;
+      property ConsiderForDynastyStart: Boolean read FConsiderForDynastyStart;
    end;
 
 implementation
@@ -67,12 +69,13 @@ begin
 end;
 
 
-constructor TPlanetaryBodyFeatureNode.Create(ADiameter: Double; AComposition: TPlanetaryComposition; AStructuralIntegrity: Cardinal);
+constructor TPlanetaryBodyFeatureNode.Create(ADiameter: Double; AComposition: TPlanetaryComposition; AStructuralIntegrity: Cardinal; AConsiderForDynastyStart: Boolean);
 begin
    inherited Create();
    FDiameter := ADiameter;
    FComposition := AComposition;
    FStructuralIntegrity := AStructuralIntegrity;
+   FConsiderForDynastyStart := AConsiderForDynastyStart;
 end;
 
 function TPlanetaryBodyFeatureNode.GetMass(): Double; // kg
@@ -126,9 +129,10 @@ begin
       Journal.WriteDouble(FComposition[Index].Mass);
    end;
    Journal.WriteCardinal(FStructuralIntegrity);
+   Journal.WriteBoolean(FConsiderForDynastyStart);
 end;
 
-procedure TPlanetaryBodyFeatureNode.ApplyJournal(Journal: TJournalReader);
+procedure TPlanetaryBodyFeatureNode.ApplyJournal(Journal: TJournalReader; System: TSystem);
 var
    Index: Cardinal;
 begin
@@ -141,6 +145,7 @@ begin
       FComposition[Index].Mass := Journal.ReadDouble();
    end;
    FStructuralIntegrity := Journal.ReadCardinal();
+   FConsiderForDynastyStart := Journal.ReadBoolean();
 end;
 
 end.

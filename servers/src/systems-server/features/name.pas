@@ -29,7 +29,7 @@ type
    public
       constructor Create(AAssetName: UTF8String);
       procedure RecordSnapshot(Journal: TJournalWriter); override;
-      procedure ApplyJournal(Journal: TJournalReader); override;
+      procedure ApplyJournal(Journal: TJournalReader; System: TSystem); override;
       property AssetName: UTF8String read FAssetName;
    end;
 
@@ -90,7 +90,7 @@ begin
    Journal.WriteString(FAssetName);
 end;
 
-procedure TAssetNameFeatureNode.ApplyJournal(Journal: TJournalReader);
+procedure TAssetNameFeatureNode.ApplyJournal(Journal: TJournalReader; System: TSystem);
 begin
    FAssetName := Journal.ReadString();
 end;

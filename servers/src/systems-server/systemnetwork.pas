@@ -8,7 +8,7 @@ uses
    configuration, servers, baseunix, authnetwork, serverstream,
    materials, corenetwork, binarystream, basenetwork, systemdynasty,
    astronomy, systems, hashtable, genericutils, basedynasty,
-   encyclopedia;
+   encyclopedia, clock;
 
 type
    TSystemHashTable = class(specialize THashTable<Cardinal, TSystem, CardinalUtils>)
@@ -30,6 +30,7 @@ type
       function GetDynasty(DynastyID: Cardinal): TBaseDynasty; override; // used for VerifyLogin
       procedure DoLogin(var Message: TMessage); message 'login';
       function GetInternalPassword(): UTF8String; override;
+      function FindHome(System: TSystem): TAssetNode;
    public
       constructor Create(AListener: TListenerSocket; AServer: TServer);
       destructor Destroy(); override;
@@ -79,7 +80,7 @@ type
       function CreateSystem(SystemID: Cardinal; X, Y: Double): TSystem;
       procedure ReportChanges(); override;
    public
-      constructor Create(APort: Word; APassword: UTF8String; ASystemServerID: Cardinal; ASettings: PSettings; AMaterials: TMaterialHashSet; ADynastyServers: TServerDatabase; AConfigurationDirectory: UTF8String);
+      constructor Create(APort: Word; AClock: TClock; APassword: UTF8String; ASystemServerID: Cardinal; ASettings: PSettings; AMaterials: TMaterialHashSet; ADynastyServers: TServerDatabase; AConfigurationDirectory: UTF8String);
       destructor Destroy(); override;
       function SerializeAllSystemsFor(Dynasty: TDynasty; Writer: TServerStreamWriter): RawByteString;
       property Password: UTF8String read FPassword;
@@ -93,7 +94,8 @@ type
 implementation
 
 uses
-   sysutils, hashfunctions, isdprotocol, passwords, exceptions, space, orbit, sensors, structure, errors, plot;
+   sysutils, hashfunctions, isdprotocol, passwords, exceptions, space,
+   orbit, sensors, structure, errors, plot, planetary;
 
 constructor TSystemHashTable.Create();
 begin
@@ -126,6 +128,34 @@ begin
    Callback(Self, FWriter);
 end;
 
+function TConnection.FindHome(System: TSystem): TAssetNode;
+var
+   Home: TAssetNode;
+
+   function Consider(Asset: TAssetNode): Boolean;
+   var
+      Planet: TPlanetaryBodyFeatureNode;
+      N: Cardinal;
+   begin
+      Planet := Asset.GetFeatureByClass(TPlanetaryBodyFeatureClass) as TPlanetaryBodyFeatureNode;
+      N := 1;
+      if (Assigned(Planet) and Planet.ConsiderForDynastyStart) then
+      begin
+         if ((not Assigned(Home)) or (System.RandomNumberGenerator.GetBoolean(1/N))) then
+            Home := Asset;
+         Result := False; // we don't walk into planets
+         Inc(N);
+      end
+      else
+         Result := True;
+   end;
+
+begin
+   Home := nil;
+   System.RootNode.Walk(@Consider, nil);
+   Result := Home;
+end;
+
 procedure TConnection.HandleIPC(Arguments: TBinaryStreamReader);
 type
    TStarEntry = record
@@ -143,6 +173,7 @@ var
    Salt: TSalt;
    Hash: THash;
    SolarSystem: TSolarSystemFeatureNode;
+   Home: TAssetNode;
 begin
    Assert(FMode = cmControlMessages);
    Command := Arguments.ReadString();
@@ -178,7 +209,7 @@ begin
          SolarSystem.AddCartesianChild(FServer.Encyclopedia.WrapAssetForOrbit(FServer.Encyclopedia.CreateLoneStar(Star.StarID)), Star.DX, Star.DY); // $R-
       end;
       SolarSystem.ComputeHillSpheres();
-      FServer.Encyclopedia.CondenseProtoplanetaryDisks(SolarSystem, System.RandomNumberGenerator);
+      FServer.Encyclopedia.CondenseProtoplanetaryDisks(SolarSystem, System);
       Write(#$01);
    end
    else
@@ -200,7 +231,9 @@ begin
          Dynasty := FServer.DynastyManager.HandleDynastyArrival(DynastyID, DynastyServerID); // may contact dynasty server
       end;
       Assert(Dynasty.DynastyServerID = DynastyServerID);
-      ((System.RootNode.Features[0] as TSolarSystemFeatureNode).Children[0].Features[0] as TOrbitFeatureNode).AddOrbitingChild(
+      Home := FindHome(System);
+      (Home.Parent as TOrbitFeatureNode).AddOrbitingChild(
+         System,
          FServer.Encyclopedia.WrapAssetForOrbit(FServer.Encyclopedia.PlaceholderShip.Spawn(
             Dynasty, [
                TSpaceSensorFeatureNode.Create(FServer.Encyclopedia.PlaceholderShip.Features[0] as TSpaceSensorFeatureClass),
@@ -208,13 +241,12 @@ begin
                TDynastyOriginalColonyShipFeatureNode.Create(Dynasty)
             ]
          )),
-         1 * AU, // SemiMajorAxis
-         0.0, // Eccentricity
-         0.0, // Omega
+         Home.Size, // i.e. start it at twice the radius of planet away from the planet
+         0.9999, // Eccentricity
+         System.RandomNumberGenerator.GetDouble(0.0, 2.0 * Pi), // Omega // $R-
          0, // TimeOffset
-         True // Clockwise
+         System.RandomNumberGenerator.GetBoolean(0.5) // Clockwise
       );
-      // TODO: actual plot
       Write(#$01);
    end
    else
@@ -436,13 +468,13 @@ begin
 end;
 
 
-constructor TServer.Create(APort: Word; APassword: UTF8String; ASystemServerID: Cardinal; ASettings: PSettings; AMaterials: TMaterialHashSet; ADynastyServers: TServerDatabase; AConfigurationDirectory: UTF8String);
+constructor TServer.Create(APort: Word; AClock: TClock; APassword: UTF8String; ASystemServerID: Cardinal; ASettings: PSettings; AMaterials: TMaterialHashSet; ADynastyServers: TServerDatabase; AConfigurationDirectory: UTF8String);
 var
    SystemsFile: File of Cardinal;
    SystemID: Cardinal;
    System: TSystem;
 begin
-   inherited Create(APort);
+   inherited Create(APort, AClock);
    FPassword := APassword;
    FSettings := ASettings;
    FDynastyServers := ADynastyServers;
@@ -457,7 +489,7 @@ begin
       while (not Eof(SystemsFile)) do
       begin
          BlockRead(SystemsFile, SystemID, 1); // $DFA- for SystemID
-         System := TSystem.CreateFromDisk(FConfigurationDirectory + SystemDataSubDirectory + IntToStr(SystemID) + '/', SystemID, FEncyclopedia.SpaceClass, FDynastyManager, FEncyclopedia);
+         System := TSystem.CreateFromDisk(FConfigurationDirectory + SystemDataSubDirectory + IntToStr(SystemID) + '/', SystemID, FEncyclopedia.SpaceClass, Self, FDynastyManager, FEncyclopedia);
          Assert(System.SystemID = SystemID);
          FSystems[SystemID] := System;
       end;
@@ -505,7 +537,7 @@ var
    SystemsFile: File of Cardinal;
 begin
    Assert(not FSystems.Has(SystemID));
-   Result := TSystem.Create(FConfigurationDirectory + SystemDataSubDirectory + IntToStr(SystemID) + '/', SystemID, X, Y, FEncyclopedia.SpaceClass, FDynastyManager, FEncyclopedia, FSettings);
+   Result := TSystem.Create(FConfigurationDirectory + SystemDataSubDirectory + IntToStr(SystemID) + '/', SystemID, X, Y, FEncyclopedia.SpaceClass, Self, FDynastyManager, FEncyclopedia, FSettings);
    FSystems[SystemID] := Result;
    Assign(SystemsFile, FConfigurationDirectory + SystemsDatabaseFileName);
    FileMode := 2;
@@ -537,6 +569,5 @@ begin
    Result := Writer.Serialize(False);
    Writer.Clear();
 end;
-
 
 end.

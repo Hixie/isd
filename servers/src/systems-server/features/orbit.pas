@@ -34,16 +34,17 @@ type
       procedure ApplyVisibility(VisibilityHelper: TVisibilityHelper); override;
       procedure InferVisibilityByIndex(DynastyIndex: Cardinal; VisibilityHelper: TVisibilityHelper); override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem); override;
+      procedure HandleCrash(var Data);
    public
       constructor Create(APrimaryChild: TAssetNode);
       destructor Destroy(); override;
       procedure RecordSnapshot(Journal: TJournalWriter); override;
-      procedure ApplyJournal(Journal: TJournalReader); override;
+      procedure ApplyJournal(Journal: TJournalReader; System: TSystem); override;
       function GetHillDiameter(Child: TAssetNode; ChildPrimaryMass: Double): Double;
-      function GetRocheLimit(ChildRadius, ChildMass: Double): Double; // returns minimum semi-major axis for a hypothetical rigid child body orbitting our primary
+      function GetRocheLimit(ChildRadius, ChildMass: Double): Double; // returns minimum semi-major axis for a hypothetical child planetary body orbitting our primary
       // given child should have a TOrbitFeatureNode, use Encyclopedia.WrapAssetForOrbit
-      procedure AddOrbitingChild(Child: TAssetNode; SemiMajorAxis: Double; Eccentricity: Double; Omega: Double; TimeOrigin: Int64; Clockwise: Boolean);
-      procedure UpdateOrbitingChild(Child: TAssetNode; SemiMajorAxis: Double; Eccentricity: Double; Omega: Double; TimeOrigin: Int64; Clockwise: Boolean);
+      procedure AddOrbitingChild(System: TSystem; Child: TAssetNode; SemiMajorAxis: Double; Eccentricity: Double; Omega: Double; TimeOrigin: Int64; Clockwise: Boolean);
+      procedure UpdateOrbitingChild(System: TSystem; Child: TAssetNode; SemiMajorAxis: Double; Eccentricity: Double; Omega: Double; TimeOrigin: Int64; Clockwise: Boolean);
       function IAssetNameProvider.GetAssetName = GetOrbitName;
       property PrimaryChild: TAssetNode read FPrimaryChild;
       property OrbitingChildren[Index: Cardinal]: TAssetNode read GetOrbitingChild;
@@ -53,7 +54,7 @@ type
 implementation
 
 uses
-   sysutils, isdprotocol, encyclopedia, math;
+   sysutils, isdprotocol, encyclopedia, math, exceptions;
 
 type
    POrbitData = ^TOrbitData;
@@ -63,6 +64,8 @@ type
       Omega: Double; // radians
       TimeOrigin: Int64; // milliseconds in system time
       Clockwise: Boolean;
+      CrashEvent: TSystemEvent; // if we're scheduled to crash into the primary, this is our event
+      procedure Init();
       // Returns hill diameter of the child body in this orbit, with mass ChildMass, assuming the orbit is around a body of mass PrimaryMass.
       function GetHillDiameter(PrimaryMass, ChildMass: Double): Double; // meters
       // Returns whether Child can have children if it is in this orbit, around a primary Parent
@@ -71,6 +74,11 @@ type
       function GetCanHaveOrbitalChildren(Parent: TOrbitFeatureNode; Child: TAssetNode): Boolean;
       function GetPeriod(Parent: TOrbitFeatureNode; Child: TAssetNode): Double; // seconds
    end;
+
+procedure TOrbitData.Init();
+begin
+   CrashEvent := nil;
+end;
 
 function TOrbitData.GetHillDiameter(PrimaryMass, ChildMass: Double): Double;
 begin
@@ -96,7 +104,8 @@ var
 begin
    A := SemiMajorAxis; // m
    M := Parent.PrimaryChild.Mass; // kg
-   Result := 2.0 * pi * SqRt(A*A*A/G*M); // s // $R-
+   Result := 2.0 * pi * SqRt(A*A*A/(G*M)); // s // $R-
+   Assert(not IsNan(Result));
 end;
 
 
@@ -139,10 +148,12 @@ procedure TOrbitFeatureNode.AdoptOrbitingChild(Child: TAssetNode);
 begin
    AdoptChild(Child);
    Child.ParentData := New(POrbitData);
+   POrbitData(Child.ParentData)^.Init();
 end;
 
 procedure TOrbitFeatureNode.DropOrbitingChild(Child: TAssetNode);
 begin
+   Assert(not Assigned(POrbitData(Child.ParentData)^.CrashEvent)); // because how are we supposed to cancel it
    Dispose(POrbitData(Child.ParentData));
    Child.ParentData := nil;
    DropChild(Child);
@@ -159,29 +170,63 @@ end;
 
 function TOrbitFeatureNode.GetRocheLimit(ChildRadius, ChildMass: Double): Double;
 begin
+   // This only applies to bodies that are held together purely by gravitational forces, like planets.
+   // It doesn't apply to bodies that are held together by, like, screws and stuff.
    Assert(ChildMass > 0);
    Result := ChildRadius * ((2 * PrimaryChild.Mass / ChildMass) ** (1.0 / 3.0)); // $R-
 end;
 
-procedure TOrbitFeatureNode.AddOrbitingChild(Child: TAssetNode; SemiMajorAxis: Double; Eccentricity: Double; Omega: Double; TimeOrigin: Int64; Clockwise: Boolean);
+procedure TOrbitFeatureNode.AddOrbitingChild(System: TSystem; Child: TAssetNode; SemiMajorAxis: Double; Eccentricity: Double; Omega: Double; TimeOrigin: Int64; Clockwise: Boolean);
 begin
    Assert(Child.AssetClass.ID = idOrbits);
    Assert(not Assigned(Child.Parent));
    AdoptOrbitingChild(Child);
    SetLength(FChildren, Length(FChildren) + 1);
    FChildren[High(FChildren)] := Child;
-   UpdateOrbitingChild(Child, SemiMajorAxis, Eccentricity, Omega, TimeOrigin, Clockwise);
+   UpdateOrbitingChild(System, Child, SemiMajorAxis, Eccentricity, Omega, TimeOrigin, Clockwise);
 end;
 
-procedure TOrbitFeatureNode.UpdateOrbitingChild(Child: TAssetNode; SemiMajorAxis: Double; Eccentricity: Double; Omega: Double; TimeOrigin: Int64; Clockwise: Boolean);
+procedure TOrbitFeatureNode.UpdateOrbitingChild(System: TSystem; Child: TAssetNode; SemiMajorAxis: Double; Eccentricity: Double; Omega: Double; TimeOrigin: Int64; Clockwise: Boolean);
+var
+   Period, CrashTime: Int64;
 begin
    Assert(Child.Parent = Self);
    Assert(Assigned(Child.ParentData));
+   if (Assigned(POrbitData(Child.ParentData)^.CrashEvent)) then
+   begin
+      POrbitData(Child.ParentData)^.CrashEvent.Cancel();
+      POrbitData(Child.ParentData)^.CrashEvent := nil;
+   end;
    POrbitData(Child.ParentData)^.SemiMajorAxis := SemiMajorAxis;
    POrbitData(Child.ParentData)^.Eccentricity := Eccentricity;
    POrbitData(Child.ParentData)^.Omega := Omega;
    POrbitData(Child.ParentData)^.TimeOrigin := TimeOrigin;
    POrbitData(Child.ParentData)^.Clockwise := Clockwise;
+   if (SemiMajorAxis * (1 - Eccentricity) <= (PrimaryChild.Size + Child.Size) / 2) then
+   begin
+      // SemiMajorAxis * (1 - Eccentricity) is the distance between
+      // the center of the focal point and the center of the body at
+      // the periapsis. If that distance is less than the sum of the
+      // radii of the bodies, they'll definitely collide. We pretend
+      // that happens at the periapsis (even though it will actually
+      // happen earlier, when the body gets to the point that the
+      // separation between the bodies is less than the sum of the
+      // radii). By definition the orbitting body is at periapsis
+      // every period, starting at TimeOrigin, so we ask the system to
+      // compute the next time that we'll be at a whole number of
+      // Periods since the TimeOrigin.
+      Period := Round(POrbitData(Child.ParentData)^.GetPeriod(Self, Child));
+      CrashTime := System.TimeUntilNext(TimeOrigin, Period);
+      POrbitData(Child.ParentData)^.CrashEvent := System.ScheduleEvent(CrashTime, @HandleCrash, Child);
+   end;
+end;
+
+procedure TOrbitFeatureNode.HandleCrash(var Data);
+var
+   Child: TAssetNode;
+begin
+   Child := TAssetNode(Data);
+   Writeln('Crash!');
 end;
 
 function TOrbitFeatureNode.GetOrbitingChild(Index: Cardinal): TAssetNode;
@@ -311,7 +356,7 @@ begin
    end;
 end;
 
-procedure TOrbitFeatureNode.ApplyJournal(Journal: TJournalReader);
+procedure TOrbitFeatureNode.ApplyJournal(Journal: TJournalReader; System: TSystem);
 
    procedure AddChild();
    var
@@ -328,12 +373,12 @@ procedure TOrbitFeatureNode.ApplyJournal(Journal: TJournalReader);
       Clockwise := Journal.ReadBoolean();
       if (not Assigned(Child.Parent)) then
       begin
-         AddOrbitingChild(Child, SemiMajorAxis, Eccentricity, Omega, TimeOrigin, Clockwise);
+         AddOrbitingChild(System, Child, SemiMajorAxis, Eccentricity, Omega, TimeOrigin, Clockwise);
       end
       else
       begin
          Assert(Child.Parent = Self);
-         UpdateOrbitingChild(Child, SemiMajorAxis, Eccentricity, Omega, TimeOrigin, Clockwise);
+         UpdateOrbitingChild(System, Child, SemiMajorAxis, Eccentricity, Omega, TimeOrigin, Clockwise);
       end;
    end;
 

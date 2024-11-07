@@ -27,7 +27,7 @@ type
       function GetChildCount(): Cardinal;
       function GetFurthestDistanceFromCenter(): Double;
    protected
-      constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass); override;
+      constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
       procedure AdoptSolarSystemChild(Child: TAssetNode);
       procedure DropSolarSystemChild(Child: TAssetNode);
       procedure MarkAsDirty(DirtyKinds: TDirtyKinds; ChangeKinds: TChangeKinds); override;
@@ -43,7 +43,7 @@ type
       constructor Create(AFeatureClass: TSolarSystemFeatureClass);
       destructor Destroy(); override;
       procedure RecordSnapshot(Journal: TJournalWriter); override;
-      procedure ApplyJournal(Journal: TJournalReader); override;
+      procedure ApplyJournal(Journal: TJournalReader; System: TSystem); override;
       procedure AddCartesianChild(Child: TAssetNode; X, Y: Double); // meters, first must be at 0,0
       procedure ComputeHillSpheres(); // call this after all stars have been added
       function GetAssetName(): UTF8String;
@@ -102,9 +102,9 @@ begin
    FFeatureClass := AFeatureClass;
 end;
 
-constructor TSolarSystemFeatureNode.CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass);
+constructor TSolarSystemFeatureNode.CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem);
 begin
-   inherited CreateFromJournal(Journal, AFeatureClass);
+   inherited CreateFromJournal(Journal, AFeatureClass, ASystem);
    Assert(Assigned(AFeatureClass));
    FFeatureClass := AFeatureClass as TSolarSystemFeatureClass;
 end;
@@ -314,7 +314,7 @@ begin
    end;
 end;
 
-procedure TSolarSystemFeatureNode.ApplyJournal(Journal: TJournalReader);
+procedure TSolarSystemFeatureNode.ApplyJournal(Journal: TJournalReader; System: TSystem);
 
    procedure AddChild();
    var

@@ -246,6 +246,11 @@ orbit's eccentricity is e', then:
 
     ((1 + e) * a) / ((1 - e') * a') < cuberoot(M / (3 * (M + M*)))
 
+When a body's orbit is such that the distance between the primary body
+(at `c=e*a`) and the secondary body at `theta=0` (at `a`) is less than
+the sum of the bodies' radii, the bodies will collide when the time
+comes such that `theta=0`.
+
 
 #### `fcStructure` (0x04)
 

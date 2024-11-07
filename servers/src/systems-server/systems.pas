@@ -5,7 +5,8 @@ unit systems;
 interface
 
 uses
-   systemdynasty, configuration, hashtable, hashset, genericutils, icons, serverstream, random, materials;
+   systemdynasty, configuration, hashtable, hashset, genericutils,
+   icons, serverstream, random, materials, basenetwork;
 
 // VISIBILITY
 //
@@ -118,7 +119,7 @@ type
    TAssetNodeHashTable = class(specialize THashTable<PtrUInt, TAssetNode, PtrUIntUtils>)
       constructor Create();
    end;
-
+   
    // used to track the 8 bits of visibility information per dynasty for assets
    PVisibilitySummary = ^TVisibilitySummary;
    TVisibilitySummary = packed record
@@ -288,10 +289,10 @@ type
       procedure HandleVisibility(const DynastyIndex: Cardinal; var Visibility: TVisibility; const Sensors: ISensorProvider; const VisibilityHelper: TVisibilityHelper); virtual;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem); virtual; abstract;
       property Parent: TAssetNode read GetParent write SetParent;
-      constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass); virtual;
+      constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); virtual;
    public
       procedure RecordSnapshot(Journal: TJournalWriter); virtual; abstract;
-      procedure ApplyJournal(Journal: TJournalReader); virtual; abstract;
+      procedure ApplyJournal(Journal: TJournalReader; System: TSystem); virtual; abstract;
       property Mass: Double read GetMass;
       property Size: Double read GetSize;
       property FeatureName: UTF8String read GetFeatureName;
@@ -311,8 +312,8 @@ type
       constructor Create(AID: TAssetClassID; AName, AAmbiguousName, ADescription: UTF8String; AFeatures: TFeatureClassArray; AIcon: TIcon);
       destructor Destroy(); override;
       function SpawnFeatureNodes(): TFeatureNodeArray; // some feature nodes _can't_ be spawned this way (e.g. TAssetNameFeatureNode)
-      function SpawnFeatureNodesFromJournal(Journal: TJournalReader): TFeatureNodeArray;
-      procedure ApplyFeatureNodesFromJournal(Journal: TJournalReader; AssetNode: TAssetNode);
+      function SpawnFeatureNodesFromJournal(Journal: TJournalReader; System: TSystem): TFeatureNodeArray;
+      procedure ApplyFeatureNodesFromJournal(Journal: TJournalReader; AssetNode: TAssetNode; System: TSystem);
       function Spawn(AOwner: TDynasty): TAssetNode; overload;
       function Spawn(AOwner: TDynasty; AFeatures: TFeatureNodeArray): TAssetNode; overload;
    public // encoded in knowledge
@@ -354,11 +355,11 @@ type
       procedure MarkAsDirty(DirtyKinds: TDirtyKinds; ChangeKinds: TChangeKinds); virtual;
    public
       ParentData: Pointer;
-      constructor Create(Journal: TJournalReader);
+      constructor Create(Journal: TJournalReader; ASystem: TSystem);
       constructor Create(); unimplemented;
       destructor Destroy(); override;
       procedure HandleImminentDeath();
-      function GetFeatureByClass(FeatureClass: FeatureClassReference): TFeatureNode;
+      function GetFeatureByClass(FeatureClass: FeatureClassReference): TFeatureNode; // returns nil if feature is absent
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback);
       procedure InjectBusMessage(Message: TBusMessage);
       function HandleBusMessage(Message: TBusMessage): Boolean;
@@ -368,7 +369,7 @@ type
       function ReadVisibilityFor(DynastyIndex: Cardinal; System: TSystem): TVisibility;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem);
       procedure RecordSnapshot(Journal: TJournalWriter);
-      procedure ApplyJournal(Journal: TJournalReader);
+      procedure ApplyJournal(Journal: TJournalReader; System: TSystem);
       function ID(System: TSystem): PtrUInt; inline;
       property Parent: TFeatureNode read FParent;
       property Dirty: TDirtyKinds read FDirty;
@@ -381,8 +382,26 @@ type
       property AssetName: UTF8String read GetAssetName;
    end;
 
+   // pointers to these objects are not valid after the event has run or been canceled
+   TSystemEvent = class
+   private
+      FTime: Int64;
+      FCallback: TEventCallback;
+      FData: Pointer;
+      FSystem: TSystem;
+   public
+      constructor Create(ATime: Int64; ACallback: TEventCallback; AData: Pointer; ASystem: TSystem);
+      destructor Cancel();
+   end;
+
+   TSystemEventSet = specialize THashSet<TSystemEvent, PointerUtils>;
+
    TSystem = class sealed
    strict private
+      FServer: TBaseServer;
+      FScheduledEvents: TSystemEventSet;
+      FNextEvent: TSystemEvent;
+      FNextEventHandle: PEvent;
       FDynastyDatabase: TDynastyDatabase;
       FEncyclopedia: TEncyclopediaView;
       FAssets: TAssetNodeHashTable;
@@ -394,7 +413,7 @@ type
       FTimeFactor: Double;
       FRoot: TAssetNode;
       FChanges: TChangeKinds;
-      procedure Init(AConfigurationDirectory: UTF8String; ASystemID: Cardinal; ARootClass: TAssetClass; ADynastyDatabase: TDynastyDatabase; AEncyclopedia: TEncyclopediaView);
+      procedure Init(AConfigurationDirectory: UTF8String; ASystemID: Cardinal; ARootClass: TAssetClass; AServer: TBaseServer; ADynastyDatabase: TDynastyDatabase; AEncyclopedia: TEncyclopediaView);
       procedure ApplyJournal(FileName: UTF8String);
       procedure OpenJournal(FileName: UTF8String);
       procedure RecordUpdate();
@@ -402,21 +421,28 @@ type
       procedure Clean();
       procedure RecomputeVisibility();
       function GetIsLongVisibilityMode(): Boolean; inline;
+      procedure RunEvent(var Data);
+      procedure ScheduleNextEvent();
+      procedure RescheduleNextEvent(); // call this when the time factor changes
+      function SelectNextEvent(): TSystemEvent;
    private
       FDynastyIndices: TDynastyIndexHashTable; // for index into visibility tables; used by TVisibilityHelper
       FVisibilityBuffer: Pointer; // used by TVisibilityHelper
       FVisibilityOffset: Cardinal; // used by TVisibilityHelper
       FJournalFile: File; // used by TJournalReader/TJournalWriter
       FJournalWriter: TJournalWriter;
+      procedure CancelEvent(Event: TSystemEvent);
    protected
       procedure MarkAsDirty(ChangeKinds: TChangeKinds);
    public
-      constructor Create(AConfigurationDirectory: UTF8String; ASystemID: Cardinal; AX, AY: Double; ARootClass: TAssetClass; ADynastyDatabase: TDynastyDatabase; AEncyclopedia: TEncyclopediaView; Settings: PSettings);
-      constructor CreateFromDisk(AConfigurationDirectory: UTF8String; ASystemID: Cardinal; ARootClass: TAssetClass; ADynastyDatabase: TDynastyDatabase; AEncyclopedia: TEncyclopediaView);
+      constructor Create(AConfigurationDirectory: UTF8String; ASystemID: Cardinal; AX, AY: Double; ARootClass: TAssetClass; AServer: TBaseServer; ADynastyDatabase: TDynastyDatabase; AEncyclopedia: TEncyclopediaView; Settings: PSettings);
+      constructor CreateFromDisk(AConfigurationDirectory: UTF8String; ASystemID: Cardinal; ARootClass: TAssetClass; AServer: TBaseServer; ADynastyDatabase: TDynastyDatabase; AEncyclopedia: TEncyclopediaView);
       destructor Destroy(); override;
       function SerializeSystem(Dynasty: TDynasty; Writer: TServerStreamWriter; DirtyOnly: Boolean): Boolean; // true if anything was dkSelf dirty
       procedure ReportChanges();
       function HasDynasty(Dynasty: TDynasty): Boolean; inline;
+      function ScheduleEvent(TimeDelta: Int64; Callback: TEventCallback; var Data): TSystemEvent;
+      function TimeUntilNext(TimeOrigin: Int64; Period: Int64): Int64;
       property RootNode: TAssetNode read FRoot;
       property Dirty: Boolean read GetDirty;
       property SystemID: Cardinal read FSystemID;
@@ -430,7 +456,7 @@ type
 implementation
 
 uses
-   sysutils, exceptions, hashfunctions, isdprotocol, providers, typedump, basenetwork, dateutils, math;
+   sysutils, exceptions, hashfunctions, isdprotocol, providers, typedump, dateutils, math;
 
 type
    TRootAssetNode = class(TAssetNode)
@@ -443,7 +469,7 @@ type
 
 function DynastyHash32(const Key: TDynasty): DWord;
 begin
-   Result := PtrUIntHash32(PtrUInt(Key));
+   Result := ObjectHash32(Key);
 end;
 
 constructor TDynastyIndexHashTable.Create();
@@ -464,6 +490,11 @@ end;
 constructor TAssetNodeHashTable.Create();
 begin
    inherited Create(@PtrUIntHash32);
+end;
+
+function SystemEventHash32(const Key: TSystemEvent): DWord;
+begin
+   Result := ObjectHash32(Key);
 end;
 
 
@@ -674,10 +705,10 @@ begin
 end;
 
 
-constructor TFeatureNode.CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass);
+constructor TFeatureNode.CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem);
 begin
    inherited Create();
-   ApplyJournal(Journal);
+   ApplyJournal(Journal, ASystem);
 end;
 
 procedure TFeatureNode.SetParent(Asset: TAssetNode);
@@ -790,7 +821,7 @@ begin
    Result := FeatureNodes;
 end;
 
-function TAssetClass.SpawnFeatureNodesFromJournal(Journal: TJournalReader): TFeatureNodeArray;
+function TAssetClass.SpawnFeatureNodesFromJournal(Journal: TJournalReader; System: TSystem): TFeatureNodeArray;
 var
    Index, FallbackIndex: Cardinal;
 begin
@@ -802,7 +833,7 @@ begin
          case (Journal.ReadCardinal()) of
             jcStartOfFeature:
                begin
-                  Result[Index] := FFeatures[Index].FeatureNodeClass.CreateFromJournal(Journal, FFeatures[Index]);
+                  Result[Index] := FFeatures[Index].FeatureNodeClass.CreateFromJournal(Journal, FFeatures[Index], System);
                   if (Journal.ReadCardinal() <> jcEndOfFeature) then
                   begin
                      raise EJournalError.Create('missing end of feature marker (0x' + HexStr(jcEndOfFeature, 8) + ')');
@@ -828,7 +859,7 @@ begin
    end;
 end;
 
-procedure TAssetClass.ApplyFeatureNodesFromJournal(Journal: TJournalReader; AssetNode: TAssetNode);
+procedure TAssetClass.ApplyFeatureNodesFromJournal(Journal: TJournalReader; AssetNode: TAssetNode; System: TSystem);
 var
    Index: Cardinal;
 begin
@@ -839,7 +870,7 @@ begin
          case (Journal.ReadCardinal()) of
             jcStartOfFeature:
                begin
-                  AssetNode.Features[Index].ApplyJournal(Journal);
+                  AssetNode.Features[Index].ApplyJournal(Journal, System);
                   if (Journal.ReadCardinal() <> jcEndOfFeature) then
                   begin
                      raise EJournalError.Create('missing end of feature marker (0x' + HexStr(jcEndOfFeature, 8) + ')');
@@ -925,10 +956,10 @@ begin
    FDirty := [dkNew, dkSelf, dkDescendant];
 end;
 
-constructor TAssetNode.Create(Journal: TJournalReader);
+constructor TAssetNode.Create(Journal: TJournalReader; ASystem: TSystem);
 begin
    inherited Create();
-   ApplyJournal(Journal);
+   ApplyJournal(Journal, ASystem);
 end;
 
 constructor TAssetNode.Create();
@@ -968,7 +999,6 @@ begin
       end;
    end;
    Result := nil;
-   Assert(False);
 end;
 
 function TAssetNode.GetFeature(Index: Cardinal): TFeatureNode;
@@ -1145,7 +1175,7 @@ begin
    Journal.WriteCardinal(jcEndOfAsset);
 end;
 
-procedure TAssetNode.ApplyJournal(Journal: TJournalReader);
+procedure TAssetNode.ApplyJournal(Journal: TJournalReader; System: TSystem);
 var
    NewAssetClass: TAssetClass;
    Feature: TFeatureNode;
@@ -1166,13 +1196,13 @@ begin
    if (SpawnFeatures) then
    begin
       Assert(Length(FFeatures) = 0);
-      FFeatures := FAssetClass.SpawnFeatureNodesFromJournal(Journal);
+      FFeatures := FAssetClass.SpawnFeatureNodesFromJournal(Journal, System);
       for Feature in FFeatures do
          Feature.SetParent(Self);
    end
    else
    begin
-      FAssetClass.ApplyFeatureNodesFromJournal(Journal, Self);
+      FAssetClass.ApplyFeatureNodesFromJournal(Journal, Self, System);
    end;
    if (Journal.ReadCardinal() <> jcEndOfAsset) then
    begin
@@ -1186,13 +1216,13 @@ begin
 end;
 
 
-constructor TSystem.Create(AConfigurationDirectory: UTF8String; ASystemID: Cardinal; AX, AY: Double; ARootClass: TAssetClass; ADynastyDatabase: TDynastyDatabase; AEncyclopedia: TEncyclopediaView; Settings: PSettings);
+constructor TSystem.Create(AConfigurationDirectory: UTF8String; ASystemID: Cardinal; AX, AY: Double; ARootClass: TAssetClass; AServer: TBaseServer; ADynastyDatabase: TDynastyDatabase; AEncyclopedia: TEncyclopediaView; Settings: PSettings);
 begin
    inherited Create();
-   Init(AConfigurationDirectory, ASystemID, ARootClass, ADynastyDatabase, AEncyclopedia);
+   Init(AConfigurationDirectory, ASystemID, ARootClass, AServer, ADynastyDatabase, AEncyclopedia);
    FX := AX;
    FY := AY;
-   FTimeOrigin := Now();
+   FTimeOrigin := FServer.Clock.Now();
    FTimeFactor := Settings^.DefaultTimeRate;
    try
       Assert(not DirectoryExists(FConfigurationDirectory));
@@ -1204,20 +1234,22 @@ begin
    OpenJournal(FConfigurationDirectory + JournalDatabaseFileName);
 end;
 
-constructor TSystem.CreateFromDisk(AConfigurationDirectory: UTF8String; ASystemID: Cardinal; ARootClass: TAssetClass; ADynastyDatabase: TDynastyDatabase; AEncyclopedia: TEncyclopediaView);
+constructor TSystem.CreateFromDisk(AConfigurationDirectory: UTF8String; ASystemID: Cardinal; ARootClass: TAssetClass; AServer: TBaseServer; ADynastyDatabase: TDynastyDatabase; AEncyclopedia: TEncyclopediaView);
 begin
-   Init(AConfigurationDirectory, ASystemID, ARootClass, ADynastyDatabase, AEncyclopedia);
+   Init(AConfigurationDirectory, ASystemID, ARootClass, AServer, ADynastyDatabase, AEncyclopedia);
    ApplyJournal(FConfigurationDirectory + JournalDatabaseFileName);
    OpenJournal(FConfigurationDirectory + JournalDatabaseFileName);
 end;
 
-procedure TSystem.Init(AConfigurationDirectory: UTF8String; ASystemID: Cardinal; ARootClass: TAssetClass; ADynastyDatabase: TDynastyDatabase; AEncyclopedia: TEncyclopediaView);
+procedure TSystem.Init(AConfigurationDirectory: UTF8String; ASystemID: Cardinal; ARootClass: TAssetClass; AServer: TBaseServer; ADynastyDatabase: TDynastyDatabase; AEncyclopedia: TEncyclopediaView);
 begin
    FConfigurationDirectory := AConfigurationDirectory;
    FSystemID := ASystemID;
    FRandomNumberGenerator := TRandomNumberGenerator.Create(FSystemID);
+   FServer := AServer;
    FDynastyDatabase := ADynastyDatabase;
    FDynastyIndices := TDynastyIndexHashTable.Create();
+   FScheduledEvents := TSystemEventSet.Create(@SystemEventHash32);
    FEncyclopedia := AEncyclopedia;
    FRoot := TRootAssetNode.Create(ARootClass, Self, ARootClass.SpawnFeatureNodes());
    FAssets := TAssetNodeHashTable.Create();
@@ -1233,6 +1265,7 @@ begin
    end;
    FAssets.Free();
    FRoot.Free();
+   FScheduledEvents.Free();
    FDynastyIndices.Free();
    if (Assigned(FVisibilityBuffer)) then
    begin
@@ -1273,16 +1306,17 @@ begin
          jcSystemUpdate: begin
             FRandomNumberGenerator.Reset(JournalReader.ReadUInt64());
             FTimeFactor := JournalReader.ReadDouble();
+            RescheduleNextEvent();
          end;
          jcNewAsset: begin
             ID := JournalReader.ReadPtrUInt();
-            Asset := TAssetNode.Create(JournalReader);
+            Asset := TAssetNode.Create(JournalReader, Self);
             JournalReader.FAssetMap[ID] := Asset;
          end;
          jcAssetChange: begin
             ID := JournalReader.ReadPtrUInt();
             Asset := JournalReader.FAssetMap[ID];
-            Asset.ApplyJournal(JournalReader);               
+            Asset.ApplyJournal(JournalReader, Self);               
          end;
       else
          raise EJournalError.Create('Unknown operation code in system journal (0x' + HexStr(Code, 8) + '), expected either new asset (0x' + HexStr(jcNewAsset, 8) + ') or asset change (0x' + HexStr(jcAssetChange, 8) + ') marker');
@@ -1414,7 +1448,7 @@ begin
    Assert(FDynastyIndices.Has(Dynasty));
    DynastyIndex := FDynastyIndices[Dynasty];
    Writer.WriteCardinal(SystemID);
-   Writer.WriteInt64(MillisecondsBetween(Now() * FTimeFactor, FTimeOrigin * FTimeFactor));
+   Writer.WriteInt64(MillisecondsBetween(FServer.Clock.Now() * FTimeFactor, FTimeOrigin * FTimeFactor));
    Writer.WriteDouble(FTimeFactor);
    Writer.WritePtrUInt(FRoot.ID(Self));
    Writer.WriteDouble(FX);
@@ -1539,6 +1573,131 @@ end;
 function TSystem.HasDynasty(Dynasty: TDynasty): Boolean;
 begin
    Result := FDynastyIndices.Has(Dynasty);
+end;
+
+procedure TSystem.RunEvent(var Data);
+var
+   Event: TSystemEvent;
+begin
+   Event := TSystemEvent(Data);
+   Assert(Assigned(Event));
+   Assert(FScheduledEvents.Has(Event));
+   Assert(FNextEvent = Event);
+   Assert(Assigned(FNextEventHandle));
+   FScheduledEvents.Remove(Event);
+   FNextEvent := nil;
+   FNextEventHandle := nil;
+   Event.FCallback(Event.FData);
+   FreeAndNil(Event);
+   if (not Assigned(FNextEvent)) then
+   begin
+      FNextEvent := SelectNextEvent();
+      if (Assigned(FNextEvent)) then
+         ScheduleNextEvent();
+   end;
+end;
+
+procedure TSystem.ScheduleNextEvent();
+var
+   SystemNow, SystemTarget, RealDelta: Int64;
+begin
+   Assert(Assigned(FNextEvent));
+   Assert(not Assigned(FNextEventHandle));
+   SystemNow := MillisecondsBetween(FServer.Clock.Now() * FTimeFactor, FTimeOrigin * FTimeFactor);
+   SystemTarget := FNextEvent.FTime;
+   RealDelta := Round((SystemTarget - SystemNow) / FTimeFactor);
+   FNextEventHandle := FServer.ScheduleEvent(IncMillisecond(FServer.Clock.Now(), RealDelta), @RunEvent, FNextEvent);
+end;   
+
+procedure TSystem.RescheduleNextEvent();
+begin
+   Assert(Assigned(FNextEvent) = Assigned(FNextEventHandle));
+   Assert(Assigned(FNextEvent) = FScheduledEvents.IsNotEmpty);
+   if (Assigned(FNextEvent)) then
+   begin
+      FServer.CancelEvent(FNextEventHandle);
+      Assert(not Assigned(FNextEventHandle));
+      ScheduleNextEvent();
+   end;
+end;   
+
+function TSystem.SelectNextEvent(): TSystemEvent;
+var
+   Event: TSystemEvent;
+begin
+   Result := nil;
+   if (FScheduledEvents.IsNotEmpty) then
+   begin
+      Result := nil;
+      for Event in FScheduledEvents do
+      begin
+         if (not Assigned(Result) or (Event.FTime < Result.FTime)) then
+            Result := Event;
+      end;
+   end;
+end;   
+
+function TSystem.ScheduleEvent(TimeDelta: Int64; Callback: TEventCallback; var Data): TSystemEvent;
+begin
+   Assert(Assigned(FNextEvent) = Assigned(FNextEventHandle));
+   Assert(Assigned(FNextEvent) = FScheduledEvents.IsNotEmpty);
+   Result := TSystemEvent.Create(
+      MillisecondsBetween(FServer.Clock.Now() * FTimeFactor, FTimeOrigin * FTimeFactor) + TimeDelta,
+      Callback,
+      Pointer(Data),
+      Self
+   );
+   FScheduledEvents.Add(Result);
+   if ((not Assigned(FNextEvent)) or (FNextEvent.FTime <= Result.FTime)) then
+   begin
+      if (Assigned(FNextEvent)) then
+         FServer.CancelEvent(FNextEventHandle);
+      Assert(not Assigned(FNextEventHandle));
+      FNextEvent := Result;
+      ScheduleNextEvent();
+   end;
+end;
+
+procedure TSystem.CancelEvent(Event: TSystemEvent);
+begin
+   Assert(Assigned(Event));
+   Assert(FScheduledEvents.Has(Event));
+   FScheduledEvents.Remove(Event);
+   if (Event = FNextEvent) then
+   begin
+      Assert(Assigned(FNextEventHandle));
+      FServer.CancelEvent(FNextEventHandle);
+      Assert(not Assigned(FNextEventHandle));
+      if (FScheduledEvents.IsNotEmpty) then
+      begin
+         FNextEvent := SelectNextEvent();
+         ScheduleNextEvent();
+      end;
+   end;
+end;
+
+function TSystem.TimeUntilNext(TimeOrigin: Int64; Period: Int64): Int64;
+var
+   Now: Int64;
+begin
+   Now := MillisecondsBetween(FServer.Clock.Now() * FTimeFactor, FTimeOrigin * FTimeFactor);
+   Result := Period - (TimeOrigin - Now) mod Period;
+end;
+
+
+constructor TSystemEvent.Create(ATime: Int64; ACallback: TEventCallback; AData: Pointer; ASystem: TSystem);
+begin
+   inherited Create();
+   FTime := ATime;
+   FCallback := ACallback;
+   FData := AData;
+   FSystem := ASystem;
+end;
+
+destructor TSystemEvent.Cancel();
+begin
+   FSystem.CancelEvent(Self);
+   inherited Destroy();
 end;
 
 

@@ -26,7 +26,7 @@ type
       FFeatureClass: TSpaceSensorFeatureClass;
       FLastBottom, FLastTop: TAssetNode;
       FLastCountDetected: Cardinal;
-      constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass); override;
+      constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
       function GetMass(): Double; override;
       function GetSize(): Double; override;
       function GetFeatureName(): UTF8String; override;
@@ -38,7 +38,7 @@ type
       constructor Create(AFeatureClass: TSpaceSensorFeatureClass);
       function GetKnownMaterials(): TMaterialHashSet;
       procedure RecordSnapshot(Journal: TJournalWriter); override;
-      procedure ApplyJournal(Journal: TJournalReader); override;
+      procedure ApplyJournal(Journal: TJournalReader; System: TSystem); override;
    end;
 
 implementation
@@ -73,9 +73,9 @@ begin
    FFeatureClass := AFeatureClass;
 end;
 
-constructor TSpaceSensorFeatureNode.CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass);
+constructor TSpaceSensorFeatureNode.CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem);
 begin
-   inherited CreateFromJournal(Journal, AFeatureClass);
+   inherited CreateFromJournal(Journal, AFeatureClass, ASystem);
    Assert(Assigned(AFeatureClass));
    FFeatureClass := AFeatureClass as TSpaceSensorFeatureClass;
 end;
@@ -223,7 +223,7 @@ procedure TSpaceSensorFeatureNode.RecordSnapshot(Journal: TJournalWriter);
 begin
 end;
 
-procedure TSpaceSensorFeatureNode.ApplyJournal(Journal: TJournalReader);
+procedure TSpaceSensorFeatureNode.ApplyJournal(Journal: TJournalReader; System: TSystem);
 begin
 end;
 

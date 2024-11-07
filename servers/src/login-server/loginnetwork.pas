@@ -381,7 +381,7 @@ end;
 
 constructor TServer.Create(APort: Word; AUserDatabase: TUserDatabase; ADynastyServerDatabase, ASystemServerDatabase: TServerDatabase; AGalaxyManager: TGalaxyManager);
 begin
-   inherited Create(APort);
+   inherited Create(APort, nil);
    FUserDatabase := AUserDatabase;
    FDynastyServerDatabase := ADynastyServerDatabase;
    FSystemServerDatabase := ASystemServerDatabase;

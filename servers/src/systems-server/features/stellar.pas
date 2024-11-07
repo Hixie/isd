@@ -30,7 +30,7 @@ type
    public
       constructor Create(AStarID: TStarID);
       procedure RecordSnapshot(Journal: TJournalWriter); override;
-      procedure ApplyJournal(Journal: TJournalReader); override;
+      procedure ApplyJournal(Journal: TJournalReader; System: TSystem); override;
       property Category: TStarCategory read GetCategory;
       property StarID: TStarID read FStarID;
    end;
@@ -139,7 +139,7 @@ begin
    Journal.WriteCardinal(StarID); // $R-
 end;
 
-procedure TStarFeatureNode.ApplyJournal(Journal: TJournalReader);
+procedure TStarFeatureNode.ApplyJournal(Journal: TJournalReader; System: TSystem);
 begin
    FStarID := Journal.ReadCardinal(); // $R-
 end;

@@ -5,7 +5,7 @@ unit protoplanetary;
 interface
 
 uses
-   materials, random, plasticarrays;
+   materials, random, plasticarrays, systems;
 
 type
    TBodyComposition = record
@@ -20,7 +20,7 @@ type
       Mass: Double; // cache used during generation, not source of truth
    public
       Distance, Eccentricity: Double;
-      Clockwise: Boolean;
+      Clockwise, Habitable: Boolean;
       Composition: array of TBodyComposition;
       Radius: Double; // also HP
       Moons: PBodyArray;
@@ -33,8 +33,9 @@ type
    end;
 
    TBodyArray = specialize PlasticArray<TBody, TBodyDistanceUtils>;
-   
-function CondenseProtoplanetaryDisk(StarMass, StarRadius, HillRadius: Double; Materials: TMaterialHashSet; Randomizer: TRandomNumberGenerator): TBodyArray;
+
+// TODO: have different logic for home systems, support systems, and other random systems
+function CondenseProtoplanetaryDisk(StarMass, StarRadius, HillRadius: Double; Materials: TMaterialHashSet; System: TSystem): TBodyArray;
 
 implementation
 
@@ -142,7 +143,7 @@ begin
    end;
 end;
 
-function IsTerrestrial(const Planet: TBody): Boolean;
+procedure SetHabitability(var Planet: TBody);
 var
    Index: Cardinal;
    TotalRelativeVolume: Double;
@@ -160,22 +161,22 @@ begin
          begin
             if (Planet.Composition[Index].RelativeVolume < TotalRelativeVolume * TerrestrialFractionThreshold) then
             begin
-               Result := False;
+               Planet.Habitable := False;
                exit;
             end;
          end;
       end;
-      Result := True;
+      Planet.Habitable := True;
    end
    else
-      Result := False;
+      Planet.Habitable := False;
 end;
 
 function NeedsMorePlanets(const Planets: TBodyArray): Boolean;
 
    procedure Consider(const Planet: TBody; var TerrestrialCount: Cardinal);
    begin
-      if (IsTerrestrial(Planet)) then
+      if (Planet.Habitable) then
          Inc(TerrestrialCount);
    end;
 
@@ -258,8 +259,9 @@ begin
    Result := SecondaryRadius * ((2.0 * PrimaryMass / SecondaryMass) ** (1.0 / 3.0)); // $R-
 end;
 
-function CondenseProtoplanetaryDisk(StarMass, StarRadius, HillRadius: Double; Materials: TMaterialHashSet; Randomizer: TRandomNumberGenerator): TBodyArray;
+function CondenseProtoplanetaryDisk(StarMass, StarRadius, HillRadius: Double; Materials: TMaterialHashSet; System: TSystem): TBodyArray;
 var
+   Randomizer: TRandomNumberGenerator;
    Index, PlanetIndex, GenerationStart: Cardinal;
    Min, Max, Distance, MoonDistance, PreviousDistance, NextDistance, Alpha, Beta, PlanetDistance, Area,
    PlanetProbability, ProtoplanetaryDiscHeight, LocalProtoplanetaryDiscHeight, PlanetMass, ProtoplanetaryDiscRadius,
@@ -268,6 +270,7 @@ var
    Planets: TBodyArray;
    Planet, Moon: TBody;
 begin
+   Randomizer := System.RandomNumberGenerator;
    // PLANETS
    Planets.Init(MinPlanetCount);
    Clockwise := True;
@@ -299,6 +302,7 @@ begin
             Planet.Clockwise := Clockwise;
             if (AddMaterialsTo(Planet, Distance, Materials, Randomizer)) then
             begin
+               SetHabitability(Planet);
                Planets.Push(Planet);
             end;
          end
@@ -359,7 +363,7 @@ begin
                // MOONS
                Assert(Length(Planet.Composition) > 0);
                Distance := Planet.Distance;
-               PlanetHillRadius := Distance * Power((PlanetMass / (3 * (PlanetMass + StarMass))), 1/3); // $R-
+               PlanetHillRadius := Distance * (1 - Planet.Eccentricity) * Power((PlanetMass / (3 * (PlanetMass + StarMass))), 1/3); // $R-
                MoonSize := Randomizer.Perturb(Planet.Radius * MaxMoonSizeRatio, MoonSizePerturbationParameters);
                while (MoonSize > MinMoonSize) do
                begin
@@ -386,6 +390,7 @@ begin
                            Planet.Moons^.Init();
                         end;
                         Moon.Eccentricity := Randomizer.Perturb(DefaultEccentricity, EccentricityPerturbationParameters);
+                        SetHabitability(Moon);
                         Planet.Moons^.Push(Moon);
                      end;
                   end;

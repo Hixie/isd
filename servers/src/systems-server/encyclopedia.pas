@@ -32,7 +32,7 @@ type
       property StarClass[Category: TStarCategory]: TAssetClass read GetStarClass;
       function WrapAssetForOrbit(Child: TAssetNode): TAssetNode;
       function CreateLoneStar(StarID: TStarID): TAssetNode;
-      procedure CondenseProtoplanetaryDisks(Space: TSolarSystemFeatureNode; RandomSource: TRandomNumberGenerator);
+      procedure CondenseProtoplanetaryDisks(Space: TSolarSystemFeatureNode; System: TSystem);
       property ProtoplanetaryMaterials: TMaterialHashSet read FProtoplanetaryMaterials;
    end;
 
@@ -164,7 +164,7 @@ begin
       'The ship that your people used to escape their dying star.',
       [
          TSpaceSensorFeatureClass.Create(10 { max steps to orbit }, 10 { steps up from orbit }, 10 { steps down from top}, 0.01 { min size }, [dmVisibleSpectrum, dmClassKnown, dmInternals]),
-         TStructureFeatureClass.Create([TMaterialLineItem.Create('Shell', FDarkMatter, 10000 { mass in units (g): 10kg })], 1 { min functional quantity }, 1.0 { default diameter, m }),
+         TStructureFeatureClass.Create([TMaterialLineItem.Create('Shell', FDarkMatter, 10000 { mass in units (g): 10kg })], 1 { min functional quantity }, 100.0 { default diameter, m }),
          TDynastyOriginalColonyShipFeatureClass.Create()
       ],
       PlaceholderIcon
@@ -230,7 +230,7 @@ begin
    );
 end;
 
-procedure TEncyclopedia.CondenseProtoplanetaryDisks(Space: TSolarSystemFeatureNode; RandomSource: TRandomNumberGenerator);
+procedure TEncyclopedia.CondenseProtoplanetaryDisks(Space: TSolarSystemFeatureNode; System: TSystem);
 
    function CreateBodyNode(const Body: TBody): TAssetNode;
    var
@@ -266,7 +266,8 @@ procedure TEncyclopedia.CondenseProtoplanetaryDisks(Space: TSolarSystemFeatureNo
             TPlanetaryBodyFeatureNode.Create(
                Body.Radius * 2.0, // diameter
                AssetComposition,
-               RoundAboveZero(Body.Radius) // hp
+               RoundAboveZero(Body.Radius), // hp
+               Body.Habitable // whether to consider this body when selecting a crash landing point
             ) // $R-
          ]
       );
@@ -280,10 +281,11 @@ procedure TEncyclopedia.CondenseProtoplanetaryDisks(Space: TSolarSystemFeatureNo
       Node := CreateBodyNode(Body);
       OrbitNode := WrapAssetForOrbit(Node);
       Orbit.AddOrbitingChild(
+         System,
          OrbitNode,
          Body.Distance,
          Body.Eccentricity,
-         RandomSource.GetDouble(0.0, 2.0 * Pi), // Omega // $R-
+         System.RandomNumberGenerator.GetDouble(0.0, 2.0 * Pi), // Omega // $R-
          0, // TimeOrigin
          Body.Clockwise
       );
@@ -312,7 +314,7 @@ begin
       StarHillDiameter := Space.GetHillDiameter(StarOrbit, Star.Mass);
       if (StarHillDiameter > Star.Size) then
       begin
-         Planets := CondenseProtoplanetaryDisk(Star.Mass, Star.Size / 2.0, StarHillDiameter / 2.0, FProtoplanetaryMaterials, RandomSource);
+         Planets := CondenseProtoplanetaryDisk(Star.Mass, Star.Size / 2.0, StarHillDiameter / 2.0, FProtoplanetaryMaterials, System);
          for Body in Planets do
             AddBody(Body, StarOrbitFeature);
       end;
