@@ -20,6 +20,8 @@ type
       function GetAssetName(): UTF8String;
    end;
 
+   // TODO: asset description provider? e.g. surface should describe a planet
+
 implementation
 
 end.

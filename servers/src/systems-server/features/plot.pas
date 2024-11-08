@@ -49,7 +49,7 @@ end;
 function TDynastyOriginalColonyShipFeatureClass.InitFeatureNode(): TFeatureNode;
 begin
    Result := nil;
-   raise Exception.Create('Cannot create a TDynastyOriginalColonyShipFeatureClass from a prototype.');
+   raise Exception.Create('Cannot create a TDynastyOriginalColonyShipFeatureNode from a prototype, it must be given a dynasty.');
 end;
 
 

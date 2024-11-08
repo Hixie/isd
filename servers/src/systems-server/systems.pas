@@ -176,7 +176,7 @@ type
       property System: TSystem read FSystem;
    end;
 
-   TAssetChangeKind = (ckAdd, ckRemove, ckMove);
+   TAssetChangeKind = (ckAdd, ckRemove, ckMove, ckNone);
    
    TJournalReader = class sealed
    private
@@ -824,6 +824,7 @@ end;
 function TAssetClass.SpawnFeatureNodesFromJournal(Journal: TJournalReader; System: TSystem): TFeatureNodeArray;
 var
    Index, FallbackIndex: Cardinal;
+   Value: Cardinal;
 begin
    SetLength(Result, Length(FFeatures)); {BOGUS Warning: Function result variable of a managed type does not seem to be initialized}
    if (Length(Result) > 0) then
@@ -853,15 +854,17 @@ begin
          end;
       end;
    end;
-   if (Journal.ReadCardinal() <> jcEndOfFeatures) then
+   Value := Journal.ReadCardinal();
+   if (Value <> jcEndOfFeatures) then
    begin
-      raise EJournalError.Create('missing end of features marker (0x' + HexStr(jcEndOfFeatures, 8) + ')');
+      raise EJournalError.Create('missing end of features marker (0x' + HexStr(jcEndOfFeatures, 8) + ') while reading asset with class "' + Name + '", instead read 0x' + HexStr(Value, 8));
    end;
 end;
 
 procedure TAssetClass.ApplyFeatureNodesFromJournal(Journal: TJournalReader; AssetNode: TAssetNode; System: TSystem);
 var
    Index: Cardinal;
+   Value: Cardinal;
 begin
    if (Length(FFeatures) > 0) then
    begin
@@ -883,9 +886,10 @@ begin
          end;
       end;
    end;
-   if (Journal.ReadCardinal() <> jcEndOfFeatures) then
+   Value := Journal.ReadCardinal();
+   if (Value <> jcEndOfFeatures) then
    begin
-      raise EJournalError.Create('missing end of features marker (0x' + HexStr(jcEndOfFeatures, 8) + ')');
+      raise EJournalError.Create('missing end of features marker (0x' + HexStr(jcEndOfFeatures, 8) + '), instead read 0x' + HexStr(Value, 8));
    end;
 end;
 
@@ -908,6 +912,8 @@ begin
    Visibility := AssetNode.ReadVisibilityFor(DynastyIndex, System);
    Detectable := dmDetectable * Visibility <> [];
    Recognizable := dmClassKnown in Visibility;
+   // TODO: optionally get the description from the node rather than the class
+   // TODO: e.g. planets and planetary regions should self-describe rather than using the region class description
    if (Detectable and Recognizable) then
    begin
       ReportedIcon := FIcon;
@@ -989,7 +995,7 @@ function TAssetNode.GetFeatureByClass(FeatureClass: FeatureClassReference): TFea
 var
    Index: Cardinal;
 begin
-   Assert(FAssetClass.FeatureCount > 0);
+   Assert(FAssetClass.FeatureCount > 0); // at a minimum you need a feature to give the asset a size
    for Index := 0 to FAssetClass.FeatureCount - 1 do // $R-
    begin
       if (FAssetClass.Features[Index] is FeatureClass) then

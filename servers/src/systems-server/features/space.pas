@@ -369,11 +369,15 @@ begin
    Count := Journal.ReadCardinal();
    while (Count > 0) do
    begin
+      // TODO: should we just always apply a fresh list of children, and figure out which ones left and which did not?
+      // (and put the ones that were removed into some list that we check later to free the right ones?)
+      // see also orbits, surfaces
       AssetChangeKind := Journal.ReadAssetChangeKind();
       case AssetChangeKind of
          ckAdd: AddChild();
          ckRemove: RemoveChild();
          ckMove: MoveChild();
+         ckNone: Assert(False);
       end;
       Dec(Count);
    end;

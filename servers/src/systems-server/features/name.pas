@@ -46,7 +46,7 @@ end;
 function TAssetNameFeatureClass.InitFeatureNode(): TFeatureNode;
 begin
    Result := nil;
-   raise Exception.Create('Cannot create a TAssetNameFeatureClass from a prototype; it must have a specified name.');
+   raise Exception.Create('Cannot create a TAssetNameFeatureNode from a prototype; it must have a specified name.');
 end;
 
 

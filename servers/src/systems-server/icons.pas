@@ -21,8 +21,11 @@ const
    Star9Icon: TIcon = 'star9';
    Star10Icon: TIcon = 'star10';
    PlanetIcon: TIcon = 'planet';
+   PlanetRegionIcon: TIcon = 'region';
    PlaceholderIcon: TIcon = 'placeholder';
    UnknownIcon: TIcon = 'unknown';
+
+const
    // Materials
    DarkMatterIcon: TIcon = 'material-dark-matter';
 

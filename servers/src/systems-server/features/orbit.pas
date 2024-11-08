@@ -23,7 +23,7 @@ type
       function GetOrbitingChildCount(): Cardinal;
       function GetOrbitName(): UTF8String;
    protected
-      procedure AdoptOrbitingChild(Child: TAssetNode);
+      procedure AdoptOrbitingChild(Child: TAssetNode); // Child must be an orbit.
       procedure DropOrbitingChild(Child: TAssetNode);
       procedure MarkAsDirty(DirtyKinds: TDirtyKinds; ChangeKinds: TChangeKinds); override;
       function GetMass(): Double; override;
@@ -54,7 +54,7 @@ type
 implementation
 
 uses
-   sysutils, isdprotocol, encyclopedia, math, exceptions;
+   sysutils, isdprotocol, math, exceptions, encyclopedia;
 
 type
    POrbitData = ^TOrbitData;
@@ -117,17 +117,22 @@ end;
 function TOrbitFeatureClass.InitFeatureNode(): TFeatureNode;
 begin
    Result := nil;
-   raise Exception.Create('Cannot create a TOrbitFeatureClass from a prototype; use AddChild on a TSolarSystemFeatureNode or a TOrbitFeatureNode.');
+   raise Exception.Create('Cannot create a TOrbitFeatureNode from a prototype; use AddChild on a TSolarSystemFeatureNode or a TOrbitFeatureNode.');
 end;
 
 
 constructor TOrbitFeatureNode.Create(APrimaryChild: TAssetNode);
 begin
    inherited Create();
-   Assert(Assigned(APrimaryChild));
-   Assert(APrimaryChild.Mass > 0, 'Primary child "' + APrimaryChild.AssetName + '" (class "' + APrimaryChild.AssetClass.Name + '") has zero mass');
-   AdoptChild(APrimaryChild);
-   FPrimaryChild := APrimaryChild;
+   try
+      Assert(Assigned(APrimaryChild));
+      Assert(APrimaryChild.Mass > 0, 'Primary child "' + APrimaryChild.AssetName + '" (class "' + APrimaryChild.AssetClass.Name + '") has zero mass');
+      AdoptChild(APrimaryChild);
+      FPrimaryChild := APrimaryChild;
+   except
+      ReportCurrentException();
+      raise;
+   end;
 end;
 
 destructor TOrbitFeatureNode.Destroy();
@@ -153,7 +158,11 @@ end;
 
 procedure TOrbitFeatureNode.DropOrbitingChild(Child: TAssetNode);
 begin
-   Assert(not Assigned(POrbitData(Child.ParentData)^.CrashEvent)); // because how are we supposed to cancel it
+   if (Assigned(POrbitData(Child.ParentData)^.CrashEvent)) then
+   begin
+      POrbitData(Child.ParentData)^.CrashEvent.Cancel();
+      POrbitData(Child.ParentData)^.CrashEvent := nil;
+   end;
    Dispose(POrbitData(Child.ParentData));
    Child.ParentData := nil;
    DropChild(Child);
@@ -226,6 +235,7 @@ var
    Child: TAssetNode;
 begin
    Child := TAssetNode(Data);
+   POrbitData(Child.ParentData)^.CrashEvent := nil;
    Writeln('Crash!');
 end;
 
@@ -386,17 +396,18 @@ procedure TOrbitFeatureNode.ApplyJournal(Journal: TJournalReader; System: TSyste
    var
       Index: Cardinal;
    begin
-      Child := Journal.ReadAssetNodeReference();
+      Assert(Child <> FPrimaryChild);
       Assert(Length(FChildren) > 0);
       for Index := Low(FChildren) to High(FChildren) do // $R-
       begin
          if (FChildren[Index] = Child) then
          begin
             Delete(FChildren, Index, 1);
-            Child.Free();
+            DropOrbitingChild(Child);
             exit;
          end;
       end;
+      Assert(False);
    end;
 
    procedure RemoveChild();
@@ -433,11 +444,15 @@ begin
    Count := Journal.ReadCardinal();
    while (Count > 0) do
    begin
+      // TODO: should we just always apply a fresh list of children, and figure out which ones left and which did not?
+      // (and put the ones that were removed into some list that we check later to free the right ones?)
+      // see also surfaces, space
       AssetChangeKind := Journal.ReadAssetChangeKind();
       case AssetChangeKind of
          ckAdd: AddChild();
          ckRemove: RemoveChild();
          ckMove: MoveChild();
+         ckNone: Assert(False);
       end;
       Dec(Count);
    end;

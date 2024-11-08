@@ -65,7 +65,7 @@ function TPlanetaryBodyFeatureClass.InitFeatureNode(): TFeatureNode;
 begin
    Result := nil;
    // TODO: create a technology that knows how to create a planet from a mass of material
-   raise Exception.Create('Cannot create a TPlanetaryBodyFeatureClass from a prototype; it must have a unique composition.');
+   raise Exception.Create('Cannot create a TPlanetaryBodyFeatureNode from a prototype; it must have a unique composition.');
 end;
 
 

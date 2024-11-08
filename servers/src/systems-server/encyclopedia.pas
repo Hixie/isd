@@ -15,7 +15,7 @@ type
          FSpace, FOrbits: TAssetClass;
          FPlaceholderShip: TAssetClass;
          FStars: array[TStarCategory] of TAssetClass;
-         FPlanetaryBody: TAssetClass;
+         FPlanetaryBody, FRegion: TAssetClass;
          FProtoplanetaryMaterials: TMaterialHashSet;
          FMaterials: TMaterialHashMap; // TODO: once we have a tech tree, reconsider this
          FDarkMatter: TMaterial;
@@ -33,6 +33,7 @@ type
       function WrapAssetForOrbit(Child: TAssetNode): TAssetNode;
       function CreateLoneStar(StarID: TStarID): TAssetNode;
       procedure CondenseProtoplanetaryDisks(Space: TSolarSystemFeatureNode; System: TSystem);
+      property RegionClass: TAssetClass read FRegion;
       property ProtoplanetaryMaterials: TMaterialHashSet read FProtoplanetaryMaterials;
    end;
 
@@ -43,6 +44,7 @@ const
    idPlaceholderShip = -3;
    idStars = -100; // -100..-199
    idPlanetaryBody = -200;
+   idRegion = -201;
 
 const
    // built-in materials
@@ -51,7 +53,8 @@ const
 implementation
 
 uses
-   icons, orbit, structure, stellar, name, sensors, exceptions, planetary, protoplanetary, plot;
+   icons, orbit, structure, stellar, name, sensors, exceptions,
+   planetary, protoplanetary, plot, surface, grid;
 
 function RoundAboveZero(Value: Double): Cardinal;
 begin
@@ -147,16 +150,6 @@ begin
       ZeroAbundance // abundances
    );
    FMaterials.Add(FDarkMatter.ID, FDarkMatter);
-
-   FPlanetaryBody := TAssetClass.Create(
-      idPlanetaryBody,
-      'Planetary body',
-      'Really big rock',
-      'A cold gravitionally-bound astronomical object. (Cold when compared to a star, at least.)',
-      [ TPlanetaryBodyFeatureClass.Create() ],
-      PlanetIcon
-   );
-   RegisterAssetClass(FPlanetaryBody);
    
    FPlaceholderShip := TAssetClass.Create(
       idPlaceholderShip,                                   
@@ -170,12 +163,36 @@ begin
       PlaceholderIcon
    );
    RegisterAssetClass(FPlaceholderShip);
+
+   FPlanetaryBody := TAssetClass.Create(
+      idPlanetaryBody,
+      'Planetary body',
+      'Really big rock',
+      'A cold gravitionally-bound astronomical object. (Cold when compared to a star, at least.)',
+      [
+         TPlanetaryBodyFeatureClass.Create(),
+         TSurfaceFeatureClass.Create()
+      ],
+      PlanetIcon
+   );
+   RegisterAssetClass(FPlanetaryBody);
+
+   FRegion := TAssetClass.Create(
+      idRegion,
+      'Geological region',
+      'Region',
+      'An area of a planetary body.',
+      [ TGridFeatureClass.Create() ],
+      PlanetRegionIcon
+   );
+   RegisterAssetClass(FRegion);
 end;
 
 destructor TEncyclopedia.Destroy();
 var
    AssetClass: TAssetClass;
 begin
+   FRegion.Free();
    FPlaceholderShip.Free();
    FDarkMatter.Free();
    FMaterials.Free();
@@ -201,6 +218,7 @@ end;
 procedure TEncyclopedia.RegisterAssetClass(AssetClass: TAssetClass);
 begin
    Assert(Assigned(AssetClass));
+   Assert(not FAssetClasses.Has(AssetClass.ID));
    FAssetClasses[AssetClass.ID] := AssetClass;
 end;
 
@@ -231,6 +249,16 @@ begin
 end;
 
 procedure TEncyclopedia.CondenseProtoplanetaryDisks(Space: TSolarSystemFeatureNode; System: TSystem);
+
+   function CreateRegions(BodyRadius: Double; BodyComposition: TPlanetaryComposition): TRegionArray;
+   begin
+      // TODO: this should do things based on the body composition, create geology, etc
+      SetLength(Result, 1); // {BOGUS Warning: Function result variable of a managed type does not seem to be initialized}
+      Result[0] := FRegion.Spawn(nil, [
+         TGridFeatureNode.Create(BodyRadius / 200.0, 100)
+      ]);
+   end;
+
 
    function CreateBodyNode(const Body: TBody): TAssetNode;
    var
@@ -268,7 +296,11 @@ procedure TEncyclopedia.CondenseProtoplanetaryDisks(Space: TSolarSystemFeatureNo
                AssetComposition,
                RoundAboveZero(Body.Radius), // hp
                Body.Habitable // whether to consider this body when selecting a crash landing point
-            ) // $R-
+            ), // $R-
+            TSurfaceFeatureNode.Create(
+               Body.Radius * 2.0, // size of surface
+               CreateRegions(Body.Radius, AssetComposition)
+            )
          ]
       );
    end;

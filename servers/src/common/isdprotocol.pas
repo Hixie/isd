@@ -21,15 +21,17 @@ const
    // These must increment monotonically and their values must never change
    // during the history of the project.
    fcTerminator = 0;
-   fcStar = 1;
-   fcSpace = 2;
-   fcOrbit = 3;
-   fcStructure = 4;
-   fcSpaceSensor = 5;
-   fcSpaceSensorStatus = 6;
-   fcPlanetaryBody = 7;
-   fcPlotControl = 8;
-   fcHighestKnownFeatureCode = fcPlotControl;
+   fcStar = $01;
+   fcSpace = $02;
+   fcOrbit = $03;
+   fcStructure = $04;
+   fcSpaceSensor = $05;
+   fcSpaceSensorStatus = $06;
+   fcPlanetaryBody = $07;
+   fcPlotControl = $08;
+   fcSurface = $09;
+   fcGrid = $0A;
+   fcHighestKnownFeatureCode = fcGrid;
    
 implementation
 

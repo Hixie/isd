@@ -29,7 +29,7 @@ of an <update> sequence:
 <systemupdate>      ::= <systemid>
                         <currenttime> <timefactor> ; time data for system, see below
                         <assetid> <x> <y> ; center of system
-                        <assetupdate>+ <zero> <zero> ; assets
+                        <assetupdate>+ <zero64> ; assets
 
 <systemid>          ::= <integer> ; the star ID of the canonical star, if any
 
@@ -41,7 +41,7 @@ of an <update> sequence:
 
 <y>                 ::= position of system origin relative to galaxy top, in meters
 
-<assetupdate>       ::= <assetid> <properties> <feature>* <zero>
+<assetupdate>       ::= <assetid> <properties> <feature>* <zero32>
 
 <assetid>           ::= non-zero 64 bit integer
 
@@ -71,7 +71,9 @@ of an <update> sequence:
 
 <integer>           ::= 32 bit unsigned integer
 
-<zero>              ::= 32 bit zero
+<zero32>            ::= 32 bit zero
+
+<zero64>            ::= 64 bit zero
 ```
 
 The `<systemid>` is currently always a star ID.
@@ -85,10 +87,16 @@ per TAI second. The `<timefactor>` may be any finite number (including
 zero and negative numbers), but will never be NaN or infinite.
 
 The `<assetid>` in the `<systemupdate>` is the system's root asset
-(usually a "space" asset that contains positioned orbits that
-themselves have stars).
+(usually an asset with the `fcSpace` feature, that contains positioned
+orbits (assets with an `fcOrbit` feature) that themselves have stars
+(assets with the `fcStar` feature) as their primary asset).
 
-Asset IDs (`<assetid>`) are connection-specific.
+Asset IDs (`<assetid>`) are connection-specific and system-specific
+and are not guaranteed to remain stable when a client reconnects or
+when an asset changes to another system (even if it's on the same
+server).
+
+> TODO: are they unique per server, or per system?
 
 The `<properties>` are the owner dynasty ID (zero for unowned assets),
 the asset's mass in kg, the asset's rough diameter in meters, the
@@ -169,7 +177,10 @@ have two `<double>` parameters which are the distance from the origin,
 and the angle in radians clockwise from the positive x axis to that
 child (the angle may be negative).
 
-> TODO: the first child might not be at the origin either
+It is extremely likely, though not guaranteed, that the listed assets
+will have an `fcOrbit` feature.
+
+> TODO: the first child might not be at the origin either.
 
 
 #### `fcOrbit` (0x03)
@@ -183,6 +194,9 @@ child (the angle may be negative).
 
 There are as many `<orbit>` repetitions as specified by
 `<orbitcount>`. The first `<assetid>` is the child at the focal point.
+That asset will not have an `fcOrbit` feature. (It is extremely
+likely, though not guaranteed, that the other listed assets _will_
+have such a feature.)
 
 The three `<double>` parameters for the `<orbit>` children are the
 semi-major axis (in meters), the eccentricity, and _omega_ (tilt of
@@ -255,7 +269,7 @@ comes such that `theta=0`.
 #### `fcStructure` (0x04)
 
 ```bnf
-<featuredata>       ::= <material-lineitem>* <zero> <hp> <minhp>
+<featuredata>       ::= <material-lineitem>* <zero32> <hp> <minhp>
 <material-lineitem> ::= <marker> <quantity> <max> <componentname> <materialname> <materialid>
 <marker>            ::= 0xFFFFFFFF as an unsigned 32 bit integer
 <quantity>          ::= <integer>
@@ -369,6 +383,52 @@ feature's data, which will be one of the following:
     have this set). When a client sees an asset with this code for the
     first time during a session, it is reasonable to center on the
     associated asset.
+
+
+### `fcSurface` (0x09)
+
+```bnf
+<featuredata>       ::= <regioncount> <region>*
+<regioncount>       ::= <integer> ; always 1
+<region>            ::= <assetid>
+```
+
+Describes the geographical regions of a planetary body. Currently,
+only one region is supported per planetary body, and no geological
+features are described, but it is expected that this will change in
+due course.
+
+The assets in regions of a planetary surface are expected to have the
+`fcGrid` feature, but this is not guaranteed.
+
+> TODO: provide geology and more than one region.
+
+
+### `fcGrid` (0x0A)
+
+```bnf
+<featuredata>       ::= <cellsize> <width> <height> <cell>*
+<cellsize>          ::= <double> ; meters
+<width>             ::= <integer> ; greater than zero
+<height>            ::= <integer> ; greater than zero
+<cell>              ::= <assetid> | <zero64>
+```
+
+Grids consist of square cells.
+
+The `<cellsize>` represents the width and height of each cell of the
+grid, in meters.
+
+There are `<width>` cells horizontally and `<height>` cells vertically.
+
+Precisely `<width>` times `<height>` instances of `<cell>` follow the
+dimensions. These specify the contents of the grid, row by row, left
+to right within each row. Empty cells are represented by a zero asset
+ID.
+
+> TODO: provide geology within each cell.
+
+> TODO: support rectangular grids. Current width and height are always equal.
 
 
 # Systems Server Internal Protocol
