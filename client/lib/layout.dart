@@ -77,6 +77,18 @@ class Square extends WorldShape {
   }
 }
 
+class Rectangle extends WorldShape {
+  const Rectangle(this.size);
+
+  @override
+  final Size size;
+
+  @override
+  bool contains(Offset center, Offset point) {
+    return Rect.fromCenter(center: center, width: size.width, height: size.height).contains(point);
+  }
+}
+
 class Circle extends WorldShape {
   const Circle(this.diameter);
 

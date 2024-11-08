@@ -101,6 +101,7 @@ class RenderPlanet extends RenderWorldNode {
   
   @override
   WorldGeometry computePaint(PaintingContext context, Offset offset) {
+    // this only gets used when the planet has no surface
     final double actualDiameter = computePaintDiameter(diameter, maxDiameter);
     context.canvas.drawCircle(offset, actualDiameter / 2.0, _planetPaint);
     return WorldGeometry(shape: Circle(actualDiameter));

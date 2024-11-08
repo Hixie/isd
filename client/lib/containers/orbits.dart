@@ -238,7 +238,6 @@ class RenderOrbit extends RenderWorldNode with ContainerRenderObjectMixin<Render
     RenderWorld? child = firstChild;
     assert(child != null);
     final OrbitParentData primaryChildParentData = child!.parentData! as OrbitParentData;
-    final double primaryMass = primaryChildParentData.mass;
     child = primaryChildParentData.nextSibling;
     while (child != null) {
       final OrbitParentData childParentData = child.parentData! as OrbitParentData;

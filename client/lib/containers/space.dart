@@ -7,18 +7,18 @@ import '../assets.dart';
 import '../layout.dart';
 import '../world.dart';
 
-typedef SpaceChild = ({ double r, double theta });
+typedef SpaceParameters = ({ double r, double theta });
 
 class SpaceFeature extends ContainerFeature {
   SpaceFeature(this.children);
 
   // consider this read-only; the entire SpaceFeature gets replaced when the child list changes
-  final Map<AssetNode, SpaceChild> children;
+  final Map<AssetNode, SpaceParameters> children;
 
   @override
   Offset findLocationForChild(AssetNode child, List<VoidCallback> callbacks) {
     parent.addTransientListeners(callbacks);
-    final SpaceChild childData = children[child]!;
+    final SpaceParameters childData = children[child]!;
     return Offset(
       childData.r * cos(childData.theta),
       childData.r * sin(childData.theta),

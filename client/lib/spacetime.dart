@@ -28,7 +28,7 @@ class SpaceTime {
     _lastFrameTime ??= DateTime.now();
     _callbacks.addAll(callbacks);
     if (!_pending) {
-//      SchedulerBinding.instance.scheduleFrameCallback(_handler);
+      SchedulerBinding.instance.scheduleFrameCallback(_handler);
       _pending = true;
     }
     assert(_origin.isUtc);

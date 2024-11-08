@@ -26,8 +26,8 @@ class PanCurve extends Curve {
   const PanCurve();
   
   static const double b = -1;
-  static final double a = 1 / (1 + 2 * b);
-  static final double c = -a * b * b;
+  static const double a = 1 / (1 + 2 * b);
+  static const double c = -a * b * b;
 
   @override
   double transformInternal(double t) {

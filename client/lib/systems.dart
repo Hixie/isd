@@ -9,8 +9,10 @@ import 'assets.dart';
 import 'binarystream.dart';
 import 'components.dart';
 import 'connection.dart';
+import 'containers/grid.dart';
 import 'containers/orbits.dart';
 import 'containers/space.dart';
+import 'containers/surface.dart';
 import 'nodes/galaxy.dart';
 import 'nodes/system.dart';
 import 'spacetime.dart';
@@ -36,15 +38,17 @@ class SystemServer {
 
   late final Connection _connection;
 
-  static const int fcStar = 1;
-  static const int fcSpace = 2;
-  static const int fcOrbit = 3;
-  static const int fcStructure = 4;
-  static const int fcSpaceSensors = 5;
-  static const int fcSpaceSensorsStatus = 6;
-  static const int fcPlanet = 7;
-  static const int fcPlotControl = 8;
-  static const int expectedVersion = fcPlotControl;
+  static const int fcStar = 0x01;
+  static const int fcSpace = 0x02;
+  static const int fcOrbit = 0x03;
+  static const int fcStructure = 0x04;
+  static const int fcSpaceSensors = 0x05;
+  static const int fcSpaceSensorsStatus = 0x06;
+  static const int fcPlanet = 0x07;
+  static const int fcPlotControl = 0x08;
+  static const int fcSurface = 0x09;
+  static const int fcGrid = 0x0A;
+  static const int expectedVersion = fcGrid;
 
   Future<void> _handleLogin() async {
     final StreamReader reader = await _connection.send(<String>['login', token], queue: false);
@@ -66,6 +70,13 @@ class SystemServer {
     return _assets.putIfAbsent(id, () => AssetNode(id: id));
   }
 
+  AssetNode? _readAssetOrNull(BinaryStreamReader reader) {
+    final int id = reader.readInt64();
+    if (id == 0)
+      return null;
+    return _assets.putIfAbsent(id, () => AssetNode(id: id));
+  }
+
   void _handleUpdate(Uint8List message) {
     final DateTime now = DateTime.timestamp();
     final BinaryStreamReader reader = BinaryStreamReader(message, _connection.codeTables);
@@ -77,6 +88,7 @@ class SystemServer {
       final double timeFactor = reader.readDouble();
       final SpaceTime spaceTime = SpaceTime(timeOrigin, timeFactor, now);
       final int rootAssetID = reader.readInt64();
+      assert(rootAssetID > 0);
       system.root = _assets.putIfAbsent(rootAssetID, () => AssetNode(id: rootAssetID, parent: system));
       final double x = reader.readDouble();
       final double y = reader.readDouble();
@@ -92,6 +104,7 @@ class SystemServer {
         asset.icon = reader.readString();
         asset.className = reader.readString();
         asset.description = reader.readString();
+        assert(asset.size > 0, 'asset reported with zero size! name=${asset.name} className=${asset.className}');
         final Set<Type> oldFeatures = asset.featureTypes;
         int featureCode;
         while ((featureCode = reader.readInt32()) != 0) {
@@ -103,7 +116,7 @@ class SystemServer {
               final int hp = reader.readInt32();
               oldFeatures.remove(asset.setAbility(PlanetFeature(spaceTime, hp)));
             case fcSpace:
-              final Map<AssetNode, SpaceChild> children = <AssetNode, SpaceChild>{};
+              final Map<AssetNode, SpaceParameters> children = <AssetNode, SpaceParameters>{};
               final AssetNode primaryChild = _readAsset(reader);
               children[primaryChild] = (r: 0, theta: 0);
               final int childCount = reader.readInt32();
@@ -189,6 +202,29 @@ class SystemServer {
                 case 1: assert(colonyShip == null); colonyShip = asset;
                 default: throw NetworkError('Client does not support plot code 0x${signal.toRadixString(16).padLeft(8, "0")}');
               }
+            case fcSurface:
+              final int regionCount = reader.readInt32();
+              final Map<AssetNode, SurfaceParameters> children = <AssetNode, SurfaceParameters>{};
+              for (int index = 0; index < regionCount; index += 1) {
+                final AssetNode child = _readAsset(reader);
+                children[child] = ();
+              }
+              oldFeatures.remove(asset.setContainer(SurfaceFeature(children)));
+            case fcGrid:
+              final double cellSize = reader.readDouble();
+              final int width = reader.readInt32();
+              assert(width > 0);
+              final int height = reader.readInt32();
+              assert(height > 0);
+              final Map<AssetNode, GridParameters> children = <AssetNode, GridParameters>{};
+              for (int y = 0; y < height; y += 1) {
+                for (int x = 0; x < width; x += 1) {
+                  final AssetNode? child = _readAssetOrNull(reader);
+                  if (child != null)
+                    children[child] = (x: x, y: y);
+                }
+              }
+              oldFeatures.remove(asset.setContainer(GridFeature(cellSize, width, height, children)));
             default:
               throw NetworkError('Client does not support feature code 0x${featureCode.toRadixString(16).padLeft(8, "0")}');
           }
