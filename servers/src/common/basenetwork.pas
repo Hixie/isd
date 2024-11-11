@@ -756,7 +756,9 @@ begin
    Result^.FData := Pointer(Data);
    FScheduledEvents.Add(Result);
    if ((not Assigned(FNextEvent)) or (FNextEvent^.FTime > Result^.FTime)) then
+   begin
       FNextEvent := Result;
+   end;
 end;
 
 procedure TBaseServer.CancelEvent(var Event: PEvent);
@@ -764,10 +766,12 @@ begin
    Assert(Assigned(FScheduledEvents));
    Assert(FScheduledEvents.Has(Event));
    FScheduledEvents.Remove(Event);
+   if (FNextEvent = Event) then
+   begin
+      FNextEvent := FindNextEvent();
+   end;
    Dispose(Event);
    Event := nil;
-   if (FNextEvent = Event) then
-      FNextEvent := FindNextEvent();
 end;
 
 initialization

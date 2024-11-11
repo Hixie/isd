@@ -37,7 +37,7 @@ type
    public
       constructor Create(AFeatureClass: TSpaceSensorFeatureClass);
       function GetKnownMaterials(): TMaterialHashSet;
-      procedure RecordSnapshot(Journal: TJournalWriter); override;
+      procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader; System: TSystem); override;
    end;
 
@@ -219,7 +219,7 @@ begin
    end;
 end;
 
-procedure TSpaceSensorFeatureNode.RecordSnapshot(Journal: TJournalWriter);
+procedure TSpaceSensorFeatureNode.UpdateJournal(Journal: TJournalWriter);
 begin
 end;
 

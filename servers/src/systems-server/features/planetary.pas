@@ -38,7 +38,7 @@ type
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem); override;
    public
       constructor Create(ADiameter: Double; AComposition: TPlanetaryComposition; AStructuralIntegrity: Cardinal; AConsiderForDynastyStart: Boolean);
-      procedure RecordSnapshot(Journal: TJournalWriter); override;
+      procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader; System: TSystem); override;
       property StructuralIntegrity: Cardinal read FStructuralIntegrity;
       property ConsiderForDynastyStart: Boolean read FConsiderForDynastyStart;
@@ -116,7 +116,7 @@ begin
    Writer.WriteCardinal(FStructuralIntegrity);
 end;
 
-procedure TPlanetaryBodyFeatureNode.RecordSnapshot(Journal: TJournalWriter);
+procedure TPlanetaryBodyFeatureNode.UpdateJournal(Journal: TJournalWriter);
 var
    Index: Cardinal;
 begin

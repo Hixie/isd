@@ -29,7 +29,7 @@ type
       function GetAssetName(): UTF8String;
    public
       constructor Create(AStarID: TStarID);
-      procedure RecordSnapshot(Journal: TJournalWriter); override;
+      procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader; System: TSystem); override;
       property Category: TStarCategory read GetCategory;
       property StarID: TStarID read FStarID;
@@ -133,7 +133,7 @@ begin
    Writer.WriteCardinal(StarID); // $R-
 end;
 
-procedure TStarFeatureNode.RecordSnapshot(Journal: TJournalWriter);
+procedure TStarFeatureNode.UpdateJournal(Journal: TJournalWriter);
 begin
    Assert(StarID >= 0);
    Journal.WriteCardinal(StarID); // $R-

@@ -31,7 +31,7 @@ type
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem); override;
    public
       constructor Create(ADynasty: TDynasty);
-      procedure RecordSnapshot(Journal: TJournalWriter); override;
+      procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader; System: TSystem); override;
       property Dynasty: TDynasty read FDynasty;
    end;
@@ -93,7 +93,7 @@ begin
    end;
 end;
 
-procedure TDynastyOriginalColonyShipFeatureNode.RecordSnapshot(Journal: TJournalWriter);
+procedure TDynastyOriginalColonyShipFeatureNode.UpdateJournal(Journal: TJournalWriter);
 begin
    Assert(Parent.Owner = FDynasty); // if this is ever false, we need to either clear FDynasty or support having dynasties that have no assets in the system
    Journal.WriteDynastyReference(FDynasty);

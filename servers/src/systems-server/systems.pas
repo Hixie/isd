@@ -176,7 +176,7 @@ type
       property System: TSystem read FSystem;
    end;
 
-   TAssetChangeKind = (ckAdd, ckRemove, ckMove, ckNone);
+   TAssetChangeKind = (ckAdd, ckChange, ckRemove, ckEndOfList);
    
    TJournalReader = class sealed
    private
@@ -241,7 +241,7 @@ type
       function InitFeatureNode(): TFeatureNode; virtual; abstract;
       property FeatureNodeClass: FeatureNodeReference read GetFeatureNodeClass;
    end;
-
+   
    TFeatureClassArray = array of TFeatureClass;
 
    TDirtyKind = (
@@ -291,7 +291,7 @@ type
       property Parent: TAssetNode read GetParent write SetParent;
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); virtual;
    public
-      procedure RecordSnapshot(Journal: TJournalWriter); virtual; abstract;
+      procedure UpdateJournal(Journal: TJournalWriter); virtual; abstract;
       procedure ApplyJournal(Journal: TJournalReader; System: TSystem); virtual; abstract;
       property Mass: Double read GetMass;
       property Size: Double read GetSize;
@@ -361,15 +361,16 @@ type
       procedure HandleImminentDeath();
       function GetFeatureByClass(FeatureClass: FeatureClassReference): TFeatureNode; // returns nil if feature is absent
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback);
-      procedure InjectBusMessage(Message: TBusMessage);
-      function HandleBusMessage(Message: TBusMessage): Boolean;
+      procedure InjectBusMessage(Message: TBusMessage); // called by a node to send a message on the bus
+      function HandleBusMessage(Message: TBusMessage): Boolean; // called by a bus to send a message down the tree
       procedure ResetVisibility(DynastyCount: Cardinal);
       procedure ApplyVisibility(VisibilityHelper: TVisibilityHelper);
       procedure HandleVisibility(const DynastyIndex: Cardinal; var Visibility: TVisibility; const Sensors: ISensorProvider; const VisibilityHelper: TVisibilityHelper);
       function ReadVisibilityFor(DynastyIndex: Cardinal; System: TSystem): TVisibility;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem);
-      procedure RecordSnapshot(Journal: TJournalWriter);
+      procedure UpdateJournal(Journal: TJournalWriter);
       procedure ApplyJournal(Journal: TJournalReader; System: TSystem);
+      procedure ReportChildIsPermanentlyGone(Child: TAssetNode); virtual;
       function ID(System: TSystem): PtrUInt; inline;
       property Parent: TFeatureNode read FParent;
       property Dirty: TDirtyKinds read FDirty;
@@ -432,6 +433,7 @@ type
       FJournalFile: File; // used by TJournalReader/TJournalWriter
       FJournalWriter: TJournalWriter;
       procedure CancelEvent(Event: TSystemEvent);
+      procedure ReportChildIsPermanentlyGone(Child: TAssetNode);
    protected
       procedure MarkAsDirty(ChangeKinds: TChangeKinds);
    public
@@ -457,7 +459,7 @@ implementation
 
 uses
    sysutils, exceptions, hashfunctions, isdprotocol, providers, typedump, dateutils, math;
-
+   
 type
    TRootAssetNode = class(TAssetNode)
    protected
@@ -465,6 +467,7 @@ type
       procedure MarkAsDirty(DirtyKinds: TDirtyKinds; ChangeKinds: TChangeKinds); override;
    public
       constructor Create(AAssetClass: TAssetClass; ASystem: TSystem; AFeatures: TFeatureNodeArray);
+      procedure ReportChildIsPermanentlyGone(Child: TAssetNode); override;
    end;
 
 function DynastyHash32(const Key: TDynasty): DWord;
@@ -500,6 +503,7 @@ end;
 
 const
    jcSystemUpdate = $00EDD1E5; // (in the space-time continuum)
+   jcAssetDestroyed = $DECEA5ED;
    jcNewAsset = $000A55E7;
    jcAssetChange = $000D317A;
    jcEndOfAsset = $CAB005ED;
@@ -726,7 +730,8 @@ end;
 
 procedure TFeatureNode.AdoptChild(Child: TAssetNode);
 begin
-   Assert(not Assigned(Child.Parent));
+   if (Assigned(Child.Parent)) then
+      Child.Parent.DropChild(Child);
    Assert(not Assigned(Child.ParentData));
    Child.FParent := Self;
    MarkAsDirty([dkSelf, dkDescendant], [ckAffectsDynastyCount, ckAffectsVisibility]);
@@ -966,6 +971,7 @@ constructor TAssetNode.Create(Journal: TJournalReader; ASystem: TSystem);
 begin
    inherited Create();
    ApplyJournal(Journal, ASystem);
+   FDirty := [dkNew, dkSelf, dkDescendant];
 end;
 
 constructor TAssetNode.Create();
@@ -981,6 +987,8 @@ begin
    if (Length(FFeatures) > 0) then
       for Index := 0 to High(FFeatures) do // $R-
          FFeatures[Index].Free();
+   if (Assigned(Parent)) then
+      Parent.DropChild(Self);
    inherited;
 end;
 
@@ -1165,16 +1173,25 @@ begin
    Writer.WriteCardinal(fcTerminator);
 end;
 
-procedure TAssetNode.RecordSnapshot(Journal: TJournalWriter);
+procedure TAssetNode.UpdateJournal(Journal: TJournalWriter);
 var
    Feature: TFeatureNode;
 begin
+   if (dkNew in FDirty) then
+   begin
+      Journal.WriteCardinal(jcNewAsset);
+   end
+   else
+   begin
+      Journal.WriteCardinal(jcAssetChange);
+   end;
+   Journal.WriteAssetNodeReference(Self);
    Journal.WriteAssetClassReference(FAssetClass);
    Journal.WriteDynastyReference(FOwner);
    for Feature in FFeatures do
    begin
       Journal.WriteCardinal(jcStartOfFeature);
-      Feature.RecordSnapshot(Journal);
+      Feature.UpdateJournal(Journal);
       Journal.WriteCardinal(jcEndOfFeature);
    end;
    Journal.WriteCardinal(jcEndOfFeatures);
@@ -1214,6 +1231,12 @@ begin
    begin
       raise EJournalError.Create('missing end of asset marker (0x' + HexStr(jcEndOfAsset, 8) + ')');
    end;
+end;
+
+procedure TAssetNode.ReportChildIsPermanentlyGone(Child: TAssetNode);
+begin
+   Assert(Assigned(FParent));
+   Parent.Parent.ReportChildIsPermanentlyGone(Child);
 end;
 
 function TAssetNode.ID(System: TSystem): PtrUInt;
@@ -1260,6 +1283,7 @@ begin
    FRoot := TRootAssetNode.Create(ARootClass, Self, ARootClass.SpawnFeatureNodes());
    FAssets := TAssetNodeHashTable.Create();
    FAssets.Add(FRoot.ID(Self), FRoot);
+   Exclude(FRoot.FDirty, dkNew);
 end;
 
 destructor TSystem.Destroy();
@@ -1322,7 +1346,13 @@ begin
          jcAssetChange: begin
             ID := JournalReader.ReadPtrUInt();
             Asset := JournalReader.FAssetMap[ID];
+            Assert(Assigned(Asset));
             Asset.ApplyJournal(JournalReader, Self);               
+         end;
+         jcAssetDestroyed: begin
+            ID := JournalReader.ReadPtrUInt();
+            Asset := JournalReader.FAssetMap[ID];
+            Asset.Free(); // We might want to delay this until we've definitely finished handling the whole journal, just in case there's some code that references the object unexpectedly...
          end;
       else
          raise EJournalError.Create('Unknown operation code in system journal (0x' + HexStr(Code, 8) + '), expected either new asset (0x' + HexStr(jcNewAsset, 8) + ') or asset change (0x' + HexStr(jcAssetChange, 8) + ') marker');
@@ -1335,37 +1365,20 @@ begin
 end;
 
 procedure TSystem.OpenJournal(FileName: UTF8String);
-var
-   JournalWriter: TJournalWriter;
-
-   procedure RecordAsset(Asset: TAssetNode);
-   begin
-      if (Asset = FRoot) then
-      begin
-         JournalWriter.WriteCardinal(jcAssetChange);
-      end
-      else
-      begin
-         JournalWriter.WriteCardinal(jcNewAsset);
-      end;
-      JournalWriter.WritePtrUInt(Asset.ID(Self));
-      Asset.RecordSnapshot(JournalWriter);
-   end;
-   
 begin
    try
       Assign(FJournalFile, FileName + TemporaryExtension);
       FileMode := 1;
       Rewrite(FJournalFile, 1);
-      JournalWriter := TJournalWriter.Create(Self);
-      JournalWriter.WritePtrUInt(FRoot.ID(Self));
-      JournalWriter.WriteDouble(FX);
-      JournalWriter.WriteDouble(FY);
-      JournalWriter.WriteDouble(FTimeOrigin);
-      JournalWriter.WriteCardinal(jcSystemUpdate);
-      JournalWriter.WriteUInt64(FRandomNumberGenerator.State);
-      JournalWriter.WriteDouble(FTimeFactor);
-      FRoot.Walk(nil, @RecordAsset);
+      FJournalWriter := TJournalWriter.Create(Self);
+      FJournalWriter.WritePtrUInt(FRoot.ID(Self));
+      FJournalWriter.WriteDouble(FX);
+      FJournalWriter.WriteDouble(FY);
+      FJournalWriter.WriteDouble(FTimeOrigin);
+      FJournalWriter.WriteCardinal(jcSystemUpdate);
+      FJournalWriter.WriteUInt64(FRandomNumberGenerator.State);
+      FJournalWriter.WriteDouble(FTimeFactor);
+      RecordUpdate();
       Close(FJournalFile);
       DeleteFile(FileName);
       RenameFile(FileName + TemporaryExtension, FileName);
@@ -1374,7 +1387,6 @@ begin
       FileMode := 2;
       Reset(FJournalFile, 1);
       Seek(FJournalFile, FileSize(FJournalFile));
-      FJournalWriter := JournalWriter;
    except
       ReportCurrentException();
       raise;
@@ -1391,18 +1403,7 @@ procedure TSystem.RecordUpdate();
    procedure RecordDirtyAsset(Asset: TAssetNode);
    begin
       if (dkSelf in Asset.Dirty) then
-      begin
-         if (dkNew in Asset.Dirty) then
-         begin
-            Journal.WriteCardinal(jcNewAsset);
-         end
-         else
-         begin
-            Journal.WriteCardinal(jcAssetChange);
-         end;
-         Journal.WritePtrUInt(Asset.ID(Self));
-         Asset.RecordSnapshot(Journal);
-      end;
+         Asset.UpdateJournal(Journal);
    end;
    
 begin
@@ -1414,6 +1415,12 @@ begin
       Journal.WriteDouble(FTimeFactor);
    end;
    FRoot.Walk(@SkipCleanChildren, @RecordDirtyAsset);
+end;
+
+procedure TSystem.ReportChildIsPermanentlyGone(Child: TAssetNode);
+begin
+   Journal.WriteCardinal(jcAssetDestroyed);
+   Journal.WriteAssetNodeReference(Child);
 end;
 
 procedure TSystem.MarkAsDirty(ChangeKinds: TChangeKinds);
@@ -1871,6 +1878,12 @@ procedure TRootAssetNode.MarkAsDirty(DirtyKinds: TDirtyKinds; ChangeKinds: TChan
 begin
    inherited;
    FSystem.MarkAsDirty(ChangeKinds);
+end;
+
+procedure TRootAssetNode.ReportChildIsPermanentlyGone(Child: TAssetNode);
+begin
+   Assert(not Assigned(FParent));
+   FSystem.ReportChildIsPermanentlyGone(Child);
 end;
 
 end.

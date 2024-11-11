@@ -28,7 +28,7 @@ type
       function GetAssetName(): UTF8String;
    public
       constructor Create(AAssetName: UTF8String);
-      procedure RecordSnapshot(Journal: TJournalWriter); override;
+      procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader; System: TSystem); override;
       property AssetName: UTF8String read FAssetName;
    end;
@@ -85,7 +85,7 @@ begin
    // client receives this as a property of the asset via IAssetNameProvider
 end;
 
-procedure TAssetNameFeatureNode.RecordSnapshot(Journal: TJournalWriter);
+procedure TAssetNameFeatureNode.UpdateJournal(Journal: TJournalWriter);
 begin
    Journal.WriteString(FAssetName);
 end;

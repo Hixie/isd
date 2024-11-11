@@ -37,7 +37,7 @@ type
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem); override;
    public
-      procedure RecordSnapshot(Journal: TJournalWriter); override;
+      procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader; System: TSystem); override;
    end;
 
@@ -110,7 +110,7 @@ procedure TKnowledgeBusFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TSe
 begin
 end;
 
-procedure TKnowledgeBusFeatureNode.RecordSnapshot(Journal: TJournalWriter);
+procedure TKnowledgeBusFeatureNode.UpdateJournal(Journal: TJournalWriter);
 begin
 end;
 

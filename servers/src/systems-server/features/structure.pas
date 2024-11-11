@@ -56,7 +56,7 @@ type
    public
       constructor Create(AFeatureClass: TStructureFeatureClass; AMaterialsQuantity: Cardinal; AStructuralIntegrity: Cardinal);
       destructor Destroy(); override;
-      procedure RecordSnapshot(Journal: TJournalWriter); override;
+      procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader; System: TSystem); override;
       property MaterialsQuantity: Cardinal read FMaterialsQuantity; // how much of the feature's bill of materials is actually present
       property StructuralIntegrity: Cardinal read FStructuralIntegrity; // how much of the materials are actually in good shape (affects efficiency)
@@ -303,7 +303,7 @@ begin
    end;
 end;
 
-procedure TStructureFeatureNode.RecordSnapshot(Journal: TJournalWriter);
+procedure TStructureFeatureNode.UpdateJournal(Journal: TJournalWriter);
 begin
    Journal.WriteCardinal(MaterialsQuantity);
    Journal.WriteCardinal(StructuralIntegrity);

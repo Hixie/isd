@@ -136,6 +136,9 @@ in meters) are:
 The larger objects (marked "blurred") are canonically rendered more
 softly than the other stars at scales where all the stars are visible.
 
+Category numbers are 0-255. Category numbers 11-255 are reserved for
+future use.
+
 
 ## Canonical systems (file 2)
 
@@ -147,3 +150,9 @@ system. The whole file is sorted.
 Stars are entries in the galaxy file (with code 1). Star IDs are
 formed by shifting the category ID left by 20 bits, and adding the
 offset into the category for the star.
+
+Each category can have at most 1,048,575 (0x100000) stars (offsets 0x0
+to 0xfffff).
+
+Star IDs, by definition, do not have any of their top four bits set
+(they are numbers in the range 0x00000000 to 0x0FFFFFFF).

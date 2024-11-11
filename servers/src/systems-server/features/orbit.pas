@@ -8,6 +8,22 @@ uses
    systems, providers, serverstream;
 
 type
+   TOrbitBusMessage = class abstract(TBusMessage) end;
+   
+   TReceiveCrashingAssetMessage = class(TOrbitBusMessage)
+   private
+      FAsset: TAssetNode;
+   public
+      constructor Create(AAsset: TAssetNode);
+      property Asset: TAssetNode read FAsset;
+   end;
+   
+   TCrashDamageMessage = class(TOrbitBusMessage)
+   public
+      constructor Create();
+   end;
+
+type
    TOrbitFeatureClass = class(TFeatureClass)
    strict protected
       function GetFeatureNodeClass(): FeatureNodeReference; override;
@@ -18,13 +34,11 @@ type
    TOrbitFeatureNode = class(TFeatureNode, IHillDiameterProvider, IAssetNameProvider)
    private
       FPrimaryChild: TAssetNode;
-      FChildren: array of TAssetNode;
-      function GetOrbitingChild(Index: Cardinal): TAssetNode;
-      function GetOrbitingChildCount(): Cardinal;
+      FChildren: array of TAssetNode; // can contain nils
       function GetOrbitName(): UTF8String;
    protected
       procedure AdoptOrbitingChild(Child: TAssetNode); // Child must be an orbit.
-      procedure DropOrbitingChild(Child: TAssetNode);
+      procedure DropChild(Child: TAssetNode); override;
       procedure MarkAsDirty(DirtyKinds: TDirtyKinds; ChangeKinds: TChangeKinds); override;
       function GetMass(): Double; override;
       function GetSize(): Double; override;
@@ -38,7 +52,7 @@ type
    public
       constructor Create(APrimaryChild: TAssetNode);
       destructor Destroy(); override;
-      procedure RecordSnapshot(Journal: TJournalWriter); override;
+      procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader; System: TSystem); override;
       function GetHillDiameter(Child: TAssetNode; ChildPrimaryMass: Double): Double;
       function GetRocheLimit(ChildRadius, ChildMass: Double): Double; // returns minimum semi-major axis for a hypothetical child planetary body orbitting our primary
@@ -47,8 +61,6 @@ type
       procedure UpdateOrbitingChild(System: TSystem; Child: TAssetNode; SemiMajorAxis: Double; Eccentricity: Double; Omega: Double; TimeOrigin: Int64; Clockwise: Boolean);
       function IAssetNameProvider.GetAssetName = GetOrbitName;
       property PrimaryChild: TAssetNode read FPrimaryChild;
-      property OrbitingChildren[Index: Cardinal]: TAssetNode read GetOrbitingChild;
-      property OrbitingChildCount: Cardinal read GetOrbitingChildCount;
    end;
    
 implementation
@@ -58,13 +70,15 @@ uses
 
 type
    POrbitData = ^TOrbitData;
-   TOrbitData = record
+   TOrbitData = bitpacked record
+      CrashEvent: TSystemEvent; // if we're scheduled to crash into the primary, this is our event
       SemiMajorAxis: Double; // meters, must be less than Size, and more than FPrimaryChild.Size
       Eccentricity: Double; // dimensionless
       Omega: Double; // radians
       TimeOrigin: Int64; // milliseconds in system time
       Clockwise: Boolean;
-      CrashEvent: TSystemEvent; // if we're scheduled to crash into the primary, this is our event
+      Dirty: Boolean;
+      IsNew: Boolean;
       procedure Init();
       // Returns hill diameter of the child body in this orbit, with mass ChildMass, assuming the orbit is around a body of mass PrimaryMass.
       function GetHillDiameter(PrimaryMass, ChildMass: Double): Double; // meters
@@ -120,6 +134,19 @@ begin
    raise Exception.Create('Cannot create a TOrbitFeatureNode from a prototype; use AddChild on a TSolarSystemFeatureNode or a TOrbitFeatureNode.');
 end;
 
+   
+constructor TReceiveCrashingAssetMessage.Create(AAsset: TAssetNode);
+begin
+   inherited Create();
+   FAsset := AAsset;
+end;
+
+constructor TCrashDamageMessage.Create();
+begin
+   inherited;
+   // ...
+end;
+
 
 constructor TOrbitFeatureNode.Create(APrimaryChild: TAssetNode);
 begin
@@ -143,8 +170,11 @@ begin
    FPrimaryChild.Free();
    for Child in FChildren do
    begin
-      DropOrbitingChild(Child);
-      Child.Free();
+      if (Assigned(Child)) then
+      begin
+         DropChild(Child);
+         Child.Free();
+      end;
    end;
    inherited;
 end;
@@ -156,16 +186,19 @@ begin
    POrbitData(Child.ParentData)^.Init();
 end;
 
-procedure TOrbitFeatureNode.DropOrbitingChild(Child: TAssetNode);
+procedure TOrbitFeatureNode.DropChild(Child: TAssetNode);
 begin
-   if (Assigned(POrbitData(Child.ParentData)^.CrashEvent)) then
+   if (Assigned(Child.ParentData)) then // the primary child doesn't have parent data
    begin
-      POrbitData(Child.ParentData)^.CrashEvent.Cancel();
-      POrbitData(Child.ParentData)^.CrashEvent := nil;
+      if (Assigned(POrbitData(Child.ParentData)^.CrashEvent)) then
+      begin
+         POrbitData(Child.ParentData)^.CrashEvent.Cancel();
+         POrbitData(Child.ParentData)^.CrashEvent := nil;
+      end;
+      Dispose(POrbitData(Child.ParentData));
+      Child.ParentData := nil;
    end;
-   Dispose(POrbitData(Child.ParentData));
-   Child.ParentData := nil;
-   DropChild(Child);
+   inherited;
 end;
 
 function TOrbitFeatureNode.GetHillDiameter(Child: TAssetNode; ChildPrimaryMass: Double): Double;
@@ -193,6 +226,7 @@ begin
    SetLength(FChildren, Length(FChildren) + 1);
    FChildren[High(FChildren)] := Child;
    UpdateOrbitingChild(System, Child, SemiMajorAxis, Eccentricity, Omega, TimeOrigin, Clockwise);
+   POrbitData(Child.ParentData)^.IsNew := True;
 end;
 
 procedure TOrbitFeatureNode.UpdateOrbitingChild(System: TSystem; Child: TAssetNode; SemiMajorAxis: Double; Eccentricity: Double; Omega: Double; TimeOrigin: Int64; Clockwise: Boolean);
@@ -211,6 +245,7 @@ begin
    POrbitData(Child.ParentData)^.Omega := Omega;
    POrbitData(Child.ParentData)^.TimeOrigin := TimeOrigin;
    POrbitData(Child.ParentData)^.Clockwise := Clockwise;
+   POrbitData(Child.ParentData)^.Dirty := True;
    if (SemiMajorAxis * (1 - Eccentricity) <= (PrimaryChild.Size + Child.Size) / 2) then
    begin
       // SemiMajorAxis * (1 - Eccentricity) is the distance between
@@ -233,20 +268,34 @@ end;
 procedure TOrbitFeatureNode.HandleCrash(var Data);
 var
    Child: TAssetNode;
+   ReceiveMessage: TReceiveCrashingAssetMessage;
+   DamageMessage: TCrashDamageMessage;
+   Index: Cardinal;
 begin
    Child := TAssetNode(Data);
    POrbitData(Child.ParentData)^.CrashEvent := nil;
-   Writeln('Crash!');
-end;
-
-function TOrbitFeatureNode.GetOrbitingChild(Index: Cardinal): TAssetNode;
-begin
-   Result := FChildren[Index];
-end;
-
-function TOrbitFeatureNode.GetOrbitingChildCount(): Cardinal;
-begin
-   Result := Length(FChildren); // $R-
+   Index := 0;
+   Assert(Length(FChildren) > Index);
+   while (FChildren[Index] <> Child) do
+   begin
+      Inc(Index);
+      Assert(Length(FChildren) < Index);
+   end;
+   FChildren[Index] := nil;
+   DropChild(Child); // this marks us dirty
+   ReceiveMessage := TReceiveCrashingAssetMessage.Create(Child);
+   try
+      FPrimaryChild.HandleBusMessage(ReceiveMessage);
+      Assert(Assigned(Child.Parent));
+   finally
+      FreeAndNil(ReceiveMessage);
+   end;
+   DamageMessage := TCrashDamageMessage.Create();
+   try
+      Child.HandleBusMessage(DamageMessage);
+   finally
+      FreeAndNil(DamageMessage);
+   end;
 end;
 
 procedure TOrbitFeatureNode.MarkAsDirty(DirtyKinds: TDirtyKinds; ChangeKinds: TChangeKinds);
@@ -258,13 +307,13 @@ end;
 
 function TOrbitFeatureNode.GetMass(): Double;
 var
-   Index: Cardinal;
+   Child: TAssetNode;
 begin
    Result := PrimaryChild.Mass;
    Assert(Result > 0.0, 'Primary child of orbit has zero mass.');
-   if (OrbitingChildCount > 0) then
-      for Index := 0 to OrbitingChildCount-1 do // $R-
-         Result := Result + OrbitingChildren[Index].Mass;
+   for Child in FChildren do
+      if (Assigned(Child)) then
+         Result := Result + Child.Mass;
 end;
 
 function TOrbitFeatureNode.GetSize(): Double;
@@ -292,7 +341,8 @@ begin
    Assert(Assigned(FPrimaryChild));
    FPrimaryChild.Walk(PreCallback, PostCallback);
    for Child in FChildren do
-      Child.Walk(PreCallback, PostCallback);
+      if (Assigned(Child)) then
+         Child.Walk(PreCallback, PostCallback);
 end;
 
 function TOrbitFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
@@ -304,9 +354,12 @@ begin
    begin
       for Child in FChildren do
       begin
-         Result := Child.HandleBusMessage(Message);
-         if (Result) then
-            exit;
+         if (Assigned(Child)) then
+         begin
+            Result := Child.HandleBusMessage(Message);
+            if (Result) then
+               exit;
+         end;
       end;
    end;
 end;
@@ -339,6 +392,7 @@ begin
    Writer.WriteCardinal(Length(FChildren));
    for Child in FChildren do
    begin
+      Assert(Assigned(Child));
       Writer.WriteDouble(POrbitData(Child.ParentData)^.SemiMajorAxis);
       Writer.WriteDouble(POrbitData(Child.ParentData)^.Eccentricity);
       Writer.WriteDouble(POrbitData(Child.ParentData)^.Omega);
@@ -348,22 +402,48 @@ begin
    end;
 end;
 
-procedure TOrbitFeatureNode.RecordSnapshot(Journal: TJournalWriter);
+procedure TOrbitFeatureNode.UpdateJournal(Journal: TJournalWriter);
 var
+   Index: Cardinal;
    Child: TAssetNode;
 begin
    Journal.WriteAssetNodeReference(FPrimaryChild);
-   Journal.WriteCardinal(Length(FChildren));
-   for Child in FChildren do
+   if (Length(FChildren) > 0) then
    begin
-      Journal.WriteAssetChangeKind(ckAdd);
-      Journal.WriteAssetNodeReference(Child);
-      Journal.WriteDouble(POrbitData(Child.ParentData)^.SemiMajorAxis);
-      Journal.WriteDouble(POrbitData(Child.ParentData)^.Eccentricity);
-      Journal.WriteDouble(POrbitData(Child.ParentData)^.Omega);
-      Journal.WriteInt64(POrbitData(Child.ParentData)^.TimeOrigin);
-      Journal.WriteBoolean(POrbitData(Child.ParentData)^.Clockwise);
+      for Index := High(FChildren) downto Low(FChildren) do // $R-
+      begin
+         if (not Assigned(FChildren[Index])) then
+         begin
+            Journal.WriteAssetChangeKind(ckRemove);
+            Journal.WriteCardinal(Index);
+            Delete(FChildren, Index, 1);
+         end;
+      end;
+      for Child in FChildren do
+      begin
+         Assert(Assigned(Child));
+         if (POrbitData(Child.ParentData)^.Dirty) then
+         begin
+            if (POrbitData(Child.ParentData)^.IsNew) then
+            begin
+               Journal.WriteAssetChangeKind(ckAdd);
+               POrbitData(Child.ParentData)^.IsNew := False;
+            end
+            else
+            begin
+               Journal.WriteAssetChangeKind(ckChange);
+            end;
+            Journal.WriteAssetNodeReference(Child);
+            Journal.WriteDouble(POrbitData(Child.ParentData)^.SemiMajorAxis);
+            Journal.WriteDouble(POrbitData(Child.ParentData)^.Eccentricity);
+            Journal.WriteDouble(POrbitData(Child.ParentData)^.Omega);
+            Journal.WriteInt64(POrbitData(Child.ParentData)^.TimeOrigin);
+            Journal.WriteBoolean(POrbitData(Child.ParentData)^.Clockwise);
+            POrbitData(Child.ParentData)^.Dirty := False;
+         end;
+      end;
    end;
+   Journal.WriteAssetChangeKind(ckEndOfList);
 end;
 
 procedure TOrbitFeatureNode.ApplyJournal(Journal: TJournalReader; System: TSystem);
@@ -381,54 +461,37 @@ procedure TOrbitFeatureNode.ApplyJournal(Journal: TJournalReader; System: TSyste
       Omega := Journal.ReadDouble();
       TimeOrigin := Journal.ReadInt64();
       Clockwise := Journal.ReadBoolean();
-      if (not Assigned(Child.Parent)) then
-      begin
-         AddOrbitingChild(System, Child, SemiMajorAxis, Eccentricity, Omega, TimeOrigin, Clockwise);
-      end
-      else
-      begin
-         Assert(Child.Parent = Self);
-         UpdateOrbitingChild(System, Child, SemiMajorAxis, Eccentricity, Omega, TimeOrigin, Clockwise);
-      end;
+      AddOrbitingChild(System, Child, SemiMajorAxis, Eccentricity, Omega, TimeOrigin, Clockwise);
+      Assert(Child.Parent = Self);
    end;
 
-   procedure DeleteChild(Child: TAssetNode);
+   procedure ChangeChild();
+   var
+      Child: TAssetNode;
+      SemiMajorAxis, Eccentricity, Omega: Double;
+      TimeOrigin: Int64;
+      Clockwise: Boolean;
+   begin
+      Child := Journal.ReadAssetNodeReference();
+      SemiMajorAxis := Journal.ReadDouble();
+      Eccentricity := Journal.ReadDouble();
+      Omega := Journal.ReadDouble();
+      TimeOrigin := Journal.ReadInt64();
+      Clockwise := Journal.ReadBoolean();
+      UpdateOrbitingChild(System, Child, SemiMajorAxis, Eccentricity, Omega, TimeOrigin, Clockwise);
+      Assert(Child.Parent = Self);
+   end;
+   
+   procedure RemoveChild();
    var
       Index: Cardinal;
    begin
-      Assert(Child <> FPrimaryChild);
-      Assert(Length(FChildren) > 0);
-      for Index := Low(FChildren) to High(FChildren) do // $R-
-      begin
-         if (FChildren[Index] = Child) then
-         begin
-            Delete(FChildren, Index, 1);
-            DropOrbitingChild(Child);
-            exit;
-         end;
-      end;
-      Assert(False);
-   end;
-
-   procedure RemoveChild();
-   var
-      Child: TAssetNode;
-   begin
-      Child := Journal.ReadAssetNodeReference();
-      DeleteChild(Child);
-      Child.Free();
-   end;
-
-   procedure MoveChild();
-   var
-      Child: TAssetNode;
-   begin
-      Child := Journal.ReadAssetNodeReference();
-      DeleteChild(Child);
+      Index := Journal.ReadCardinal();
+      Assert(Length(FChildren) > Index);
+      Delete(FChildren, Index, 1);
    end;
 
 var
-   Count: Cardinal;
    Child: TAssetNode;
    AssetChangeKind: TAssetChangeKind;
 begin
@@ -441,21 +504,15 @@ begin
    end;
    Assert(Child.Parent = Self);
    Assert(Child = FPrimaryChild);
-   Count := Journal.ReadCardinal();
-   while (Count > 0) do
-   begin
-      // TODO: should we just always apply a fresh list of children, and figure out which ones left and which did not?
-      // (and put the ones that were removed into some list that we check later to free the right ones?)
-      // see also surfaces, space
+   repeat
       AssetChangeKind := Journal.ReadAssetChangeKind();
       case AssetChangeKind of
          ckAdd: AddChild();
+         ckChange: ChangeChild();
          ckRemove: RemoveChild();
-         ckMove: MoveChild();
-         ckNone: Assert(False);
+         ckEndOfList: break;
       end;
-      Dec(Count);
-   end;
+   until False;
 end;
 
 end.

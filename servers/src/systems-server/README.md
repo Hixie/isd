@@ -17,15 +17,36 @@ The server will subsequently begin sending updates about the systems
 it supports that have the dynasty's presence, starting with a complete
 system description for each system (of assets visible to this dynasty).
 
-## System updates
+## Change notifications
 
-Whenever the system changes, the system server sends a binary frame to
-each affected client containing the updated information, in the form
-of an <update> sequence:
+When the client connects, and whenever the system subsequently
+changes, the system server sends a binary frame to each affected
+client containing the updated information, in the form of an <update>
+sequence:
 
 ```bnf
-<update>            ::= <systemupdate>+
+<update>            ::= (<notifications> | <systemupdate>)+
+```
 
+### Notifications
+
+```bnf
+<move>              ::= <notificationid> <payload>
+<notificationid>    ::= 0x10000000 .. 0xFFFFFFFF
+<payload>           ::= depends on the notification
+```
+
+This can be distinguished from a `<systemupdate>` because no
+`<systemid>` above 0x0FFFFFFF exists, so notification IDs
+(0x10000000-0xFFFFFFFF) don't overlap with the range of valid
+`<systemid>` values.
+
+There are currently no notifications defined.
+
+
+### System updates
+
+```bnf
 <systemupdate>      ::= <systemid>
                         <currenttime> <timefactor> ; time data for system, see below
                         <assetid> <x> <y> ; center of system
@@ -94,9 +115,8 @@ orbits (assets with an `fcOrbit` feature) that themselves have stars
 Asset IDs (`<assetid>`) are connection-specific and system-specific
 and are not guaranteed to remain stable when a client reconnects or
 when an asset changes to another system (even if it's on the same
-server).
-
-> TODO: are they unique per server, or per system?
+server). Also they can be re-used within a connection, if an existing
+asset was destroyed.
 
 The `<properties>` are the owner dynasty ID (zero for unowned assets),
 the asset's mass in kg, the asset's rough diameter in meters, the
@@ -294,7 +314,10 @@ following data:
  * a brief description of the material (may not be unique).
  * the ID of the material, or zero if the material is not recognized.
 
-Material IDs (`<materialid>`) are connection-specific.
+Material IDs (`<materialid>`) are globally unique (stable across
+systems and servers), but are only provided for recognized materials
+(so the same material might sometimes be reported as zero and
+sometimes with an ID).
 
 Material line items that have zero material present are skipped when
 the asset class is not known.

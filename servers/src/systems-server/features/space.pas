@@ -28,10 +28,10 @@ type
       function GetFurthestDistanceFromCenter(): Double;
    protected
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
-      procedure AdoptSolarSystemChild(Child: TAssetNode);
-      procedure DropSolarSystemChild(Child: TAssetNode);
+      procedure AdoptSolarSystemChild(Child: TAssetNode; DistanceFromCenter, Theta, HillDiameter: Double);
+      procedure DropChild(Child: TAssetNode); override;
       procedure MarkAsDirty(DirtyKinds: TDirtyKinds; ChangeKinds: TChangeKinds); override;
-      procedure AddPolarChild(Child: TAssetNode; Distance, Theta: Double; HillDiameter: Double = 0.0); // meters
+      procedure AddPolarChildFromJournal(Child: TAssetNode; Distance, Theta, HillDiameter: Double); // meters
       function GetMass(): Double; override;
       function GetSize(): Double; override;
       function GetFeatureName(): UTF8String; override;
@@ -42,14 +42,14 @@ type
    public
       constructor Create(AFeatureClass: TSolarSystemFeatureClass);
       destructor Destroy(); override;
-      procedure RecordSnapshot(Journal: TJournalWriter); override;
+      procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader; System: TSystem); override;
-      procedure AddCartesianChild(Child: TAssetNode; X, Y: Double); // meters, first must be at 0,0
+      procedure AddCartesianChild(Child: TAssetNode; X, Y: Double); // meters, first must be at 0,0; call ComputeHillSpheres after calling AddCartesianChild for all children // marks the child as new
       procedure ComputeHillSpheres(); // call this after all stars have been added
       function GetAssetName(): UTF8String;
       function GetHillDiameter(Child: TAssetNode; ChildPrimaryMass: Double): Double;
-      property Children[Index: Cardinal]: TAssetNode read GetChild;
-      property ChildCount: Cardinal read GetChildCount;
+      property Children[Index: Cardinal]: TAssetNode read GetChild; // child might be nil
+      property ChildCount: Cardinal read GetChildCount; // some of the children might be nil
    end;
 
    // TODO: some different kind of system for handling lone space
@@ -71,11 +71,15 @@ uses
    math, isdprotocol, encyclopedia;
 
 type
+   TSolarSystemJournalState = (jsNew, jsChanged);
+   TSolarSystemJournalStates = set of TSolarSystemJournalState;
+   
    PSolarSystemData = ^TSolarSystemData;
    TSolarSystemData = record
       DistanceFromCenter: Double; // meters
       Theta: Double; // radians clockwise from positive x axis
       HillDiameter: Double; // meters
+      Flags: TSolarSystemJournalStates;
    end;
 
 constructor TSolarSystemFeatureClass.Create(AStarGroupingThreshold: Double; AGravitionalInfluenceConstant: Double);
@@ -115,8 +119,11 @@ var
 begin
    for Child in FChildren do
    begin
-      DropSolarSystemChild(Child);
-      Child.Free();
+      if (Assigned(Child)) then
+      begin
+         DropChild(Child);
+         Child.Free();
+      end;
    end;
    inherited;
 end;
@@ -136,88 +143,96 @@ var
    Index: Cardinal;
    Distance: Double;
 begin
+   // TODO: handle the case of the first child not being at the center
    Assert(Length(FChildren) > 0);
+   Assert(Assigned(FChildren[0])); // this assert is not theoretically sound, but currently it is true
    Assert(PSolarSystemData(FChildren[0].ParentData)^.DistanceFromCenter = 0);
    Result := 0.0;
    if (Length(FChildren) > 1) then
    begin
       for Index := 1 to High(FChildren) do // $R-
       begin
-         Distance := PSolarSystemData(FChildren[Index].ParentData)^.DistanceFromCenter;
-         Assert(Distance > 0);
-         if (Distance > Result) then
+         if (Assigned(FChildren[Index])) then
          begin
-            Result := Distance;
-         end;
+             Distance := PSolarSystemData(FChildren[Index].ParentData)^.DistanceFromCenter;
+             Assert(Distance > 0);
+             if (Distance > Result) then
+             begin
+                Result := Distance;
+             end;
+          end;
       end;
    end;
 end;
 
-procedure TSolarSystemFeatureNode.AdoptSolarSystemChild(Child: TAssetNode);
+procedure TSolarSystemFeatureNode.AdoptSolarSystemChild(Child: TAssetNode; DistanceFromCenter, Theta, HillDiameter: Double);
 begin
+   SetLength(FChildren, Length(FChildren)+1);
+   FChildren[High(FChildren)] := Child;
    AdoptChild(Child);
    Child.ParentData := New(PSolarSystemData);
+   PSolarSystemData(Child.ParentData)^.DistanceFromCenter := DistanceFromCenter;
+   PSolarSystemData(Child.ParentData)^.Theta := Theta;
+   PSolarSystemData(Child.ParentData)^.HillDiameter := HillDiameter;
+   PSolarSystemData(Child.ParentData)^.Flags := [jsNew, jsChanged];
 end;
 
-procedure TSolarSystemFeatureNode.DropSolarSystemChild(Child: TAssetNode);
+procedure TSolarSystemFeatureNode.DropChild(Child: TAssetNode);
 begin
    Dispose(PSolarSystemData(Child.ParentData));
    Child.ParentData := nil;
-   DropChild(Child);
-   if (Length(FChildren) = 0) then
-      MarkAsDirty([dkSelf], [ckAffectsNames]);
+   inherited;
+   if (Length(FChildren) = 0) then // TODO: assert that Child is not in FChildren
+      MarkAsDirty([dkSelf], [ckAffectsNames]); // TODO: other things (than running out of children entirely) might affect the name too?
 end;
 
-procedure TSolarSystemFeatureNode.AddCartesianChild(Child: TAssetNode; X, Y: Double); // meters, first must be at 0,0
+procedure TSolarSystemFeatureNode.AddCartesianChild(Child: TAssetNode; X, Y: Double); // meters, first must be at 0,0 // TODO: change that
+var
+   DistanceFromCenter, Theta: Double;
 begin
    Assert(Child.AssetClass.ID = idOrbits);
-   AdoptSolarSystemChild(Child);
    if (Length(FChildren) = 0) then
    begin
+      // TODO: this is not valid
       Assert(X = 0.0);
       Assert(Y = 0.0);
-      SetLength(FChildren, 1);
-      FChildren[0] := Child;
-      PSolarSystemData(Child.ParentData)^.DistanceFromCenter := 0.0;
-      PSolarSystemData(Child.ParentData)^.Theta := 0.0;
+      DistanceFromCenter := 0.0;
+      Theta := 0.0;
    end
    else
    begin
-      SetLength(FChildren, Length(FChildren)+1);
-      FChildren[High(FChildren)] := Child;
-      PSolarSystemData(Child.ParentData)^.DistanceFromCenter := SqRt(X*X+Y*Y);
+      DistanceFromCenter := SqRt(X*X+Y*Y);
       if (X = 0) then
       begin
          if (Y = 0) then
          begin
-            PSolarSystemData(Child.ParentData)^.Theta := 0.0;
+            Theta := 0.0;
          end
          else
          if (Y >= 0) then
          begin
-            PSolarSystemData(Child.ParentData)^.Theta := Pi; // $R-
+            Theta := Pi; // $R-
          end
          else
          begin
-            PSolarSystemData(Child.ParentData)^.Theta := 3.0 * Pi / 2.0; // $R-
+            Theta := 3.0 * Pi / 2.0; // $R-
          end;
       end
       else
       begin
-         PSolarSystemData(Child.ParentData)^.Theta := ArcTan2(Y, X); // $R-
+         Theta := ArcTan2(Y, X); // $R-
       end;
    end;
+   AdoptSolarSystemChild(Child, DistanceFromCenter, Theta, NaN);
+   MarkAsDirty([dkSelf], [ckAffectsDynastyCount, ckAffectsVisibility, ckAffectsNames]);
 end;
 
-procedure TSolarSystemFeatureNode.AddPolarChild(Child: TAssetNode; Distance, Theta: Double; HillDiameter: Double = 0.0); // meters
+procedure TSolarSystemFeatureNode.AddPolarChildFromJournal(Child: TAssetNode; Distance, Theta, HillDiameter: Double); // meters
 begin
    Assert(Child.AssetClass.ID = idOrbits);
-   AdoptSolarSystemChild(Child);
-   SetLength(FChildren, Length(FChildren)+1);
-   FChildren[High(FChildren)] := Child;
-   PSolarSystemData(Child.ParentData)^.DistanceFromCenter := Distance;
-   PSolarSystemData(Child.ParentData)^.Theta := Theta;
-   PSolarSystemData(Child.ParentData)^.HillDiameter := HillDiameter;
+   AdoptSolarSystemChild(Child, Distance, Theta, HillDiameter);
+   // we don't mark ourselves dirty because this is specifically for the case of handling the journal,
+   // which means we're already dirty anyway.
 end;
 
 procedure TSolarSystemFeatureNode.MarkAsDirty(DirtyKinds: TDirtyKinds; ChangeKinds: TChangeKinds);
@@ -229,12 +244,12 @@ end;
 
 function TSolarSystemFeatureNode.GetMass(): Double;
 var
-   Index: Cardinal;
+   Child: TAssetNode;
 begin
    Result := 0.0;
-   if (ChildCount > 0) then
-      for Index := 0 to ChildCount-1 do // $R-
-         Result := Result + Children[Index].Mass;
+   for Child in FChildren do
+      if (Assigned(Child)) then
+         Result := Result + Child.Mass;
 end;
 
 function TSolarSystemFeatureNode.GetSize(): Double;
@@ -257,7 +272,8 @@ var
    Child: TAssetNode;
 begin
    for Child in FChildren do
-      Child.Walk(PreCallback, PostCallback);
+      if (Assigned(Child)) then
+         Child.Walk(PreCallback, PostCallback);
 end;
 
 function TSolarSystemFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
@@ -266,9 +282,12 @@ var
 begin
    for Child in FChildren do
    begin
-      Result := Child.HandleBusMessage(Message);
-      if (Result) then
-         exit;
+      if (Assigned(Child)) then
+      begin
+         Result := Child.HandleBusMessage(Message);
+         if (Result) then
+            exit;
+      end;
    end;
    Result := False;
 end;
@@ -287,31 +306,59 @@ begin
    // TODO: the first child might not be at the origin
    Writer.WriteCardinal(fcSpace);
    Assert(Length(FChildren) > 0);
+   Assert(Assigned(FChildren[0]));
    Writer.WritePtrUInt(FChildren[0].ID(System));
    Writer.WriteCardinal(Length(FChildren) - 1); // $R-
    if (Length(FChildren) > 1) then
       for Index := 1 to Length(FChildren) - 1 do // $R-
       begin
          Child := FChildren[Index];
+         Assert(Assigned(Child));
          Writer.WriteDouble(PSolarSystemData(Child.ParentData)^.DistanceFromCenter);
          Writer.WriteDouble(PSolarSystemData(Child.ParentData)^.Theta);
          Writer.WritePtrUInt(Child.ID(System));
       end;
 end;
 
-procedure TSolarSystemFeatureNode.RecordSnapshot(Journal: TJournalWriter);
+procedure TSolarSystemFeatureNode.UpdateJournal(Journal: TJournalWriter);
 var
    Child: TAssetNode;
+   Index: Cardinal;
 begin
-   Journal.WriteCardinal(Length(FChildren));
-   for Child in FChildren do
+   if (Length(FChildren) > 0) then
    begin
-      Journal.WriteAssetChangeKind(ckAdd);
-      Journal.WriteAssetNodeReference(Child);
-      Journal.WriteDouble(PSolarSystemData(Child.ParentData)^.DistanceFromCenter);
-      Journal.WriteDouble(PSolarSystemData(Child.ParentData)^.Theta);
-      Journal.WriteDouble(PSolarSystemData(Child.ParentData)^.HillDiameter);
+      for Index := High(FChildren) downto Low(FChildren) do // $R-
+      begin
+         if (not Assigned(FChildren[Index])) then
+         begin
+            Journal.WriteAssetChangeKind(ckRemove);
+            Journal.WriteCardinal(Index);
+            Delete(FChildren, Index, 1);
+         end;
+      end;
+      for Child in FChildren do
+      begin
+         Assert(Assigned(Child));
+         if (jsChanged in PSolarSystemData(Child.ParentData)^.Flags) then
+         begin
+            if (jsNew in PSolarSystemData(Child.ParentData)^.Flags) then
+            begin
+               Journal.WriteAssetChangeKind(ckAdd);
+               Exclude(PSolarSystemData(Child.ParentData)^.Flags, jsNew);
+            end
+            else
+            begin
+               Journal.WriteAssetChangeKind(ckChange);
+            end;
+            Journal.WriteAssetNodeReference(Child);
+            Journal.WriteDouble(PSolarSystemData(Child.ParentData)^.DistanceFromCenter);
+            Journal.WriteDouble(PSolarSystemData(Child.ParentData)^.Theta);
+            Journal.WriteDouble(PSolarSystemData(Child.ParentData)^.HillDiameter);
+            Exclude(PSolarSystemData(Child.ParentData)^.Flags, jsChanged);
+         end;
+      end;
    end;
+   Journal.WriteAssetChangeKind(ckEndOfList);
 end;
 
 procedure TSolarSystemFeatureNode.ApplyJournal(Journal: TJournalReader; System: TSystem);
@@ -325,62 +372,44 @@ procedure TSolarSystemFeatureNode.ApplyJournal(Journal: TJournalReader; System: 
       Distance := Journal.ReadDouble();
       Theta := Journal.ReadDouble();
       HillDiameter := Journal.ReadDouble();
-      AddPolarChild(AssetNode, Distance, Theta, HillDiameter);
+      AddPolarChildFromJournal(AssetNode, Distance, Theta, HillDiameter);
    end;
 
-   procedure DeleteChild(Child: TAssetNode);
+   procedure ChangeChild();
    var
-      Index: Cardinal;
+      Child: TAssetNode;
+      Distance, Theta, HillDiameter: Double;
    begin
       Child := Journal.ReadAssetNodeReference();
-      Assert(Length(FChildren) > 0);
-      for Index := Low(FChildren) to High(FChildren) do // $R-
-      begin
-         if (FChildren[Index] = Child) then
-         begin
-            Delete(FChildren, Index, 1);
-            Child.Free();
-            exit;
-         end;
-      end;
+      Distance := Journal.ReadDouble();
+      Theta := Journal.ReadDouble();
+      HillDiameter := Journal.ReadDouble();
+      PSolarSystemData(Child.ParentData)^.DistanceFromCenter := Distance;
+      PSolarSystemData(Child.ParentData)^.Theta := Theta;
+      PSolarSystemData(Child.ParentData)^.HillDiameter := HillDiameter;
    end;
 
    procedure RemoveChild();
    var
-      Child: TAssetNode;
+      Index: Cardinal;
    begin
-      Child := Journal.ReadAssetNodeReference();
-      DeleteChild(Child);
-      Child.Free();
-   end;
-
-   procedure MoveChild();
-   var
-      Child: TAssetNode;
-   begin
-      Child := Journal.ReadAssetNodeReference();
-      DeleteChild(Child);
+      Index := Journal.ReadCardinal();
+      Assert(Length(FChildren) > Index);
+      Delete(FChildren, Index, 1);
    end;
 
 var
-   Count: Cardinal;
    AssetChangeKind: TAssetChangeKind;
 begin
-   Count := Journal.ReadCardinal();
-   while (Count > 0) do
-   begin
-      // TODO: should we just always apply a fresh list of children, and figure out which ones left and which did not?
-      // (and put the ones that were removed into some list that we check later to free the right ones?)
-      // see also orbits, surfaces
+   repeat
       AssetChangeKind := Journal.ReadAssetChangeKind();
       case AssetChangeKind of
          ckAdd: AddChild();
+         ckChange: ChangeChild();
          ckRemove: RemoveChild();
-         ckMove: MoveChild();
-         ckNone: Assert(False);
+         ckEndOfList: break;
       end;
-      Dec(Count);
-   end;
+   until False;
 end;
 
 procedure TSolarSystemFeatureNode.ComputeHillSpheres();
@@ -406,19 +435,22 @@ begin
    MaxRadius := FFeatureClass.FStarGroupingThreshold / 2.0;
    for Index := Low(FChildren) to High(FChildren) do // $R-
    begin
-      CandidateHillRadius := FChildren[Index].Mass * FFeatureClass.FGravitionalInfluenceConstant / 2.0;
-      if (CandidateHillRadius > MaxRadius) then
-         CandidateHillRadius := MaxRadius;
-      for SubIndex := Low(FChildren) to High(FChildren) do // $R-
+      if (Assigned(FChildren[Index])) then
       begin
-         if (Index <> SubIndex) then
+         CandidateHillRadius := FChildren[Index].Mass * FFeatureClass.FGravitionalInfluenceConstant / 2.0;
+         if (CandidateHillRadius > MaxRadius) then
+            CandidateHillRadius := MaxRadius;
+         for SubIndex := Low(FChildren) to High(FChildren) do // $R-
          begin
-            HalfDistance := ComputeDistance(FChildren[Index], FChildren[SubIndex]) / 2.0;
-            if (CandidateHillRadius > HalfDistance) then
-               CandidateHillRadius := HalfDistance;
+            if ((Index <> SubIndex) and Assigned(FChildren[SubIndex])) then
+            begin
+               HalfDistance := ComputeDistance(FChildren[Index], FChildren[SubIndex]) / 2.0;
+               if (CandidateHillRadius > HalfDistance) then
+                  CandidateHillRadius := HalfDistance;
+            end;
          end;
+         PSolarSystemData(FChildren[Index].ParentData)^.HillDiameter := CandidateHillRadius * 2.0;
       end;
-      PSolarSystemData(FChildren[Index].ParentData)^.HillDiameter := CandidateHillRadius * 2.0;
    end;
 end;
 
@@ -426,6 +458,7 @@ function TSolarSystemFeatureNode.GetAssetName(): UTF8String;
 begin
    if (Length(FChildren) > 0) then
    begin
+      Assert(Assigned(FChildren[0])); // TODO: this assert is invalid
       Result := FChildren[0].AssetName;
    end
    else
