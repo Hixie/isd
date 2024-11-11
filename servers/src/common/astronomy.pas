@@ -17,7 +17,8 @@ type
 const
    CategoryShift = 20;
    StarIndexMask = $FFFFF;
-   AU = 149597870700;
+   AU = 149597870700; // meters
+   G = 6.67430E-11; // N.m^2.kg^-2
    
 function EncodeStarID(Category: TStarCategory; Index: TStarIndex): TStarID;
 function CategoryOf(ID: TStarID): TStarCategory;

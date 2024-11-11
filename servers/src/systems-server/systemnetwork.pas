@@ -95,7 +95,7 @@ implementation
 
 uses
    sysutils, hashfunctions, isdprotocol, passwords, exceptions, space,
-   orbit, sensors, structure, errors, plot, planetary;
+   orbit, sensors, structure, errors, plot, planetary, math;
 
 constructor TSystemHashTable.Create();
 begin
@@ -157,6 +157,8 @@ begin
 end;
 
 procedure TConnection.HandleIPC(Arguments: TBinaryStreamReader);
+const
+   GameStartTime = 30000; // milliseconds
 type
    TStarEntry = record
       StarID: TStarID;
@@ -165,7 +167,7 @@ type
 var
    Command: UTF8String;
    SystemID, DynastyID, DynastyServerID, StarCount, Index, StarID: Cardinal;
-   X, Y: Double;
+   X, Y, A: Double;
    Dynasty: TDynasty;
    System: TSystem;
    Stars: array of TStarEntry;
@@ -232,6 +234,8 @@ begin
       end;
       Assert(Dynasty.DynastyServerID = DynastyServerID);
       Home := FindHome(System);
+      X := 2.0 * GameStartTime / (2 * Pi); // $R-
+      A := Power(X * X * G * Home.Mass, 1/3); // $R-
       (Home.Parent as TOrbitFeatureNode).AddOrbitingChild(
          System,
          FServer.Encyclopedia.WrapAssetForOrbit(FServer.Encyclopedia.PlaceholderShip.Spawn(
@@ -241,10 +245,10 @@ begin
                TDynastyOriginalColonyShipFeatureNode.Create(Dynasty)
             ]
          )),
-         Home.Size, // i.e. start it at twice the radius of planet away from the planet
+         A,
          0.9999, // Eccentricity
          System.RandomNumberGenerator.GetDouble(0.0, 2.0 * Pi), // Omega // $R-
-         0, // TimeOffset
+         System.Now - GameStartTime, // TimeOffset
          System.RandomNumberGenerator.GetBoolean(0.5) // Clockwise
       );
       Write(#$01);

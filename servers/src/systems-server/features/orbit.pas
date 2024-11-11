@@ -9,19 +9,32 @@ uses
 
 type
    TOrbitBusMessage = class abstract(TBusMessage) end;
+
+   TAssetNodeArray = array of TAssetNode;
+   
+   PCrashReport = ^TCrashReport;
+   TCrashReport = record
+      Victims: array of TAssetNode; // TODO: make populating this more efficient
+   end;
+
+   // reporting this as handled implies that AddVictim has been called appropriately
+   // otherwise, an ancestor is likely to do it instead
+   TCrashReportMessage = class(TOrbitBusMessage)
+   private
+      FCrashReport: PCrashReport;
+   public
+      constructor Create(ACrashReport: PCrashReport);
+      procedure AddVictim(Node: TAssetNode);
+   end;
    
    TReceiveCrashingAssetMessage = class(TOrbitBusMessage)
    private
-      FAsset: TAssetNode;
+      FAssets: TAssetNodeArray;
    public
-      constructor Create(AAsset: TAssetNode);
-      property Asset: TAssetNode read FAsset;
+      constructor Create(ACrashReport: PCrashReport);
+      property Assets: TAssetNodeArray read FAssets;
    end;
    
-   TCrashDamageMessage = class(TOrbitBusMessage)
-   public
-      constructor Create();
-   end;
 
 type
    TOrbitFeatureClass = class(TFeatureClass)
@@ -134,17 +147,23 @@ begin
    raise Exception.Create('Cannot create a TOrbitFeatureNode from a prototype; use AddChild on a TSolarSystemFeatureNode or a TOrbitFeatureNode.');
 end;
 
-   
-constructor TReceiveCrashingAssetMessage.Create(AAsset: TAssetNode);
+
+constructor TCrashReportMessage.Create(ACrashReport: PCrashReport);
 begin
    inherited Create();
-   FAsset := AAsset;
+   FCrashReport := ACrashReport;
 end;
 
-constructor TCrashDamageMessage.Create();
+procedure TCrashReportMessage.AddVictim(Node: TAssetNode);
 begin
-   inherited;
-   // ...
+   SetLength(FCrashReport^.Victims, Length(FCrashReport^.Victims) + 1);
+   FCrashReport^.Victims[High(FCrashReport^.Victims)] := Node;
+end;
+
+constructor TReceiveCrashingAssetMessage.Create(ACrashReport: PCrashReport);
+begin
+   inherited Create();
+   FAssets := ACrashReport^.Victims;
 end;
 
 
@@ -269,11 +288,13 @@ procedure TOrbitFeatureNode.HandleCrash(var Data);
 var
    Child: TAssetNode;
    ReceiveMessage: TReceiveCrashingAssetMessage;
-   DamageMessage: TCrashDamageMessage;
+   CrashReportMessage: TCrashReportMessage;
+   CrashReport: PCrashReport;
    Index: Cardinal;
 begin
    Child := TAssetNode(Data);
    POrbitData(Child.ParentData)^.CrashEvent := nil;
+
    Index := 0;
    Assert(Length(FChildren) > Index);
    while (FChildren[Index] <> Child) do
@@ -282,19 +303,29 @@ begin
       Assert(Length(FChildren) < Index);
    end;
    FChildren[Index] := nil;
-   DropChild(Child); // this marks us dirty
-   ReceiveMessage := TReceiveCrashingAssetMessage.Create(Child);
+
+   CrashReport := New(PCrashReport);
+   
+   CrashReportMessage := TCrashReportMessage.Create(CrashReport);
+   try
+      Child.HandleBusMessage(CrashReportMessage);
+   finally
+      FreeAndNil(CrashReportMessage);
+   end;
+   
+   ReceiveMessage := TReceiveCrashingAssetMessage.Create(CrashReport);
    try
       FPrimaryChild.HandleBusMessage(ReceiveMessage);
-      Assert(Assigned(Child.Parent));
    finally
       FreeAndNil(ReceiveMessage);
    end;
-   DamageMessage := TCrashDamageMessage.Create();
-   try
-      Child.HandleBusMessage(DamageMessage);
-   finally
-      FreeAndNil(DamageMessage);
+
+   Dispose(CrashReport);
+   
+   if (Child.Parent = Self) then
+   begin
+      DropChild(Child);
+      Parent.ReportChildIsPermanentlyGone(Child);
    end;
 end;
 
@@ -348,7 +379,24 @@ end;
 function TOrbitFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
 var
    Child: TAssetNode;
+   ChildHandled: Boolean;
 begin
+   if (Message is TCrashReportMessage) then
+   begin
+      for Child in FChildren do
+      begin
+         if (Assigned(Child)) then
+         begin
+            ChildHandled := Child.HandleBusMessage(Message);
+            if (not ChildHandled) then
+            begin
+               TCrashReportMessage(Message).AddVictim(Child);
+            end;
+         end;
+      end;
+      Result := True;
+      exit;
+   end;
    Result := FPrimaryChild.HandleBusMessage(Message);
    if (not Result) then
    begin

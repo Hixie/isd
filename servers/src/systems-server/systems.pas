@@ -426,6 +426,7 @@ type
       procedure ScheduleNextEvent();
       procedure RescheduleNextEvent(); // call this when the time factor changes
       function SelectNextEvent(): TSystemEvent;
+      function GetNow(): Int64; inline;
    private
       FDynastyIndices: TDynastyIndexHashTable; // for index into visibility tables; used by TVisibilityHelper
       FVisibilityBuffer: Pointer; // used by TVisibilityHelper
@@ -453,6 +454,7 @@ type
       property DynastyDatabase: TDynastyDatabase read FDynastyDatabase;
       property Encyclopedia: TEncyclopediaView read FEncyclopedia; // used by TJournalReader/TJournalWriter
       property Journal: TJournalWriter read FJournalWriter;
+      property Now: Int64 read GetNow;
    end;
    
 implementation
@@ -1461,7 +1463,7 @@ begin
    Assert(FDynastyIndices.Has(Dynasty));
    DynastyIndex := FDynastyIndices[Dynasty];
    Writer.WriteCardinal(SystemID);
-   Writer.WriteInt64(MillisecondsBetween(FServer.Clock.Now() * FTimeFactor, FTimeOrigin * FTimeFactor));
+   Writer.WriteInt64(Now);
    Writer.WriteDouble(FTimeFactor);
    Writer.WritePtrUInt(FRoot.ID(Self));
    Writer.WriteDouble(FX);
@@ -1616,7 +1618,7 @@ var
 begin
    Assert(Assigned(FNextEvent));
    Assert(not Assigned(FNextEventHandle));
-   SystemNow := MillisecondsBetween(FServer.Clock.Now() * FTimeFactor, FTimeOrigin * FTimeFactor);
+   SystemNow := Now;
    SystemTarget := FNextEvent.FTime;
    RealDelta := Round((SystemTarget - SystemNow) / FTimeFactor);
    FNextEventHandle := FServer.ScheduleEvent(IncMillisecond(FServer.Clock.Now(), RealDelta), @RunEvent, FNextEvent);
@@ -1655,7 +1657,7 @@ begin
    Assert(Assigned(FNextEvent) = Assigned(FNextEventHandle));
    Assert(Assigned(FNextEvent) = FScheduledEvents.IsNotEmpty);
    Result := TSystemEvent.Create(
-      MillisecondsBetween(FServer.Clock.Now() * FTimeFactor, FTimeOrigin * FTimeFactor) + TimeDelta,
+      Now + TimeDelta,
       Callback,
       Pointer(Data),
       Self
@@ -1690,11 +1692,13 @@ begin
 end;
 
 function TSystem.TimeUntilNext(TimeOrigin: Int64; Period: Int64): Int64;
-var
-   Now: Int64;
 begin
-   Now := MillisecondsBetween(FServer.Clock.Now() * FTimeFactor, FTimeOrigin * FTimeFactor);
    Result := Period - (TimeOrigin - Now) mod Period;
+end;
+
+function TSystem.GetNow(): Int64;
+begin
+   Result := MillisecondsBetween(FServer.Clock.Now() * FTimeFactor, FTimeOrigin * FTimeFactor);
 end;
 
 
