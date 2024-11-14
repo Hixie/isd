@@ -234,7 +234,7 @@ begin
       end;
       Assert(Dynasty.DynastyServerID = DynastyServerID);
       Home := FindHome(System);
-      X := 2.0 * GameStartTime / (2 * Pi); // $R-
+      X := 2.0 * GameStartTime * System.TimeFactor / (2 * Pi); // $R-
       A := Power(X * X * G * Home.Mass, 1/3); // $R-
       (Home.Parent as TOrbitFeatureNode).AddOrbitingChild(
          System,
@@ -316,7 +316,7 @@ begin
    Assert(FWriter.BufferLength = 0);
    SystemStatus := FServer.SerializeAllSystemsFor(FDynasty, FWriter);
    Assert(FWriter.BufferLength = 0);
-   Assert(Length(SystemStatus) > 0);
+   Assert(Length(SystemStatus) > 0); // otherwise we wouldn't have their login credentials
    WriteFrame(SystemStatus[1], Length(SystemStatus)); // $R-
 end;
 

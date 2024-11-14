@@ -250,7 +250,7 @@ end;
 
 procedure TEncyclopedia.CondenseProtoplanetaryDisks(Space: TSolarSystemFeatureNode; System: TSystem);
 
-   function CreateRegions(BodyRadius: Double; BodyComposition: TPlanetaryComposition): TRegionArray;
+   function CreateRegions(BodyRadius: Double; BodyComposition: TPlanetaryComposition): TAssetNodeArray;
    begin
       // TODO: this should do things based on the body composition, create geology, etc
       SetLength(Result, 1); // {BOGUS Warning: Function result variable of a managed type does not seem to be initialized}

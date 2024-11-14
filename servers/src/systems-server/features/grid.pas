@@ -18,11 +18,13 @@ type
    TGridFeatureNode = class(TFeatureNode)
    strict private
       FCellSize: Double; // meters
-      FDimension: Cardinal;
-      FChildren: array of TAssetNode; // TODO: we should use a more memory-efficient way of storing this when it's sparse
+      FDimension, FCount: Cardinal;
+      FPacked: Boolean; // true=FChildren is just the list of children, unordered; false=FChildren is the full grid in order, with holes set to nil
+      FChildren: TAssetNodeArray; // TODO: plastic array? sorted array with binary search? map?
       function GetChild(X, Y: Cardinal): TAssetNode;
-      procedure AdoptGridChild(Child: TAssetNode);
+      procedure AdoptGridChild(Child: TAssetNode; X, Y: Cardinal);
    protected
+      constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
       procedure DropChild(Child: TAssetNode); override;
       function GetMass(): Double; override;
       function GetSize(): Double; override;
@@ -35,7 +37,6 @@ type
       destructor Destroy(); override;
       procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader; System: TSystem); override;
-      property Children[X, Y: Cardinal]: TAssetNode read GetChild;
       property Dimension: Cardinal read FDimension;
       property CellSize: Double read FCellSize;
    end;
@@ -48,23 +49,11 @@ uses
 type
    PGridData = ^TGridData;
    TGridData = bitpacked record
-      // TODO: geology and position
+      // TODO: geology
+      X, Y, Index: Cardinal;
       IsNew: Boolean;
       IsChanged: Boolean;
    end;
-
-var
-   DeletedAsset: TAssetNode;
-
-function Assigned(Child: TAssetNode): Boolean; inline;
-begin
-   Result := PtrUInt(Child) > PtrUInt(DeletedAsset);
-end;
-
-function Assigned(Child: TFeatureNode): Boolean; inline;
-begin
-   Result := system.Assigned(Child);
-end;
 
 
 function TGridFeatureClass.GetFeatureNodeClass(): FeatureNodeReference;
@@ -84,7 +73,13 @@ begin
    inherited Create();
    FCellSize := ACellSize;
    FDimension := ADimension;
-   SetLength(FChildren, FDimension * FDimension);
+   FPacked := True;
+end;
+
+constructor TGridFeatureNode.CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem);
+begin
+   FPacked := True;
+   inherited;
 end;
 
 destructor TGridFeatureNode.Destroy();
@@ -92,41 +87,79 @@ var
    Child: TAssetNode;
 begin
    for Child in FChildren do
-   begin
       if (Assigned(Child)) then
-      begin
-         DropChild(Child);
          Child.Free();
-      end;
-   end;
    inherited;
 end;
 
-// TODO: here and elsewhere, why don't we just override AdoptChild?
-procedure TGridFeatureNode.AdoptGridChild(Child: TAssetNode);
+procedure TGridFeatureNode.AdoptGridChild(Child: TAssetNode; X, Y: Cardinal);
 begin
    Assert(Assigned(Child));
+   Assert(not Assigned(GetChild(X, Y)));
    AdoptChild(Child);
    Child.ParentData := New(PGridData);
    PGridData(Child.ParentData)^.IsNew := True;
    PGridData(Child.ParentData)^.IsChanged := True;
+   PGridData(Child.ParentData)^.X := X;
+   PGridData(Child.ParentData)^.Y := Y;
+   if (FPacked) then
+   begin
+      SetLength(FChildren, Length(FChildren) + 1);
+      FChildren[High(FChildren)] := Child;
+      PGridData(Child.ParentData)^.Index := High(FChildren); // $R-
+   end
+   else
+   begin
+      FChildren[X + Y * FDimension] := Child;
+   end;
+   Inc(FCount);
 end;
 
 procedure TGridFeatureNode.DropChild(Child: TAssetNode);
+var
+   Index: Cardinal;
 begin
    Assert(Assigned(Child));
+   if (FPacked) then
+   begin
+      Delete(FChildren, PGridData(Child.ParentData)^.Index, 1);
+      if (PGridData(Child.ParentData)^.Index < Length(FChildren)) then
+         for Index := PGridData(Child.ParentData)^.Index to High(FChildren) do // $R-
+            PGridData(FChildren[Index].ParentData)^.Index := Index;
+   end
+   else
+   begin
+      FChildren[PGridData(Child.ParentData)^.X + PGridData(Child.ParentData)^.Y * FDimension] := nil;
+   end;
    Dispose(PGridData(Child.ParentData));
    Child.ParentData := nil;
+   Dec(FCount);
    inherited;
 end;
 
 function TGridFeatureNode.GetChild(X, Y: Cardinal): TAssetNode;
+var
+   Child: TAssetNode;
 begin
    Assert(X < FDimension);
    Assert(Y < FDimension);
-   Result := FChildren[X + Y * FDimension];
-   if (Result = DeletedAsset) then
+   if (FPacked) then
+   begin
+      for Child in FChildren do
+      begin
+         if ((PGridData(Child.ParentData)^.X = X) and
+             (PGridData(Child.ParentData)^.Y = Y)) then
+         begin
+            Result := Child;
+            exit;
+         end;
+      end;
       Result := nil;
+   end
+   else
+   begin
+      Result := FChildren[X + Y * FDimension];
+   end;
 end;
 
 function TGridFeatureNode.GetMass(): Double;
@@ -160,7 +193,7 @@ end;
 
 function TGridFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
 var
-   Child: TAssetNode;
+   Child, Child2: TAssetNode;
    X, Y: Cardinal;
 begin
    if (Message is TReceiveCrashingAssetMessage) then
@@ -170,13 +203,16 @@ begin
          // TODO: make it not precisely the center
          X := Dimension div 2; // $R-
          Y := Dimension div 2; // $R-
-         if (Assigned(FChildren[X + Y * FDimension])) then
+         if (Assigned(GetChild(X, Y))) then
          begin
+            Writeln('uh, we tried to crash something into a grid that already had something: ');
+            Child2 := GetChild(X, Y);
+            Writeln('  victim = ', Child.DebugName);
+            Writeln('  target = ', Child2.DebugName);
             // TODO: handle crashing into something that's already there
             XXX;
          end;
-         AdoptGridChild(Child);
-         FChildren[X + Y * FDimension] := Child;
+         AdoptGridChild(Child, X, Y);
          Result := True;
       end;
       exit;
@@ -200,53 +236,53 @@ begin
    Writer.WriteDouble(FCellSize);
    Writer.WriteCardinal(FDimension);
    Writer.WriteCardinal(FDimension);
+   Writer.WriteCardinal(FCount);
+   Assert((not FPacked) or (FCount = Length(FChildren)));
    for Child in FChildren do
    begin
       if (Assigned(Child)) then
-         Writer.WritePtrUInt(Child.ID(System))
-      else
-         Writer.WritePtrUInt(0);
+      begin
+         Writer.WriteCardinal(PGridData(Child.ParentData)^.X);
+         Writer.WriteCardinal(PGridData(Child.ParentData)^.Y);
+         Writer.WritePtrUInt(Child.ID(System));
+      end;
    end;
 end;
 
 procedure TGridFeatureNode.UpdateJournal(Journal: TJournalWriter);
+
+   procedure ReportChild(Child: TAssetNode);
+   begin
+      if (PGridData(Child.ParentData)^.IsChanged) then
+      begin
+         if (PGridData(Child.ParentData)^.IsNew) then
+         begin
+            Journal.WriteAssetChangeKind(ckAdd);
+            Journal.WriteAssetNodeReference(Child);
+            PGridData(Child.ParentData)^.IsNew := False;
+         end
+         else
+         begin
+            Journal.WriteAssetChangeKind(ckChange);
+            Assert(False); // there's nothing to update, currently
+            // TODO: would be more efficient when reading to actually store the node reference instead of relying on x,y lookup...
+         end;
+         Journal.WriteCardinal(PGridData(Child.ParentData)^.X);
+         Journal.WriteCardinal(PGridData(Child.ParentData)^.Y);
+         PGridData(Child.ParentData)^.IsChanged := False;
+      end;
+   end;
+
 var
    Child: TAssetNode;
-   X, Y: Cardinal;
 begin
    Journal.WriteDouble(FCellSize);
    Journal.WriteCardinal(FDimension);
    Assert(FDimension > 0);
-   for X := 0 to FDimension - 1 do // $R-
-      for Y := 0 to FDimension - 1 do // $R-
-      begin
-         Child := FChildren[X + Y * FDimension];
-         if (Child = DeletedAsset) then
-         begin
-            Journal.WriteAssetChangeKind(ckRemove);
-            Journal.WriteCardinal(X);
-            Journal.WriteCardinal(Y);
-            FChildren[X + Y * FDimension] := nil;
-         end
-         else
-         if (Assigned(Child) and PGridData(Child.ParentData)^.IsChanged) then
-         begin
-            if (PGridData(Child.ParentData)^.IsNew) then
-            begin
-               Journal.WriteAssetChangeKind(ckAdd);
-               Journal.WriteAssetNodeReference(Child);
-               PGridData(Child.ParentData)^.IsNew := False;
-            end
-            else
-            begin
-               Journal.WriteAssetChangeKind(ckChange);
-               Assert(False); // there's nothing to update, currently
-            end;
-            Journal.WriteCardinal(X);
-            Journal.WriteCardinal(Y);
-            PGridData(Child.ParentData)^.IsChanged := False;
-         end;
-      end;
+   Assert((not FPacked) or (FCount = Length(FChildren)));
+   for Child in FChildren do
+      if (Assigned(Child)) then
+         ReportChild(Child);
    Journal.WriteAssetChangeKind(ckEndOfList);
 end;
 
@@ -262,10 +298,8 @@ procedure TGridFeatureNode.ApplyJournal(Journal: TJournalReader; System: TSystem
       Y := Journal.ReadCardinal();
       Assert(X < FDimension);
       Assert(Y < FDimension);
-      AdoptGridChild(Child);
+      AdoptGridChild(Child, X, Y);
       Assert(Child.Parent = Self);
-      Assert(not Assigned(FChildren[X + Y * FDimension]));
-      FChildren[X + Y * FDimension] := Child;
    end;
 
    procedure ChangeChild();
@@ -277,22 +311,10 @@ procedure TGridFeatureNode.ApplyJournal(Journal: TJournalReader; System: TSystem
       Y := Journal.ReadCardinal();
       Assert(X < FDimension);
       Assert(Y < FDimension);
-      Child := FChildren[X + Y * FDimension];
+      Child := GetChild(X, Y);
       Assert(Assigned(Child));
       Assert(False); // nothing to update currently
       PGridData(Child.ParentData)^.IsChanged := True;
-   end;
-
-   procedure RemoveChild();
-   var
-      X, Y: Cardinal;
-   begin
-      X := Journal.ReadCardinal();
-      Y := Journal.ReadCardinal();
-      Assert(X < FDimension);
-      Assert(Y < FDimension);
-      Assert(Assigned(FChildren[X + Y * FDimension]));
-      FChildren[X + Y * FDimension] := nil;
    end;
 
 var
@@ -303,19 +325,15 @@ begin
    NewDimension := Journal.ReadCardinal();
    Assert(FDimension <= NewDimension);
    FDimension := NewDimension;
-   SetLength(FChildren, FDimension * FDimension);
    while (True) do
    begin
       AssetChangeKind := Journal.ReadAssetChangeKind();
       case AssetChangeKind of
          ckAdd: AddChild();
          ckChange: ChangeChild();
-         ckRemove: RemoveChild();
          ckEndOfList: break;
       end;
    end;
 end;
 
-initialization
-   DeletedAsset := TAssetNode($01);
 end.

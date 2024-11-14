@@ -382,7 +382,7 @@ begin
                   if (AddMaterialsTo(Moon, Distance, Materials, Randomizer)) then
                   begin
                      Moon.Mass := WeighBody(Moon);
-                     if (MoonDistance > RocheLimit(PlanetMass, Moon.Mass, MoonSize)) then
+                     if ((MoonDistance > RocheLimit(PlanetMass, Moon.Mass, MoonSize)) and (Moon.Mass < PlanetMass)) then
                      begin
                         if (not Assigned(Planet.Moons)) then
                         begin

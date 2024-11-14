@@ -52,7 +52,7 @@ There are currently no notifications defined.
                         <assetid> <x> <y> ; center of system
                         <assetupdate>+ <zero64> ; assets
 
-<systemid>          ::= <integer> ; the star ID of the canonical star, if any
+<systemid>          ::= <int32> ; the star ID of the canonical star, if any
 
 <currenttime>       ::= <time> ; current time relative to system's t₀
 
@@ -74,15 +74,15 @@ There are currently no notifications defined.
                         <string>  ; class name
                         <string>  ; description
 
-<dynasty>           ::= <integer> ; zero for unowned
+<dynasty>           ::= <int32> ; zero for unowned
 
 <feature>           ::= <featurecode> <featuredata>
 
-<featurecode>       ::= <integer> ; non-zero, see below
+<featurecode>       ::= <int32> ; non-zero, see below
 
 <featuredata>       ::= feature-specific form, see below
 
-<string>            ::= <integer> [ <integer> <byte>* ] ; see below
+<string>            ::= <int32> [ <int32> <byte>* ] ; see below
 
 <bitflag>           ::= 8 bits
 
@@ -90,7 +90,9 @@ There are currently no notifications defined.
 
 <double>            ::= 64 bit float
 
-<integer>           ::= 32 bit unsigned integer
+<int32>             ::= 32 bit unsigned integer
+
+<int64>             ::= 64 bit unsigned integer
 
 <zero32>            ::= 32 bit zero
 
@@ -162,7 +164,7 @@ could have multiple `fcSpaceSensor` features with different settings.
 
 ```bnf
 <featuredata>       ::= <starid>
-<starid>            ::= <integer>
+<starid>            ::= <int32>
 ```
 
 
@@ -170,7 +172,7 @@ could have multiple `fcSpaceSensor` features with different settings.
 
 ```bnf
 <featuredata>       ::= <hp>
-<hp>                ::= <integer>
+<hp>                ::= <int32>
 ```
 
 The planetary body feature describes a non-stellar celestial feature
@@ -186,7 +188,7 @@ new planetary body with no structures on it.
 
 ```bnf
 <featuredata>       ::= <assetid> <childcount> <child>*
-<childcount>        ::= <integer>
+<childcount>        ::= <int32>
 <child>             ::= <double>{2} <assetid>
 ```
 
@@ -207,7 +209,7 @@ will have an `fcOrbit` feature.
 
 ```bnf
 <featuredata>       ::= <assetid> <orbitcount> <orbit>*
-<orbitcount>        ::= <integer>
+<orbitcount>        ::= <int32>
 <orbit>             ::= <double>{3} <time> <direction> <assetid>
 <direction>         ::= <bitflag> ; 0x01 or 0x00
 ```
@@ -292,13 +294,13 @@ comes such that `theta=0`.
 <featuredata>       ::= <material-lineitem>* <zero32> <hp> <minhp>
 <material-lineitem> ::= <marker> <quantity> <max> <componentname> <materialname> <materialid>
 <marker>            ::= 0xFFFFFFFF as an unsigned 32 bit integer
-<quantity>          ::= <integer>
-<max>               ::= <integer>
+<quantity>          ::= <int32>
+<max>               ::= <int32>
 <componentname>     ::= <string>
 <materialname>      ::= <string>
-<materialid>        ::= <integer> ; non-zero material id, or zero if it's not recognized
-<hp>                ::= <integer>
-<minhp>             ::= <integer>
+<materialid>        ::= <int32> ; non-zero material id, or zero if it's not recognized
+<hp>                ::= <int32>
+<minhp>             ::= <int32>
 ```
 
 The structure feature describes the make-up and structural integrity
@@ -348,9 +350,9 @@ TODO: Currently the structural integrity values have no effect.
 
 ```bnf
 <featuredata>       ::= <reach> <up> <down> <resolution> [<feature>]
-<reach>             ::= <integer> ; max steps up tree to nearest orbit
-<up>                ::= <integer> ; distance that the sensors reach up the tree from the nearest orbit
-<down>              ::= <integer> ; distance down the tree that the sensors reach
+<reach>             ::= <int32> ; max steps up tree to nearest orbit
+<up>                ::= <int32> ; distance that the sensors reach up the tree from the nearest orbit
+<down>              ::= <int32> ; distance down the tree that the sensors reach
 <resolution>        ::= <double> ; the minimum size of assets that these sensors can detect (meters)
 ```
 
@@ -373,7 +375,7 @@ feature, documented next.
                         <count>
 <nearest-orbit>     ::= <assetid>
 <top-orbit>         ::= <assetid>
-<count>             ::= <integer> ; number of detected assets
+<count>             ::= <int32> ; number of detected assets
 ```
 
 Reports the "top" and "bottom" nodes of the tree that were affected by
@@ -389,7 +391,7 @@ preceding sensor.
 ### `fcPlotControl` (0x08)
 
 ```bnf
-<featuredata>       ::= <integer>
+<featuredata>       ::= <int32>
 ```
 
 Indicates to the client that the asset has, or could have, some
@@ -412,7 +414,7 @@ feature's data, which will be one of the following:
 
 ```bnf
 <featuredata>       ::= <regioncount> <region>*
-<regioncount>       ::= <integer> ; always 1
+<regioncount>       ::= <int32> ; always 1
 <region>            ::= <assetid>
 ```
 
@@ -430,11 +432,14 @@ The assets in regions of a planetary surface are expected to have the
 ### `fcGrid` (0x0A)
 
 ```bnf
-<featuredata>       ::= <cellsize> <width> <height> <cell>*
+<featuredata>       ::= <cellsize> <width> <height> <count> <cell>*
 <cellsize>          ::= <double> ; meters
-<width>             ::= <integer> ; greater than zero
-<height>            ::= <integer> ; greater than zero
-<cell>              ::= <assetid> | <zero64>
+<width>             ::= <int32> ; greater than zero
+<height>            ::= <int32> ; greater than zero
+<count>             ::= <int32>
+<cell>              ::= <x> <y> <assetid>
+<x>                 ::= <int32> ; 0..width-1
+<y>                 ::= <int32> ; 0..height-1
 ```
 
 Grids consist of square cells.
@@ -444,14 +449,23 @@ grid, in meters.
 
 There are `<width>` cells horizontally and `<height>` cells vertically.
 
-Precisely `<width>` times `<height>` instances of `<cell>` follow the
-dimensions. These specify the contents of the grid, row by row, left
-to right within each row. Empty cells are represented by a zero asset
-ID.
+Precisely `<count>` instances of `<cell>` follow the dimensions. These
+specify the contents of the grid, in no particular order. Each cell is
+at the specified `<x>`/`<y>` coordinate in the grid.
 
 > TODO: provide geology within each cell.
 
 > TODO: support rectangular grids. Current width and height are always equal.
+
+
+### `fcPopulation` (0x0B)
+
+```bnf
+<featuredata>       ::= <int64> <double>
+```
+
+The integer is the number of people at this population center.
+The double is their mean happiness.
 
 
 # Systems Server Internal Protocol

@@ -14,14 +14,12 @@ type
    public
       function InitFeatureNode(): TFeatureNode; override;
    end;
-
-   TRegionArray = array of TAssetNode;
    
    TSurfaceFeatureNode = class(TFeatureNode)
    private
       FSize: Double;
-      FRegions: TRegionArray; // can contain nils
-      procedure AdoptRegion(Region: TAssetNode);
+      FChildren: TAssetNodeArray;
+      procedure AdoptRegionChild(Child: TAssetNode);
    protected
       procedure DropChild(Child: TAssetNode); override;
       function GetMass(): Double; override;
@@ -31,7 +29,7 @@ type
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem); override;
    public
-      constructor Create(ASize: Double; ARegions: TRegionArray);
+      constructor Create(ASize: Double; AChildren: TAssetNodeArray);
       destructor Destroy(); override;
       procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader; System: TSystem); override;
@@ -46,6 +44,7 @@ type
    PSurfaceData = ^TSurfaceData;
    TSurfaceData = bitpacked record
       // TODO: geology and position
+      Index: Cardinal;
       IsNew: Boolean;
       IsChanged: Boolean;
    end;
@@ -63,42 +62,44 @@ begin
 end;
 
 
-constructor TSurfaceFeatureNode.Create(ASize: Double; ARegions: TRegionArray);
+constructor TSurfaceFeatureNode.Create(ASize: Double; AChildren: TAssetNodeArray);
 var
-   Region: TAssetNode;
+   Child: TAssetNode;
 begin
    inherited Create();
    FSize := ASize;
-   FRegions := ARegions;
-   for Region in FRegions do
-      AdoptRegion(Region);
+   for Child in AChildren do
+      AdoptRegionChild(Child);
 end;
 
 destructor TSurfaceFeatureNode.Destroy();
 var
-   Region: TAssetNode;
+   Child: TAssetNode;
 begin
-   for Region in FRegions do
-   begin
-      if (Assigned(Region)) then
-      begin
-         DropChild(Region);
-         Region.Free();
-      end;
-   end;
+   for Child in FChildren do
+      Child.Free();
    inherited;
 end;
 
-procedure TSurfaceFeatureNode.AdoptRegion(Region: TAssetNode);
+procedure TSurfaceFeatureNode.AdoptRegionChild(Child: TAssetNode);
 begin
-   AdoptChild(Region);
-   Region.ParentData := New(PSurfaceData);
-   PSurfaceData(Region.ParentData)^.IsNew := True;
-   PSurfaceData(Region.ParentData)^.IsChanged := True;
+   AdoptChild(Child);
+   Child.ParentData := New(PSurfaceData);
+   PSurfaceData(Child.ParentData)^.IsNew := True;
+   PSurfaceData(Child.ParentData)^.IsChanged := True;
+   SetLength(FChildren, Length(FChildren) + 1);
+   FChildren[High(FChildren)] := Child;
+   PSurfaceData(Child.ParentData)^.Index := High(FChildren); // $R-
 end;
 
 procedure TSurfaceFeatureNode.DropChild(Child: TAssetNode);
+var
+   Index: Cardinal;
 begin
+   Delete(FChildren, PSurfaceData(Child.ParentData)^.Index, 1);
+   if (PSurfaceData(Child.ParentData)^.Index < Length(FChildren)) then
+      for Index := PSurfaceData(Child.ParentData)^.Index to High(FChildren) do // $R-
+         PSurfaceData(FChildren[Index].ParentData)^.Index := Index;
    Dispose(PSurfaceData(Child.ParentData));
    Child.ParentData := nil;
    inherited;
@@ -106,12 +107,11 @@ end;
 
 function TSurfaceFeatureNode.GetMass(): Double;
 var
-   Region: TAssetNode;
+   Child: TAssetNode;
 begin
    Result := 0.0;
-   for Region in FRegions do
-      if (Assigned(Region)) then
-         Result := Result + Region.Mass;
+   for Child in FChildren do
+      Result := Result + Child.Mass;
 end;
 
 function TSurfaceFeatureNode.GetSize(): Double;
@@ -126,76 +126,62 @@ end;
 
 procedure TSurfaceFeatureNode.Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback);
 var
-   Region: TAssetNode;
+   Child: TAssetNode;
 begin
-   for Region in FRegions do
-      if (Assigned(Region)) then
-         Region.Walk(PreCallback, PostCallback);
+   for Child in FChildren do
+      Child.Walk(PreCallback, PostCallback);
 end;
 
 function TSurfaceFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
 var
-   Region: TAssetNode;
+   Child: TAssetNode;
 begin
    // TODO: crash messages should pick a random region
-   for Region in FRegions do
+   for Child in FChildren do
    begin
-      if (Assigned(Region)) then
-      begin
-         Result := Region.HandleBusMessage(Message);
-         if (Result) then
-            exit;
-      end;
+      Result := Child.HandleBusMessage(Message);
+      if (Result) then
+         exit;
    end;
 end;
 
 procedure TSurfaceFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem);
 var
-   Region: TAssetNode;
+   Child: TAssetNode;
 begin
    Writer.WriteCardinal(fcSurface);
-   Writer.WriteCardinal(Length(FRegions));
-   for Region in FRegions do
+   Writer.WriteCardinal(Length(FChildren));
+   for Child in FChildren do
    begin
-      Assert(Assigned(Region));
-      Writer.WritePtrUInt(Region.ID(System));
+      Assert(Assigned(Child));
+      Writer.WritePtrUInt(Child.ID(System));
    end;
 end;
 
 procedure TSurfaceFeatureNode.UpdateJournal(Journal: TJournalWriter);
 var
-   Region: TAssetNode;
-   Index: Cardinal;
+   Child: TAssetNode;
 begin
-   if (Length(FRegions) > 0) then
+   if (Length(FChildren) > 0) then
    begin
-      for Index := High(FRegions) downto Low(FRegions) do // $R-
+      for Child in FChildren do
       begin
-         if (not Assigned(FRegions[Index])) then
+         Assert(Assigned(Child));
+         Assert(Assigned(Child.ParentData), 'No parent data on ' + Child.ClassName);
+         if (PSurfaceData(Child.ParentData)^.IsChanged) then
          begin
-            Journal.WriteAssetChangeKind(ckRemove);
-            Journal.WriteCardinal(Index);
-            Delete(FRegions, Index, 1);
-         end;
-      end;
-      for Region in FRegions do
-      begin
-         Assert(Assigned(Region));
-         Assert(Assigned(Region.ParentData), 'No parent data on ' + Region.ClassName);
-         if (PSurfaceData(Region.ParentData)^.IsChanged) then
-         begin
-            if (PSurfaceData(Region.ParentData)^.IsNew) then
+            if (PSurfaceData(Child.ParentData)^.IsNew) then
             begin
                Journal.WriteAssetChangeKind(ckAdd);
-               PSurfaceData(Region.ParentData)^.IsNew := False;
+               PSurfaceData(Child.ParentData)^.IsNew := False;
             end
             else
             begin
                Journal.WriteAssetChangeKind(ckChange);
             end;
-            Journal.WriteAssetNodeReference(Region);
+            Journal.WriteAssetNodeReference(Child);
             // TODO: save any other details (position, geology, etc)
-            PSurfaceData(Region.ParentData)^.IsChanged := False;
+            PSurfaceData(Child.ParentData)^.IsChanged := False;
          end;
       end;
    end;
@@ -204,34 +190,23 @@ end;
 
 procedure TSurfaceFeatureNode.ApplyJournal(Journal: TJournalReader; System: TSystem);
 
-   procedure AddRegion();
+   procedure AddChild();
    var
-      Region: TAssetNode;
+      Child: TAssetNode;
    begin
-      Region := Journal.ReadAssetNodeReference();
-      AdoptRegion(Region);
-      Assert(Region.Parent = Self);
-      SetLength(FRegions, Length(FRegions) + 1);
-      FRegions[High(FRegions)] := Region; // TODO: performance?
+      Child := Journal.ReadAssetNodeReference();
+      AdoptRegionChild(Child); // TODO: performance?
       // TODO: read and update region position, geology
+      Assert(Child.Parent = Self);
    end;
 
-   procedure ChangeRegion();
+   procedure ChangeChild();
    var
-      Region: TAssetNode;
+      Child: TAssetNode;
    begin
-      Region := Journal.ReadAssetNodeReference();
+      Child := Journal.ReadAssetNodeReference();
       // TODO: update details (position, geology, etc)
-      Assert(Region.Parent = Self);
-   end;
-   
-   procedure RemoveRegion();
-   var
-      Index: Cardinal;
-   begin
-      Index := Journal.ReadCardinal();
-      Assert(Length(FRegions) > Index);
-      Delete(FRegions, Index, 1);
+      Assert(Child.Parent = Self);
    end;
 
 var
@@ -240,9 +215,8 @@ begin
    repeat
       AssetChangeKind := Journal.ReadAssetChangeKind();
       case AssetChangeKind of
-         ckAdd: AddRegion();
-         ckChange: ChangeRegion();
-         ckRemove: RemoveRegion();
+         ckAdd: AddChild();
+         ckChange: ChangeChild();
          ckEndOfList: break;
       end;
    until False;

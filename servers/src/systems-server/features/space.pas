@@ -22,7 +22,7 @@ type
    TSolarSystemFeatureNode = class(TFeatureNode, IAssetNameProvider, IHillDiameterProvider)
    private
       FFeatureClass: TSolarSystemFeatureClass;
-      FChildren: array of TAssetNode;
+      FChildren: TAssetNodeArray;
       function GetChild(Index: Cardinal): TAssetNode;
       function GetChildCount(): Cardinal;
       function GetFurthestDistanceFromCenter(): Double;
@@ -80,6 +80,7 @@ type
       Theta: Double; // radians clockwise from positive x axis
       HillDiameter: Double; // meters
       Flags: TSolarSystemJournalStates;
+      Index: Cardinal;
    end;
 
 constructor TSolarSystemFeatureClass.Create(AStarGroupingThreshold: Double; AGravitionalInfluenceConstant: Double);
@@ -118,13 +119,8 @@ var
    Child: TAssetNode;
 begin
    for Child in FChildren do
-   begin
-      if (Assigned(Child)) then
-      begin
-         DropChild(Child);
-         Child.Free();
-      end;
-   end;
+      Child.Free();
+   SetLength(FChildren, 0);
    inherited;
 end;
 
@@ -152,16 +148,13 @@ begin
    begin
       for Index := 1 to High(FChildren) do // $R-
       begin
-         if (Assigned(FChildren[Index])) then
-         begin
-             Distance := PSolarSystemData(FChildren[Index].ParentData)^.DistanceFromCenter;
-             Assert(Distance > 0);
-             if (Distance > Result) then
-             begin
-                Result := Distance;
-             end;
+          Distance := PSolarSystemData(FChildren[Index].ParentData)^.DistanceFromCenter;
+          Assert(Distance > 0);
+          if (Distance > Result) then
+          begin
+             Result := Distance;
           end;
-      end;
+       end;
    end;
 end;
 
@@ -175,14 +168,21 @@ begin
    PSolarSystemData(Child.ParentData)^.Theta := Theta;
    PSolarSystemData(Child.ParentData)^.HillDiameter := HillDiameter;
    PSolarSystemData(Child.ParentData)^.Flags := [jsNew, jsChanged];
+   PSolarSystemData(Child.ParentData)^.Index := High(FChildren); // $R-
 end;
 
 procedure TSolarSystemFeatureNode.DropChild(Child: TAssetNode);
+var
+   Index: Cardinal;
 begin
+   Delete(FChildren, PSolarSystemData(Child.ParentData)^.Index, 1);
+   if (PSolarSystemData(Child.ParentData)^.Index < Length(FChildren)) then
+      for Index := PSolarSystemData(Child.ParentData)^.Index to High(FChildren) do // $R-
+         PSolarSystemData(FChildren[Index].ParentData)^.Index := Index;
    Dispose(PSolarSystemData(Child.ParentData));
    Child.ParentData := nil;
    inherited;
-   if (Length(FChildren) = 0) then // TODO: assert that Child is not in FChildren
+   if (Length(FChildren) = 0) then // TODO: why only when we get to zero?
       MarkAsDirty([dkSelf], [ckAffectsNames]); // TODO: other things (than running out of children entirely) might affect the name too?
 end;
 
@@ -248,8 +248,7 @@ var
 begin
    Result := 0.0;
    for Child in FChildren do
-      if (Assigned(Child)) then
-         Result := Result + Child.Mass;
+      Result := Result + Child.Mass;
 end;
 
 function TSolarSystemFeatureNode.GetSize(): Double;
@@ -272,8 +271,7 @@ var
    Child: TAssetNode;
 begin
    for Child in FChildren do
-      if (Assigned(Child)) then
-         Child.Walk(PreCallback, PostCallback);
+      Child.Walk(PreCallback, PostCallback);
 end;
 
 function TSolarSystemFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
@@ -282,12 +280,9 @@ var
 begin
    for Child in FChildren do
    begin
-      if (Assigned(Child)) then
-      begin
-         Result := Child.HandleBusMessage(Message);
-         if (Result) then
-            exit;
-      end;
+      Result := Child.HandleBusMessage(Message);
+      if (Result) then
+         exit;
    end;
    Result := False;
 end;
@@ -305,7 +300,7 @@ var
 begin
    // TODO: the first child might not be at the origin
    Writer.WriteCardinal(fcSpace);
-   Assert(Length(FChildren) > 0);
+   Assert(Length(FChildren) > 0); // otherwise who are we reporting this to?
    Assert(Assigned(FChildren[0]));
    Writer.WritePtrUInt(FChildren[0].ID(System));
    Writer.WriteCardinal(Length(FChildren) - 1); // $R-
@@ -323,19 +318,9 @@ end;
 procedure TSolarSystemFeatureNode.UpdateJournal(Journal: TJournalWriter);
 var
    Child: TAssetNode;
-   Index: Cardinal;
 begin
    if (Length(FChildren) > 0) then
    begin
-      for Index := High(FChildren) downto Low(FChildren) do // $R-
-      begin
-         if (not Assigned(FChildren[Index])) then
-         begin
-            Journal.WriteAssetChangeKind(ckRemove);
-            Journal.WriteCardinal(Index);
-            Delete(FChildren, Index, 1);
-         end;
-      end;
       for Child in FChildren do
       begin
          Assert(Assigned(Child));
@@ -389,15 +374,6 @@ procedure TSolarSystemFeatureNode.ApplyJournal(Journal: TJournalReader; System: 
       PSolarSystemData(Child.ParentData)^.HillDiameter := HillDiameter;
    end;
 
-   procedure RemoveChild();
-   var
-      Index: Cardinal;
-   begin
-      Index := Journal.ReadCardinal();
-      Assert(Length(FChildren) > Index);
-      Delete(FChildren, Index, 1);
-   end;
-
 var
    AssetChangeKind: TAssetChangeKind;
 begin
@@ -406,7 +382,6 @@ begin
       case AssetChangeKind of
          ckAdd: AddChild();
          ckChange: ChangeChild();
-         ckRemove: RemoveChild();
          ckEndOfList: break;
       end;
    until False;
@@ -435,22 +410,19 @@ begin
    MaxRadius := FFeatureClass.FStarGroupingThreshold / 2.0;
    for Index := Low(FChildren) to High(FChildren) do // $R-
    begin
-      if (Assigned(FChildren[Index])) then
+      CandidateHillRadius := FChildren[Index].Mass * FFeatureClass.FGravitionalInfluenceConstant / 2.0;
+      if (CandidateHillRadius > MaxRadius) then
+         CandidateHillRadius := MaxRadius;
+      for SubIndex := Low(FChildren) to High(FChildren) do // $R-
       begin
-         CandidateHillRadius := FChildren[Index].Mass * FFeatureClass.FGravitionalInfluenceConstant / 2.0;
-         if (CandidateHillRadius > MaxRadius) then
-            CandidateHillRadius := MaxRadius;
-         for SubIndex := Low(FChildren) to High(FChildren) do // $R-
+         if ((Index <> SubIndex) and Assigned(FChildren[SubIndex])) then
          begin
-            if ((Index <> SubIndex) and Assigned(FChildren[SubIndex])) then
-            begin
-               HalfDistance := ComputeDistance(FChildren[Index], FChildren[SubIndex]) / 2.0;
-               if (CandidateHillRadius > HalfDistance) then
-                  CandidateHillRadius := HalfDistance;
-            end;
+            HalfDistance := ComputeDistance(FChildren[Index], FChildren[SubIndex]) / 2.0;
+            if (CandidateHillRadius > HalfDistance) then
+               CandidateHillRadius := HalfDistance;
          end;
-         PSolarSystemData(FChildren[Index].ParentData)^.HillDiameter := CandidateHillRadius * 2.0;
       end;
+      PSolarSystemData(FChildren[Index].ParentData)^.HillDiameter := CandidateHillRadius * 2.0;
    end;
 end;
 

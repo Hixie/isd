@@ -31,7 +31,8 @@ const
    fcPlotControl = $08;
    fcSurface = $09;
    fcGrid = $0A;
-   fcHighestKnownFeatureCode = fcGrid;
+   fcPopulation = $0B;
+   fcHighestKnownFeatureCode = fcPopulation;
    
 implementation
 

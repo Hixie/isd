@@ -176,7 +176,7 @@ type
       property System: TSystem read FSystem;
    end;
 
-   TAssetChangeKind = (ckAdd, ckChange, ckRemove, ckEndOfList);
+   TAssetChangeKind = (ckAdd, ckChange, ckEndOfList);
    
    TJournalReader = class sealed
    private
@@ -291,6 +291,7 @@ type
       property Parent: TAssetNode read GetParent write SetParent;
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); virtual;
    public
+      destructor Destroy(); override;
       procedure UpdateJournal(Journal: TJournalWriter); virtual; abstract;
       procedure ApplyJournal(Journal: TJournalReader; System: TSystem); virtual; abstract;
       property Mass: Double read GetMass;
@@ -353,12 +354,14 @@ type
       function GetDensity(): Double; // kg/m^3
       function GetAssetName(): UTF8String;
       procedure MarkAsDirty(DirtyKinds: TDirtyKinds; ChangeKinds: TChangeKinds); virtual;
+      procedure ReportChildIsPermanentlyGone(Child: TAssetNode); virtual;
+      function GetDebugName(): UTF8String;
    public
       ParentData: Pointer;
       constructor Create(Journal: TJournalReader; ASystem: TSystem);
       constructor Create(); unimplemented;
       destructor Destroy(); override;
-      procedure HandleImminentDeath();
+      procedure ReportPermanentlyGone();
       function GetFeatureByClass(FeatureClass: FeatureClassReference): TFeatureNode; // returns nil if feature is absent
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback);
       procedure InjectBusMessage(Message: TBusMessage); // called by a node to send a message on the bus
@@ -370,7 +373,6 @@ type
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem);
       procedure UpdateJournal(Journal: TJournalWriter);
       procedure ApplyJournal(Journal: TJournalReader; System: TSystem);
-      procedure ReportChildIsPermanentlyGone(Child: TAssetNode); virtual;
       function ID(System: TSystem): PtrUInt; inline;
       property Parent: TFeatureNode read FParent;
       property Dirty: TDirtyKinds read FDirty;
@@ -381,8 +383,11 @@ type
       property Size: Double read GetSize; // meters, must be greater than zero
       property Density: Double read GetDensity; // kg/m^3; computed from mass and size, assuming spherical shape
       property AssetName: UTF8String read GetAssetName;
+      property DebugName: UTF8String read GetDebugName;
    end;
 
+   TAssetNodeArray = array of TAssetNode;
+   
    // pointers to these objects are not valid after the event has run or been canceled
    TSystemEvent = class
    private
@@ -455,6 +460,7 @@ type
       property Encyclopedia: TEncyclopediaView read FEncyclopedia; // used by TJournalReader/TJournalWriter
       property Journal: TJournalWriter read FJournalWriter;
       property Now: Int64 read GetNow;
+      property TimeFactor: Double read FTimeFactor;
    end;
    
 implementation
@@ -467,9 +473,9 @@ type
    protected
       FSystem: TSystem;
       procedure MarkAsDirty(DirtyKinds: TDirtyKinds; ChangeKinds: TChangeKinds); override;
+      procedure ReportChildIsPermanentlyGone(Child: TAssetNode); override;
    public
       constructor Create(AAssetClass: TAssetClass; ASystem: TSystem; AFeatures: TFeatureNodeArray);
-      procedure ReportChildIsPermanentlyGone(Child: TAssetNode); override;
    end;
 
 function DynastyHash32(const Key: TDynasty): DWord;
@@ -775,6 +781,11 @@ procedure TFeatureNode.HandleVisibility(const DynastyIndex: Cardinal; var Visibi
 begin
 end;
 
+destructor TFeatureNode.Destroy();
+begin
+   inherited;
+end;
+
 
 procedure TBusMessage.Unhandled();
 begin
@@ -844,7 +855,7 @@ begin
                   Result[Index] := FFeatures[Index].FeatureNodeClass.CreateFromJournal(Journal, FFeatures[Index], System);
                   if (Journal.ReadCardinal() <> jcEndOfFeature) then
                   begin
-                     raise EJournalError.Create('missing end of feature marker (0x' + HexStr(jcEndOfFeature, 8) + ')');
+                     raise EJournalError.Create('missing end of feature marker (0x' + HexStr(jcEndOfFeature, 8) + ') when reading ' + FFeatures[Index].ClassName);
                   end;
                end;
             jcEndOfFeatures:
@@ -956,24 +967,34 @@ var
    Feature: TFeatureNode;
 begin
    inherited Create();
-   FAssetClass := AAssetClass;
-   FOwner := AOwner;
-   if (Assigned(FOwner)) then
-      FOwner.IncRef();
-   Assert(Length(AFeatures) = FAssetClass.FeatureCount);
-   FFeatures := AFeatures;
-   for Feature in FFeatures do
-   begin
-      Feature.SetParent(Self);
+   try
+      FAssetClass := AAssetClass;
+      FOwner := AOwner;
+      if (Assigned(FOwner)) then
+         FOwner.IncRef();
+      Assert(Length(AFeatures) = FAssetClass.FeatureCount);
+      FFeatures := AFeatures;
+      for Feature in FFeatures do
+      begin
+         Feature.SetParent(Self);
+      end;
+      FDirty := [dkNew, dkSelf, dkDescendant];
+   except
+      ReportCurrentException();
+      raise;
    end;
-   FDirty := [dkNew, dkSelf, dkDescendant];
 end;
 
 constructor TAssetNode.Create(Journal: TJournalReader; ASystem: TSystem);
 begin
    inherited Create();
-   ApplyJournal(Journal, ASystem);
-   FDirty := [dkNew, dkSelf, dkDescendant];
+   try
+      ApplyJournal(Journal, ASystem);
+      FDirty := [dkNew, dkSelf, dkDescendant];
+   except
+      ReportCurrentException();
+      raise;
+   end;
 end;
 
 constructor TAssetNode.Create();
@@ -984,21 +1005,22 @@ end;
 
 destructor TAssetNode.Destroy();
 var
-   Index: Cardinal;
+   Feature: TFeatureNode;
 begin
-   if (Length(FFeatures) > 0) then
-      for Index := 0 to High(FFeatures) do // $R-
-         FFeatures[Index].Free();
+   for Feature in FFeatures do
+      Feature.Free();
+   SetLength(FFeatures, 0);
    if (Assigned(Parent)) then
       Parent.DropChild(Self);
    inherited;
 end;
 
-procedure TAssetNode.HandleImminentDeath();
+procedure TAssetNode.ReportPermanentlyGone();
 begin
    if (Assigned(FOwner)) then
       FOwner.DecRef();
-   // TODO: tell feature nodes that we're going away
+   // TODO: tell feature nodes that we're going away?
+   ReportChildIsPermanentlyGone(Self);
 end;
 
 function TAssetNode.GetFeatureByClass(FeatureClass: FeatureClassReference): TFeatureNode;
@@ -1246,6 +1268,11 @@ begin
    Result := PtrUInt(Self) xor PtrUInt(System);
 end;
 
+function TAssetNode.GetDebugName(): UTF8String;
+begin
+   Result := '<' + AssetClass.Name + ' @ ' + HexStr(Self) + ' "' + AssetName + '"' + '>';
+end;
+
 
 constructor TSystem.Create(AConfigurationDirectory: UTF8String; ASystemID: Cardinal; AX, AY: Double; ARootClass: TAssetClass; AServer: TBaseServer; ADynastyDatabase: TDynastyDatabase; AEncyclopedia: TEncyclopediaView; Settings: PSettings);
 begin
@@ -1331,37 +1358,65 @@ begin
    FY := JournalReader.ReadDouble();
    FTimeOrigin := TDateTime(JournalReader.ReadDouble());
    JournalReader.FAssetMap[ID] := FRoot;
-   while (not EOF(FJournalFile)) do
-   begin
-      Code := JournalReader.ReadCardinal();
-      case (Code) of
-         jcSystemUpdate: begin
-            FRandomNumberGenerator.Reset(JournalReader.ReadUInt64());
-            FTimeFactor := JournalReader.ReadDouble();
-            RescheduleNextEvent();
+   try
+      while (not EOF(FJournalFile)) do
+      begin
+         Code := JournalReader.ReadCardinal();
+         case (Code) of
+            jcSystemUpdate: begin
+               try
+                  FRandomNumberGenerator.Reset(JournalReader.ReadUInt64());
+                  FTimeFactor := JournalReader.ReadDouble();
+                  RescheduleNextEvent();
+               except
+                  ReportCurrentException();
+                  raise;
+               end;
+            end;
+            jcNewAsset: begin
+               try
+                  ID := JournalReader.ReadPtrUInt();
+                  Asset := TAssetNode.Create(JournalReader, Self);
+                  JournalReader.FAssetMap[ID] := Asset;
+               except
+                  ReportCurrentException();
+                  raise;
+               end;
+            end;
+            jcAssetChange: begin
+               try
+                  ID := JournalReader.ReadPtrUInt();
+                  Asset := JournalReader.FAssetMap[ID];
+                  Assert(Assigned(Asset));
+                  Asset.ApplyJournal(JournalReader, Self);               
+               except
+                  ReportCurrentException();
+                  raise;
+               end;
+            end;
+            jcAssetDestroyed: begin
+               try
+                  ID := JournalReader.ReadPtrUInt();
+                  Asset := JournalReader.FAssetMap[ID];
+                  Asset.Parent.DropChild(Asset);
+                  // The actual freeing will happen below when we clear out orphans.
+               except
+                  ReportCurrentException();
+                  raise;
+               end;
+            end;
+         else
+            raise EJournalError.Create('Unknown operation code in system journal (0x' + HexStr(Code, 8) + '), expected either new asset (0x' + HexStr(jcNewAsset, 8) + ') or asset change (0x' + HexStr(jcAssetChange, 8) + ') marker');
          end;
-         jcNewAsset: begin
-            ID := JournalReader.ReadPtrUInt();
-            Asset := TAssetNode.Create(JournalReader, Self);
-            JournalReader.FAssetMap[ID] := Asset;
-         end;
-         jcAssetChange: begin
-            ID := JournalReader.ReadPtrUInt();
-            Asset := JournalReader.FAssetMap[ID];
-            Assert(Assigned(Asset));
-            Asset.ApplyJournal(JournalReader, Self);               
-         end;
-         jcAssetDestroyed: begin
-            ID := JournalReader.ReadPtrUInt();
-            Asset := JournalReader.FAssetMap[ID];
-            Asset.Free(); // We might want to delay this until we've definitely finished handling the whole journal, just in case there's some code that references the object unexpectedly...
-         end;
-      else
-         raise EJournalError.Create('Unknown operation code in system journal (0x' + HexStr(Code, 8) + '), expected either new asset (0x' + HexStr(jcNewAsset, 8) + ') or asset change (0x' + HexStr(jcAssetChange, 8) + ') marker');
       end;
+      // Clear orphans.
+      for Asset in JournalReader.FAssetMap.Values do
+         if ((Asset <> FRoot) and not Assigned(Asset.Parent)) then
+            Asset.Free();
+   finally
+      JournalReader.Free();
+      Close(FJournalFile);
    end;
-   JournalReader.Free();
-   Close(FJournalFile);
    FRoot.Walk(nil, @IncRefDynasties);
    RecomputeVisibility();
 end;
@@ -1693,7 +1748,7 @@ end;
 
 function TSystem.TimeUntilNext(TimeOrigin: Int64; Period: Int64): Int64;
 begin
-   Result := Period - (TimeOrigin - Now) mod Period;
+   Result := Period - ((Now - TimeOrigin) mod Period);
 end;
 
 function TSystem.GetNow(): Int64;
@@ -1891,3 +1946,4 @@ begin
 end;
 
 end.
+      

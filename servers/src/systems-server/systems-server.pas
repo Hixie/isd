@@ -2,7 +2,13 @@
 {$INCLUDE settings.inc}
 program main;
 
-uses sysutils, systemnetwork, configuration, csvdocument, servers, materials, clock;
+uses sysutils, systemnetwork, configuration, csvdocument, servers, materials, clock, exceptions;
+
+procedure AssertHandler(const Message: ShortString; const FileName: ShortString; LineNumber: LongInt; ErrorAddr: Pointer);
+begin
+   Writeln('Assertion: ', Message);
+   Writeln(GetStackTrace());
+end;
 
 var
    Server: TServer;
@@ -15,6 +21,7 @@ var
    Material: TMaterial;
    SystemClock: TClock;
 begin
+   AssertErrorProc := @AssertHandler;
    if (ParamCount() <> 1) then
    begin
       Writeln('Usage: systems-server <id>');
