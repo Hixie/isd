@@ -5,7 +5,7 @@ unit population;
 interface
 
 uses
-   systems, systemdynasty, serverstream, materials;
+   systems, serverstream, materials;
 
 type
    TPopulationFeatureClass = class(TFeatureClass)

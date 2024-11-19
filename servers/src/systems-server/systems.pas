@@ -278,6 +278,7 @@ type
    );
    TDirtyKinds = set of TDirtyKind;
    TChangeKind = (
+      ckAffectsTime, // system's time factor changed
       ckAffectsDynastyCount, // system needs to redo a dynasty census (requires ckAffectsVisibility)
       ckAffectsVisibility, // system needs to redo a visibility scan
       ckAffectsNames // any nodes listening to names of descendants should consider itself dirty
@@ -383,6 +384,8 @@ type
       procedure MarkAsDirty(DirtyKinds: TDirtyKinds; ChangeKinds: TChangeKinds); virtual;
       procedure ReportChildIsPermanentlyGone(Child: TAssetNode); virtual;
       function GetDebugName(): UTF8String;
+   private
+      procedure UpdateID(System: TSystem; DynastyIndex: Cardinal; ID: TAssetID);
    public
       ParentData: Pointer;
       constructor Create(Journal: TJournalReader; ASystem: TSystem);
@@ -451,8 +454,9 @@ type
       procedure RecordUpdate();
       function GetDirty(): Boolean;
       procedure Clean();
-      procedure RecomputeVisibility();
       function GetIsLongVisibilityMode(): Boolean; inline;
+      procedure UpdateDynastyList(MaintainMaxIDs: Boolean);
+      procedure RecomputeVisibility();
       procedure RunEvent(var Data);
       procedure ScheduleNextEvent();
       procedure RescheduleNextEvent(); // call this when the time factor changes
@@ -538,6 +542,7 @@ end;
 
 const
    jcSystemUpdate = $00EDD1E5; // (in the space-time continuum)
+   jcIDUpdates = $0FACADE5;
    jcAssetDestroyed = $DECEA5ED;
    jcNewAsset = $000A55E7;
    jcAssetChange = $000D317A;
@@ -1346,6 +1351,19 @@ begin
    Assert(Result > 0);
 end;
 
+procedure TAssetNode.UpdateID(System: TSystem; DynastyIndex: Cardinal; ID: TAssetID);
+begin
+   Assert(ID > 0);
+   if (System.IsLongVisibilityMode) then
+   begin
+      FDynastyNotes.AsLongDynasties^[DynastyIndex].AssetID := ID;
+   end
+   else
+   begin
+      FDynastyNotes.AsShortDynasties[DynastyIndex].AssetID := ID;
+   end;
+end;
+
 function TAssetNode.GetDebugName(): UTF8String;
 begin
    Result := '<' + AssetClass.Name + ' @ ' + HexStr(Self) + ' "' + AssetName + '"' + '>';
@@ -1422,7 +1440,8 @@ var
    JournalReader: TJournalReader;
    ID: PtrUInt;
    Asset: TAssetNode;
-   Code: Cardinal;
+   Code, Index: Cardinal;
+   AssetID: TAssetID;
 begin
    Assign(FJournalFile, FileName);
    FileMode := 0;
@@ -1448,6 +1467,28 @@ begin
                   raise;
                end;
             end;
+            jcIDUpdates: begin
+               try
+                  UpdateDynastyList(False); // the False resets the FDynastyMaxAssetIDs to zero
+                  while True do
+                  begin
+                     Asset := JournalReader.ReadAssetNodeReference();
+                     if (not Assigned(Asset)) then
+                        break;
+                     if (FDynastyIndices.Count > 0) then
+                        for Index := 0 to FDynastyIndices.Count - 1 do // $R-
+                        begin
+                           AssetID := TAssetID(JournalReader.ReadCardinal());
+                           Asset.UpdateID(Self, Index, AssetID);
+                           if (FDynastyMaxAssetIDs[Index] < AssetID) then
+                              FDynastyMaxAssetIDs[Index] := AssetID;
+                        end;
+                  end;
+               except
+                  ReportCurrentException();
+                  raise;
+               end;
+            end;
             jcNewAsset: begin
                try
                   ID := JournalReader.ReadPtrUInt();
@@ -1460,8 +1501,7 @@ begin
             end;
             jcAssetChange: begin
                try
-                  ID := JournalReader.ReadPtrUInt();
-                  Asset := JournalReader.FAssetMap[ID];
+                  Asset := JournalReader.ReadAssetNodeReference();
                   Assert(Assigned(Asset));
                   Asset.ApplyJournal(JournalReader, Self);               
                except
@@ -1493,7 +1533,7 @@ begin
       Close(FJournalFile);
    end;
    FRoot.Walk(nil, @IncRefDynasties);
-   RecomputeVisibility();
+   RecomputeVisibility(); // the IDs won't have changed but the visibility might have
 end;
 
 procedure TSystem.OpenJournal(FileName: UTF8String);
@@ -1537,16 +1577,31 @@ procedure TSystem.RecordUpdate();
       if (dkSelf in Asset.Dirty) then
          Asset.UpdateJournal(Journal);
    end;
+
+   function RecordAssetIDs(Asset: TAssetNode): Boolean;
+   var
+      Dynasty: TDynasty;
+   begin
+      Journal.WriteAssetNodeReference(Asset);
+      for Dynasty in FDynastyIndices do
+         Journal.WriteCardinal(Asset.ID(Self, FDynastyIndices[Dynasty]));
+      Result := True;
+   end;
    
 begin
-   // TODO: have an FChanges for tracking when the system itself needs updating
-   if (False) then
+   if (ckAffectsTime in FChanges) then
    begin
       Journal.WriteCardinal(jcSystemUpdate);
       Journal.WriteUInt64(FRandomNumberGenerator.State);
       Journal.WriteDouble(FTimeFactor.AsDouble);
    end;
    FRoot.Walk(@SkipCleanChildren, @RecordDirtyAsset);
+   if (ckAffectsDynastyCount in FChanges) then
+   begin
+      Journal.WriteCardinal(jcIDUpdates);
+      FRoot.Walk(@RecordAssetIDs, nil);
+      Journal.WriteUInt64(0);
+   end;
 end;
 
 procedure TSystem.ReportChildIsPermanentlyGone(Child: TAssetNode);
@@ -1613,6 +1668,7 @@ procedure TSystem.Clean();
 
 begin
    FRoot.Walk(@CleanAsset, nil);
+   FChanges := [];
 end;
 
 function TSystem.GetIsLongVisibilityMode(): Boolean;
@@ -1620,7 +1676,7 @@ begin
    Result := FDynastyIndices.Count >= TDynastyNotesPackage.LongThreshold;
 end;
 
-procedure TSystem.RecomputeVisibility();
+procedure TSystem.UpdateDynastyList(MaintainMaxIDs: Boolean);
 var
    Dynasties: TDynastyHashSet;
    NodeCount: Cardinal;
@@ -1640,41 +1696,32 @@ var
    end;
 
 var
-   VisibilityHelper: TVisibilityHelper;
-
-   function UpdateVisibility(Asset: TAssetNode): Boolean;
-   begin
-      Asset.ApplyVisibility(VisibilityHelper);
-      Result := True;
-   end;
-   
-var
    Index, BufferSize: Cardinal;
    Dynasty: TDynasty;
    OldBuffer: Pointer;
    OldIDs: array of TAssetID;
 begin
-   if (ckAffectsDynastyCount in FChanges) then
+   NodeCount := 0;
+   Dynasties := TDynastyHashSet.Create();
+   FRoot.Walk(@TrackDynasties, nil);
+   if (Assigned(FDynastyNotesBuffer)) then
    begin
-      NodeCount := 0;
-      Dynasties := TDynastyHashSet.Create();
-      FRoot.Walk(@TrackDynasties, nil);
-      if (Assigned(FDynastyNotesBuffer)) then
-      begin
-         OldBuffer := FDynastyNotesBuffer;
-         FDynastyNotesBuffer := nil;
-      end
-      else
-         OldBuffer := nil;
-      if (Dynasties.Count >= TDynastyNotesPackage.LongThreshold) then
-      begin
-         Assert(SizeOf(TDynastyNotes) = 4);
-         Assert(FDynastyIndices.Count * SizeOf(TDynastyNotes) < High(Cardinal) div NodeCount);
-         BufferSize := FDynastyIndices.Count * SizeOf(TDynastyNotes) * NodeCount; // $R-
-         FDynastyNotesBuffer := GetMem(BufferSize);
-         FillByte(FDynastyNotesBuffer^, BufferSize, 0);
-         FDynastyNotesOffset := 0;
-      end;
+      OldBuffer := FDynastyNotesBuffer;
+      FDynastyNotesBuffer := nil;
+   end
+   else
+      OldBuffer := nil;
+   if (Dynasties.Count >= TDynastyNotesPackage.LongThreshold) then
+   begin
+      Assert(SizeOf(TDynastyNotes) = 4);
+      Assert(FDynastyIndices.Count * SizeOf(TDynastyNotes) < High(Cardinal) div NodeCount);
+      BufferSize := FDynastyIndices.Count * SizeOf(TDynastyNotes) * NodeCount; // $R-
+      FDynastyNotesBuffer := GetMem(BufferSize);
+      FillByte(FDynastyNotesBuffer^, BufferSize, 0);
+      FDynastyNotesOffset := 0;
+   end;
+   if (MaintainMaxIDs) then
+   begin
       OldIDs := FDynastyMaxAssetIDs;
       SetLength(FDynastyMaxAssetIDs, Dynasties.Count);
       Index := 0;
@@ -1686,26 +1733,45 @@ begin
             FDynastyMaxAssetIDs[Index] := 0;
          Inc(Index);
       end;
-      FRoot.Walk(@ResetDynasties, nil);
-      Assert(FDynastyNotesOffset = MemSize(FDynastyNotesBuffer));
-      if (Assigned(OldBuffer)) then
-      begin
-         FreeMem(OldBuffer);
-      end;
-      FDynastyIndices.Empty();
-      Index := 0;
-      for Dynasty in Dynasties do
-      begin
-         FDynastyIndices[Dynasty] := Index;
-         Inc(Index);
-      end;
-      Assert(Index = Dynasties.Count);
-      Assert(Index = FDynastyIndices.Count);
-      FreeAndNil(Dynasties);
+   end
+   else
+   begin
+      SetLength(FDynastyMaxAssetIDs, 0);
+      SetLength(FDynastyMaxAssetIDs, Dynasties.Count);
    end;
+   FRoot.Walk(@ResetDynasties, nil);
+   Assert(FDynastyNotesOffset = MemSize(FDynastyNotesBuffer));
+   if (Assigned(OldBuffer)) then
+   begin
+      FreeMem(OldBuffer);
+   end;
+   FDynastyIndices.Empty();
+   Index := 0;
+   for Dynasty in Dynasties do
+   begin
+      FDynastyIndices[Dynasty] := Index;
+      Inc(Index);
+   end;
+   Assert(Index = Dynasties.Count);
+   Assert(Index = FDynastyIndices.Count);
+   FreeAndNil(Dynasties);
+end;
+
+procedure TSystem.RecomputeVisibility();
+var
+   VisibilityHelper: TVisibilityHelper;
+
+   function UpdateVisibility(Asset: TAssetNode): Boolean;
+   begin
+      Asset.ApplyVisibility(VisibilityHelper);
+      Result := True;
+   end;
+   
+begin
+   if (ckAffectsDynastyCount in FChanges) then
+      UpdateDynastyList(True); // True means we maintain the FDynastyMaxAssetIDs
    VisibilityHelper.Init(Self);
    FRoot.Walk(@UpdateVisibility, nil);
-   FChanges := FChanges - [ckAffectsDynastyCount, ckAffectsVisibility];
 end;
 
 procedure TSystem.ReportChanges();
@@ -1724,10 +1790,10 @@ begin
    if (not Dirty) then
       exit;
    Assert((ckAffectsVisibility in FChanges) or not (ckAffectsDynastyCount in FChanges)); // ckAffectsDynastyCount requires ckAffectsVisibility
-   RecordUpdate();
    if (ckAffectsVisibility in FChanges) then
       RecomputeVisibility();
-   // TODO: tell the clients if anything stopped being visible
+   RecordUpdate();
+   // TODO: tell the clients if anything stopped being visible? or is that implied?
    // TODO: tell the clients if _everything_ stopped being visible
    for Dynasty in FDynastyIndices do
    begin
@@ -2052,5 +2118,4 @@ begin
    FSystem.ReportChildIsPermanentlyGone(Child);
 end;
 
-end.
-      
+end. 
