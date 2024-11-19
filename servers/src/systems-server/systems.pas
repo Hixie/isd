@@ -1779,10 +1779,13 @@ var
    Dynasty: TDynasty;
 
    procedure ReportChange(Connection: TBaseIncomingCapableConnection; Writer: Pointer);
+   var
+      Message: RawByteString;
    begin
       Assert(TServerStreamWriter(Writer).BufferLength = 0);
       SerializeSystem(Dynasty, TServerStreamWriter(Writer), True);
-      Connection.Write(TServerStreamWriter(Writer).Serialize(False));
+      Message := TServerStreamWriter(Writer).Serialize(False);
+      Connection.WriteFrame(Message[1], Length(Message)); // $R-
       TServerStreamWriter(Writer).Clear();
    end;      
 

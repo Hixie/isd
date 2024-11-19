@@ -161,7 +161,7 @@ begin
          TDynastyOriginalColonyShipFeatureClass.Create(),
          TPopulationFeatureClass.Create()
       ],
-      PlaceholderIcon
+      ColonyShipIcon
    );
    RegisterAssetClass(FPlaceholderShip);
 

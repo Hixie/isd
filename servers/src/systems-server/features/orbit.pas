@@ -310,6 +310,8 @@ begin
    POrbitData(Child.ParentData)^.CrashEvent := nil;
 
    Writeln('Crashing "', Child.AssetName, '" (a ', Child.AssetClass.Name, ')');
+
+   // TODO: send a notification to the clients a few seconds early, so they can trigger an animation
    
    CrashReport := New(PCrashReport);
    

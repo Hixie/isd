@@ -23,6 +23,7 @@ const
    PlanetIcon: TIcon = 'planet';
    PlanetRegionIcon: TIcon = 'region';
    PlaceholderIcon: TIcon = 'placeholder';
+   ColonyShipIcon: TIcon = 'colony-ship';
    UnknownIcon: TIcon = 'unknown';
 
 const
