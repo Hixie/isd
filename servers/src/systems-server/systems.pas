@@ -137,7 +137,7 @@ type
       property AssetID: TAssetID read GetID write SetID;
    strict private
       case Integer of
-         1: (FVisibility: TVisibility; FByte2, FByte3, FByte4: Byte);
+         1: (FByte1, FByte2, FByte3: Byte; FVisibility: TVisibility);
          2: (FEncodedID: Cardinal);
    end;
    {$IF SIZEOF(TDynastyNotes) <> 4}
@@ -1343,6 +1343,7 @@ begin
    begin
       Result := FDynastyNotes.AsShortDynasties[DynastyIndex].AssetID;
    end;
+   Assert(Result > 0);
 end;
 
 function TAssetNode.GetDebugName(): UTF8String;
@@ -1598,7 +1599,7 @@ begin
    Writer.WriteDouble(FX);
    Writer.WriteDouble(FY);
    FRoot.Walk(@Serialize, nil);
-   Writer.WritePtrUInt(0); // asset ID 0 marks end of system
+   Writer.WriteCardinal(0); // asset ID 0 marks end of system
    Result := FoundASelfDirty;
 end;
 
