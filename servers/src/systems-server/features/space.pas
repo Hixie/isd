@@ -302,7 +302,7 @@ begin
    Writer.WriteCardinal(fcSpace);
    Assert(Length(FChildren) > 0); // otherwise who are we reporting this to?
    Assert(Assigned(FChildren[0]));
-   Writer.WritePtrUInt(FChildren[0].ID(System));
+   Writer.WriteCardinal(FChildren[0].ID(System, DynastyIndex));
    Writer.WriteCardinal(Length(FChildren) - 1); // $R-
    if (Length(FChildren) > 1) then
       for Index := 1 to Length(FChildren) - 1 do // $R-
@@ -311,7 +311,7 @@ begin
          Assert(Assigned(Child));
          Writer.WriteDouble(PSolarSystemData(Child.ParentData)^.DistanceFromCenter);
          Writer.WriteDouble(PSolarSystemData(Child.ParentData)^.Theta);
-         Writer.WritePtrUInt(Child.ID(System));
+         Writer.WriteCardinal(Child.ID(System, DynastyIndex));
       end;
 end;
 

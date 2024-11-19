@@ -212,8 +212,8 @@ begin
       if (dmInternals in Visibility) then
       begin
          Writer.WriteCardinal(fcSpaceSensorStatus);
-         Writer.WritePtrUInt(FLastBottom.ID(System));
-         Writer.WritePtrUInt(FLastTop.ID(System));
+         Writer.WriteCardinal(FLastBottom.ID(System, DynastyIndex));
+         Writer.WriteCardinal(FLastTop.ID(System, DynastyIndex));
          Writer.WriteCardinal(FLastCountDetected);
       end;
    end;

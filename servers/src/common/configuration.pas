@@ -5,7 +5,7 @@ unit configuration;
 interface
 
 uses
-   csvdocument, astronomy;
+   csvdocument, astronomy, time;
 
 const
    LoginServerPort = 1024;
@@ -61,7 +61,7 @@ type
       GalaxyDiameter: Double; // meters
       StarGroupingThreshold: Double; // meters
       GravitionalInfluenceConstant: Double; // meters per kilogram (to compute default hill diameter of children of space features)
-      DefaultTimeRate: Double; // game seconds per TAI second
+      DefaultTimeRate: TTimeFactor; // game seconds per TAI second
    end;
 
 const
@@ -236,7 +236,7 @@ begin
             else
             if (Setting = DefaultTimeRateSetting) then
             begin
-               Result^.DefaultTimeRate := ReadDoubleSetting(); // $R-
+               Result^.DefaultTimeRate := TTimeFactor(ReadDoubleSetting()); // $R-
             end
             else
             begin

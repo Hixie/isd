@@ -64,7 +64,7 @@ There are currently no notifications defined.
 
 <assetupdate>       ::= <assetid> <properties> <feature>* <zero32>
 
-<assetid>           ::= non-zero 64 bit integer
+<assetid>           ::= non-zero 32 bit integer
 
 <properties>        ::= <dynasty> ; owner
                         <double>  ; mass
@@ -114,11 +114,16 @@ The `<assetid>` in the `<systemupdate>` is the system's root asset
 orbits (assets with an `fcOrbit` feature) that themselves have stars
 (assets with the `fcStar` feature) as their primary asset).
 
-Asset IDs (`<assetid>`) are connection-specific and system-specific
-and are not guaranteed to remain stable when a client reconnects or
-when an asset changes to another system (even if it's on the same
-server). Also they can be re-used within a connection, if an existing
-asset was destroyed.
+Asset IDs (`<assetid>`) are system-specific and dynasty-specific. They
+remain stable so long as the asset is visible to the dynasty. If the
+server ever sends an update that implies the asset is no longer
+visible (e.g. its old parent is included in the update and does not
+include it in its list of children, and no other asset includes it in
+its list of children), then the ID is considered "released" and may be
+reused for another asset.
+
+Currently, asset IDs are guaranteed to be in the range 1..2^24. Asset
+ID zero is reserved or indicating the absence of an asset.
 
 The `<properties>` are the owner dynasty ID (zero for unowned assets),
 the asset's mass in kg, the asset's rough diameter in meters, the
@@ -235,7 +240,7 @@ time factor, as follows:
 
    Let _t_ be the current system time minus the orbit time origin.
    Let _a_ be the orbit's semi-major axis.
-   Let _e_ be the orbit's eccentricity.
+   Let _e_ be the orbit's eccentricity (0<=e<=0.95).
    Let _G_ be the gravitational constant, defined for ISD as 6.67430e-11.
    Let _M_ be the mass of the child at the focal point.
    Let _T_ be the orbital period,
@@ -286,6 +291,10 @@ When a body's orbit is such that the distance between the primary body
 (at `c=e*a`) and the secondary body at `theta=0` (at `a`) is less than
 the sum of the bodies' radii, the bodies will collide when the time
 comes such that `theta=0`.
+
+Eccentricities greater than 0.95 are not modeled by this
+approximation, and in practice will use different features (e.g. an
+`fcSpace` feature).
 
 
 #### `fcStructure` (0x04)

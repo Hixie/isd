@@ -244,7 +244,7 @@ begin
       begin
          Writer.WriteCardinal(PGridData(Child.ParentData)^.X);
          Writer.WriteCardinal(PGridData(Child.ParentData)^.Y);
-         Writer.WritePtrUInt(Child.ID(System));
+         Writer.WriteCardinal(Child.ID(System, DynastyIndex));
       end;
    end;
 end;

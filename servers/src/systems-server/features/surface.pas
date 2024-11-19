@@ -154,7 +154,7 @@ begin
    for Child in FChildren do
    begin
       Assert(Assigned(Child));
-      Writer.WritePtrUInt(Child.ID(System));
+      Writer.WriteCardinal(Child.ID(System, DynastyIndex));
    end;
 end;
 

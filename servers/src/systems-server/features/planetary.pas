@@ -34,7 +34,6 @@ type
       function GetFeatureName(): UTF8String; override;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
-      procedure ResetVisibility(DynastyCount: Cardinal); override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem); override;
    public
       constructor Create(ADiameter: Double; AComposition: TPlanetaryComposition; AStructuralIntegrity: Cardinal; AConsiderForDynastyStart: Boolean);
@@ -104,10 +103,6 @@ end;
 function TPlanetaryBodyFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
 begin
    Result := False;
-end;
-
-procedure TPlanetaryBodyFeatureNode.ResetVisibility(DynastyCount: Cardinal);
-begin
 end;
 
 procedure TPlanetaryBodyFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem);

@@ -54,7 +54,7 @@ implementation
 
 uses
    icons, orbit, structure, stellar, name, sensors, exceptions,
-   planetary, protoplanetary, plot, surface, grid;
+   planetary, protoplanetary, plot, surface, grid, time;
 
 function RoundAboveZero(Value: Double): Cardinal;
 begin
@@ -311,6 +311,7 @@ procedure TEncyclopedia.CondenseProtoplanetaryDisks(Space: TSolarSystemFeatureNo
       Satellite: TBody;
    begin
       Node := CreateBodyNode(Body);
+      Assert(Node.Size < Orbit.PrimaryChild.Size);
       OrbitNode := WrapAssetForOrbit(Node);
       Orbit.AddOrbitingChild(
          System,
@@ -318,7 +319,7 @@ procedure TEncyclopedia.CondenseProtoplanetaryDisks(Space: TSolarSystemFeatureNo
          Body.Distance,
          Body.Eccentricity,
          System.RandomNumberGenerator.GetDouble(0.0, 2.0 * Pi), // Omega // $R-
-         0, // TimeOrigin
+         TTimeInMilliseconds(0), // TimeOrigin // TODO: make this a random point in the body's period
          Body.Clockwise
       );
       if (Assigned(Body.Moons)) then

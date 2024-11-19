@@ -50,7 +50,7 @@ type
       function GetFeatureName(): UTF8String; override;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
-      procedure ResetVisibility(DynastyCount: Cardinal); override;
+      procedure ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynastyHashSet; System: TSystem); override;
       procedure HandleVisibility(const DynastyIndex: Cardinal; var Visibility: TVisibility; const Sensors: ISensorProvider; const VisibilityHelper: TVisibilityHelper); override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem); override;
    public
@@ -209,7 +209,7 @@ begin
    Result := False;
 end;
 
-procedure TStructureFeatureNode.ResetVisibility(DynastyCount: Cardinal);
+procedure TStructureFeatureNode.ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynastyHashSet; System: TSystem);
 var
    Index: Cardinal;
 begin
@@ -218,7 +218,7 @@ begin
    begin
       for Index := 0 to FFeatureClass.BillOfMaterialsLength - 1 do // $R-
       begin
-         FDynastyKnowledge[Index].Init(DynastyCount);
+         FDynastyKnowledge[Index].Init(NewDynasties.Count);
       end;
    end;
 end;

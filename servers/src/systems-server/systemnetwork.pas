@@ -95,7 +95,7 @@ implementation
 
 uses
    sysutils, hashfunctions, isdprotocol, passwords, exceptions, space,
-   orbit, sensors, structure, errors, plot, planetary, math;
+   orbit, sensors, structure, errors, plot, planetary, math, time;
 
 constructor TSystemHashTable.Create();
 begin
@@ -158,7 +158,7 @@ end;
 
 procedure TConnection.HandleIPC(Arguments: TBinaryStreamReader);
 const
-   GameStartTime = 30000; // milliseconds
+   GameStartTime: TWallMillisecondsDuration = (Value: 30000);
 type
    TStarEntry = record
       StarID: TStarID;
@@ -167,7 +167,8 @@ type
 var
    Command: UTF8String;
    SystemID, DynastyID, DynastyServerID, StarCount, Index, StarID: Cardinal;
-   X, Y, A: Double;
+   Period: TMillisecondsDuration;
+   X, Y, A, PeriodOverTwoPi: Double;
    Dynasty: TDynasty;
    System: TSystem;
    Stars: array of TStarEntry;
@@ -234,8 +235,18 @@ begin
       end;
       Assert(Dynasty.DynastyServerID = DynastyServerID);
       Home := FindHome(System);
-      X := 2.0 * GameStartTime * System.TimeFactor / (2 * Pi); // $R-
-      A := Power(X * X * G * Home.Mass, 1/3); // $R-
+      // We pick a period that should mean that the ship is at the
+      // apoapsis and will reach periapsis in GameStartTime of
+      // real-world time, i.e. a period that is twice GameStartTime.
+      // We then figure out what the semi-major axis is for that
+      // orbit, using the normal equation for orbital period, solved
+      // for the semi-major axis.
+      Period := (GameStartTime * System.TimeFactor).Scale(3.0);
+      Writeln('The plan is to have a ship with period ', Period.ToString(), ' (which is ', (Period div System.TimeFactor).ToString(), ' real time)');
+      PeriodOverTwoPi := Period.ToSIUnits() / (2 * Pi); // $R-
+      A := Power(PeriodOverTwoPi * PeriodOverTwoPi * G * Home.Mass, 1/3); // $R-
+      Writeln('That makes the semi major axis ', A:0:0, 'm (vs target body size ', Home.Size:0:0, 'm)');
+      Writeln('Target body mass is ', Home.Mass:0:0, 'kg');
       (Home.Parent as TOrbitFeatureNode).AddOrbitingChild(
          System,
          FServer.Encyclopedia.WrapAssetForOrbit(FServer.Encyclopedia.PlaceholderShip.Spawn(
@@ -246,10 +257,10 @@ begin
             ]
          )),
          A,
-         0.9999, // Eccentricity
+         0.95, // Eccentricity
          System.RandomNumberGenerator.GetDouble(0.0, 2.0 * Pi), // Omega // $R-
-         System.Now - GameStartTime, // TimeOffset
-         System.RandomNumberGenerator.GetBoolean(0.5) // Clockwise
+         System.Now - (Period - GameStartTime * System.TimeFactor), // TimeOffset
+         System.RandomNumberGenerator.GetBoolean(0.5) // Clockwise (really doesn't matter, it's going in more or less a straight line)
       );
       Write(#$01);
    end

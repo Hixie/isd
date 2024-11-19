@@ -461,16 +461,24 @@ begin
       begin
          FIPCBuffer.Consume(1);
       end;
-      if (FMode = cmControlHandshake) then
-      begin
-         MaybeHandleIPCPassword();
-         // can change the mode to cmControlMessages
+      try
+         if (FMode = cmControlHandshake) then
+         begin
+            MaybeHandleIPCPassword();
+            // can change the mode to cmControlMessages
+         end;
+         if (FMode = cmControlMessages) then
+         begin
+            MaybeHandleIPC();
+         end;
+         Result := True;
+      except
+         on E: EBinaryStreamError do
+         begin
+            Writeln('Could not parse incoming data: ', E.Message);
+            Result := False;
+         end;
       end;
-      if (FMode = cmControlMessages) then
-      begin
-         MaybeHandleIPC();
-      end;
-      Result := True;
    end;
 end;
 
