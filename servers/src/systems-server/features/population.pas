@@ -24,15 +24,18 @@ type
       function GetSize(): Double; override;
       function GetFeatureName(): UTF8String; override;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
-      procedure InjectBusMessage(Message: TBusMessage); override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem); override;
    public
+      constructor CreatePopulated(APopulation: Int64; AMeanHappiness: Double); // only for use in plot-generated population centers
       procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader; System: TSystem); override;
    end;
 
 implementation
+
+uses
+   isdprotocol;
 
 const
    MeanIndividualMass = 70; // kg // TODO: allow species to diverge and such, with different demographics, etc
@@ -47,6 +50,13 @@ begin
    Result := TPopulationFeatureNode.Create();
 end;
 
+
+constructor TPopulationFeatureNode.CreatePopulated(APopulation: Int64; AMeanHappiness: Double);
+begin
+   inherited Create();
+   FPopulation := APopulation;
+   FMeanHappiness := AMeanHappiness;
+end;
 
 function TPopulationFeatureNode.GetMass(): Double;
 begin
@@ -65,18 +75,6 @@ end;
 
 procedure TPopulationFeatureNode.Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback);
 begin
-end;
-
-procedure TPopulationFeatureNode.InjectBusMessage(Message: TBusMessage);
-var
-   Handled: Boolean;
-begin
-   if (Message is TPopulationMessage) then
-   begin
-      Handled := Parent.HandleBusMessage(Message);
-      if (not Handled) then
-         Message.Unhandled();
-   end;
 end;
 
 function TPopulationFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;

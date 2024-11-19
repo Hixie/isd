@@ -54,7 +54,7 @@ implementation
 
 uses
    icons, orbit, structure, stellar, name, sensors, exceptions,
-   planetary, protoplanetary, plot, surface, grid, time;
+   planetary, protoplanetary, plot, surface, grid, time, population;
 
 function RoundAboveZero(Value: Double): Cardinal;
 begin
@@ -158,7 +158,8 @@ begin
       [
          TSpaceSensorFeatureClass.Create(10 { max steps to orbit }, 10 { steps up from orbit }, 10 { steps down from top}, 0.01 { min size }, [dmVisibleSpectrum, dmClassKnown, dmInternals]),
          TStructureFeatureClass.Create([TMaterialLineItem.Create('Shell', FDarkMatter, 10000 { mass in units (g): 10kg })], 1 { min functional quantity }, 100.0 { default diameter, m }),
-         TDynastyOriginalColonyShipFeatureClass.Create()
+         TDynastyOriginalColonyShipFeatureClass.Create(),
+         TPopulationFeatureClass.Create()
       ],
       PlaceholderIcon
    );
