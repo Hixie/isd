@@ -47,13 +47,19 @@ class SystemNode extends WorldNode {
   @override
   double get diameter => root.diameter;
 
+  // called when any assets in the system change
+  void markAsUpdated() {
+    notifyListeners();
+  }
+  
   @override
   Offset findLocationForChild(WorldNode child, List<VoidCallback> callbacks) {
     return Offset.zero;
   }
-
+  
   @override
   Widget buildRenderer(BuildContext context, Widget? nil) {
+    // TODO: check to see if we should highlight any assets
     return SystemWidget(
       node: this,
       diameter: diameter,

@@ -187,7 +187,6 @@ class Game {
     systemServers.clear();
   }
 
-
   // DYNASTY SERVER
 
   void _connectToDynastyServer(String url) {

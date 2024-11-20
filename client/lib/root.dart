@@ -105,7 +105,9 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
           offset -= node.parent!.findLocationForChild(node, <VoidCallback>[_handlePositionChange]);
           node = node.parent;
         } else {
-          assert(node == widget.rootNode);
+          // TODO: more gracefully handle the case of a node going away
+          // (_changeCenterNode does weird stuff in the case where the old center node is gone)
+          _changeCenterNode(widget.rootNode);
           break;
         }
       }

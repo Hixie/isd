@@ -59,9 +59,9 @@ class AssetNode extends WorldNode {
     }
   }
 
-  Dynasty get ownerDynasty => _ownerDynasty!;
+  Dynasty? get ownerDynasty => _ownerDynasty;
   Dynasty? _ownerDynasty;
-  set ownerDynasty(Dynasty value) {
+  set ownerDynasty(Dynasty? value) {
     if (_ownerDynasty != value) {
       _ownerDynasty = value;
       notifyListeners();

@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'dart:ui' show Offset;
 
 import 'abilities/planets.dart';
+import 'abilities/population.dart';
 import 'abilities/sensors.dart';
 import 'abilities/stars.dart';
 import 'abilities/structure.dart';
@@ -48,7 +49,8 @@ class SystemServer {
   static const int fcPlotControl = 0x08;
   static const int fcSurface = 0x09;
   static const int fcGrid = 0x0A;
-  static const int expectedVersion = fcGrid;
+  static const int fcPopulation = 0x0B;
+  static const int expectedVersion = fcPopulation;
 
   Future<void> _handleLogin() async {
     final StreamReader reader = await _connection.send(<String>['login', token], queue: false);
@@ -56,24 +58,14 @@ class SystemServer {
     if (version > expectedVersion) {
       onError(NetworkError('WARNING: Client out of date; server is on version $version but we only support version $expectedVersion'), Duration.zero);
     }
-    _systems.values.forEach(galaxy.removeSystem);
-    _systems.clear();
-    _assets.clear();
   }
 
   final Map<int, SystemNode> _systems = <int, SystemNode>{};
   final Map<int, AssetNode> _assets = <int, AssetNode>{};
 
   AssetNode _readAsset(BinaryStreamReader reader) {
-    final int id = reader.readInt64();
+    final int id = reader.readInt32();
     assert(id != 0);
-    return _assets.putIfAbsent(id, () => AssetNode(id: id));
-  }
-
-  AssetNode? _readAssetOrNull(BinaryStreamReader reader) {
-    final int id = reader.readInt64();
-    if (id == 0)
-      return null;
     return _assets.putIfAbsent(id, () => AssetNode(id: id));
   }
 
@@ -87,7 +79,7 @@ class SystemServer {
       final int timeOrigin = reader.readInt64();
       final double timeFactor = reader.readDouble();
       final SpaceTime spaceTime = SpaceTime(timeOrigin, timeFactor, now);
-      final int rootAssetID = reader.readInt64();
+      final int rootAssetID = reader.readInt32();
       assert(rootAssetID > 0);
       system.root = _assets.putIfAbsent(rootAssetID, () => AssetNode(id: rootAssetID, parent: system));
       final double x = reader.readDouble();
@@ -95,9 +87,10 @@ class SystemServer {
       system.offset = Offset(x - galaxy.diameter / 2.0, y - galaxy.diameter / 2.0);
       galaxy.addSystem(system);
       int assetID;
-      while ((assetID = reader.readInt64()) != 0) {
+      while ((assetID = reader.readInt32()) != 0) {
         final AssetNode asset = _assets.putIfAbsent(assetID, () => AssetNode(id: assetID));
-        asset.ownerDynasty = galaxy.getDynasty(reader.readInt32());
+        final int ownerDynastyID = reader.readInt32();
+        asset.ownerDynasty = ownerDynastyID > 0 ? galaxy.getDynasty(ownerDynastyID) : null;
         asset.mass = reader.readDouble();
         asset.size = reader.readDouble();
         asset.name = reader.readString();
@@ -217,20 +210,28 @@ class SystemServer {
               final int height = reader.readInt32();
               assert(height > 0);
               final Map<AssetNode, GridParameters> children = <AssetNode, GridParameters>{};
-              for (int y = 0; y < height; y += 1) {
-                for (int x = 0; x < width; x += 1) {
-                  final AssetNode? child = _readAssetOrNull(reader);
-                  if (child != null)
-                    children[child] = (x: x, y: y);
-                }
+              final int count = reader.readInt32();
+              for (int index = 0; index < count; index += 1) {
+                final int x = reader.readInt32();
+                final int y = reader.readInt32();
+                final AssetNode child = _readAsset(reader);
+                children[child] = (x: x, y: y);
               }
               oldFeatures.remove(asset.setContainer(GridFeature(cellSize, width, height, children)));
+            case fcPopulation:
+              final int count = reader.readInt64();
+              final double happiness = reader.readDouble();
+              oldFeatures.remove(asset.setAbility(PopulationFeature(
+                count: count,
+                happiness: happiness,
+              )));
             default:
-              throw NetworkError('Client does not support feature code 0x${featureCode.toRadixString(16).padLeft(8, "0")}');
+              throw NetworkError('Client does not support feature code 0x${featureCode.toRadixString(16).padLeft(8, "0")}, cannot parse server message.');
           }
         }
         asset.removeFeatures(oldFeatures);
       }
+      system.markAsUpdated();
     }
     if (colonyShip != null) {
       onColonyShip(colonyShip);

@@ -21,6 +21,7 @@ const Orbit nilOrbit = (a: 0.0, e: 0.0, omega: 0.0, timeOrigin: 0, clockwise: tr
 const double gravitationalConstant = 6.67430e-11; // N m^2 kg^−2
 
 Offset _computeOrbit(Orbit orbit, double primaryMass, double time) {
+  assert(orbit.e <= 0.95); // above this, this approximation falls apart
   assert(time.isFinite);
   assert(primaryMass.isFinite);
   final double period = 2 * pi * sqrt(orbit.a * orbit.a * orbit.a / (gravitationalConstant * primaryMass)); // in seconds
@@ -36,12 +37,16 @@ Offset _computeOrbit(Orbit orbit, double primaryMass, double time) {
   assert(L.isFinite);
   double theta;
   if (q == 0) {
+    assert(orbit.e == 0.0);
     // avoids discontinuity when tan(q) == 0.0, which happens when e == 0.0.
     theta = 2 * pi * tau;
   } else {
+    assert(orbit.e != 0.0);
     final double tanQ = tan(q);
     assert(tanQ.isFinite);
-    theta = 2 * pi * (tan(tau * 2 * q - q) + tanQ) / (tanQ * 2); // estimate of the angle from the focal point on the semi major axis to the orbital child
+    // estimate of the angle from the focal point on the semi major axis to the orbital child
+    // theta = 2 * pi * (tan(tau * 2 * q - q) - (tan(-q))) / (tan(q) - tan(-q));
+    theta = 2 * pi * (tan(tau * 2 * q - q) + tanQ) / (tanQ * 2);
     assert(theta.isFinite);
   }
   if (!orbit.clockwise) {
@@ -69,7 +74,7 @@ class OrbitFeature extends ContainerFeature {
     assert(originChild.parent == null);
     originChild.parent = parent;
     for (AssetNode child in children.keys) {
-      assert(child.parent == null);
+      assert(child.parent == null, '$child (${child.hashCode}) already has a parent: ${child.parent} (${child.parent.hashCode})');
       child.parent = parent;
     }
   }

@@ -3,7 +3,7 @@ import 'package:flutter/widgets.dart';
 import 'spacetime.dart';
 
 abstract class WorldNode extends ChangeNotifier {
-  WorldNode({ this.parent });
+  WorldNode({ WorldNode? parent }) : _parent = parent;
 
   // The node that considers this node a child.
   //
@@ -14,7 +14,13 @@ abstract class WorldNode extends ChangeNotifier {
   // before the node is used in the render tree. When a node's parent changes,
   // the parent is expected to trigger notifications so that _it_ can be
   // rebuilt; the child does not need to update.
-  WorldNode? parent;
+  WorldNode? _parent;
+
+  WorldNode? get parent => _parent;
+  set parent(WorldNode? value) {
+    assert(value != this);
+    _parent = value;
+  }
 
   // in meters
   double get diameter;
@@ -57,6 +63,7 @@ abstract class WorldNode extends ChangeNotifier {
     );
   }
 
+  // TODO: cache the return value of this
   @protected
   Widget buildRenderer(BuildContext context, Widget? nil);
 

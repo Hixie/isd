@@ -537,10 +537,16 @@ class RenderGalaxy extends RenderWorldNode with ContainerRenderObjectMixin<Rende
   final LayerHandle<TransformLayer> _starsLayer = LayerHandle<TransformLayer>();
 
   Rect? _preparedStarsRect;
+  double? _preparedStarsScale;
   final List<Float32List> _starPoints = <Float32List>[];
   final List<Vertices?> _starVertices = <Vertices?>[];
   final List<Color> _adjustedStarTypeColors = <Color>[];
 
+  static bool isWithin(double a, double b, double max) {
+    final double ratio = a / b;
+    return (ratio < max) || (ratio > 1 / max);
+  }
+  
   @override
   WorldGeometry computePaint(PaintingContext context, Offset offset) {
     if (galaxy != null) {
@@ -548,7 +554,12 @@ class RenderGalaxy extends RenderWorldNode with ContainerRenderObjectMixin<Rende
       final Rect wholeGalaxy = Rect.fromCircle(center: Offset.zero, radius: diameter / 2.0);
       final Rect viewport = Rect.fromCenter(center: -offset / constraints.scale, width: constraints.viewportSize.width / constraints.scale, height: constraints.viewportSize.height / constraints.scale);
       final Rect visibleGalaxy = wholeGalaxy.intersect(viewport);
-      if (_preparedStarsRect != visibleGalaxy) {
+      if (_preparedStarsRect == null ||
+          _preparedStarsScale == null ||
+          isWithin(_preparedStarsScale!, constraints.scale, 0.0001) ||
+          (!_preparedStarsRect!.contains(visibleGalaxy.topLeft)) ||
+          (!_preparedStarsRect!.contains(visibleGalaxy.bottomRight))) {
+        visibleGalaxy.inflate(1.0 * lightYearInM);
         _prepareStars(visibleGalaxy);
         _preparedStarsRect = visibleGalaxy;
       }

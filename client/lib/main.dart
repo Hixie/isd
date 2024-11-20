@@ -166,6 +166,33 @@ class _InterstellarDynastiesState extends State<InterstellarDynasties> {
         fit: StackFit.expand,
         children: <Widget>[
           WorldRoot(rootNode: widget.game.rootNode, recommendedFocus: widget.game.recommendedFocus),
+          Positioned(
+            top: 0.0,
+            left: 0.0,
+            right: 0.0,
+            child: AnimatedOpacity(
+              duration: loggedIn ? const Duration(milliseconds: 5000) : const Duration(milliseconds: 1000),
+              curve: Curves.easeIn,
+              opacity: loggedIn ? 0.0 : 1.0,
+              child: const FittedBox(
+                child: Padding(
+                  padding: EdgeInsets.all(200.0),
+                  child: Text(
+                    'Interstellar\nDynasties',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 200.0,
+                      fontWeight: FontWeight.w900,
+                      shadows: <Shadow>[Shadow(offset: Offset(0.0, 10.0), blurRadius: 100.0)],
+                      height: 0.45,
+                      color: Color(0xFFFFFFFF),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          // TODO: have a third state, "logging in", during which the UI is disabled and we show a progress indicator
           DisableSubtree(
             disabled: loggedIn,
             child: ValueListenableBuilder<bool>(
@@ -205,7 +232,7 @@ class _InterstellarDynastiesState extends State<InterstellarDynasties> {
               child: Padding(
                 padding: const EdgeInsets.all(8.0),
                 child: PopupMenuButton<void>(
-                  icon: const Icon(Icons.settings),
+                  icon: const Icon(Icons.settings), // TODO: put a dark triangle in the corner in case the game area is white and the icon becomes invisible
                   popUpAnimationStyle: AnimationStyle(
                     curve: Curves.easeInCubic,
                     reverseCurve: Curves.decelerate,
