@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:fs_shim/fs_shim.dart';
 
 import 'connection.dart';
+import 'dynasty.dart';
 import 'nodes/galaxy.dart';
 import 'stringstream.dart';
 import 'systems.dart';
@@ -67,6 +68,8 @@ class Game {
   Connection get dynastyServer => _dynastyServer!;
   Connection? _dynastyServer;
 
+  final DynastyManager dynastyManager = DynastyManager();
+  
   final Set<SystemServer> systemServers = <SystemServer>{};
 
   ValueListenable<bool> get loggedIn => _loggedIn;
@@ -177,7 +180,7 @@ class Game {
     _credentials.value = null;
     _recommendedFocus.value = null;
     _currentToken = null;
-    rootNode.setCurrentDynastyId(null);
+    dynastyManager.setCurrentDynastyId(null);
     rootNode.clearSystems();
     _dynastyServer?.dispose();
     _dynastyServer = null;
@@ -203,13 +206,14 @@ class Game {
     try {
       assert(_currentToken != null);
       final StreamReader reader = await _dynastyServer!.send(<String>['login', _currentToken!], queue: false);
-      rootNode.setCurrentDynastyId(reader.readInt());
+      dynastyManager.setCurrentDynastyId(reader.readInt());
       final int serverCount = reader.readInt();
       for (int index = 0; index < serverCount; index += 1) {
         systemServers.add(SystemServer(
           reader.readString(),
           _currentToken!,
           rootNode,
+          dynastyManager,
           onError: _handleSystemServerError,
           onColonyShip: (WorldNode? node) {
             _recommendedFocus.value = node;

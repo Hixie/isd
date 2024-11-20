@@ -6,7 +6,6 @@ import 'dart:ui';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
-import '../dynasty.dart';
 import '../layout.dart';
 import '../root.dart';
 import '../widgets.dart';
@@ -163,21 +162,6 @@ class GalaxyNode extends WorldNode {
       }
       systems.clear();
       markChildrenDirty();
-    }
-  }
-
-  final Map<int, Dynasty> _dynasties = <int, Dynasty>{};
-  Dynasty getDynasty(int id) {
-    return _dynasties.putIfAbsent(id, () => Dynasty(id));
-  }
-
-  Dynasty? get currentDynasty => _currentDynasty;
-  Dynasty? _currentDynasty;
-  void setCurrentDynastyId(int? id) {
-    if (id == null) {
-      _currentDynasty = null;
-    } else {
-      _currentDynasty = getDynasty(id);
     }
   }
 

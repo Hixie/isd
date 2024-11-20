@@ -14,6 +14,7 @@ import 'containers/grid.dart';
 import 'containers/orbits.dart';
 import 'containers/space.dart';
 import 'containers/surface.dart';
+import 'dynasty.dart';
 import 'nodes/galaxy.dart';
 import 'nodes/system.dart';
 import 'spacetime.dart';
@@ -22,7 +23,7 @@ import 'stringstream.dart';
 typedef ColonyShipHandler = void Function(AssetNode colonyShip);
 
 class SystemServer {
-  SystemServer(this.url, this.token, this.galaxy, { required this.onError, required this.onColonyShip }) {
+  SystemServer(this.url, this.token, this.galaxy, this.dynastyManager, { required this.onError, required this.onColonyShip }) {
     _connection = Connection(
       url,
       onConnected: _handleLogin,
@@ -34,6 +35,7 @@ class SystemServer {
   final String url;
   final String token;
   final GalaxyNode galaxy;
+  final DynastyManager dynastyManager;
   final ErrorCallback onError;
   final ColonyShipHandler onColonyShip;
 
@@ -90,7 +92,7 @@ class SystemServer {
       while ((assetID = reader.readInt32()) != 0) {
         final AssetNode asset = _assets.putIfAbsent(assetID, () => AssetNode(id: assetID));
         final int ownerDynastyID = reader.readInt32();
-        asset.ownerDynasty = ownerDynastyID > 0 ? galaxy.getDynasty(ownerDynastyID) : null;
+        asset.ownerDynasty = ownerDynastyID > 0 ? dynastyManager.getDynasty(ownerDynastyID) : null;
         asset.mass = reader.readDouble();
         asset.size = reader.readDouble();
         asset.name = reader.readString();

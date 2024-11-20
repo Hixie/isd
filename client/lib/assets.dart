@@ -207,5 +207,5 @@ class AssetNode extends WorldNode {
   }
 
   @override
-  String toString() => '<$className:$name>';
+  String toString() => '<$_className:$name#${hashCode.toRadixString(16)}>';
 }

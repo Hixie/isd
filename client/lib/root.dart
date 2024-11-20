@@ -5,6 +5,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
+import 'dynasty.dart';
 import 'layout.dart';
 import 'world.dart';
 
@@ -37,10 +38,16 @@ class PanCurve extends Curve {
 }
 
 class WorldRoot extends StatefulWidget {
-  const WorldRoot({super.key, required this.rootNode, required this.recommendedFocus });
+  const WorldRoot({
+    super.key,
+    required this.rootNode,
+    required this.recommendedFocus,
+    required this.dynastyManager,
+  });
 
   final WorldNode rootNode;
   final ValueListenable<WorldNode?> recommendedFocus;
+  final DynastyManager dynastyManager;
 
   @override
   _WorldRootState createState() => _WorldRootState();
@@ -93,6 +100,8 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
     }
   }
 
+  WorldNode? _badNode;
+  
   void _handlePositionChange() {
     // TODO: this might get called multiple times per frame; we should make sure we're not doing the math more than once per frame
     setState(() {
@@ -105,9 +114,20 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
           offset -= node.parent!.findLocationForChild(node, <VoidCallback>[_handlePositionChange]);
           node = node.parent;
         } else {
-          // TODO: more gracefully handle the case of a node going away
-          // (_changeCenterNode does weird stuff in the case where the old center node is gone)
-          _changeCenterNode(widget.rootNode);
+          if (node != widget.rootNode) {
+            // TODO: more gracefully handle the case of a node going away
+            if (_centerNode != _badNode) {
+              print('***** confused - center node ($_centerNode) is not in tree anymore *****');
+              print('  root node is ${widget.rootNode}; ancestors of center node are:');
+              WorldNode? node = _centerNode;
+              while (node != null) {
+                print('  - $node');
+                node = node.parent;
+              }
+              print('');
+              _badNode = _centerNode;
+            }
+          }
           break;
         }
       }
@@ -243,25 +263,43 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
           _currentTarget?.handleTapUp();
           _currentTarget = null;
         },
-        child: ZoomProvider(
-          state: this,
-          child: ListenableBuilder(
-            listenable: Listenable.merge(<Listenable?>[widget.rootNode, _controller]),
-            builder: (BuildContext context, Widget? child) {
-              return BoxToWorldAdapter(
-                key: _worldRootKey,
-                diameter: widget.rootNode.diameter,
-                zoom: max(0.0, _zoom.value),
-                pan: _pan.value,
-                precomputedPositions: _precomputedPositions,
-                child: widget.rootNode.build(context),
-              );
-            },
+        child: DynastyProvider(
+          dynastyManager: widget.dynastyManager,
+          child: ZoomProvider(
+            state: this,
+            child: ListenableBuilder(
+              listenable: Listenable.merge(<Listenable?>[widget.rootNode, _controller]),
+              builder: (BuildContext context, Widget? child) {
+                return BoxToWorldAdapter(
+                  key: _worldRootKey,
+                  diameter: widget.rootNode.diameter,
+                  zoom: max(0.0, _zoom.value),
+                  pan: _pan.value,
+                  precomputedPositions: _precomputedPositions,
+                  child: widget.rootNode.build(context),
+                );
+              },
+            ),
           ),
         ),
       ),
     );
   }
+}
+
+class DynastyProvider extends InheritedWidget {
+  const DynastyProvider({ super.key, required this.dynastyManager, required super.child });
+
+  final DynastyManager dynastyManager;
+
+  static Dynasty? currentDynastyOf(BuildContext context) {
+    final DynastyProvider? provider = context.dependOnInheritedWidgetOfExactType<DynastyProvider>();
+    assert(provider != null, 'No DynastyProvider found in context');
+    return provider!.dynastyManager.currentDynasty;
+  }
+
+  @override
+  bool updateShouldNotify(DynastyProvider oldWidget) => dynastyManager != oldWidget.dynastyManager;
 }
 
 class ZoomProvider extends InheritedWidget {
