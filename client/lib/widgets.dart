@@ -4,6 +4,10 @@ import 'package:flutter/widgets.dart';
 import 'layout.dart';
 import 'world.dart';
 
+final CurveTween hudTween = CurveTween(curve: Curves.ease);
+const Duration hudAnimationDuration = Duration(milliseconds: 250);
+const double hudAnimationPauseLength = 75.0; // TODO: convert this to a duration
+
 class WorldLayoutBuilder extends ConstrainedLayoutBuilder<WorldConstraints> {
   const WorldLayoutBuilder({ super.key, required super.builder });
 
@@ -68,4 +72,23 @@ class RenderWorldNull extends RenderWorldNode {
 
   @override
   WorldTapTarget? routeTap(Offset offset) => null;
+}
+
+
+typedef TickerProviderWidgetBuilder = Widget Function(BuildContext context, TickerProvider vsync);
+
+class TickerProviderBuilder extends StatefulWidget {
+  const TickerProviderBuilder({ super.key, required this.builder });
+
+  final TickerProviderWidgetBuilder builder;
+
+  @override
+  State<TickerProviderBuilder> createState() => _TickerProviderBuilderState();
+}
+
+class _TickerProviderBuilderState extends State<TickerProviderBuilder> with TickerProviderStateMixin {
+  @override
+  Widget build(BuildContext context) {
+    return widget.builder(context, this);
+  }
 }

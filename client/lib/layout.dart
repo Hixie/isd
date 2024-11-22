@@ -207,7 +207,7 @@ abstract class RenderWorldNode extends RenderWorld {
   set node (WorldNode value) {
     if (value != _node) {
       _node = value;
-      markNeedsLayout();
+      markNeedsPaint();
     }
   }
 }

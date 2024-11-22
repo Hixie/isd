@@ -86,7 +86,7 @@ class RenderStar extends RenderWorldNode {
     if (value != _starId) {
       _starId = value;
       _starShader = null;
-      markNeedsLayout();
+      markNeedsPaint();
     }
   }
 
@@ -95,7 +95,7 @@ class RenderStar extends RenderWorldNode {
   set diameter (double value) {
     if (value != _diameter) {
       _diameter = value;
-      markNeedsLayout();
+      markNeedsPaint();
     }
   }
 
@@ -104,7 +104,7 @@ class RenderStar extends RenderWorldNode {
   set maxDiameter (double value) {
     if (value != _maxDiameter) {
       _maxDiameter = value;
-      markNeedsLayout();
+      markNeedsPaint();
     }
   }
 

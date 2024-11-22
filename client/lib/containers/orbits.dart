@@ -91,6 +91,14 @@ class OrbitFeature extends ContainerFeature {
   }
 
   @override
+  void walk(WalkCallback callback) {
+    originChild.walk(callback);
+    for (AssetNode child in children.keys) {
+      child.walk(callback);
+    }
+  }
+
+  @override
   Widget buildRenderer(BuildContext context, Widget? child) {
     final List<Widget> childList = <Widget>[
       OrbitChildData(
@@ -182,7 +190,7 @@ class OrbitChildData extends ParentDataWidget<OrbitParentData> {
     if (parentData.orbit != orbit || parentData.mass != mass) {
       parentData.orbit = orbit;
       parentData.mass = mass;
-      renderObject.parent!.markNeedsLayout();
+      renderObject.parent!.markNeedsPaint();
     }
   }
 
@@ -208,7 +216,7 @@ class RenderOrbit extends RenderWorldNode with ContainerRenderObjectMixin<Render
   set diameter (double value) {
     if (value != _diameter) {
       _diameter = value;
-      markNeedsLayout();
+      markNeedsPaint();
     }
   }
 

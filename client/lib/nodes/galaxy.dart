@@ -287,8 +287,8 @@ class _GalaxyChildDataState extends State<GalaxyChildData> with SingleTickerProv
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 250));
-    _animation = _controller.drive(CurveTween(curve: Curves.ease));
+    _controller = AnimationController(vsync: this, duration: hudAnimationDuration);
+    _animation = _controller.drive(hudTween);
   }
 
   @override
@@ -313,7 +313,7 @@ class _GalaxyChildDataState extends State<GalaxyChildData> with SingleTickerProv
   void handleTapUp() {
     assert(_cooldown == null);
     if (_controller.status == AnimationStatus.forward) {
-      _cooldown = Timer(Duration(milliseconds: (75.0 + _controller.duration!.inMilliseconds * (1.0 - _controller.value)).round()), () {
+      _cooldown = Timer(Duration(milliseconds: (hudAnimationPauseLength + _controller.duration!.inMilliseconds * (1.0 - _controller.value)).round()), () {
         _controller.reverse();
       });
     } else {
@@ -381,6 +381,8 @@ class GalaxyParentData extends ParentData with ContainerParentDataMixin<RenderWo
   Rect? _labelRect;
   Offset? _reticuleCenter;
   double? _reticuleRadius;
+
+  Offset? _offset; // in pixels
 }
 
 class StarType {
@@ -412,7 +414,7 @@ class RenderGalaxy extends RenderWorldNode with ContainerRenderObjectMixin<Rende
     if (value != _galaxy) {
       _galaxy = value;
       _preparedStarsRect = null;
-      markNeedsLayout();
+      markNeedsPaint();
     }
   }
 
@@ -422,7 +424,7 @@ class RenderGalaxy extends RenderWorldNode with ContainerRenderObjectMixin<Rende
   set diameter (double value) {
     if (value != _diameter) {
       _diameter = value;
-      markNeedsPaint();
+      markNeedsLayout();
     }
   }
 
@@ -674,7 +676,8 @@ class RenderGalaxy extends RenderWorldNode with ContainerRenderObjectMixin<Rende
     RenderWorld? child = firstChild;
     while (child != null) {
       final GalaxyParentData childParentData = child.parentData! as GalaxyParentData;
-      context.paintChild(child, constraints.paintPositionFor(child.node, offset, <VoidCallback>[markNeedsPaint]));
+      childParentData._offset = constraints.paintPositionFor(child.node, offset, <VoidCallback>[markNeedsPaint]);
+      context.paintChild(child, childParentData._offset!);
       child = childParentData.nextSibling;
     }
   }
@@ -837,7 +840,7 @@ class RenderGalaxy extends RenderWorldNode with ContainerRenderObjectMixin<Rende
       child = firstChild;
       while (child != null) {
         final GalaxyParentData childParentData = child.parentData! as GalaxyParentData;
-        final Offset center = offset + childParentData.position * constraints.scale;
+        final Offset center = childParentData._offset!; // offset + childParentData.position * constraints.scale;
         childParentData._reticuleCenter = center;
         childParentData._reticuleRadius = hudAvoidanceRadius;
         context.canvas.drawCircle(center, hudOuterRadius, hudReticulePaint);
@@ -965,6 +968,14 @@ class RenderGalaxy extends RenderWorldNode with ContainerRenderObjectMixin<Rende
         }
         child = childParentData.nextSibling;
       }
+    }
+    RenderWorld? child = lastChild;
+    while (child != null) {
+      final GalaxyParentData childParentData = child.parentData! as GalaxyParentData;
+      final WorldTapTarget? result = child.routeTap(offset - childParentData._offset!);
+      if (result != null)
+        return result;
+      child = childParentData.previousSibling;
     }
     return null;
   }

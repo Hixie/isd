@@ -52,7 +52,7 @@ class RenderWorldPlaceholder extends RenderWorldNode {
   set diameter (double value) {
     if (value != _diameter) {
       _diameter = value;
-      markNeedsLayout();
+      markNeedsPaint();
     }
   }
 
@@ -63,7 +63,7 @@ class RenderWorldPlaceholder extends RenderWorldNode {
   set maxDiameter (double value) {
     if (value != _maxDiameter) {
       _maxDiameter = value;
-      markNeedsLayout();
+      markNeedsPaint();
     }
   }
 

@@ -185,6 +185,17 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
     _controller.forward(from: 0.0);
   }
 
+  void _centerNear(WorldNode node, Offset offset, double diameter) {
+    print('centering on $node at offset $offset with diameter $diameter');
+    _changeCenterNode(node);
+    final double zoom = log(widget.rootNode.diameter / diameter);
+    _zoomTween.begin = _zoom.value;
+    _zoomTween.end = zoom;
+    _panTween.begin = _pan.value;
+    _panTween.end = offset;
+    _controller.forward(from: 0.0);
+  }
+  
   double? _lastScale; // tracks intra-frame scales in case scale events come in faster than the refresh rate (easy to do with a mousewheel)
 
   static double _clampPan(double x, double viewport, double diameter, double rootCenterOffset) {
@@ -274,7 +285,6 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
                   key: _worldRootKey,
                   diameter: widget.rootNode.diameter,
                   zoom: max(0.0, _zoom.value),
-                  pan: _pan.value,
                   precomputedPositions: _precomputedPositions,
                   child: widget.rootNode.build(context),
                 );
@@ -285,21 +295,6 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
       ),
     );
   }
-}
-
-class DynastyProvider extends InheritedWidget {
-  const DynastyProvider({ super.key, required this.dynastyManager, required super.child });
-
-  final DynastyManager dynastyManager;
-
-  static Dynasty? currentDynastyOf(BuildContext context) {
-    final DynastyProvider? provider = context.dependOnInheritedWidgetOfExactType<DynastyProvider>();
-    assert(provider != null, 'No DynastyProvider found in context');
-    return provider!.dynastyManager.currentDynasty;
-  }
-
-  @override
-  bool updateShouldNotify(DynastyProvider oldWidget) => dynastyManager != oldWidget.dynastyManager;
 }
 
 class ZoomProvider extends InheritedWidget {
@@ -313,6 +308,12 @@ class ZoomProvider extends InheritedWidget {
     provider!.state._centerOn(target);
   }
 
+  static void centerNear(BuildContext context, WorldNode target, Offset offset, double diameter) {
+    final ZoomProvider? provider = context.dependOnInheritedWidgetOfExactType<ZoomProvider>();
+    assert(provider != null, 'No ZoomProvider found in context');
+    provider!.state._centerNear(target, offset, diameter);
+  }
+
   @override
   bool updateShouldNotify(ZoomProvider oldWidget) => state != oldWidget.state;
 }
@@ -322,14 +323,12 @@ class BoxToWorldAdapter extends SingleChildRenderObjectWidget {
     super.key,
     required this.diameter,
     required this.zoom,
-    required this.pan,
     required this.precomputedPositions,
     super.child,
   });
 
   final double diameter;
   final double zoom;
-  final Offset pan;
   final Map<WorldNode, Offset> precomputedPositions;
 
   @override
@@ -337,7 +336,6 @@ class BoxToWorldAdapter extends SingleChildRenderObjectWidget {
     return RenderBoxToRenderWorldAdapter(
       diameter: diameter,
       zoom: zoom,
-      pan: pan,
       precomputedPositions: precomputedPositions,
     );
   }
@@ -347,7 +345,6 @@ class BoxToWorldAdapter extends SingleChildRenderObjectWidget {
     renderObject
       ..diameter = diameter
       ..zoom = zoom
-      ..pan = pan
       ..precomputedPositions = precomputedPositions;
   }
 }
@@ -357,11 +354,9 @@ class RenderBoxToRenderWorldAdapter extends RenderBox with RenderObjectWithChild
     RenderWorld? child,
     required double diameter,
     required double zoom,
-    required Offset pan,
     required Map<WorldNode, Offset> precomputedPositions,
   }) : _diameter = diameter,
        _zoom = zoom,
-       _pan = pan,
        _precomputedPositions = precomputedPositions {
     this.child = child;
   }
@@ -381,16 +376,6 @@ class RenderBoxToRenderWorldAdapter extends RenderBox with RenderObjectWithChild
   set zoom (double value) {
     if (value != _zoom) {
       _zoom = value;
-      markNeedsLayout();
-    }
-  }
-
-  // in meters
-  Offset get pan => _pan;
-  Offset _pan;
-  set pan (Offset value) {
-    if (value != _pan) {
-      _pan = value;
       markNeedsLayout();
     }
   }

@@ -1,3 +1,5 @@
+import 'package:flutter/widgets.dart';
+
 class Dynasty {
   const Dynasty(this.id);
   final int id;
@@ -21,4 +23,19 @@ class DynastyManager {
       _currentDynasty = getDynasty(id);
     }
   }
+}
+
+class DynastyProvider extends InheritedWidget {
+  const DynastyProvider({ super.key, required this.dynastyManager, required super.child });
+
+  final DynastyManager dynastyManager;
+
+  static Dynasty? currentDynastyOf(BuildContext context) {
+    final DynastyProvider? provider = context.dependOnInheritedWidgetOfExactType<DynastyProvider>();
+    assert(provider != null, 'No DynastyProvider found in context');
+    return provider!.dynastyManager.currentDynasty;
+  }
+
+  @override
+  bool updateShouldNotify(DynastyProvider oldWidget) => dynastyManager != oldWidget.dynastyManager;
 }

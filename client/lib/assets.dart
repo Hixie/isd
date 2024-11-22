@@ -25,6 +25,8 @@ abstract class Feature {
   }
 }
 
+typedef WalkCallback = bool Function(AssetNode node);
+
 abstract class AbilityFeature extends Feature {
   AbilityFeature();
 
@@ -42,6 +44,8 @@ abstract class ContainerFeature extends Feature {
 
   Offset findLocationForChild(AssetNode child, List<VoidCallback> callbacks);
 
+  void walk(WalkCallback callback);
+  
   Widget buildRenderer(BuildContext context, Widget? child);
 }
 
@@ -175,6 +179,14 @@ class AssetNode extends WorldNode {
       return _containers.values.single.findLocationForChild(child as AssetNode, callbacks);
     }
     throw UnimplementedError();
+  }
+
+  void walk(WalkCallback callback) {
+    if (callback(this)) {
+      for (ContainerFeature container in _containers.values) {
+        container.walk(callback);
+      }
+    }
   }
 
   @override
