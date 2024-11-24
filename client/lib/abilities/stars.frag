@@ -1,5 +1,5 @@
 #include <flutter/runtime_effect.glsl>
-#include <utils.glsl>
+#include <../utils.glsl>
 
 uniform float time;
 uniform vec2 center;

@@ -20,3 +20,4 @@ flutter:
   uses-material-design: true
   shaders:
     - lib/abilities/stars.frag
+    - lib/containers/grid.frag

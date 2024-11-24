@@ -219,7 +219,7 @@ class SystemServer {
                 final AssetNode child = _readAsset(reader);
                 children[child] = (x: x, y: y);
               }
-              oldFeatures.remove(asset.setContainer(GridFeature(cellSize, width, height, children)));
+              oldFeatures.remove(asset.setContainer(GridFeature(spaceTime, cellSize, width, height, children)));
             case fcPopulation:
               final int count = reader.readInt64();
               final double happiness = reader.readDouble();

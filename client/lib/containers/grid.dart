@@ -1,17 +1,21 @@
 import 'dart:math';
+import 'dart:ui';
 
 import 'package:flutter/rendering.dart' hide Gradient;
 import 'package:flutter/widgets.dart' hide Gradient;
 
 import '../assets.dart';
 import '../layout.dart';
+import '../shaders.dart';
+import '../spacetime.dart';
 import '../world.dart';
 
 typedef GridParameters = ({int x, int y}); // could also just store this as an index, and use half the memory
 
 class GridFeature extends ContainerFeature {
-  GridFeature(this.cellSize, this.width, this.height, this.children);
+  GridFeature(this.spaceTime, this.cellSize, this.width, this.height, this.children);
 
+  final SpaceTime spaceTime;
   final double cellSize;
   final int width;
   final int height;
@@ -58,6 +62,7 @@ class GridFeature extends ContainerFeature {
   @override
   Widget buildRenderer(BuildContext context, Widget? child) {
     return GridWidget(
+      spaceTime: spaceTime,
       node: parent,
       cellSize: cellSize,
       width: width,
@@ -70,6 +75,7 @@ class GridFeature extends ContainerFeature {
 class GridWidget extends MultiChildRenderObjectWidget {
   const GridWidget({
     super.key,
+    required this.spaceTime,
     required this.node,
     required this.cellSize,
     required this.width,
@@ -77,6 +83,7 @@ class GridWidget extends MultiChildRenderObjectWidget {
     super.children,
   });
 
+  final SpaceTime spaceTime;
   final WorldNode node;
   final double cellSize;
   final int width;
@@ -85,6 +92,8 @@ class GridWidget extends MultiChildRenderObjectWidget {
   @override
   RenderGrid createRenderObject(BuildContext context) {
     return RenderGrid(
+      spaceTime: spaceTime,
+      shaders: ShaderProvider.of(context),
       node: node,
       cellSize: cellSize,
       width: width,
@@ -95,6 +104,8 @@ class GridWidget extends MultiChildRenderObjectWidget {
   @override
   void updateRenderObject(BuildContext context, RenderGrid renderObject) {
     renderObject
+      ..spaceTime = spaceTime
+      ..shaders = ShaderProvider.of(context)
       ..node = node
       ..cellSize = cellSize
       ..width = width
@@ -106,19 +117,43 @@ class GridParentData extends ParentData with ContainerParentDataMixin<RenderWorl
 
 class RenderGrid extends RenderWorldNode with ContainerRenderObjectMixin<RenderWorld, GridParentData> {
   RenderGrid({
+    required SpaceTime spaceTime,
+    required ShaderLibrary shaders,
     required super.node,
     required double cellSize,
     required int width,
     required int height,
-  }) : _cellSize = cellSize,
+  }) : _spaceTime = spaceTime,
+       _shaders = shaders,
+       _cellSize = cellSize,
        _width = width,
        _height = height;
+
+  SpaceTime get spaceTime => _spaceTime;
+  SpaceTime _spaceTime;
+  set spaceTime (SpaceTime value) {
+    if (value != _spaceTime) {
+      _spaceTime = value;
+      markNeedsPaint();
+    }
+  }
+
+  ShaderLibrary get shaders => _shaders;
+  ShaderLibrary _shaders;
+  set shaders (ShaderLibrary value) {
+    if (value != _shaders) {
+      _shaders = value;
+      _gridShader = null;
+      markNeedsPaint();
+    }
+  }
 
   double get cellSize => _cellSize;
   double _cellSize;
   set cellSize (double value) {
     if (value != _cellSize) {
       _cellSize = value;
+      _gridShader = null;
       markNeedsPaint();
     }
   }
@@ -128,6 +163,7 @@ class RenderGrid extends RenderWorldNode with ContainerRenderObjectMixin<RenderW
   set width (int value) {
     if (value != _width) {
       _width = value;
+      _gridShader = null;
       markNeedsPaint();
     }
   }
@@ -137,6 +173,7 @@ class RenderGrid extends RenderWorldNode with ContainerRenderObjectMixin<RenderW
   set height (int value) {
     if (value != _height) {
       _height = value;
+      _gridShader = null;
       markNeedsPaint();
     }
   }
@@ -160,8 +197,20 @@ class RenderGrid extends RenderWorldNode with ContainerRenderObjectMixin<RenderW
     }
   }
 
+  FragmentShader? _gridShader;
+  final Paint _gridPaint = Paint();
+  
   @override
   WorldGeometry computePaint(PaintingContext context, Offset offset) {
+    _gridShader ??= shaders.grid(width: width, height: height);
+    final double time = spaceTime.computeTime(<VoidCallback>[markNeedsPaint]);
+    _gridShader!.setFloat(uT, time);
+    _gridShader!.setFloat(uX, offset.dx);
+    _gridShader!.setFloat(uY, offset.dy);
+    _gridShader!.setFloat(uGridWidth, diameter * constraints.scale);
+    _gridShader!.setFloat(uGridHeight, diameter * constraints.scale);
+    _gridPaint.shader = _gridShader;
+    context.canvas.drawRect(Rect.fromCircle(center: offset, radius: diameter * constraints.scale / 2.0), _gridPaint);
     RenderWorld? child = firstChild;
     while (child != null) {
       final GridParentData childParentData = child.parentData! as GridParentData;
