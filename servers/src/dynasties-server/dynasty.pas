@@ -187,6 +187,7 @@ begin
       try
          Writer.WriteString(iuSystemServers);
          EncodeServers(ServerDatabase, Writer);
+         Writer.Close();
          SendToAllConnections(Writer.Serialize());
       finally
          Writer.Free();

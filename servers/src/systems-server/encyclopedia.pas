@@ -53,7 +53,7 @@ const
 implementation
 
 uses
-   icons, orbit, structure, stellar, name, sensors, exceptions,
+   icons, orbit, structure, stellar, name, sensors, exceptions, sysutils,
    planetary, protoplanetary, plot, surface, grid, time, population;
 
 function RoundAboveZero(Value: Double): Cardinal;
@@ -256,7 +256,7 @@ procedure TEncyclopedia.CondenseProtoplanetaryDisks(Space: TSolarSystemFeatureNo
       // TODO: this should do things based on the body composition, create geology, etc
       SetLength(Result, 1); // {BOGUS Warning: Function result variable of a managed type does not seem to be initialized}
       Result[0] := FRegion.Spawn(nil, [
-         TGridFeatureNode.Create(BodyRadius / 200.0, 100)
+         TGridFeatureNode.Create(100.0, 5)
       ]);
    end;
 
@@ -264,19 +264,23 @@ procedure TEncyclopedia.CondenseProtoplanetaryDisks(Space: TSolarSystemFeatureNo
    function CreateBodyNode(const Body: TBody): TAssetNode;
    var
       Index, Count: Cardinal;
-      TotalVolume: Double;
+      TotalVolume, TotalRelativeVolume: Double;
       BodyComposition: TBodyComposition;
       AssetComposition: TPlanetaryComposition;
    begin
+      TotalRelativeVolume := 0.0;
       Count := 0;
       for BodyComposition in Body.Composition do
       begin
          if (BodyComposition.RelativeVolume > 0) then
+         begin
+            TotalRelativeVolume := TotalRelativeVolume + BodyComposition.RelativeVolume;
             Inc(Count);
+         end;
       end;
       Assert(Count > 0);
       SetLength(AssetComposition, Count);
-      TotalVolume := (4.0 / 3.0) * Pi * Body.Radius * Body.Radius * Body.Radius; // $R-
+      TotalVolume := Body.Radius * Body.Radius * Body.Radius * Pi * 4.0 / 3.0; // $R-
       Index := 0;
       for BodyComposition in Body.Composition do
       begin
@@ -284,7 +288,7 @@ procedure TEncyclopedia.CondenseProtoplanetaryDisks(Space: TSolarSystemFeatureNo
          begin
             AssetComposition[Index].Material := BodyComposition.Material;
             Assert(BodyComposition.Material.MassPerUnit > 0);
-            AssetComposition[Index].Mass := BodyComposition.RelativeVolume * TotalVolume * BodyComposition.Material.Density;
+            AssetComposition[Index].Mass := (BodyComposition.RelativeVolume / TotalRelativeVolume) * TotalVolume * BodyComposition.Material.Density;
             Assert(AssetComposition[Index].Mass > 0);
             Inc(Index);
          end;
@@ -312,6 +316,7 @@ procedure TEncyclopedia.CondenseProtoplanetaryDisks(Space: TSolarSystemFeatureNo
       Satellite: TBody;
    begin
       Node := CreateBodyNode(Body);
+      Assert(Node.Mass = WeighBody(Body), 'Node.Mass = ' + FloatToStr(Node.Mass) + '; WeighBody = ' + FloatToStr(WeighBody(Body)));
       Assert(Node.Size < Orbit.PrimaryChild.Size);
       OrbitNode := WrapAssetForOrbit(Node);
       Orbit.AddOrbitingChild(
@@ -326,7 +331,9 @@ procedure TEncyclopedia.CondenseProtoplanetaryDisks(Space: TSolarSystemFeatureNo
       if (Assigned(Body.Moons)) then
       begin
          for Satellite in Body.Moons^ do
+         begin
             AddBody(Satellite, OrbitNode.GetFeatureByClass(TOrbitFeatureClass) as TOrbitFeatureNode);
+         end;
          Dispose(Body.Moons);
       end;
    end;

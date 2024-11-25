@@ -232,7 +232,7 @@ begin
    Assert(Assigned(Child.ParentData));
    Assert(Assigned(FPrimaryChild));
    Assert(ChildPrimaryMass <= Child.Mass); // Child.Mass includes the mass of child's satellites.
-   Assert(ChildPrimaryMass <= FPrimaryChild.Mass, 'Child=' + Child.DebugName + ' Child.Mass=' + FloatToStr(Child.Mass) + ' ChildPrimaryMass=' + FloatToStr(ChildPrimaryMass) + ' FPrimaryChild.Mass=' + FloatToStr(FPrimaryChild.Mass)); // otherwise it wouldn't be orbiting us, we'd be orbiting it
+   Assert(ChildPrimaryMass < FPrimaryChild.Mass, 'Child=' + Child.DebugName + ' Child.Mass=' + FloatToStr(Child.Mass) + ' ChildPrimaryMass=' + FloatToStr(ChildPrimaryMass) + ' FPrimaryChild.Mass=' + FloatToStr(FPrimaryChild.Mass)); // otherwise it wouldn't be orbiting us, we'd be orbiting it
    Result := POrbitData(Child.ParentData)^.GetHillDiameter(FPrimaryChild.Mass, ChildPrimaryMass);
 end;
 

@@ -37,6 +37,10 @@ type
 // TODO: have different logic for home systems, support systems, and other random systems
 function CondenseProtoplanetaryDisk(StarMass, StarRadius, HillRadius: Double; Materials: TMaterialHashSet; System: TSystem): TBodyArray;
 
+{$IFDEF DEBUG}
+function WeighBody(const Body: TBody): Double;
+{$ENDIF}
+
 implementation
 
 uses
@@ -118,26 +122,26 @@ begin
    Result := A.Distance > B.Distance;
 end;
 
-function WeighBody(const Planet: TBody): Double;
+function WeighBody(const Body: TBody): Double;
 var
    Index: Cardinal;
-   PlanetRadius, PlanetVolume, MaterialMass: Double;
+   BodyRadius, BodyVolume, MaterialMass: Double;
    TotalRelativeVolume: Double;
 begin
    Result := 0.0;
-   Assert(Length(Planet.Composition) > 0);
-   PlanetRadius := Planet.Radius;
-   PlanetVolume := PlanetRadius * PlanetRadius * PlanetRadius * Pi * 4.0 / 3.0; // $R- // If it overflows, other things have gone very wrong already.
+   Assert(Length(Body.Composition) > 0);
+   BodyRadius := Body.Radius;
+   BodyVolume := BodyRadius * BodyRadius * BodyRadius * Pi * 4.0 / 3.0; // $R- // If it overflows, other things have gone very wrong already.
    TotalRelativeVolume := 0.0;
-   for Index := 0 to Length(Planet.Composition) - 1 do // $R-
+   for Index := 0 to Length(Body.Composition) - 1 do // $R-
    begin
-      TotalRelativeVolume := TotalRelativeVolume + Planet.Composition[Index].RelativeVolume;
+      TotalRelativeVolume := TotalRelativeVolume + Body.Composition[Index].RelativeVolume;
    end;
-   for Index := 0 to Length(Planet.Composition) - 1 do // $R-
+   for Index := 0 to Length(Body.Composition) - 1 do // $R-
    begin
-      if (Planet.Composition[Index].RelativeVolume > 0.0) then
+      if (Body.Composition[Index].RelativeVolume > 0.0) then
       begin
-         MaterialMass := (Planet.Composition[Index].RelativeVolume / TotalRelativeVolume) * PlanetVolume * Planet.Composition[Index].Material.Density;
+         MaterialMass := (Body.Composition[Index].RelativeVolume / TotalRelativeVolume) * BodyVolume * Body.Composition[Index].Material.Density;
          Result := Result + MaterialMass;
       end;
    end;

@@ -192,7 +192,7 @@ begin
    for Connection in FConnections do
    begin
       try
-         Connection.WriteFrame(Message, Length(Message)); // $R-
+         Connection.WriteFrame(Message); // $R-
       except
          ReportCurrentException();
       end;
