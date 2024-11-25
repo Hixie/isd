@@ -339,7 +339,7 @@ class _GalaxyChildDataState extends State<GalaxyChildData> with SingleTickerProv
 
 class _GalaxyChildData extends ParentDataWidget<GalaxyParentData> {
   const _GalaxyChildData({
-    super.key, // ignore: unused_element
+    super.key, // ignore: unused_element_parameter
     required this.position,
     required this.label,
     required this.active,

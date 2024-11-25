@@ -70,7 +70,7 @@ class Game {
 
   final DynastyManager dynastyManager = DynastyManager();
   
-  final Set<SystemServer> systemServers = <SystemServer>{};
+  final Map<String, SystemServer> systemServers = <String, SystemServer>{};
 
   ValueListenable<bool> get loggedIn => _loggedIn;
   final ValueNotifier<bool> _loggedIn = ValueNotifier<bool>(false);
@@ -184,7 +184,7 @@ class Game {
     rootNode.clearSystems();
     _dynastyServer?.dispose();
     _dynastyServer = null;
-    for (SystemServer server in systemServers) {
+    for (SystemServer server in systemServers.values) {
       server.dispose();
     }
     systemServers.clear();
@@ -207,26 +207,42 @@ class Game {
       assert(_currentToken != null);
       final StreamReader reader = await _dynastyServer!.send(<String>['login', _currentToken!], queue: false);
       dynastyManager.setCurrentDynastyId(reader.readInt());
-      final int serverCount = reader.readInt();
-      for (int index = 0; index < serverCount; index += 1) {
-        systemServers.add(SystemServer(
-          reader.readString(),
-          _currentToken!,
-          rootNode,
-          dynastyManager,
-          onError: _handleSystemServerError,
-          onColonyShip: (WorldNode? node) {
-            _recommendedFocus.value = node;
-          },
-        ));
-      }
+      _updateSystemServers(reader);
     } on Exception catch (e) {
       _handleError(e);
     }
   }
 
   void _handleDynastyServerMessage(StreamReader reader) {
-    debugPrint('dynasty server: received unexpected message: $reader');
+    final String message = reader.readString();
+    switch (message) {
+      case 'system-servers':
+        _updateSystemServers(reader);
+      default:
+        debugPrint('dynasty server: received unexpected message: $message ($reader)');
+    }
+  }
+
+  void _updateSystemServers(StreamReader reader) {
+    final int serverCount = reader.readInt();
+    final Set<String> activeServers = systemServers.keys.toSet();
+    for (int index = 0; index < serverCount; index += 1) {
+      final String url = reader.readString();
+      systemServers.putIfAbsent(url, () => SystemServer(
+        url,
+        _currentToken!,
+        rootNode,
+        dynastyManager,
+        onError: _handleSystemServerError,
+        onColonyShip: (WorldNode? node) {
+          _recommendedFocus.value = node;
+        },
+      ));
+      activeServers.remove(url);
+    }
+    for (String url in activeServers) {
+      systemServers.remove(url)!.dispose();
+    }
   }
   
   void _handleDynastyServerError(Exception error, Duration duration) {
