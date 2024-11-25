@@ -69,7 +69,7 @@ class Game {
   Connection? _dynastyServer;
 
   final DynastyManager dynastyManager = DynastyManager();
-  
+
   final Map<String, SystemServer> systemServers = <String, SystemServer>{};
 
   ValueListenable<bool> get loggedIn => _loggedIn;
@@ -244,7 +244,7 @@ class Game {
       systemServers.remove(url)!.dispose();
     }
   }
-  
+
   void _handleDynastyServerError(Exception error, Duration duration) {
     debugPrint('dynasty server: $error');
     if (duration > Duration.zero)

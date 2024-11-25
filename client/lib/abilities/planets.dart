@@ -7,7 +7,7 @@ import '../world.dart';
 
 class PlanetFeature extends AbilityFeature {
   PlanetFeature(this.spaceTime, this.hp);
-  
+
   final SpaceTime spaceTime;
   final int hp;
 
@@ -92,13 +92,13 @@ class RenderPlanet extends RenderWorldNode {
       markNeedsPaint();
     }
   }
-  
+
   @override
   void computeLayout(WorldConstraints constraints) { }
 
   Paint get _planetPaint => Paint()
     ..color = const Color(0xFFFFFFFF);
-  
+
   @override
   WorldGeometry computePaint(PaintingContext context, Offset offset) {
     // this only gets used when the planet has no surface
@@ -106,7 +106,7 @@ class RenderPlanet extends RenderWorldNode {
     context.canvas.drawCircle(offset, actualDiameter / 2.0, _planetPaint);
     return WorldGeometry(shape: Circle(actualDiameter));
   }
-  
+
   @override
   WorldTapTarget? routeTap(Offset offset) {
     return null; // TODO

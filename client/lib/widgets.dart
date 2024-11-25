@@ -52,7 +52,7 @@ class WorldNull extends LeafRenderObjectWidget {
   });
 
   final WorldNode node;
-  
+
   @override
   RenderWorldNull createRenderObject(BuildContext context) {
     return RenderWorldNull(node: node);

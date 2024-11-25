@@ -68,7 +68,7 @@ class SystemNode extends WorldNode {
   void markAsUpdated() {
     notifyListeners();
   }
-  
+
   @override
   Offset findLocationForChild(WorldNode child, List<VoidCallback> callbacks) {
     return Offset.zero;
@@ -83,7 +83,7 @@ class SystemNode extends WorldNode {
     }
     return result;
   }
-  
+
   @override
   Widget buildRenderer(BuildContext context, Widget? nil) {
     final Set<_HighlightDetails> labels = <_HighlightDetails>{};
@@ -172,7 +172,7 @@ class RenderSystem extends RenderWorldNode with RenderObjectWithChildMixin<Rende
       status.resync(vsync);
     }
   }
-       
+
   double get diameter => _diameter;
   double _diameter;
   set diameter (double value) {
@@ -194,7 +194,7 @@ class RenderSystem extends RenderWorldNode with RenderObjectWithChildMixin<Rende
   }
 
   ZoomCallback onZoomRequest;
-  
+
   final Map<AssetNode, _HudStatus> _hudStatus = <AssetNode, _HudStatus>{};
 
   @override
@@ -204,7 +204,7 @@ class RenderSystem extends RenderWorldNode with RenderObjectWithChildMixin<Rende
     }
     super.dispose();
   }
-  
+
   @override
   void computeLayout(WorldConstraints constraints) {
     if (child != null)
@@ -237,7 +237,7 @@ class RenderSystem extends RenderWorldNode with RenderObjectWithChildMixin<Rende
   static const double _fadeFactorStart = 0.2;
   static const double _fadeFactorEnd = 0.5;
   static const double _minVisibleForInteraction = 0.1;
-  
+
   Path _reticulePath(double t) {
     final double crossExtension = _reticuleInnerPadding * (1 + t);
     final double outerExtension = _reticuleOuterRadius * t;
@@ -269,7 +269,7 @@ class RenderSystem extends RenderWorldNode with RenderObjectWithChildMixin<Rende
   }
 
   final List<_HighlightDetails> _visibleHudElements = <_HighlightDetails>[];
-  
+
   @override
   WorldGeometry computePaint(PaintingContext context, Offset offset) {
     if (child != null) {
@@ -302,7 +302,7 @@ class RenderSystem extends RenderWorldNode with RenderObjectWithChildMixin<Rende
     }
     return WorldGeometry(shape: Circle(diameter));
   }
-  
+
   @override
   WorldTapTarget? routeTap(Offset offset) {
     if (_visibleHudElements.isNotEmpty) {
@@ -344,7 +344,7 @@ class _HudStatus {
     final AnimationController controller = AnimationController(vsync: system.vsync, duration: hudAnimationDuration);
     return _HudStatus._(
       asset,
-      system, 
+      system,
       controller,
       controller.drive(hudTween),
     );
@@ -362,7 +362,7 @@ class _HudStatus {
   Timer? _cooldown;
 
   double get value => _active.value;
-  
+
   void handleTapDown() {
     _cooldown?.cancel();
     _cooldown = null;
@@ -395,7 +395,7 @@ class _HudStatus {
   void resync(TickerProvider vsync) {
     _controller.resync(vsync);
   }
-  
+
   void dispose() {
     _cooldown?.cancel();
     _controller.dispose();

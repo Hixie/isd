@@ -78,7 +78,7 @@ class OrbitFeature extends ContainerFeature {
       child.parent = parent;
     }
   }
-  
+
   @override
   void detach() {
     assert(originChild.parent == parent);
@@ -154,7 +154,7 @@ class OrbitWidget extends MultiChildRenderObjectWidget {
   final WorldNode node;
   final double diameter;
   final SpaceTime spaceTime;
-  
+
   @override
   RenderOrbit createRenderObject(BuildContext context) {
     return RenderOrbit(

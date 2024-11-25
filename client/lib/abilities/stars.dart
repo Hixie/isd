@@ -10,7 +10,7 @@ import '../world.dart';
 
 class StarFeature extends AbilityFeature {
   StarFeature(this.spaceTime, this.starId);
-  
+
   final int starId;
   final SpaceTime spaceTime;
 
@@ -126,13 +126,13 @@ class RenderStar extends RenderWorldNode {
       markNeedsPaint();
     }
   }
-  
+
   @override
   void computeLayout(WorldConstraints constraints) { }
 
   FragmentShader? _starShader;
   final Paint _starPaint = Paint();
-  
+
   @override
   WorldGeometry computePaint(PaintingContext context, Offset offset) {
     // TODO: starId-based paint
@@ -150,7 +150,7 @@ class RenderStar extends RenderWorldNode {
     context.canvas.drawRect(Rect.fromCircle(center: offset, radius: actualDiameter), _starPaint);
     return WorldGeometry(shape: Circle(actualDiameter));
   }
-  
+
   @override
   WorldTapTarget? routeTap(Offset offset) {
     return null; // TODO

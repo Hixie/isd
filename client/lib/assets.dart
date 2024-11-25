@@ -45,7 +45,7 @@ abstract class ContainerFeature extends Feature {
   Offset findLocationForChild(AssetNode child, List<VoidCallback> callbacks);
 
   void walk(WalkCallback callback);
-  
+
   Widget buildRenderer(BuildContext context, Widget? child);
 }
 

@@ -532,7 +532,7 @@ class RenderGalaxy extends RenderWorldNode with ContainerRenderObjectMixin<Rende
     final double ratio = a / b;
     return (ratio < max) || (ratio > 1 / max);
   }
-  
+
   @override
   WorldGeometry computePaint(PaintingContext context, Offset offset) {
     if (galaxy != null) {
@@ -649,7 +649,7 @@ class RenderGalaxy extends RenderWorldNode with ContainerRenderObjectMixin<Rende
 
   // TODO: paint the category 0 and 1 stars in a parallax layer, spread across
   // the entire viewport, rather than pinned to the galaxy plane
-  
+
   void _drawStars(PaintingContext context, Offset offset) {
     assert(offset == Offset.zero);
     for (int index = 0; index < _starPoints.length; index += 1) {
@@ -952,7 +952,7 @@ class RenderGalaxy extends RenderWorldNode with ContainerRenderObjectMixin<Rende
     super.reassemble();
     _preparedStarsRect = null;
   }
-    
+
 
   @override
   WorldTapTarget? routeTap(Offset offset) {

@@ -47,7 +47,7 @@ class WorldConstraints extends Constraints {
     assert(node.parent != null); // root should always be precomputed
     return parentOffset + node.parent!.findLocationForChild(node, callbacks) * scale;
   }
-  
+
   @override
   String toString() => 'WorldConstraints(x$zoom, scale=${scale}px/m, viewport=${viewportSize}px)';
 }
@@ -136,7 +136,7 @@ abstract class RenderWorld extends RenderObject {
   RenderWorld();
 
   WorldNode get node;
-  
+
   @override
   WorldConstraints get constraints => super.constraints as WorldConstraints;
 
@@ -172,7 +172,7 @@ abstract class RenderWorld extends RenderObject {
 
   static double get _minCartoonDiameter => log(10e6); // 10,000 km, a bit smaller than earth
   static double get _maxCartoonDiameter => log( 1e9); // 2 million km, a bit bigger than our sun
-  
+
   double computePaintDiameter(double diameter, double maxDiameter) {
     final double cartoonScale = ((log(diameter) - _minCartoonDiameter) / (_maxCartoonDiameter - _minCartoonDiameter)).clamp(0.0, 1.0) * 2.5 + 1.0;
     assert(cartoonScale >= 1.0);
@@ -185,7 +185,7 @@ abstract class RenderWorld extends RenderObject {
       maxDiameter * _maxDiameterRatio * constraints.scale,
     );
   }
-  
+
   @override
   Rect get paintBounds => Offset.zero & geometry.shape.size;
 

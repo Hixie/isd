@@ -11,7 +11,7 @@ import 'world.dart';
 
 class ZoomCurve extends Curve {
   const ZoomCurve();
-  
+
   static final double a = sqrt(2);
   static final double b = (1 - a * a ) / (2 * a);
   static final double c = -(b * b);
@@ -25,7 +25,7 @@ class ZoomCurve extends Curve {
 
 class PanCurve extends Curve {
   const PanCurve();
-  
+
   static const double b = -1;
   static const double a = 1 / (1 + 2 * b);
   static const double c = -a * b * b;
@@ -77,7 +77,7 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
   RenderBoxToRenderWorldAdapter get _worldRoot => _worldRootKey.currentContext!.findRenderObject()! as RenderBoxToRenderWorldAdapter;
 
   final Map<WorldNode, Offset> _precomputedPositions = <WorldNode, Offset>{};
-  
+
   @override
   void initState() {
     super.initState();
@@ -101,7 +101,7 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
   }
 
   WorldNode? _badNode;
-  
+
   void _handlePositionChange() {
     // TODO: this might get called multiple times per frame; we should make sure we're not doing the math more than once per frame
     setState(() {
@@ -174,7 +174,7 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
     _panTween.end = _panTween.end! - delta;
     _handlePositionChange();
   }
-  
+
   void _centerOn(WorldNode node) {
     _changeCenterNode(node);
     final double zoom = log(widget.rootNode.diameter / _centerNode.diameter);
@@ -195,7 +195,7 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
     _panTween.end = offset;
     _controller.forward(from: 0.0);
   }
-  
+
   double? _lastScale; // tracks intra-frame scales in case scale events come in faster than the refresh rate (easy to do with a mousewheel)
 
   static double _clampPan(double x, double viewport, double diameter, double rootCenterOffset) {
@@ -211,7 +211,7 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
   }
 
   bool _shouldAutofocus = true;
-  
+
   void _handleRecommendedFocus() {
     if (widget.recommendedFocus.value == null) {
       _shouldAutofocus = true;
@@ -224,7 +224,7 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
       _centerOn(widget.recommendedFocus.value!);
     }
   }
-  
+
   @override
   Widget build(BuildContext context) {
     _lastScale = null;

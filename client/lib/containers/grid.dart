@@ -58,7 +58,7 @@ class GridFeature extends ContainerFeature {
       child.walk(callback);
     }
   }
-  
+
   @override
   Widget buildRenderer(BuildContext context, Widget? child) {
     return GridWidget(
@@ -199,7 +199,7 @@ class RenderGrid extends RenderWorldNode with ContainerRenderObjectMixin<RenderW
 
   FragmentShader? _gridShader;
   final Paint _gridPaint = Paint();
-  
+
   @override
   WorldGeometry computePaint(PaintingContext context, Offset offset) {
     _gridShader ??= shaders.grid(width: width, height: height);

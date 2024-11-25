@@ -36,7 +36,7 @@ class ShaderLibrary {
       ..setFloat(uCellCountWidth, width.toDouble())
       ..setFloat(uCellCountHeight, height.toDouble());
   }
-  
+
   static Future<ShaderLibrary> initialize() async {
     // TODO: load this in parallel (using Future.wait)
     return ShaderLibrary._(
