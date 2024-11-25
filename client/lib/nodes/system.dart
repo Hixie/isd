@@ -236,6 +236,7 @@ class RenderSystem extends RenderWorldNode with RenderObjectWithChildMixin<Rende
   static const double _reticuleOuterChamfer = _reticuleInnerChamfer * (1 + _reticuleOuterPadding / _reticuleInnerRadius);
   static const double _fadeFactorStart = 0.2;
   static const double _fadeFactorEnd = 0.5;
+  static const double _minVisibleForInteraction = 0.1;
   
   Path _reticulePath(double t) {
     final double crossExtension = _reticuleInnerPadding * (1 + t);
@@ -267,7 +268,7 @@ class RenderSystem extends RenderWorldNode with RenderObjectWithChildMixin<Rende
       ..lineTo(-outerExtension, _reticuleOuterRadius);
   }
 
-  bool _hasLabels = false;
+  final List<_HighlightDetails> _visibleHudElements = <_HighlightDetails>[];
   
   @override
   WorldGeometry computePaint(PaintingContext context, Offset offset) {
@@ -279,7 +280,7 @@ class RenderSystem extends RenderWorldNode with RenderObjectWithChildMixin<Rende
       context.canvas.drawRect(Rect.fromCircle(center: offset, radius: renderRadius), _blackFadePaint(fade, offset, renderRadius));
       context.paintChild(child!, constraints.paintPositionFor(child!.node, offset, <VoidCallback>[markNeedsPaint]));
     }
-    _hasLabels = false;
+    _visibleHudElements.clear();
     if (_labels.isNotEmpty) {
       final double side = constraints.viewportSize.shortestSide;
       final double outerFade = ((diameter * constraints.scale / side) - 0.5).clamp(0.0, 1.0);
@@ -290,23 +291,25 @@ class RenderSystem extends RenderWorldNode with RenderObjectWithChildMixin<Rende
           const double diameterWhenInvisible = (_reticuleOuterRadius * 2.0) * _fadeFactorEnd;
           final double innerFade = ((label.diameter * constraints.scale - diameterWhenInvisible) / (diameterWhenFullyVisible - diameterWhenInvisible)).clamp(0.0, 1.0);
           if (innerFade > 0.0) {
-            final Paint hudPaint = _greenHudPaint(min(outerFade, innerFade));
+            final double fade = min(outerFade, innerFade);
+            final Paint hudPaint = _greenHudPaint(fade);
             context.canvas.drawPath(_reticulePath(_hudStatus[label.asset]?.value ?? 0.0).shift(offset + label.offset * constraints.scale), hudPaint);
+            if (fade > _minVisibleForInteraction)
+              _visibleHudElements.add(label);
           }
         }
-        _hasLabels = true;
       }
     }
     return WorldGeometry(shape: Circle(diameter));
   }
-
+  
   @override
   WorldTapTarget? routeTap(Offset offset) {
-    if (_hasLabels) {
+    if (_visibleHudElements.isNotEmpty) {
       Rect? target;
       final List<AssetNode> assets = <AssetNode>[];
       _HighlightDetails? biggest;
-      for (_HighlightDetails label in _labels) {
+      for (_HighlightDetails label in _visibleHudElements) {
         final Offset center = label.offset * constraints.scale;
         const double marginSquared = -_reticuleOuterRadius * -_reticuleOuterRadius;
         if ((center - offset).distanceSquared < marginSquared) {
