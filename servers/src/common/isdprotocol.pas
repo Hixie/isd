@@ -32,7 +32,9 @@ const
    fcSurface = $09;
    fcGrid = $0A;
    fcPopulation = $0B;
-   fcHighestKnownFeatureCode = fcPopulation;
+   fcMessageBoard = $0C;
+   fcMessage = $0D;
+   fcHighestKnownFeatureCode = fcMessageBoard;
    
 implementation
 

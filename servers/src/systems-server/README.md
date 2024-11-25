@@ -84,9 +84,9 @@ There are currently no notifications defined.
 
 <string>            ::= <int32> [ <int32> <byte>* ] ; see below
 
-<bitflag>           ::= 8 bits
-
 <time>              ::= 64 bit integer ; milliseconds
+
+<bitflag>           ::= 8 bits
 
 <double>            ::= 64 bit float
 
@@ -475,6 +475,32 @@ at the specified `<x>`/`<y>` coordinate in the grid.
 
 The integer is the number of people at this population center.
 The double is their mean happiness.
+
+
+### `fcMessageBoard` (0x0C)
+
+```bnf
+<featuredata>       ::= <messagecount> <message>*
+<messagecount>      ::= <int32>
+<message>           ::= <assetid>
+```
+
+The number of children, followed by all their IDs.
+
+Children are expected to have `fcMessage` features, though this is not
+guaranteed.
+
+
+### `fcMessage` (0x0D)
+
+```bnf
+<featuredata>       ::= <timestamp> <isread> <body>
+<timestamp>         ::= <time> ; system time
+<isread>            ::= <bitflag> ; 0x01 means "read"
+<body>              ::= <string>
+```
+
+Messages.
 
 
 # Systems Server Internal Protocol
