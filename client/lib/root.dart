@@ -186,7 +186,6 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
   }
 
   void _centerNear(WorldNode node, Offset offset, double diameter) {
-    print('centering on $node at offset $offset with diameter $diameter');
     _changeCenterNode(node);
     final double zoom = log(widget.rootNode.diameter / diameter);
     _zoomTween.begin = _zoom.value;

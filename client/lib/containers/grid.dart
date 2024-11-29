@@ -222,11 +222,13 @@ class RenderGrid extends RenderWorldNode with ContainerRenderObjectMixin<RenderW
 
   @override
   WorldTapTarget? routeTap(Offset offset) {
-    RenderWorld? child = firstChild;
+    RenderWorld? child = lastChild;
     while (child != null) {
       final GridParentData childParentData = child.parentData! as GridParentData;
-      // TODO: something...
-      child = childParentData.nextSibling;
+      final WorldTapTarget? result = child.routeTap(offset); // TODO: correct offset
+      if (result != null)
+        return result;
+      child = childParentData.previousSibling;
     }
     return null;
   }

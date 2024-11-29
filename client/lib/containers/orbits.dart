@@ -277,11 +277,13 @@ class RenderOrbit extends RenderWorldNode with ContainerRenderObjectMixin<Render
 
   @override
   WorldTapTarget? routeTap(Offset offset) {
-    RenderWorld? child = firstChild;
+    RenderWorld? child = lastChild;
     while (child != null) {
       final OrbitParentData childParentData = child.parentData! as OrbitParentData;
-      // TODO: something...
-      child = childParentData.nextSibling;
+      final WorldTapTarget? result = child.routeTap(offset); // TODO: correct offset
+      if (result != null)
+        return result;
+      child = childParentData.previousSibling;
     }
     return null;
   }

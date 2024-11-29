@@ -316,7 +316,6 @@ class RenderSystem extends RenderWorldNode with RenderObjectWithChildMixin<Rende
           assets.add(label.asset);
           final Rect hitArea = Rect.fromCenter(center: center, width: label.diameter, height: label.diameter);
           if (target == null) {
-            print('center=$center diameter=${label.diameter}');
             target = hitArea;
             biggest = label;
           } else {

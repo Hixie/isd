@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'dart:ui' show Offset;
 
+import 'abilities/message.dart';
 import 'abilities/planets.dart';
 import 'abilities/population.dart';
 import 'abilities/sensors.dart';
@@ -11,6 +12,7 @@ import 'binarystream.dart';
 import 'components.dart';
 import 'connection.dart';
 import 'containers/grid.dart';
+import 'containers/messages.dart';
 import 'containers/orbits.dart';
 import 'containers/space.dart';
 import 'containers/surface.dart';
@@ -52,7 +54,9 @@ class SystemServer {
   static const int fcSurface = 0x09;
   static const int fcGrid = 0x0A;
   static const int fcPopulation = 0x0B;
-  static const int expectedVersion = fcPopulation;
+  static const int fcMessageBoard = 0x0C;
+  static const int fcMessage = 0x0D;
+  static const int expectedVersion = fcMessageBoard;
 
   Future<void> _handleLogin() async {
     final StreamReader reader = await _connection.send(<String>['login', token], queue: false);
@@ -227,6 +231,22 @@ class SystemServer {
                 count: count,
                 happiness: happiness,
               )));
+            case fcMessageBoard:
+              final int count = reader.readInt32();
+              final Map<AssetNode, MessageBoardParameters> children = <AssetNode, MessageBoardParameters>{};
+              for (int index = 0; index < count; index += 1) {
+                final AssetNode child = _readAsset(reader);
+                children[child] = ();
+              }
+              oldFeatures.remove(asset.setContainer(MessageBoardFeature(children)));
+            case fcMessage:
+              final int systemID = reader.readInt32();
+              final int timestamp = reader.readInt64();
+              final bool isRead = reader.readBool();
+              final String subject = reader.readString();
+              final String from = reader.readString();
+              final String body = reader.readString();
+              oldFeatures.remove(asset.setAbility(MessageFeature(systemID, timestamp, isRead, subject, from, body)));
             default:
               throw NetworkError('Client does not support feature code 0x${featureCode.toRadixString(16).padLeft(8, "0")}, cannot parse server message.');
           }

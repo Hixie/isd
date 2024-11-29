@@ -154,11 +154,13 @@ class RenderSurface extends RenderWorldNode with ContainerRenderObjectMixin<Rend
 
   @override
   WorldTapTarget? routeTap(Offset offset) {
-    RenderWorld? child = firstChild;
+    RenderWorld? child = lastChild;
     while (child != null) {
       final SurfaceParentData childParentData = child.parentData! as SurfaceParentData;
-      // TODO: something...
-      child = childParentData.nextSibling;
+      final WorldTapTarget? result = child.routeTap(offset); // TODO: position...
+      if (result != null)
+        return result;
+      child = childParentData.previousSibling;
     }
     return null;
   }
