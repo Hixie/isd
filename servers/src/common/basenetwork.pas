@@ -89,17 +89,21 @@ type
       constructor Create(AListenerSocket: TListenerSocket);
       destructor Destroy(); override;
       procedure HoldsCleared(); virtual;
+      procedure HoldsFailed(); virtual;
    end;
 
    TInternalConversationHandle = class(TBaseConversationHandle)
    strict private
+      FFailed: Boolean;
       FHolds: Cardinal;
       function GetHasHolds(): Boolean;
    public
       constructor Create(AConnection: TBaseIncomingInternalCapableConnection);
       procedure AddHold();
       procedure RemoveHold();
+      procedure FailHold();
       property HasHolds: Boolean read GetHasHolds;
+      property HasFailed: Boolean read FFailed;
    end;
 
    TBaseOutgoingInternalConnection = class(TNetworkSocket)
@@ -550,6 +554,13 @@ begin
    Disconnect();
 end;
 
+procedure TBaseIncomingInternalCapableConnection.HoldsFailed();
+begin
+   Assert(FMode = cmControlMessages);
+   Write(#$00);
+   Disconnect();
+end;
+
 
 constructor TInternalConversationHandle.Create(AConnection: TBaseIncomingInternalCapableConnection);
 begin
@@ -563,10 +574,22 @@ end;
 
 procedure TInternalConversationHandle.RemoveHold();
 begin
-   Dec(FHolds);
-   if (FHolds = 0) then
+   if (not FFailed) then
    begin
-      (FConnection as TBaseIncomingInternalCapableConnection).HoldsCleared();
+      Dec(FHolds);
+      if (FHolds = 0) then
+      begin
+         (FConnection as TBaseIncomingInternalCapableConnection).HoldsCleared();
+      end;
+   end;
+end;
+
+procedure TInternalConversationHandle.FailHold();
+begin
+   if (not FFailed) then
+   begin
+      FFailed := True;
+      (FConnection as TBaseIncomingInternalCapableConnection).HoldsFailed();
    end;
 end;
 

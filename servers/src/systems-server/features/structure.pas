@@ -50,14 +50,14 @@ type
       function GetFeatureName(): UTF8String; override;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
-      procedure ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynastyHashSet; System: TSystem); override;
-      procedure HandleVisibility(const DynastyIndex: Cardinal; var Visibility: TVisibility; const Sensors: ISensorProvider; const VisibilityHelper: TVisibilityHelper); override;
-      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem); override;
+      procedure ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynastyHashSet; CachedSystem: TSystem); override;
+      procedure HandleVisibility(const DynastyIndex: Cardinal; var Visibility: TVisibility; const Sensors: ISensorsProvider; const VisibilityHelper: TVisibilityHelper); override;
+      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
    public
       constructor Create(AFeatureClass: TStructureFeatureClass; AMaterialsQuantity: Cardinal; AStructuralIntegrity: Cardinal);
       destructor Destroy(); override;
       procedure UpdateJournal(Journal: TJournalWriter); override;
-      procedure ApplyJournal(Journal: TJournalReader; System: TSystem); override;
+      procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
       property MaterialsQuantity: Cardinal read FMaterialsQuantity; // how much of the feature's bill of materials is actually present
       property StructuralIntegrity: Cardinal read FStructuralIntegrity; // how much of the materials are actually in good shape (affects efficiency)
    end;
@@ -209,7 +209,7 @@ begin
    Result := False;
 end;
 
-procedure TStructureFeatureNode.ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynastyHashSet; System: TSystem);
+procedure TStructureFeatureNode.ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynastyHashSet; CachedSystem: TSystem);
 var
    Index: Cardinal;
 begin
@@ -223,23 +223,21 @@ begin
    end;
 end;
 
-procedure TStructureFeatureNode.HandleVisibility(const DynastyIndex: Cardinal; var Visibility: TVisibility; const Sensors: ISensorProvider; const VisibilityHelper: TVisibilityHelper);
+procedure TStructureFeatureNode.HandleVisibility(const DynastyIndex: Cardinal; var Visibility: TVisibility; const Sensors: ISensorsProvider; const VisibilityHelper: TVisibilityHelper);
 var
-   MaterialLibrary: TMaterialHashSet;
    Index: Cardinal;
 begin
-   MaterialLibrary := Sensors.GetKnownMaterials();
    if (FFeatureClass.BillOfMaterialsLength > 0) then
    begin
       for Index := 0 to FFeatureClass.BillOfMaterialsLength - 1 do // $R-
       begin
-         if (MaterialLibrary.Has(FFeatureClass.BillOfMaterials[Index].Material)) then
+         if (Sensors.Knows(FFeatureClass.BillOfMaterials[Index].Material)) then
             FDynastyKnowledge[Index].SetEntry(DynastyIndex, True);
       end;
    end;
 end;
 
-procedure TStructureFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem);
+procedure TStructureFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
 var
    Index, Remaining, Quantity: Cardinal;
    Visibility: TVisibility;
@@ -247,7 +245,7 @@ var
 begin
    Writer.WriteCardinal(fcStructure);
    Remaining := MaterialsQuantity;
-   Visibility := Parent.ReadVisibilityFor(DynastyIndex, System);
+   Visibility := Parent.ReadVisibilityFor(DynastyIndex, CachedSystem);
    ClassKnown := dmClassKnown in Visibility;
    if (FFeatureClass.BillOfMaterialsLength > 0) then
    begin
@@ -309,7 +307,7 @@ begin
    Journal.WriteCardinal(StructuralIntegrity);
 end;
 
-procedure TStructureFeatureNode.ApplyJournal(Journal: TJournalReader; System: TSystem);
+procedure TStructureFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
 begin
    FMaterialsQuantity := Journal.ReadCardinal();
    FStructuralIntegrity := Journal.ReadCardinal();

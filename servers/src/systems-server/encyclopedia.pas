@@ -14,6 +14,7 @@ type
          FAssetClasses: TAssetClassHashTable; 
          FSpace, FOrbits: TAssetClass;
          FPlaceholderShip: TAssetClass;
+         FMessage: TAssetClass;
          FStars: array[TStarCategory] of TAssetClass;
          FPlanetaryBody, FRegion: TAssetClass;
          FProtoplanetaryMaterials: TMaterialHashSet;
@@ -34,6 +35,7 @@ type
       function CreateLoneStar(StarID: TStarID): TAssetNode;
       procedure CondenseProtoplanetaryDisks(Space: TSolarSystemFeatureNode; System: TSystem);
       property RegionClass: TAssetClass read FRegion;
+      property MessageClass: TAssetClass read FMessage;
       property ProtoplanetaryMaterials: TMaterialHashSet read FProtoplanetaryMaterials;
    end;
 
@@ -42,6 +44,7 @@ const
    idSpace = -1;
    idOrbits = -2;
    idPlaceholderShip = -3;
+   idMessage = -4;
    idStars = -100; // -100..-199
    idPlanetaryBody = -200;
    idRegion = -201;
@@ -55,7 +58,7 @@ implementation
 uses
    icons, orbit, structure, stellar, name, sensors, exceptions,
    sysutils, planetary, protoplanetary, plot, surface, grid, time,
-   population, messages;
+   population, messages, knowledge;
 
 function RoundAboveZero(Value: Double): Cardinal;
 begin
@@ -152,16 +155,28 @@ begin
    );
    FMaterials.Add(FDarkMatter.ID, FDarkMatter);
    
+   FMessage := TAssetClass.Create(
+      idMessage,
+      'Message', 'Some sort of text',
+      'A notification.',
+      [
+         TMessageFeatureClass.Create()
+      ],
+      MessageIcon
+   );
+   RegisterAssetClass(FMessage);
+   
    FPlaceholderShip := TAssetClass.Create(
       idPlaceholderShip,                                   
       'Colony Ship', 'Unidentified Flying Object',
-      'The ship that your people used to escape their dying star.',
+      'A ship that people used to escape their dying star.',
       [
          TSpaceSensorFeatureClass.Create(10 { max steps to orbit }, 10 { steps up from orbit }, 10 { steps down from top}, 0.01 { min size }, [dmVisibleSpectrum, dmClassKnown, dmInternals]),
          TStructureFeatureClass.Create([TMaterialLineItem.Create('Shell', FDarkMatter, 10000 { mass in units (g): 10kg })], 1 { min functional quantity }, 100.0 { default diameter, m }),
          TDynastyOriginalColonyShipFeatureClass.Create(),
          TPopulationFeatureClass.Create(),
-         TMessageBoardFeatureClass.Create()
+         TMessageBoardFeatureClass.Create(FMessage),
+         TKnowledgeBusFeatureClass.Create()
       ],
       ColonyShipIcon
    );
@@ -185,7 +200,10 @@ begin
       'Geological region',
       'Region',
       'An area of a planetary body.',
-      [ TGridFeatureClass.Create() ],
+      [
+         TGridFeatureClass.Create(),
+         TKnowledgeBusFeatureClass.Create()
+      ],
       PlanetRegionIcon
    );
    RegisterAssetClass(FRegion);
@@ -258,7 +276,8 @@ procedure TEncyclopedia.CondenseProtoplanetaryDisks(Space: TSolarSystemFeatureNo
       // TODO: this should do things based on the body composition, create geology, etc
       SetLength(Result, 1); // {BOGUS Warning: Function result variable of a managed type does not seem to be initialized}
       Result[0] := FRegion.Spawn(nil, [
-         TGridFeatureNode.Create(100.0, 5)
+         TGridFeatureNode.Create(100.0, 5),
+         TKnowledgeBusFeatureNode.Create()
       ]);
    end;
 

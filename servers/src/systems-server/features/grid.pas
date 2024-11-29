@@ -31,12 +31,12 @@ type
       function GetFeatureName(): UTF8String; override;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
-      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem); override;
+      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
    public
       constructor Create(ACellSize: Double; ADimension: Cardinal);
       destructor Destroy(); override;
       procedure UpdateJournal(Journal: TJournalWriter); override;
-      procedure ApplyJournal(Journal: TJournalReader; System: TSystem); override;
+      procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
       property Dimension: Cardinal read FDimension;
       property CellSize: Double read FCellSize;
    end;
@@ -226,9 +226,10 @@ begin
             exit;
       end;
    end;
+   Result := False;
 end;
 
-procedure TGridFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem);
+procedure TGridFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
 var
    Child: TAssetNode;
 begin
@@ -244,7 +245,7 @@ begin
       begin
          Writer.WriteCardinal(PGridData(Child.ParentData)^.X);
          Writer.WriteCardinal(PGridData(Child.ParentData)^.Y);
-         Writer.WriteCardinal(Child.ID(System, DynastyIndex));
+         Writer.WriteCardinal(Child.ID(CachedSystem, DynastyIndex));
       end;
    end;
 end;
@@ -286,7 +287,7 @@ begin
    Journal.WriteAssetChangeKind(ckEndOfList);
 end;
 
-procedure TGridFeatureNode.ApplyJournal(Journal: TJournalReader; System: TSystem);
+procedure TGridFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
 
    procedure AddChild();
    var

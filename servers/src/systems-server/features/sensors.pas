@@ -5,7 +5,7 @@ unit sensors;
 interface
 
 uses
-   systems, serverstream, materials;
+   systems, serverstream, materials, knowledge;
 
 type
    TSpaceSensorFeatureClass = class(TFeatureClass)
@@ -19,9 +19,9 @@ type
       function InitFeatureNode(): TFeatureNode; override;
    end;
 
-   TSpaceSensorFeatureNode = class(TFeatureNode, ISensorProvider)
+   TSpaceSensorFeatureNode = class(TFeatureNode, ISensorsProvider)
    private
-      FKnownMaterials: TMaterialHashSet;
+      FKnownMaterials: TGetKnownMaterialsMessage;
    protected
       FFeatureClass: TSpaceSensorFeatureClass;
       FLastBottom, FLastTop: TAssetNode;
@@ -33,18 +33,18 @@ type
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
       procedure ApplyVisibility(VisibilityHelper: TVisibilityHelper); override;
-      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem); override;
+      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
    public
       constructor Create(AFeatureClass: TSpaceSensorFeatureClass);
-      function GetKnownMaterials(): TMaterialHashSet;
       procedure UpdateJournal(Journal: TJournalWriter); override;
-      procedure ApplyJournal(Journal: TJournalReader; System: TSystem); override;
+      procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
+      function Knows(Material: TMaterial): Boolean;
    end;
 
 implementation
 
 uses
-   sysutils, orbit, isdprotocol, typedump, knowledge;
+   sysutils, orbit, isdprotocol, typedump;
 
 constructor TSpaceSensorFeatureClass.Create(AMaxStepsToOrbit, AStepsUpFromOrbit, AStepsDownFromTop: Cardinal; AMinSize: Double; ASensorKind: TVisibility);
 begin
@@ -177,31 +177,24 @@ begin
          Dec(Index);
       end;
    end;
-   if (Assigned(FKnownMaterials)) then
-   begin
-      FreeAndNil(FKnownMaterials);
-   end;
+   FreeAndNil(FKnownMaterials);
 end;
 
-function TSpaceSensorFeatureNode.GetKnownMaterials(): TMaterialHashSet;
-var
-   Message: TCollectKnownMaterialsMessage;
+function TSpaceSensorFeatureNode.Knows(Material: TMaterial): Boolean;
 begin
    if (not Assigned(FKnownMaterials)) then
    begin
-      FKnownMaterials := TMaterialHashSet.Create();
-      Message := TCollectKnownMaterialsMessage.Create(FKnownMaterials, Parent.Owner);
-      InjectBusMessage(Message);
-      FreeAndNil(Message);
+      FKnownMaterials := TGetKnownMaterialsMessage.Create(Parent.Owner);
+      InjectBusMessage(FKnownMaterials); // we ignore the result - it doesn't matter if it wasn't handled
    end;
-   Result := FKnownMaterials;
+   Result := FKnownMaterials.Knows(Material);
 end;
 
-procedure TSpaceSensorFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem);
+procedure TSpaceSensorFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
 var
    Visibility: TVisibility;
 begin
-   Visibility := Parent.ReadVisibilityFor(DynastyIndex, System);
+   Visibility := Parent.ReadVisibilityFor(DynastyIndex, CachedSystem);
    if ((dmDetectable * Visibility <> []) and (dmClassKnown in Visibility)) then
    begin
       Writer.WriteCardinal(fcSpaceSensor);
@@ -212,8 +205,8 @@ begin
       if (dmInternals in Visibility) then
       begin
          Writer.WriteCardinal(fcSpaceSensorStatus);
-         Writer.WriteCardinal(FLastBottom.ID(System, DynastyIndex));
-         Writer.WriteCardinal(FLastTop.ID(System, DynastyIndex));
+         Writer.WriteCardinal(FLastBottom.ID(CachedSystem, DynastyIndex));
+         Writer.WriteCardinal(FLastTop.ID(CachedSystem, DynastyIndex));
          Writer.WriteCardinal(FLastCountDetected);
       end;
    end;
@@ -223,7 +216,7 @@ procedure TSpaceSensorFeatureNode.UpdateJournal(Journal: TJournalWriter);
 begin
 end;
 
-procedure TSpaceSensorFeatureNode.ApplyJournal(Journal: TJournalReader; System: TSystem);
+procedure TSpaceSensorFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
 begin
 end;
 

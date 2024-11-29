@@ -34,11 +34,11 @@ type
       function GetFeatureName(): UTF8String; override;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
-      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem); override;
+      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
    public
       constructor Create(ADiameter: Double; AComposition: TPlanetaryComposition; AStructuralIntegrity: Cardinal; AConsiderForDynastyStart: Boolean);
       procedure UpdateJournal(Journal: TJournalWriter); override;
-      procedure ApplyJournal(Journal: TJournalReader; System: TSystem); override;
+      procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
       property StructuralIntegrity: Cardinal read FStructuralIntegrity;
       property ConsiderForDynastyStart: Boolean read FConsiderForDynastyStart;
    end;
@@ -105,7 +105,7 @@ begin
    Result := False;
 end;
 
-procedure TPlanetaryBodyFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem);
+procedure TPlanetaryBodyFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
 begin
    Writer.WriteCardinal(fcPlanetaryBody);
    Writer.WriteCardinal(FStructuralIntegrity);
@@ -127,7 +127,7 @@ begin
    Journal.WriteBoolean(FConsiderForDynastyStart);
 end;
 
-procedure TPlanetaryBodyFeatureNode.ApplyJournal(Journal: TJournalReader; System: TSystem);
+procedure TPlanetaryBodyFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
 var
    Index: Cardinal;
 begin

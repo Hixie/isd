@@ -494,13 +494,46 @@ guaranteed.
 ### `fcMessage` (0x0D)
 
 ```bnf
-<featuredata>       ::= <timestamp> <isread> <body>
+<featuredata>       ::= <source> <timestamp> <flags> <subject> <from> <body>
+<source>            ::= <systemid>
 <timestamp>         ::= <time> ; system time
-<isread>            ::= <bitflag> ; 0x01 means "read"
+<flags>             ::= <bitflag> ; 0x01 means "read"
+<subject>           ::= <string>
+<from>              ::= <string>
 <body>              ::= <string>
 ```
 
-Messages.
+The `<source>` specifies the system ID where the message was spawned.
+
+The `<timestamp>` is in the time frame of the source system and is
+meaningless outside that context.
+
+The `<flags>` bit field has eight bits interpreted as follows:
+
+   0 (LSB): When set, the message has already been read.
+   1      : reserved, always zero
+   2      : reserved, always zero
+   3      : reserved, always zero
+   4      : reserved, always zero
+   5      : reserved, always zero
+   6      : reserved, always zero
+   7 (MSB): reserved, always zero
+
+The `<subject>` is a string that is guaranteed to not contain a line
+feed, that is a heading for the message.
+
+The `<from>` is a string that somehow identifies (to the player) the
+source of the message. This might be a character in the story, or a
+specific asset, or something else. For example, "Dr Blank" or
+"Stockpile #3 in Geneva on Earth in the Sol system". Clients are
+advised against attempting to map this string to actual assets in the
+game world, as the strings are not unambiguous.
+
+Finally the message contains a `<body>`, which is a string representing
+the message. Currently this is plain text.
+
+> TODO: A future version of this protocol will change `<body>` to
+> support formatting, images, links to assets, etc.
 
 
 # Systems Server Internal Protocol

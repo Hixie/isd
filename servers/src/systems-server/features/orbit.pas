@@ -55,21 +55,22 @@ type
       function GetSize(): Double; override;
       function GetFeatureName(): UTF8String; override;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
+      function ManageBusMessage(Message: TBusMessage): Boolean; override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
       procedure ApplyVisibility(VisibilityHelper: TVisibilityHelper); override;
       procedure InferVisibilityByIndex(DynastyIndex: Cardinal; VisibilityHelper: TVisibilityHelper); override;
-      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem); override;
+      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
       procedure HandleCrash(var Data);
    public
       constructor Create(APrimaryChild: TAssetNode);
       destructor Destroy(); override;
       procedure UpdateJournal(Journal: TJournalWriter); override;
-      procedure ApplyJournal(Journal: TJournalReader; System: TSystem); override;
+      procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
       function GetHillDiameter(Child: TAssetNode; ChildPrimaryMass: Double): Double;
       function GetRocheLimit(ChildRadius, ChildMass: Double): Double; // returns minimum semi-major axis for a hypothetical child planetary body orbitting our primary
       // given child should have a TOrbitFeatureNode, use Encyclopedia.WrapAssetForOrbit
-      procedure AddOrbitingChild(System: TSystem; Child: TAssetNode; SemiMajorAxis: Double; Eccentricity: Double; Omega: Double; TimeOrigin: TTimeInMilliseconds; Clockwise: Boolean);
-      procedure UpdateOrbitingChild(System: TSystem; Child: TAssetNode; SemiMajorAxis: Double; Eccentricity: Double; Omega: Double; TimeOrigin: TTimeInMilliseconds; Clockwise: Boolean; Index: Cardinal);
+      procedure AddOrbitingChild(CachedSystem: TSystem; Child: TAssetNode; SemiMajorAxis: Double; Eccentricity: Double; Omega: Double; TimeOrigin: TTimeInMilliseconds; Clockwise: Boolean);
+      procedure UpdateOrbitingChild(CachedSystem: TSystem; Child: TAssetNode; SemiMajorAxis: Double; Eccentricity: Double; Omega: Double; TimeOrigin: TTimeInMilliseconds; Clockwise: Boolean; Index: Cardinal);
       function IAssetNameProvider.GetAssetName = GetOrbitName;
       property PrimaryChild: TAssetNode read FPrimaryChild;
    end;
@@ -245,18 +246,18 @@ begin
    Result := ChildRadius * ((2 * FPrimaryChild.Mass / ChildMass) ** (1.0 / 3.0)); // $R-
 end;
 
-procedure TOrbitFeatureNode.AddOrbitingChild(System: TSystem; Child: TAssetNode; SemiMajorAxis: Double; Eccentricity: Double; Omega: Double; TimeOrigin: TTimeInMilliseconds; Clockwise: Boolean);
+procedure TOrbitFeatureNode.AddOrbitingChild(CachedSystem: TSystem; Child: TAssetNode; SemiMajorAxis: Double; Eccentricity: Double; Omega: Double; TimeOrigin: TTimeInMilliseconds; Clockwise: Boolean);
 begin
    Assert(Child.AssetClass.ID = idOrbits);
    Assert(not Assigned(Child.Parent));
    AdoptOrbitingChild(Child);
    SetLength(FChildren, Length(FChildren) + 1);
    FChildren[High(FChildren)] := Child;
-   UpdateOrbitingChild(System, Child, SemiMajorAxis, Eccentricity, Omega, TimeOrigin, Clockwise, High(FChildren)); // $R-
+   UpdateOrbitingChild(CachedSystem, Child, SemiMajorAxis, Eccentricity, Omega, TimeOrigin, Clockwise, High(FChildren)); // $R-
    POrbitData(Child.ParentData)^.IsNew := True;
 end;
 
-procedure TOrbitFeatureNode.UpdateOrbitingChild(System: TSystem; Child: TAssetNode; SemiMajorAxis: Double; Eccentricity: Double; Omega: Double; TimeOrigin: TTimeInMilliseconds; Clockwise: Boolean; Index: Cardinal);
+procedure TOrbitFeatureNode.UpdateOrbitingChild(CachedSystem: TSystem; Child: TAssetNode; SemiMajorAxis: Double; Eccentricity: Double; Omega: Double; TimeOrigin: TTimeInMilliseconds; Clockwise: Boolean; Index: Cardinal);
 var
    Period, CrashTime: TMillisecondsDuration;
 begin
@@ -293,8 +294,8 @@ begin
       // compute the next time that we'll be at a whole number of
       // Periods since the TimeOrigin.
       Period := POrbitData(Child.ParentData)^.GetPeriod(Self, Child);
-      CrashTime := System.TimeUntilNext(TimeOrigin, Period);
-      POrbitData(Child.ParentData)^.CrashEvent := System.ScheduleEvent(CrashTime, @HandleCrash, Child);
+      CrashTime := CachedSystem.TimeUntilNext(TimeOrigin, Period);
+      POrbitData(Child.ParentData)^.CrashEvent := CachedSystem.ScheduleEvent(CrashTime, @HandleCrash, Child);
    end;
 end;
 
@@ -396,14 +397,24 @@ begin
    end;
 end;
 
+function TOrbitFeatureNode.ManageBusMessage(Message: TBusMessage): Boolean;
+begin
+   if (Message is TPhysicalConnectionBusMessage) then
+   begin
+      Result := False;
+   end
+   else
+      Result := inherited;
+end;
+
 function TOrbitFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
 var
    Child: TAssetNode;
    ChildHandled: Boolean;
 begin
-   Assert(Assigned(FPrimaryChild));
    if (Message is TCrashReportMessage) then
    begin
+      Assert(Assigned(FPrimaryChild));
       ChildHandled := FPrimaryChild.HandleBusMessage(Message);
       if (not ChildHandled) then
       begin
@@ -419,17 +430,23 @@ begin
       Result := True;
       exit;
    end;
-   Result := FPrimaryChild.HandleBusMessage(Message);
-   if (not Result) then
+   if (Assigned(FPrimaryChild)) then
    begin
-      for Child in FChildren do
-      begin
-         Assert(Assigned(Child));
-         Result := Child.HandleBusMessage(Message);
-         if (Result) then
-            exit;
-      end;
+      // it's possible for us to be here with no primary child, e.g.
+      // when the message is specifically about the primary child
+      // going away.
+      Result := FPrimaryChild.HandleBusMessage(Message);
+      if (Result) then
+         exit;
    end;
+   for Child in FChildren do
+   begin
+      Assert(Assigned(Child));
+      Result := Child.HandleBusMessage(Message);
+      if (Result) then
+         exit;
+   end;
+   Result := False;
 end;
 
 procedure TOrbitFeatureNode.ApplyVisibility(VisibilityHelper: TVisibilityHelper);
@@ -457,13 +474,13 @@ begin
    Result := FPrimaryChild.AssetName;
 end;
 
-procedure TOrbitFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem);
+procedure TOrbitFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
 var
    Child: TAssetNode;
 begin
    Assert(Assigned(FPrimaryChild));
    Writer.WriteCardinal(fcOrbit);
-   Writer.WriteCardinal(FPrimaryChild.ID(System, DynastyIndex));
+   Writer.WriteCardinal(FPrimaryChild.ID(CachedSystem, DynastyIndex));
    Writer.WriteCardinal(Length(FChildren));
    for Child in FChildren do
    begin
@@ -473,7 +490,7 @@ begin
       Writer.WriteDouble(POrbitData(Child.ParentData)^.Omega);
       Writer.WriteInt64(POrbitData(Child.ParentData)^.TimeOrigin.AsInt64);
       Writer.WriteBoolean(POrbitData(Child.ParentData)^.Clockwise);
-      Writer.WriteCardinal(Child.ID(System, DynastyIndex));
+      Writer.WriteCardinal(Child.ID(CachedSystem, DynastyIndex));
    end;
 end;
 
@@ -512,7 +529,7 @@ begin
    Journal.WriteAssetChangeKind(ckEndOfList);
 end;
 
-procedure TOrbitFeatureNode.ApplyJournal(Journal: TJournalReader; System: TSystem);
+procedure TOrbitFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
 
    procedure AddChild();
    var
@@ -527,7 +544,7 @@ procedure TOrbitFeatureNode.ApplyJournal(Journal: TJournalReader; System: TSyste
       Omega := Journal.ReadDouble();
       TimeOrigin := TTimeInMilliseconds(Journal.ReadInt64());
       Clockwise := Journal.ReadBoolean();
-      AddOrbitingChild(System, Child, SemiMajorAxis, Eccentricity, Omega, TimeOrigin, Clockwise);
+      AddOrbitingChild(CachedSystem, Child, SemiMajorAxis, Eccentricity, Omega, TimeOrigin, Clockwise);
       Assert(Child.Parent = Self);
    end;
 
@@ -546,7 +563,7 @@ procedure TOrbitFeatureNode.ApplyJournal(Journal: TJournalReader; System: TSyste
       TimeOrigin := TTimeInMilliseconds(Journal.ReadInt64());
       Clockwise := Journal.ReadBoolean();
       Index := POrbitData(Child.ParentData)^.Index; // it doesn't change
-      UpdateOrbitingChild(System, Child, SemiMajorAxis, Eccentricity, Omega, TimeOrigin, Clockwise, Index);
+      UpdateOrbitingChild(CachedSystem, Child, SemiMajorAxis, Eccentricity, Omega, TimeOrigin, Clockwise, Index);
       Assert(Child.Parent = Self);
    end;
 

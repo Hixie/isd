@@ -28,11 +28,11 @@ type
       function GetFeatureName(): UTF8String; override;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
-      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem); override;
+      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
    public
       constructor Create(ADynasty: TDynasty);
       procedure UpdateJournal(Journal: TJournalWriter); override;
-      procedure ApplyJournal(Journal: TJournalReader; System: TSystem); override;
+      procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
       property Dynasty: TDynasty read FDynasty;
    end;
 
@@ -83,7 +83,7 @@ begin
    Result := False;
 end;
 
-procedure TDynastyOriginalColonyShipFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem);
+procedure TDynastyOriginalColonyShipFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
 begin
    Assert(Assigned(FDynasty));
    if (FDynasty = Parent.Owner) then
@@ -99,7 +99,7 @@ begin
    Journal.WriteDynastyReference(FDynasty);
 end;
 
-procedure TDynastyOriginalColonyShipFeatureNode.ApplyJournal(Journal: TJournalReader; System: TSystem);
+procedure TDynastyOriginalColonyShipFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
 begin
    FDynasty := Journal.ReadDynastyReference();
 end;

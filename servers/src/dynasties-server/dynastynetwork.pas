@@ -6,7 +6,7 @@ interface
 
 uses
    corenetwork, binarystream, basenetwork, dynasty, hashtable, genericutils,
-   basedynasty, authnetwork, servers, sharedpointer, passwords;
+   basedynasty, authnetwork, servers, sharedpointer, passwords, unixtype;
 
 type
    TDynastyHashTable = class(specialize THashTable<Cardinal, TDynasty, CardinalUtils>)
@@ -38,6 +38,7 @@ type
       constructor Create(AServer: TServer; ASystemServer: PServerEntry; AConversation: TInternalConversationHandle);
       procedure RegisterToken(Dynasty: TDynasty; Salt: TSalt; Hash: THash);
       procedure Logout(Dynasty: TDynasty);
+      procedure ReportConnectionError(ErrorCode: cint); override;
    end;
    
    TServer = class(TBaseServer)
@@ -60,7 +61,7 @@ type
 implementation
 
 uses
-   sysutils, hashfunctions, isdprotocol, configuration, astronomy, isderrors;
+   sysutils, hashfunctions, isdprotocol, configuration, astronomy, isderrors, errors;
 
 constructor TDynastyHashTable.Create();
 begin
@@ -303,6 +304,12 @@ begin
    FConversation.Value.RemoveHold();
 end;
 
+procedure TInternalSystemConnection.ReportConnectionError(ErrorCode: cint);
+begin
+   FConversation.Value.FailHold();
+   Writeln('IPC connection to system server failed with error #', ErrorCode, ': ', StrError(ErrorCode));
+end;
+
 procedure TInternalSystemConnection.RegisterToken(Dynasty: TDynasty; Salt: TSalt; Hash: THash);
 var
    Writer: TBinaryStreamWriter;
@@ -314,7 +321,14 @@ begin
    Writer.WriteRawBytes(@Salt[0], SizeOf(Salt));
    Writer.WriteRawBytes(@Hash[0], SizeOf(Hash));
    Message := Writer.Serialize(True);
-   ConsoleWriteln('Sending IPC to system server: ', Message);
+   if (FConversation.Value.HasFailed) then
+   begin
+      ConsoleWriteln('Would send IPC to system server (but connection has failed): ', Message);
+   end
+   else
+   begin
+      ConsoleWriteln('Sending IPC to system server: ', Message);
+   end;
    Write(Message);
    FreeAndNil(Writer);
    IncrementPendingCount();
@@ -329,7 +343,14 @@ begin
    Writer.WriteString(icLogout);
    Writer.WriteCardinal(Dynasty.DynastyID);
    Message := Writer.Serialize(True);
-   ConsoleWriteln('Sending IPC to system server: ', Message);
+   if (FConversation.Value.HasFailed) then
+   begin
+      ConsoleWriteln('Would send IPC to system server (but connection has failed): ', Message);
+   end
+   else
+   begin
+      ConsoleWriteln('Sending IPC to system server: ', Message);
+   end;
    Write(Message);
    FreeAndNil(Writer);
    IncrementPendingCount();

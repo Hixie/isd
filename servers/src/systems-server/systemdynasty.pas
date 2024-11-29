@@ -41,10 +41,18 @@ type
       function GetDynastyFromDisk(DynastyID: Cardinal): TDynasty; virtual; abstract;
    end;
 
+function DynastyHash32(const Key: TDynasty): DWord;
+
 implementation
 
 uses
-   exceptions, configuration;
+   exceptions, configuration, hashfunctions;
+
+function DynastyHash32(const Key: TDynasty): DWord;
+begin
+   Result := ObjectHash32(Key);
+end;
+
 
 constructor TDynasty.Create(ADynastyID: Cardinal; ADynastyServerID: Cardinal; AConfigurationDirectory: UTF8String; AOnUnreferenced: TDynastyCallback);
 begin

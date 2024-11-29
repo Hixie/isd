@@ -25,17 +25,17 @@ type
       function GetFeatureName(): UTF8String; override;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
-      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem); override;
+      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
    public
       constructor CreatePopulated(APopulation: Int64; AMeanHappiness: Double); // only for use in plot-generated population centers
       procedure UpdateJournal(Journal: TJournalWriter); override;
-      procedure ApplyJournal(Journal: TJournalReader; System: TSystem); override;
+      procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
    end;
 
 implementation
 
 uses
-   isdprotocol;
+   isdprotocol, messages, orbit, sysutils;
 
 const
    MeanIndividualMass = 70; // kg // TODO: allow species to diverge and such, with different demographics, etc
@@ -78,11 +78,21 @@ begin
 end;
 
 function TPopulationFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
+var
+   HelpMessage: TNotificationMessage;
 begin
+   if (Message is TCrashReportMessage) then
+   begin
+      HelpMessage := TNotificationMessage.Create(Parent, 'AAAAAAAAA', 'Passengers', 'WHAT THE HECK WHY DID WE JUST CRASH WHAT IS HAPPENING');
+      Result := InjectBusMessage(HelpMessage);
+      if (not Result) then
+         Writeln('Discarding message from population center (subject "', HelpMessage.Subject, '")');
+      FreeAndNil(HelpMessage);
+   end;
    Result := False;
 end;
 
-procedure TPopulationFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem);
+procedure TPopulationFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
 begin
    Writer.WriteCardinal(fcPopulation);
    Writer.WriteInt64(FPopulation);
@@ -95,7 +105,7 @@ begin
    Journal.WriteDouble(FMeanHappiness);
 end;
 
-procedure TPopulationFeatureNode.ApplyJournal(Journal: TJournalReader; System: TSystem);
+procedure TPopulationFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
 begin
    FPopulation := Journal.ReadInt64();
    FMeanHappiness := Journal.ReadDouble();

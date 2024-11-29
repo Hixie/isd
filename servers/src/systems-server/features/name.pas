@@ -24,12 +24,12 @@ type
       function GetFeatureName(): UTF8String; override;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
-      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem); override;
+      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
       function GetAssetName(): UTF8String;
    public
       constructor Create(AAssetName: UTF8String);
       procedure UpdateJournal(Journal: TJournalWriter); override;
-      procedure ApplyJournal(Journal: TJournalReader; System: TSystem); override;
+      procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
       property AssetName: UTF8String read FAssetName;
    end;
 
@@ -80,7 +80,7 @@ begin
    Result := False;
 end;
 
-procedure TAssetNameFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem);
+procedure TAssetNameFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
 begin
    // client receives this as a property of the asset via IAssetNameProvider
 end;
@@ -90,7 +90,7 @@ begin
    Journal.WriteString(FAssetName);
 end;
 
-procedure TAssetNameFeatureNode.ApplyJournal(Journal: TJournalReader; System: TSystem);
+procedure TAssetNameFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
 begin
    FAssetName := Journal.ReadString();
 end;

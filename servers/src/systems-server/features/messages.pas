@@ -5,20 +5,38 @@ unit messages;
 interface
 
 uses
-   systems, serverstream;
+   systems, serverstream, time, knowledge;
+
+type
+   TNotificationMessage = class(TKnowledgeBusMessage)
+   private
+      FSource: TAssetNode;
+      FSubject, FFrom, FBody: UTF8String;
+   public
+      constructor Create(ASource: TAssetNode; ASubject, AFrom, ABody: UTF8String);
+      property Source: TAssetNode read FSource;
+      property Subject: UTF8String read FSubject;
+      property From: UTF8String read FFrom;
+      property Body: UTF8String read FBody;
+   end;
 
 type
    TMessageBoardFeatureClass = class(TFeatureClass)
+   private
+      FMessageAssetClass: TAssetClass;
    strict protected
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
+      constructor Create(AMessageAssetClass: TAssetClass);
       function InitFeatureNode(): TFeatureNode; override;
    end;
 
    TMessageBoardFeatureNode = class(TFeatureNode)
    private
+      FFeatureClass: TMessageBoardFeatureClass;
       FChildren: TAssetNodeArray;
    protected
+      constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
       procedure AdoptChild(Child: TAssetNode); override;
       procedure DropChild(Child: TAssetNode); override;
       function GetMass(): Double; override;
@@ -26,17 +44,47 @@ type
       function GetFeatureName(): UTF8String; override;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
-      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem); override;
+      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
    public
+      constructor Create(AFeatureClass: TMessageBoardFeatureClass);
       destructor Destroy(); override;
       procedure UpdateJournal(Journal: TJournalWriter); override;
-      procedure ApplyJournal(Journal: TJournalReader; System: TSystem); override;
+      procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
+   end;
+
+type
+   TMessageFeatureClass = class(TFeatureClass)
+   strict protected
+      function GetFeatureNodeClass(): FeatureNodeReference; override;
+   public
+      function InitFeatureNode(): TFeatureNode; override;
+   end;
+   
+   TMessageFeatureNode = class(TFeatureNode)
+   private
+      FSourceSystemID: Cardinal;
+      FTimestamp: TTimeInMilliseconds;
+      FIsRead: Boolean;
+      FSubject, FFrom, FBody: UTF8String;
+   protected
+      function GetMass(): Double; override;
+      function GetSize(): Double; override;
+      function GetFeatureName(): UTF8String; override;
+      procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
+      function HandleBusMessage(Message: TBusMessage): Boolean; override;
+      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
+   public
+      constructor Create();
+      constructor Create(ASourceSystemID: Cardinal; ATimestamp: TTimeInMilliseconds; AIsRead: Boolean; ASubject, AFrom, ABody: UTF8String);
+      procedure SetMessage(ASourceSystemID: Cardinal; ATimestamp: TTimeInMilliseconds; ASubject, AFrom, ABody: UTF8String);
+      procedure UpdateJournal(Journal: TJournalWriter); override;
+      procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
    end;
 
 implementation
 
 uses
-   isdprotocol;
+   isdprotocol, sysutils;
 
 type
    PMessageBoardData = ^TMessageBoardData;
@@ -45,6 +93,23 @@ type
       Index: Cardinal;
    end;
 
+
+constructor TNotificationMessage.Create(ASource: TAssetNode; ASubject, AFrom, ABody: UTF8String);
+begin
+   inherited Create();
+   FSource := ASource;
+   FSubject := ASubject;
+   FFrom := AFrom;
+   FBody := ABody;
+end;
+
+
+constructor TMessageBoardFeatureClass.Create(AMessageAssetClass: TAssetClass);
+begin
+   inherited Create();
+   FMessageAssetClass := AMessageAssetClass;
+end;
+
 function TMessageBoardFeatureClass.GetFeatureNodeClass(): FeatureNodeReference;
 begin
    Result := TMessageBoardFeatureNode;
@@ -52,9 +117,22 @@ end;
 
 function TMessageBoardFeatureClass.InitFeatureNode(): TFeatureNode;
 begin
-   Result := TMessageBoardFeatureNode.Create();
+   Result := TMessageBoardFeatureNode.Create(Self);
 end;
 
+
+constructor TMessageBoardFeatureNode.Create(AFeatureClass: TMessageBoardFeatureClass);
+begin
+   inherited Create();
+   FFeatureClass := AFeatureClass;
+end;
+
+constructor TMessageBoardFeatureNode.CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem);
+begin
+   inherited CreateFromJournal(Journal, AFeatureClass, ASystem);
+   Assert(Assigned(AFeatureClass));
+   FFeatureClass := AFeatureClass as TMessageBoardFeatureClass;
+end;
 
 destructor TMessageBoardFeatureNode.Destroy();
 var
@@ -116,7 +194,24 @@ end;
 function TMessageBoardFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
 var
    Child: TAssetNode;
+   Notification: TNotificationMessage;
+   Feature: TMessageFeatureNode;
+   CachedSystem: TSystem;
 begin
+   if (Message is TNotificationMessage) then
+   begin
+      Notification := Message as TNotificationMessage;
+      if (Notification.Source.Owner = Parent.Owner) then
+      begin
+         Child := FFeatureClass.FMessageAssetClass.Spawn(Parent.Owner);
+         Feature := Child.GetFeatureByClass(TMessageFeatureClass) as TMessageFeatureNode;
+         CachedSystem := System;
+         Feature.SetMessage(CachedSystem.SystemID, CachedSystem.Now, Notification.Subject, Notification.From, Notification.Body);
+         AdoptChild(Child);
+         Result := True;
+         exit;
+      end;
+   end;
    for Child in FChildren do
    begin
       Result := Child.HandleBusMessage(Message);
@@ -126,15 +221,20 @@ begin
    Result := False;
 end;
 
-procedure TMessageBoardFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem);
+procedure TMessageBoardFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
 var
    Child: TAssetNode;
+   Visibility: TVisibility;
 begin
-   Writer.WriteCardinal(fcMessageBoard);
-   Writer.WriteCardinal(Length(FChildren)); // $R-
-   for Child in FChildren do
+   Visibility := Parent.ReadVisibilityFor(DynastyIndex, CachedSystem);
+   if (dmInternals in Visibility) then
    begin
-      Writer.WriteCardinal(Child.ID(System, DynastyIndex));
+      Writer.WriteCardinal(fcMessageBoard);
+      Writer.WriteCardinal(Length(FChildren)); // $R-
+      for Child in FChildren do
+      begin
+         Writer.WriteCardinal(Child.ID(CachedSystem, DynastyIndex));
+      end;
    end;
 end;
 
@@ -166,7 +266,7 @@ begin
    Journal.WriteAssetChangeKind(ckEndOfList);
 end;
 
-procedure TMessageBoardFeatureNode.ApplyJournal(Journal: TJournalReader; System: TSystem);
+procedure TMessageBoardFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
 
    procedure AddChild();
    var
@@ -197,6 +297,99 @@ begin
          ckEndOfList: break;
       end;
    until False;
+end;
+
+
+function TMessageFeatureClass.GetFeatureNodeClass(): FeatureNodeReference;
+begin
+   Result := TMessageFeatureNode;
+end;
+
+function TMessageFeatureClass.InitFeatureNode(): TFeatureNode;
+begin
+   Result := TMessageFeatureNode.Create();
+end;
+
+
+constructor TMessageFeatureNode.Create();
+begin
+   inherited Create();
+end;
+
+constructor TMessageFeatureNode.Create(ASourceSystemID: Cardinal; ATimestamp: TTimeInMilliseconds; AIsRead: Boolean; ASubject, AFrom, ABody: UTF8String);
+begin
+   inherited Create();
+   FSourceSystemID := ASourceSystemID;
+   FTimestamp := ATimestamp; 
+   FIsRead := AIsRead;
+   FSubject := ASubject;
+   FFrom := AFrom;
+   FBody := ABody;
+end;
+
+function TMessageFeatureNode.GetMass(): Double;
+begin
+   Result := 0.0;
+end;
+
+function TMessageFeatureNode.GetSize(): Double;
+begin
+   // Result := 1.0e-8;
+   Result := 50.0;
+end;
+
+function TMessageFeatureNode.GetFeatureName(): UTF8String;
+begin
+   Result := '';
+end;
+
+procedure TMessageFeatureNode.Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback);
+begin
+end;
+
+function TMessageFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
+begin
+   Result := False;
+end;
+
+procedure TMessageFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
+begin
+   Writer.WriteCardinal(fcMessage);
+   Writer.WriteCardinal(FSourceSystemID);
+   Writer.WriteInt64(FTimestamp.AsInt64);
+   Writer.WriteBoolean(FIsRead); // if we add more flags, they should go into this byte
+   Writer.WriteStringReference(FSubject);
+   Writer.WriteStringReference(FFrom);
+   Writer.WriteStringReference(FBody);
+end;
+
+procedure TMessageFeatureNode.UpdateJournal(Journal: TJournalWriter);
+begin
+   Journal.WriteCardinal(FSourceSystemID);
+   Journal.WriteInt64(FTimestamp.AsInt64);
+   Journal.WriteBoolean(FIsRead);
+   Journal.WriteString(FSubject);
+   Journal.WriteString(FFrom);
+   Journal.WriteString(FBody);
+end;
+
+procedure TMessageFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
+begin
+   FSourceSystemID := Journal.ReadCardinal();
+   FTimestamp := TTimeInMilliseconds(Journal.ReadInt64());
+   FIsRead := Journal.ReadBoolean();
+   FSubject := Journal.ReadString();
+   FFrom := Journal.ReadString();
+   FBody := Journal.ReadString();
+end;
+
+procedure TMessageFeatureNode.SetMessage(ASourceSystemID: Cardinal; ATimestamp: TTimeInMilliseconds; ASubject, AFrom, ABody: UTF8String);
+begin
+   FSourceSystemID := ASourceSystemID;
+   FTimestamp := ATimestamp;
+   FSubject := ASubject;
+   FFrom := AFrom;
+   FBody := ABody;
 end;
 
 end.

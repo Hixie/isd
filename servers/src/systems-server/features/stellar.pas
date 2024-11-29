@@ -25,12 +25,12 @@ type
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
       procedure ApplyVisibility(VisibilityHelper: TVisibilityHelper); override;
-      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem); override;
+      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
       function GetAssetName(): UTF8String;
    public
       constructor Create(AStarID: TStarID);
       procedure UpdateJournal(Journal: TJournalWriter); override;
-      procedure ApplyJournal(Journal: TJournalReader; System: TSystem); override;
+      procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
       property Category: TStarCategory read GetCategory;
       property StarID: TStarID read FStarID;
    end;
@@ -126,7 +126,7 @@ begin
    VisibilityHelper.AddBroadVisibility([dmVisibleSpectrum], Parent);
 end;
 
-procedure TStarFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem);
+procedure TStarFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
 begin
    Writer.WriteCardinal(fcStar);
    Assert(StarID >= 0);
@@ -139,7 +139,7 @@ begin
    Journal.WriteCardinal(StarID); // $R-
 end;
 
-procedure TStarFeatureNode.ApplyJournal(Journal: TJournalReader; System: TSystem);
+procedure TStarFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
 begin
    FStarID := Journal.ReadCardinal(); // $R-
 end;

@@ -38,12 +38,12 @@ type
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
       procedure ApplyVisibility(VisibilityHelper: TVisibilityHelper); override;
-      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem); override;
+      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
    public
       constructor Create(AFeatureClass: TSolarSystemFeatureClass);
       destructor Destroy(); override;
       procedure UpdateJournal(Journal: TJournalWriter); override;
-      procedure ApplyJournal(Journal: TJournalReader; System: TSystem); override;
+      procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
       procedure AddCartesianChild(Child: TAssetNode; X, Y: Double); // meters, first must be at 0,0; call ComputeHillSpheres after calling AddCartesianChild for all children // marks the child as new
       procedure ComputeHillSpheres(); // call this after all stars have been added
       function GetAssetName(): UTF8String;
@@ -224,15 +224,12 @@ begin
       end;
    end;
    AdoptSolarSystemChild(Child, DistanceFromCenter, Theta, NaN);
-   MarkAsDirty([dkSelf], [ckAffectsDynastyCount, ckAffectsVisibility, ckAffectsNames]);
 end;
 
 procedure TSolarSystemFeatureNode.AddPolarChildFromJournal(Child: TAssetNode; Distance, Theta, HillDiameter: Double); // meters
 begin
    Assert(Child.AssetClass.ID = idOrbits);
    AdoptSolarSystemChild(Child, Distance, Theta, HillDiameter);
-   // we don't mark ourselves dirty because this is specifically for the case of handling the journal,
-   // which means we're already dirty anyway.
 end;
 
 procedure TSolarSystemFeatureNode.MarkAsDirty(DirtyKinds: TDirtyKinds; ChangeKinds: TChangeKinds);
@@ -293,7 +290,7 @@ begin
    VisibilityHelper.AddBroadVisibility([dmVisibleSpectrum, dmClassKnown], Parent);
 end;
 
-procedure TSolarSystemFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; System: TSystem);
+procedure TSolarSystemFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
 var
    Child: TAssetNode;
    Index: Cardinal;
@@ -302,7 +299,7 @@ begin
    Writer.WriteCardinal(fcSpace);
    Assert(Length(FChildren) > 0); // otherwise who are we reporting this to?
    Assert(Assigned(FChildren[0]));
-   Writer.WriteCardinal(FChildren[0].ID(System, DynastyIndex));
+   Writer.WriteCardinal(FChildren[0].ID(CachedSystem, DynastyIndex));
    Writer.WriteCardinal(Length(FChildren) - 1); // $R-
    if (Length(FChildren) > 1) then
       for Index := 1 to Length(FChildren) - 1 do // $R-
@@ -311,7 +308,7 @@ begin
          Assert(Assigned(Child));
          Writer.WriteDouble(PSolarSystemData(Child.ParentData)^.DistanceFromCenter);
          Writer.WriteDouble(PSolarSystemData(Child.ParentData)^.Theta);
-         Writer.WriteCardinal(Child.ID(System, DynastyIndex));
+         Writer.WriteCardinal(Child.ID(CachedSystem, DynastyIndex));
       end;
 end;
 
@@ -346,7 +343,7 @@ begin
    Journal.WriteAssetChangeKind(ckEndOfList);
 end;
 
-procedure TSolarSystemFeatureNode.ApplyJournal(Journal: TJournalReader; System: TSystem);
+procedure TSolarSystemFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
 
    procedure AddChild();
    var

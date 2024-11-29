@@ -34,7 +34,7 @@ const
    fcPopulation = $0B;
    fcMessageBoard = $0C;
    fcMessage = $0D;
-   fcHighestKnownFeatureCode = fcMessageBoard;
+   fcHighestKnownFeatureCode = fcMessage;
    
 implementation
 
