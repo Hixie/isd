@@ -11,6 +11,8 @@ const
    ieInadequatePassword = 'inadequate password';
    ieInternalError = 'internal error';
    ieUnknownFileCode = 'unknown file code';
+   ieNotLoggedIn = 'not logged in';
+   ieInvalidCommand = 'invalid command';
 
 implementation
 

@@ -41,6 +41,7 @@ type
       procedure ReportConnectionError(ErrorCode: cint); override;
    end;
    
+   
    TServer = class(TBaseServer)
    protected
       FPassword: UTF8String;

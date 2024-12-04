@@ -5,7 +5,7 @@ unit messages;
 interface
 
 uses
-   systems, serverstream, time, knowledge;
+   systems, serverstream, time, knowledge, basenetwork;
 
 type
    TNotificationMessage = class(TKnowledgeBusMessage)
@@ -79,6 +79,7 @@ type
       procedure SetMessage(ASourceSystemID: Cardinal; ATimestamp: TTimeInMilliseconds; ASubject, AFrom, ABody: UTF8String);
       procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
+      function HandleCommand(Command: UTF8String; var Message: TMessage): Boolean; override;
    end;
 
 implementation
@@ -390,6 +391,31 @@ begin
    FSubject := ASubject;
    FFrom := AFrom;
    FBody := ABody;
+end;
+
+function TMessageFeatureNode.HandleCommand(Command: UTF8String; var Message: TMessage): Boolean;
+begin
+   if (Command = 'mark-read') then
+   begin
+      Message.CloseInput();
+      Message.Reply();
+      Message.CloseOutput();
+      FIsRead := True;
+      MarkAsDirty([dkSelf], []);
+      Result := True;
+   end
+   else
+   if (Command = 'mark-unread') then
+   begin
+      Message.CloseInput();
+      Message.Reply();
+      Message.CloseOutput();
+      FIsRead := False;
+      MarkAsDirty([dkSelf], []);
+      Result := True;
+   end
+   else
+      Result := inherited;
 end;
 
 end.

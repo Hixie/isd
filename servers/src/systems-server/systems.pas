@@ -342,6 +342,7 @@ type
       destructor Destroy(); override;
       procedure UpdateJournal(Journal: TJournalWriter); virtual; abstract;
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); virtual; abstract;
+      function HandleCommand(Command: UTF8String; var Message: TMessage): Boolean; virtual;
       property Mass: Double read GetMass;
       property Size: Double read GetSize;
       property FeatureName: UTF8String read GetFeatureName;
@@ -425,6 +426,7 @@ type
       procedure UpdateJournal(Journal: TJournalWriter);
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
       function ID(CachedSystem: TSystem; DynastyIndex: Cardinal): TAssetID;
+      procedure HandleCommand(Command: UTF8String; var Message: TMessage);
       property Parent: TFeatureNode read FParent;
       property Dirty: TDirtyKinds read FDirty;
       property AssetClass: TAssetClass read FAssetClass;
@@ -505,6 +507,7 @@ type
       function HasDynasty(Dynasty: TDynasty): Boolean; inline;
       function ScheduleEvent(TimeDelta: TMillisecondsDuration; Callback: TEventCallback; var Data): TSystemEvent;
       function TimeUntilNext(TimeOrigin: TTimeInMilliseconds; Period: TMillisecondsDuration): TMillisecondsDuration;
+      function FindOwnedAsset(Dynasty: TDynasty; AssetID: TAssetID): TAssetNode;
       property RootNode: TAssetNode read FRoot;
       property Dirty: Boolean read GetDirty;
       property SystemID: Cardinal read FSystemID;
@@ -874,6 +877,11 @@ end;
 
 procedure TFeatureNode.HandleVisibility(const DynastyIndex: Cardinal; var Visibility: TVisibility; const Sensors: ISensorsProvider; const VisibilityHelper: TVisibilityHelper);
 begin
+end;
+
+function TFeatureNode.HandleCommand(Command: UTF8String; var Message: TMessage): Boolean;
+begin
+   Result := False;
 end;
 
 destructor TFeatureNode.Destroy();
@@ -1456,6 +1464,17 @@ begin
    Result := Parent.System;
 end;
 
+procedure TAssetNode.HandleCommand(Command: UTF8String; var Message: TMessage);
+var
+   Feature: TFeatureNode;
+begin
+   for Feature in FFeatures do
+   begin
+      if (Feature.HandleCommand(Command, Message)) then
+         exit;
+   end;
+end;
+
 function TAssetNode.GetDebugName(): UTF8String;
 begin
    Result := '<' + AssetClass.Name + ' @ ' + HexStr(Self) + ' "' + AssetName + '"' + '>';
@@ -2017,6 +2036,34 @@ end;
 function TSystem.GetNow(): TTimeInMilliseconds;
 begin
    Result := TTimeInMilliseconds(0) + TWallMillisecondsDuration(MillisecondsBetween(FServer.Clock.Now(), FTimeOrigin)) * FTimeFactor;
+end;
+
+function TSystem.FindOwnedAsset(Dynasty: TDynasty; AssetID: TAssetID): TAssetNode;
+var
+   DynastyIndex: Cardinal;
+   FoundAsset: TAssetNode;
+   
+   function Search(Asset: TAssetNode): Boolean;
+   begin
+      Writeln('Considering ', Asset.DebugName, '...');
+      if ((Asset.Owner = Dynasty) and (Asset.ID(Self, DynastyIndex) = AssetID)) then
+      begin
+         Writeln('Success!');
+         FoundAsset := Asset;
+      end;
+      Result := not Assigned(FoundAsset);
+   end;
+   
+begin
+   if (not HasDynasty(Dynasty)) then
+   begin
+      Result := nil;
+      exit;
+   end;
+   DynastyIndex := FDynastyIndices[Dynasty];
+   FoundAsset := nil;
+   FRoot.Walk(@Search, nil);
+   Result := FoundAsset;
 end;
 
 

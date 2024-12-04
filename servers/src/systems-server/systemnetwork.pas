@@ -29,6 +29,7 @@ type
       procedure HandleIPC(Arguments: TBinaryStreamReader); override;
       function GetDynasty(DynastyID: Cardinal): TBaseDynasty; override; // used for VerifyLogin
       procedure DoLogin(var Message: TMessage); message 'login';
+      procedure DoPlay(var Message: TMessage); message 'play';
       function GetInternalPassword(): UTF8String; override;
       function FindHome(System: TSystem): TAssetNode;
    public
@@ -96,7 +97,7 @@ implementation
 uses
    sysutils, hashfunctions, isdprotocol, passwords, exceptions, space,
    orbit, sensors, structure, errors, plot, planetary, math, time,
-   population, messages, knowledge;
+   population, messages, knowledge, isderrors;
 
 constructor TSystemHashTable.Create();
 begin
@@ -333,6 +334,54 @@ begin
    Assert(FWriter.BufferLength = 0);
    Assert(Length(SystemStatus) > 0); // otherwise we wouldn't have their login credentials
    WriteFrame(SystemStatus[1], Length(SystemStatus)); // $R-
+end;
+
+procedure TConnection.DoPlay(var Message: TMessage);
+var
+   SystemID, AssetID, Temp: Cardinal;
+   Command: UTF8String;
+   System: TSystem;
+   Asset: TAssetNode;
+begin
+   if (not Assigned(FDynasty)) then
+   begin
+      Message.Error(ieNotLoggedIn);
+      exit;
+   end;
+   SystemID := Message.Input.ReadCardinal();
+   AssetID := Message.Input.ReadCardinal();
+   if (AssetID > High(TAssetID)) then
+   begin
+      Message.Error(ieInvalidCommand);
+      exit;
+   end;
+   Command := Message.Input.ReadString();
+   // attempt to dispatch message
+   Writeln('looking for system ', SystemID, ' from:');
+   for Temp in FServer.FSystems do
+      Writeln('  - ', Temp);
+   System := FServer.FSystems[SystemID];
+   if (Assigned(System)) then
+   begin
+      Writeln('Found system to send command to!');
+      Asset := System.FindOwnedAsset(FDynasty, TAssetID(AssetID));
+      if (Assigned(Asset)) then
+      begin
+         Writeln('Found asset to send command to!');
+         Asset.HandleCommand(Command, Message);
+      end;
+   end;
+   // check for success
+   if (not Message.InputClosed) then
+   begin
+      Message.Error(ieInvalidCommand);
+      exit;
+   end;
+   if (not Message.OutputClosed) then
+   begin
+      Message.Error(ieInternalError);
+      exit;
+   end;
 end;
 
 function TConnection.GetInternalPassword(): UTF8String;

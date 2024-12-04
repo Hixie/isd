@@ -17,6 +17,24 @@ The server will subsequently begin sending updates about the systems
 it supports that have the dynasty's presence, starting with a complete
 system description for each system (of assets visible to this dynasty).
 
+
+## `play`
+
+Fields:
+
+ * System ID (numeric)
+ * Asset ID (numeric)
+ * Command (string)
+ * additional fields defined by the command
+
+The command is routed to the given asset, which must be owned by the
+dynasty. For details about which commands are available for assets
+with various features, see the feature definitions below. Unless
+otherwise stated, features support no commands.
+
+The connection must have had a successful `login` prior to this message.
+
+
 ## Change notifications
 
 When the client connects, and whenever the system subsequently
@@ -534,6 +552,11 @@ the message. Currently this is plain text.
 
 > TODO: A future version of this protocol will change `<body>` to
 > support formatting, images, links to assets, etc.
+
+This feature supports the following commands:
+
+ * `mark-read`: no additional fields. Sets the "read" bit to 0x01.
+ * `mark-unread`: no additional fields. Sets the "read" bit to 0x00.
 
 
 # Systems Server Internal Protocol
