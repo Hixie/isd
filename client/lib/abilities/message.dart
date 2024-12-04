@@ -198,10 +198,22 @@ class RenderMessage extends RenderWorldNode with RenderObjectWithChildMixin<Rend
     }
   }
 
+  Offset? _childPosition;
+  
   @override
   WorldGeometry computePaint(PaintingContext context, Offset offset) {
-    context.paintChild(child!, Offset(offset.dx - _actualDiameter / 2.0, offset.dy - _actualDiameter / 2.0));
+    _childPosition = Offset(offset.dx - _actualDiameter / 2.0, offset.dy - _actualDiameter / 2.0);
+    context.paintChild(child!, _childPosition!);
     return WorldGeometry(shape: Square(_actualDiameter));
+  }
+
+  @override
+  bool hitTestChildren(BoxHitTestResult result, { required Offset position }) {
+    return result.addWithPaintOffset(offset: _childPosition, position: position, hitTest: _hitTestChild);
+  }
+
+  bool _hitTestChild(BoxHitTestResult result, Offset offset) {
+    return child!.hitTest(result, position: offset);
   }
 
   @override

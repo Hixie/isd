@@ -400,7 +400,7 @@ class StarType {
 
 typedef GalaxyTapHandler = void Function(Offset offset, double zoomFactor);
 
-class RenderGalaxy extends RenderWorldNode with ContainerRenderObjectMixin<RenderWorld, GalaxyParentData> {
+class RenderGalaxy extends RenderWorldWithChildren<GalaxyParentData> {
   RenderGalaxy({
     required super.node,
     required Galaxy galaxy,
@@ -952,7 +952,6 @@ class RenderGalaxy extends RenderWorldNode with ContainerRenderObjectMixin<Rende
     super.reassemble();
     _preparedStarsRect = null;
   }
-
 
   @override
   WorldTapTarget? routeTap(Offset offset) {

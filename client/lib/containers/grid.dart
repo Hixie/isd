@@ -115,7 +115,7 @@ class GridWidget extends MultiChildRenderObjectWidget {
 
 class GridParentData extends ParentData with ContainerParentDataMixin<RenderWorld> { }
 
-class RenderGrid extends RenderWorldNode with ContainerRenderObjectMixin<RenderWorld, GridParentData> {
+class RenderGrid extends RenderWorldWithChildren<GridParentData> {
   RenderGrid({
     required SpaceTime spaceTime,
     required ShaderLibrary shaders,

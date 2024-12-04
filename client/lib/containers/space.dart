@@ -91,7 +91,7 @@ class SpaceWidget extends MultiChildRenderObjectWidget {
 
 class SpaceParentData extends ParentData with ContainerParentDataMixin<RenderWorld> { }
 
-class RenderSpace extends RenderWorldNode with ContainerRenderObjectMixin<RenderWorld, SpaceParentData> {
+class RenderSpace extends RenderWorldWithChildren<SpaceParentData> {
   RenderSpace({
     required super.node,
     required double diameter,

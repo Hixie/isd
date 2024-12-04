@@ -304,6 +304,11 @@ class RenderSystem extends RenderWorldNode with RenderObjectWithChildMixin<Rende
   }
 
   @override
+  bool hitTestChildren(BoxHitTestResult result, { required Offset position }) {
+    return child?.hitTestChildren(result, position: position) ?? false;
+  }
+
+  @override
   WorldTapTarget? routeTap(Offset offset) {
     if (_visibleHudElements.isNotEmpty) {
       Rect? target;

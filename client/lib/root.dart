@@ -439,13 +439,15 @@ class RenderBoxToRenderWorldAdapter extends RenderBox with RenderObjectWithChild
 
   final LayerHandle<TransformLayer> _universeLayer = LayerHandle<TransformLayer>();
 
+  Offset _paintOffset = Offset.zero;
+  
   @override
   void paint(PaintingContext context, Offset offset) {
-    final Offset center = size.center(offset);
+    _paintOffset = size.center(offset);
     _universeLayer.layer = context.pushTransform(
       needsCompositing,
       Offset.zero,
-      Matrix4.translationValues(center.dx, center.dy, 0.0),
+      Matrix4.translationValues(_paintOffset.dx, _paintOffset.dy, 0.0),
       _paintChild,
       oldLayer: _universeLayer.layer,
     );
@@ -460,9 +462,17 @@ class RenderBoxToRenderWorldAdapter extends RenderBox with RenderObjectWithChild
   }
 
   @override
-  bool hitTest(BoxHitTestResult result, { required Offset position }) {
-    result.add(BoxHitTestEntry(this, position));
+  bool hitTestSelf(Offset position) {
     return true;
+  }
+
+  @override
+  bool hitTestChildren(BoxHitTestResult result, { required Offset position }) {
+    return result.addWithPaintOffset(offset: _paintOffset, position: position, hitTest: _hitTestChild);
+  }
+
+  bool _hitTestChild(BoxHitTestResult result, Offset offset) {
+    return child?.hitTestChildren(result, position: offset) ?? false;
   }
 
   WorldTapTarget? routeTap(Offset offset) {

@@ -90,7 +90,7 @@ class MessageBoardWidget extends MultiChildRenderObjectWidget {
 
 class MessageBoardParentData extends ParentData with ContainerParentDataMixin<RenderWorld> { }
 
-class RenderMessageBoard extends RenderWorldNode with ContainerRenderObjectMixin<RenderWorld, MessageBoardParentData> {
+class RenderMessageBoard extends RenderWorldWithChildren<MessageBoardParentData> {
   RenderMessageBoard({
     required super.node,
     required double diameter,

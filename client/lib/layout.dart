@@ -195,6 +195,8 @@ abstract class RenderWorld extends RenderObject {
   @override
   void debugAssertDoesMeetConstraints() { }
 
+  bool hitTestChildren(BoxHitTestResult result, { required Offset position });
+
   WorldTapTarget? routeTap(Offset offset);
 }
 
@@ -209,5 +211,22 @@ abstract class RenderWorldNode extends RenderWorld {
       _node = value;
       markNeedsPaint();
     }
+  }
+}
+
+abstract class RenderWorldWithChildren<ParentDataType extends ContainerParentDataMixin<RenderWorld>>
+       extends RenderWorldNode
+          with ContainerRenderObjectMixin<RenderWorld, ParentDataType> {
+  RenderWorldWithChildren({ required super.node });
+            
+  @override
+  bool hitTestChildren(BoxHitTestResult result, { required Offset position }) {
+    bool hit = false;
+    RenderWorld? child = lastChild;
+    while (child != null) {
+      hit = hit || child.hitTestChildren(result, position: position);
+      child = childBefore(child);
+    }
+    return hit;
   }
 }

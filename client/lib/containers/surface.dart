@@ -91,7 +91,7 @@ class SurfaceWidget extends MultiChildRenderObjectWidget {
 
 class SurfaceParentData extends ParentData with ContainerParentDataMixin<RenderWorld> { }
 
-class RenderSurface extends RenderWorldNode with ContainerRenderObjectMixin<RenderWorld, SurfaceParentData> {
+class RenderSurface extends RenderWorldWithChildren<SurfaceParentData> {
   RenderSurface({
     required super.node,
     required double diameter,

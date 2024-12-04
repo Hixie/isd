@@ -1,5 +1,6 @@
 import 'dart:ui';
 
+import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
 import '../assets.dart';
@@ -149,6 +150,11 @@ class RenderStar extends RenderWorldNode {
     // flares and such.
     context.canvas.drawRect(Rect.fromCircle(center: offset, radius: actualDiameter), _starPaint);
     return WorldGeometry(shape: Circle(actualDiameter));
+  }
+
+  @override
+  bool hitTestChildren(BoxHitTestResult result, { required Offset position }) {
+    return false;
   }
 
   @override

@@ -203,7 +203,7 @@ class OrbitParentData extends ParentData with ContainerParentDataMixin<RenderWor
   Orbit orbit = nilOrbit;
 }
 
-class RenderOrbit extends RenderWorldNode with ContainerRenderObjectMixin<RenderWorld, OrbitParentData> {
+class RenderOrbit extends RenderWorldWithChildren<OrbitParentData> {
   RenderOrbit({
     required super.node,
     required double diameter,

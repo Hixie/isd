@@ -1,3 +1,4 @@
+import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
 import '../layout.dart';
@@ -93,6 +94,11 @@ class RenderWorldPlaceholder extends RenderWorldNode {
     context.canvas.drawLine(offset - Offset(radius, 0.0), offset + Offset(radius, 0.0), _paint);
     context.canvas.drawLine(offset - Offset(0.0, radius), offset + Offset(0.0, radius), _paint);
     return WorldGeometry(shape: Circle(diameter));
+  }
+
+  @override
+  bool hitTestChildren(BoxHitTestResult result, { required Offset position }) {
+    return false;
   }
 
   @override

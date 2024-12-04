@@ -31,17 +31,22 @@ class _RenderWorldLayoutBuilder extends RenderWorld
   }
 
   @override
-  WorldTapTarget? routeTap(Offset offset) {
-    return child?.routeTap(offset);
-  }
-
-  @override
   WorldGeometry computePaint(PaintingContext context, Offset offset) {
     if (child != null) {
       context.paintChild(child!, offset);
       return child!.geometry;
     }
     return const WorldGeometry(shape: Circle(0.0));
+  }
+
+  @override
+  bool hitTestChildren(BoxHitTestResult result, { required Offset position }) {
+    return child?.hitTestChildren(result, position: position) ?? false;
+  }
+
+  @override
+  WorldTapTarget? routeTap(Offset offset) {
+    return child?.routeTap(offset);
   }
 }
 
@@ -68,6 +73,11 @@ class RenderWorldNull extends RenderWorldNode {
   @override
   WorldGeometry computePaint(PaintingContext context, Offset offset) {
     return const WorldGeometry(shape: Circle(0.0));
+  }
+
+  @override
+  bool hitTestChildren(BoxHitTestResult result, { required Offset position }) {
+    return false;
   }
 
   @override

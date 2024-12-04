@@ -1,3 +1,4 @@
+import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
 import '../assets.dart';
@@ -105,6 +106,11 @@ class RenderPlanet extends RenderWorldNode {
     final double actualDiameter = computePaintDiameter(diameter, maxDiameter);
     context.canvas.drawCircle(offset, actualDiameter / 2.0, _planetPaint);
     return WorldGeometry(shape: Circle(actualDiameter));
+  }
+
+  @override
+  bool hitTestChildren(BoxHitTestResult result, { required Offset position }) {
+    return false;
   }
 
   @override
