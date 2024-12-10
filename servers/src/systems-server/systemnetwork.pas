@@ -244,11 +244,8 @@ begin
       // orbit, using the normal equation for orbital period, solved
       // for the semi-major axis.
       Period := (GameStartTime * System.TimeFactor).Scale(3.0);
-      Writeln('The plan is to have a ship with period ', Period.ToString(), ' (which is ', (Period div System.TimeFactor).ToString(), ' real time)');
       PeriodOverTwoPi := Period.ToSIUnits() / (2 * Pi); // $R-
       A := Power(PeriodOverTwoPi * PeriodOverTwoPi * G * Home.Mass, 1/3); // $R-
-      Writeln('That makes the semi major axis ', A:0:0, 'm (vs target body size ', Home.Size:0:0, 'm)');
-      Writeln('Target body mass is ', Home.Mass:0:0, 'kg');
       (Home.Parent as TOrbitFeatureNode).AddOrbitingChild(
          System,
          FServer.Encyclopedia.WrapAssetForOrbit(FServer.Encyclopedia.PlaceholderShip.Spawn(
@@ -357,17 +354,12 @@ begin
    end;
    Command := Message.Input.ReadString();
    // attempt to dispatch message
-   Writeln('looking for system ', SystemID, ' from:');
-   for Temp in FServer.FSystems do
-      Writeln('  - ', Temp);
    System := FServer.FSystems[SystemID];
    if (Assigned(System)) then
    begin
-      Writeln('Found system to send command to!');
       Asset := System.FindOwnedAsset(FDynasty, TAssetID(AssetID));
       if (Assigned(Asset)) then
       begin
-         Writeln('Found asset to send command to!');
          Asset.HandleCommand(Command, Message);
       end;
    end;

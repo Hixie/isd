@@ -83,7 +83,7 @@ var
 begin
    if (Message is TCrashReportMessage) then
    begin
-      HelpMessage := TNotificationMessage.Create(Parent, 'AAAAAAAAA', 'Passengers', 'WHAT THE HECK WHY DID WE JUST CRASH WHAT IS HAPPENING');
+      HelpMessage := TNotificationMessage.Create(Parent, 'URGENT QUERY REGARDING RECENT EVENTS ABOARD COLONY SHIP', 'Passengers', 'WHAT THE HECK WHY DID WE JUST CRASH WHAT IS HAPPENING');
       Result := InjectBusMessage(HelpMessage);
       if (not Result) then
          Writeln('Discarding message from population center (subject "', HelpMessage.Subject, '")');

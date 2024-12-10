@@ -1241,7 +1241,7 @@ begin
       end
       else
       begin
-         Writeln('Discarding message ', Message.ClassName, ' without injecting.');
+         // Writeln('Discarding message ', Message.ClassName, ' without injecting.');
          Result := False;
       end;
    end;
@@ -2045,10 +2045,8 @@ var
    
    function Search(Asset: TAssetNode): Boolean;
    begin
-      Writeln('Considering ', Asset.DebugName, '...');
       if ((Asset.Owner = Dynasty) and (Asset.ID(Self, DynastyIndex) = AssetID)) then
       begin
-         Writeln('Success!');
          FoundAsset := Asset;
       end;
       Result := not Assigned(FoundAsset);
