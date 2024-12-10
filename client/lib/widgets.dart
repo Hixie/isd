@@ -102,3 +102,41 @@ class _TickerProviderBuilderState extends State<TickerProviderBuilder> with Tick
     return widget.builder(context, this);
   }
 }
+
+class Sizer extends StatelessWidget {
+  const Sizer({
+    super.key,
+    this.skipSize = const Size.square(8.0),
+    this.minSize = const Size.square(224.0),
+    this.maxSize = const Size.square(350.0),
+    required this.child,
+    this.placeholder = const Placeholder(),
+  });
+
+  final Size skipSize;
+  final Size minSize;
+  final Size maxSize;
+
+  final Widget child;
+  final Widget placeholder;
+  
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        final Size requested = constraints.biggest;
+        if ((requested.width < skipSize.width) ||
+            (requested.height < skipSize.height)) {
+          return placeholder;
+        }
+        return FittedBox(
+          child: SizedBox(
+            width: requested.width.clamp(minSize.width, maxSize.width),
+            height: requested.height.clamp(minSize.height, maxSize.height),
+            child: child,
+          ),
+        );
+      },
+    );
+  }
+}

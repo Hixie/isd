@@ -20,7 +20,7 @@ class MessageBoardFeature extends ContainerFeature {
   }
 
   @override
-  void attach(WorldNode parent) {
+  void attach(AssetNode parent) {
     super.attach(parent);
     for (AssetNode child in children.keys) {
       child.parent = parent;

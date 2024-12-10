@@ -32,7 +32,6 @@ class Game {
       login(username, password).catchError(_handleError);
     }
     getGalaxy().then((Galaxy galaxy) {
-      print('Galaxy data ready.');
       rootNode.galaxy = galaxy;
     });
   }

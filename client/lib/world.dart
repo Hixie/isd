@@ -3,7 +3,9 @@ import 'package:flutter/widgets.dart';
 import 'spacetime.dart';
 
 abstract class WorldNode extends ChangeNotifier {
-  WorldNode({ WorldNode? parent }) : _parent = parent;
+  WorldNode({
+    WorldNode? parent,
+  }) : _parent = parent;
 
   // The node that considers this node a child.
   //
@@ -56,14 +58,12 @@ abstract class WorldNode extends ChangeNotifier {
     return spaceTime.computeTime(<VoidCallback>[notifyListeners, ...callbacks]);
   }
 
-  Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: this,
-      builder: buildRenderer,
-    );
-  }
-
-  // TODO: cache the return value of this
+  late final Widget _build = ListenableBuilder(
+    listenable: this,
+    builder: buildRenderer,
+  );
+  Widget build(BuildContext context) => _build;
+  
   @protected
   Widget buildRenderer(BuildContext context, Widget? nil);
 

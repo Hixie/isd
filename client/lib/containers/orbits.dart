@@ -69,7 +69,7 @@ class OrbitFeature extends ContainerFeature {
   final Map<AssetNode, Orbit> children;
 
   @override
-  void attach(WorldNode parent) {
+  void attach(AssetNode parent) {
     super.attach(parent);
     assert(originChild.parent == null);
     originChild.parent = parent;

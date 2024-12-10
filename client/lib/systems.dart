@@ -56,7 +56,7 @@ class SystemServer {
   static const int fcPopulation = 0x0B;
   static const int fcMessageBoard = 0x0C;
   static const int fcMessage = 0x0D;
-  static const int expectedVersion = fcMessageBoard;
+  static const int expectedVersion = fcMessage;
 
   Future<void> _handleLogin() async {
     final StreamReader reader = await _connection.send(<String>['login', token], queue: false);
@@ -75,13 +75,17 @@ class SystemServer {
     return _assets.putIfAbsent(id, () => AssetNode(id: id));
   }
 
+  void _send(List<Object> messageParts) {
+    _connection.send(messageParts);
+  }
+  
   void _handleUpdate(Uint8List message) {
     final DateTime now = DateTime.timestamp();
     final BinaryStreamReader reader = BinaryStreamReader(message, _connection.codeTables);
     AssetNode? colonyShip;
     while (!reader.done) {
       final int systemID = reader.readInt32();
-      final SystemNode system = _systems.putIfAbsent(systemID, () => SystemNode(id: systemID));
+      final SystemNode system = _systems.putIfAbsent(systemID, () => SystemNode(id: systemID, sendCallback: _send));
       final int timeOrigin = reader.readInt64();
       final double timeFactor = reader.readDouble();
       final SpaceTime spaceTime = SpaceTime(timeOrigin, timeFactor, now);

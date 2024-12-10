@@ -3,6 +3,8 @@ import 'package:flutter/rendering.dart';
 
 import '../assets.dart';
 import '../layout.dart';
+import '../nodes/system.dart';
+import '../widgets.dart';
 import '../world.dart';
 
 class MessageFeature extends AbilityFeature {
@@ -17,18 +19,49 @@ class MessageFeature extends AbilityFeature {
 
   @override
   Widget? buildRenderer(BuildContext context, Widget? child) {
+    bool ambiguous = false;
     return MessageWidget(
       node: parent,
       diameter: parent.diameter,
       maxDiameter: parent.maxRenderDiameter,
-      child: Card(
-        child: ListView(
-          children: <Widget>[
-            Text('Subject: $subject'),
-            Text('From: $from'),
-            const Divider(),
-            Text(body),
-          ],
+      child: Sizer(
+        child: Card(
+          child: ListView(
+            children: <Widget>[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8.0, 4.0, 8.0, 0.0),
+                child: Text(
+                  'Subject: $subject',
+                  style: isRead ? null : const TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8.0, 0.0, 8.0, 0.0),
+                child: Text('From: $from'),
+              ),
+              const Divider(),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8.0, 0.0, 8.0, 0.0),
+                child: Text(body),
+              ),
+              const Divider(),
+              StatefulBuilder(
+                builder: (BuildContext context, StateSetter setState) {
+                  return CheckboxListTile(
+                    title: const Text('Message is read'),
+                    value: ambiguous ? null : isRead,
+                    tristate: ambiguous,
+                    onChanged: (bool? value) {
+                      if (!ambiguous) {
+                        setState(() { ambiguous = true; });
+                        SystemNode.of(context).play(<Object>[parent.id, isRead ? 'mark-unread' : 'mark-read']);
+                      }
+                    },
+                  );
+                },
+              ),
+            ],
+          ),
         ),
       ),
       systemID: systemID,

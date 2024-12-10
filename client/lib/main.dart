@@ -231,38 +231,51 @@ class _InterstellarDynastiesState extends State<InterstellarDynasties> {
               ),
             ),
           ),
-          Positioned(
+          PositionedDirectional(
             top: 0.0,
-            left: 0.0,
-            child: SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: PopupMenuButton<void>(
-                  icon: const Icon(Icons.settings), // TODO: put a dark triangle in the corner in case the game area is white and the icon becomes invisible
-                  popUpAnimationStyle: AnimationStyle(
-                    curve: Curves.easeInCubic,
-                    reverseCurve: Curves.decelerate,
-                    duration: const Duration(milliseconds: 400),
-                  ),
-                  iconColor: Theme.of(context).colorScheme.onSecondary,
-                  itemBuilder: (BuildContext context) => <PopupMenuEntry<void>>[
-                    if (loggedIn)
-                      PopupMenuItem<void>(
-                        child: const Text('Change username or password'),
-                        onTap: _changeCredentials,
-                      ),
-                    if (loggedIn)
-                      PopupMenuItem<void>(
-                        child: const Text('Logout'),
-                        onTap: _doLogout,
-                      ),
-                    if (loggedIn)
-                      const PopupMenuDivider(),
-                    PopupMenuItem<void>(
-                      child: const Text('About'),
-                      onTap: _doAbout,
-                    ),
+            start: 0.0,
+            child: DecoratedBox(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: AlignmentDirectional.topStart,
+                  end: AlignmentDirectional.bottomEnd,
+                  colors: <Color>[
+                    Color(0x99000000),
+                    Color(0x00000000),
+                    Color(0x00000000),
                   ],
+                ),
+              ),
+              child: SafeArea(
+                child: Padding(
+                  padding: const EdgeInsetsDirectional.fromSTEB(8.0, 8.0, 32.0, 32.0),
+                  child: PopupMenuButton<void>(
+                    icon: Icon(Icons.settings, shadows: kElevationToShadow[1]),
+                    popUpAnimationStyle: AnimationStyle(
+                      curve: Curves.easeInCubic,
+                      reverseCurve: Curves.decelerate,
+                      duration: const Duration(milliseconds: 400),
+                    ),
+                    iconColor: Theme.of(context).colorScheme.onSecondary,
+                    itemBuilder: (BuildContext context) => <PopupMenuEntry<void>>[
+                      if (loggedIn)
+                        PopupMenuItem<void>(
+                          child: const Text('Change username or password'),
+                          onTap: _changeCredentials,
+                        ),
+                      if (loggedIn)
+                        PopupMenuItem<void>(
+                          child: const Text('Logout'),
+                          onTap: _doLogout,
+                        ),
+                      if (loggedIn)
+                        const PopupMenuDivider(),
+                      PopupMenuItem<void>(
+                        child: const Text('About'),
+                        onTap: _doAbout,
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),

@@ -24,10 +24,14 @@ class _HighlightDetails {
   String toString() => '$asset : $offset @ $diameter';
 }
 
+typedef SendCallback = void Function(List<Object> messageParts);
+
 class SystemNode extends WorldNode {
-  SystemNode({ super.parent, required this.id });
+  SystemNode({ super.parent, required this.id, required this.sendCallback });
 
   final int id;
+
+  final SendCallback sendCallback;
 
   String get label => _label;
   String _label = '';
@@ -94,19 +98,41 @@ class SystemNode extends WorldNode {
       }
       return true;
     });
-    return TickerProviderBuilder(
-      builder: (BuildContext context, TickerProvider vsync) => SystemWidget(
-        node: this,
-        vsync: vsync,
-        diameter: diameter,
-        labels: labels,
-        child: root.build(context),
-        onZoomRequest: (WorldNode node, Offset offset, double diameter) {
-          ZoomProvider.centerNear(context, node, offset, diameter);
-        },
+    return _SystemProvider(
+      system: this,
+      child: TickerProviderBuilder(
+        builder: (BuildContext context, TickerProvider vsync) => SystemWidget(
+          node: this,
+          vsync: vsync,
+          diameter: diameter,
+          labels: labels,
+          child: root.build(context),
+          onZoomRequest: (WorldNode node, Offset offset, double diameter) {
+            ZoomProvider.centerNear(context, node, offset, diameter);
+          },
+        ),
       ),
     );
   }
+
+  void play(List<Object> messageParts) {
+    sendCallback(<Object>['play', id, ...messageParts]);
+  }
+  
+  static SystemNode of(BuildContext context) {
+    final _SystemProvider? provider = context.dependOnInheritedWidgetOfExactType<_SystemProvider>();
+    assert(provider != null, 'No _SystemProvider found in context');
+    return provider!.system;
+  }
+}
+
+class _SystemProvider extends InheritedWidget {
+  const _SystemProvider({ /*super.key,*/ required this.system, required super.child });
+
+  final SystemNode system;
+
+  @override
+  bool updateShouldNotify(_SystemProvider oldWidget) => system != oldWidget.system;
 }
 
 typedef ZoomCallback = void Function(WorldNode node, Offset offset, double diameter);

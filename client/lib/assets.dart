@@ -11,10 +11,10 @@ abstract class Feature {
   /// Current host for this feature.
   ///
   /// Only valid when attached.
-  WorldNode get parent => _parent!;
-  WorldNode? _parent;
+  AssetNode get parent => _parent!;
+  AssetNode? _parent;
 
-  void attach(WorldNode parent) {
+  void attach(AssetNode parent) {
     assert(_parent == null);
     _parent = parent;
   }
@@ -134,6 +134,7 @@ class AssetNode extends WorldNode {
     _abilities[type]?.detach();
     _abilities[type] = ability;
     ability.attach(this);
+    notifyListeners();
     return type;
   }
 
@@ -142,6 +143,7 @@ class AssetNode extends WorldNode {
     _containers[type]?.detach();
     _containers[type] = container;
     container.attach(this);
+    notifyListeners();
     return type;
   }
 
@@ -153,8 +155,11 @@ class AssetNode extends WorldNode {
   }
 
   void removeFeatures(Set<Type> features) {
-    features.forEach(_abilities.remove);
-    features.forEach(_containers.remove);
+    if (features.isNotEmpty) {
+      features.forEach(_abilities.remove);
+      features.forEach(_containers.remove);
+      notifyListeners();
+    }
   }
 
   @override
