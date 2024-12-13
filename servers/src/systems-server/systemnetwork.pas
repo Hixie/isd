@@ -335,7 +335,7 @@ end;
 
 procedure TConnection.DoPlay(var Message: TMessage);
 var
-   SystemID, AssetID, Temp: Cardinal;
+   SystemID, AssetID: Cardinal;
    Command: UTF8String;
    System: TSystem;
    Asset: TAssetNode;

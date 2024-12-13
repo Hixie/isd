@@ -401,7 +401,7 @@ begin
       Message.Reply();
       Message.CloseOutput();
       FIsRead := True;
-      MarkAsDirty([dkSelf], []);
+      MarkAsDirty([dkSelf]);
       Result := True;
    end
    else
@@ -411,7 +411,7 @@ begin
       Message.Reply();
       Message.CloseOutput();
       FIsRead := False;
-      MarkAsDirty([dkSelf], []);
+      MarkAsDirty([dkSelf]);
       Result := True;
    end
    else

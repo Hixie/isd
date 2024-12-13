@@ -30,7 +30,7 @@ type
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
       procedure AdoptSolarSystemChild(Child: TAssetNode; DistanceFromCenter, Theta, HillDiameter: Double);
       procedure DropChild(Child: TAssetNode); override;
-      procedure MarkAsDirty(DirtyKinds: TDirtyKinds; ChangeKinds: TChangeKinds); override;
+      procedure MarkAsDirty(DirtyKinds: TDirtyKinds); override;
       procedure AddPolarChildFromJournal(Child: TAssetNode; Distance, Theta, HillDiameter: Double); // meters
       function GetMass(): Double; override;
       function GetSize(): Double; override;
@@ -183,7 +183,7 @@ begin
    Child.ParentData := nil;
    inherited;
    if (Length(FChildren) = 0) then // TODO: why only when we get to zero?
-      MarkAsDirty([dkSelf], [ckAffectsNames]); // TODO: other things (than running out of children entirely) might affect the name too?
+      MarkAsDirty([dkSelf, dkAffectsNames]); // TODO: other things (than running out of children entirely) might affect the name too?
 end;
 
 procedure TSolarSystemFeatureNode.AddCartesianChild(Child: TAssetNode; X, Y: Double); // meters, first must be at 0,0 // TODO: change that
@@ -232,9 +232,9 @@ begin
    AdoptSolarSystemChild(Child, Distance, Theta, HillDiameter);
 end;
 
-procedure TSolarSystemFeatureNode.MarkAsDirty(DirtyKinds: TDirtyKinds; ChangeKinds: TChangeKinds);
+procedure TSolarSystemFeatureNode.MarkAsDirty(DirtyKinds: TDirtyKinds);
 begin
-   if (ckAffectsNames in ChangeKinds) then
+   if (dkAffectsNames in DirtyKinds) then
       Include(DirtyKinds, dkSelf);
    inherited;
 end;

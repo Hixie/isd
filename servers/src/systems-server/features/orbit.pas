@@ -50,7 +50,7 @@ type
    protected
       procedure AdoptOrbitingChild(Child: TAssetNode); // Child must be an orbit.
       procedure DropChild(Child: TAssetNode); override;
-      procedure MarkAsDirty(DirtyKinds: TDirtyKinds; ChangeKinds: TChangeKinds); override;
+      procedure MarkAsDirty(DirtyKinds: TDirtyKinds); override;
       function GetMass(): Double; override;
       function GetSize(): Double; override;
       function GetFeatureName(): UTF8String; override;
@@ -341,9 +341,9 @@ begin
    end;
 end;
 
-procedure TOrbitFeatureNode.MarkAsDirty(DirtyKinds: TDirtyKinds; ChangeKinds: TChangeKinds);
+procedure TOrbitFeatureNode.MarkAsDirty(DirtyKinds: TDirtyKinds);
 begin
-   if (ckAffectsNames in ChangeKinds) then
+   if (dkAffectsNames in DirtyKinds) then
       Include(DirtyKinds, dkSelf);
    inherited;
 end;

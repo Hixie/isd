@@ -68,7 +68,7 @@ type
       FKnownMaterials: TCachedKnownMaterialsHashMap;
       FKnownAssetClasses: TCachedKnownAssetClassesHashMap;
    protected
-      procedure MarkAsDirty(DirtyKinds: TDirtyKinds; ChangeKinds: TChangeKinds); override;
+      procedure MarkAsDirty(DirtyKinds: TDirtyKinds); override;
       function GetMass(): Double; override;
       function GetSize(): Double; override;
       function GetFeatureName(): UTF8String; override;
@@ -165,9 +165,9 @@ begin
    inherited;
 end;
 
-procedure TKnowledgeBusFeatureNode.MarkAsDirty(DirtyKinds: TDirtyKinds; ChangeKinds: TChangeKinds);
+procedure TKnowledgeBusFeatureNode.MarkAsDirty(DirtyKinds: TDirtyKinds);
 begin
-   if (ckAffectsKnowledge in ChangeKinds) then
+   if (dkAffectsKnowledge in DirtyKinds) then
    begin
       FreeAndNil(FKnownMaterials);
       FreeAndNil(FKnownAssetClasses);
