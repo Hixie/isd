@@ -76,7 +76,8 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
   final GlobalKey _worldRootKey = GlobalKey();
   RenderBoxToRenderWorldAdapter get _worldRoot => _worldRootKey.currentContext!.findRenderObject()! as RenderBoxToRenderWorldAdapter;
 
-  final Map<WorldNode, Offset> _precomputedPositions = <WorldNode, Offset>{};
+  Map<WorldNode, Offset> _precomputedPositions = <WorldNode, Offset>{};
+  Offset _rootPosition = Offset.zero;
 
   @override
   void initState() {
@@ -100,37 +101,9 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
     }
   }
 
-  WorldNode? _badNode;
-
   void _handlePositionChange() {
-    // TODO: this might get called multiple times per frame; we should make sure we're not doing the math more than once per frame
     setState(() {
-      _precomputedPositions.clear();
-      WorldNode? node = _centerNode;
-      Offset offset = _pan.value;
-      while (true) {
-        _precomputedPositions[node!] = offset;
-        if (node.parent != null) {
-          offset -= node.parent!.findLocationForChild(node, <VoidCallback>[_handlePositionChange]);
-          node = node.parent;
-        } else {
-          if (node != widget.rootNode) {
-            // TODO: more gracefully handle the case of a node going away
-            if (_centerNode != _badNode) {
-              print('***** confused - center node ($_centerNode) is not in tree anymore *****');
-              print('  root node is ${widget.rootNode}; ancestors of center node are:');
-              WorldNode? node = _centerNode;
-              while (node != null) {
-                print('  - $node');
-                node = node.parent;
-              }
-              print('');
-              _badNode = _centerNode;
-            }
-          }
-          break;
-        }
-      }
+      _precomputedPositions = <WorldNode, Offset>{};
     });
   }
 
@@ -146,15 +119,14 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
   void _updatePan(Offset newPan, double scale, { double? zoom }) {
     final Size size = _worldRoot.size;
     _updateSnap(zoom ?? _zoom.value, Offset(
-      _clampPan(newPan.dx, size.width / scale, widget.rootNode.diameter, _precomputedPositions[widget.rootNode]!.dx),
-      _clampPan(newPan.dy, size.height / scale, widget.rootNode.diameter, _precomputedPositions[widget.rootNode]!.dy),
+      _clampPan(newPan.dx, size.width / scale, widget.rootNode.diameter, _rootPosition.dx),
+      _clampPan(newPan.dy, size.height / scale, widget.rootNode.diameter, _rootPosition.dy),
     ));
   }
 
   void _changeCenterNode(WorldNode node) {
     if (node == _centerNode)
       return;
-    assert(_precomputedPositions.containsKey(widget.rootNode));
     Offset oldPos = Offset.zero;
     WorldNode currentNode;
     currentNode = _centerNode;
@@ -224,9 +196,39 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
     }
   }
 
+  WorldNode? _badNode;
+  
   @override
   Widget build(BuildContext context) {
     _lastScale = null;
+    if (_precomputedPositions.isEmpty) {
+      WorldNode? node = _centerNode;
+      Offset offset = _pan.value;
+      while (true) {
+        _precomputedPositions[node!] = offset;
+        if (node.parent != null) {
+          offset -= node.parent!.findLocationForChild(node, <VoidCallback>[_handlePositionChange]);
+          node = node.parent;
+        } else {
+          if (node != widget.rootNode) {
+            // TODO: more gracefully handle the case of a node going away
+            if (_centerNode != _badNode) {
+              print('***** confused - center node ($_centerNode) is not in tree anymore *****');
+              print('  root node is ${widget.rootNode}; ancestors of center node are:');
+              WorldNode? node = _centerNode;
+              while (node != null) {
+                print('  - $node');
+                node = node.parent;
+              }
+              print('');
+              _badNode = _centerNode;
+            }
+          }
+          break;
+        }
+      }
+      _rootPosition = _precomputedPositions[widget.rootNode]!;
+    }
     return Listener(
       onPointerSignal: (PointerSignalEvent event) {
         GestureBinding.instance.pointerSignalResolver.register(event, (PointerSignalEvent event) {

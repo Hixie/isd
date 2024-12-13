@@ -465,9 +465,10 @@ class RenderGalaxy extends RenderWorldWithChildren<GalaxyParentData> {
   }
 
   final TextPainter _legendLabel = TextPainter(textDirection: TextDirection.ltr);
-  final TextStyle _legendStyle = const TextStyle(fontSize: 12.0, color: Color(0xFFFFFFFF));
-  final Paint _legendPaint = Paint()
-    ..color = const Color(0xFFFFFFFF);
+  static final Paint _legendPaint = Paint()
+    ..color = const Color(0xFFFFFFFF)
+    ..blendMode = BlendMode.difference;
+  static final TextStyle _legendStyle = TextStyle(fontSize: 12.0, foreground: _legendPaint);
 
   final TextStyle _hudStyle = const TextStyle(fontSize: 14.0, color: Color(0xFFFFFFFF));
 

@@ -157,6 +157,7 @@ class Game {
     _clearCredentials();
     _credentials.value = Credentials(username, password);
     _handleLogin(await _loginServer!.send(<Object>['login', username, password]));
+    // TODO: handle the case where while we are waiting for the login message to return, we send a different login or new game message
   }
 
   void _handleLogin(StreamReader reader) {

@@ -110,9 +110,13 @@ class _InterstellarDynastiesState extends State<InterstellarDynasties> {
   }
 
   void _doLogin() {
+    // TODO: show dialog asking for credentials
+    // see https://main-api.flutter.dev/flutter/widgets/RestorableRouteFuture-class.html
   }
 
   void _changeCredentials() {
+    // TODO: show dialog asking for credentials
+    // see https://main-api.flutter.dev/flutter/widgets/RestorableRouteFuture-class.html
   }
 
   void _doLogout() {
