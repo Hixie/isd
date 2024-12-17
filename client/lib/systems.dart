@@ -69,9 +69,10 @@ class SystemServer {
   final Map<int, SystemNode> _systems = <int, SystemNode>{};
   final Map<int, AssetNode> _assets = <int, AssetNode>{};
 
-  AssetNode _readAsset(BinaryStreamReader reader) {
+  AssetNode? _readAsset(BinaryStreamReader reader) {
     final int id = reader.readInt32();
-    assert(id != 0);
+    if (id == 0)
+      return null;
     return _assets.putIfAbsent(id, () => AssetNode(id: id));
   }
 
@@ -96,9 +97,9 @@ class SystemServer {
       final double y = reader.readDouble();
       system.offset = Offset(x - galaxy.diameter / 2.0, y - galaxy.diameter / 2.0);
       galaxy.addSystem(system);
-      int assetID;
-      while ((assetID = reader.readInt32()) != 0) {
-        final AssetNode asset = _assets.putIfAbsent(assetID, () => AssetNode(id: assetID));
+      AssetNode? asset;
+      while ((asset = _readAsset(reader)) != null) {
+        asset!;
         final int ownerDynastyID = reader.readInt32();
         asset.ownerDynasty = ownerDynastyID > 0 ? dynastyManager.getDynasty(ownerDynastyID) : null;
         asset.mass = reader.readDouble();
@@ -120,28 +121,26 @@ class SystemServer {
               oldFeatures.remove(asset.setAbility(PlanetFeature(spaceTime, hp)));
             case fcSpace:
               final Map<AssetNode, SpaceParameters> children = <AssetNode, SpaceParameters>{};
-              final AssetNode primaryChild = _readAsset(reader);
+              final AssetNode primaryChild = _readAsset(reader)!;
               children[primaryChild] = (r: 0, theta: 0);
-              final int childCount = reader.readInt32();
-              for (int index = 0; index < childCount; index += 1) {
+              AssetNode? child;
+              while ((child = _readAsset(reader)) != null) {
                 final double distance = reader.readDouble();
                 final double theta = reader.readDouble();
-                final AssetNode child = _readAsset(reader);
-                children[child] = (r: distance, theta: theta);
+                children[child!] = (r: distance, theta: theta);
               }
               oldFeatures.remove(asset.setContainer(SpaceFeature(children)));
             case fcOrbit:
               final Map<AssetNode, Orbit> children = <AssetNode, Orbit>{};
-              final AssetNode originChild = _readAsset(reader);
-              final int childCount = reader.readInt32();
-              for (int index = 0; index < childCount; index += 1) {
+              final AssetNode originChild = _readAsset(reader)!;
+              AssetNode? child;
+              while ((child = _readAsset(reader)) != null) {
                 final double semiMajorAxis = reader.readDouble();
                 final double eccentricity = reader.readDouble();
                 final double omega = reader.readDouble();
                 final int timeOrigin = reader.readInt64();
                 final bool clockwise = reader.readBool();
-                final AssetNode child = _readAsset(reader);
-                children[child] = (a: semiMajorAxis, e: eccentricity, omega: omega, timeOrigin: timeOrigin, clockwise: clockwise);
+                children[child!] = (a: semiMajorAxis, e: eccentricity, omega: omega, timeOrigin: timeOrigin, clockwise: clockwise);
               }
               oldFeatures.remove(asset.setContainer(OrbitFeature(spaceTime, originChild, children)));
             case fcStructure:
@@ -206,11 +205,10 @@ class SystemServer {
                 default: throw NetworkError('Client does not support plot code 0x${signal.toRadixString(16).padLeft(8, "0")}');
               }
             case fcSurface:
-              final int regionCount = reader.readInt32();
               final Map<AssetNode, SurfaceParameters> children = <AssetNode, SurfaceParameters>{};
-              for (int index = 0; index < regionCount; index += 1) {
-                final AssetNode child = _readAsset(reader);
-                children[child] = ();
+              AssetNode? child;
+              while ((child = _readAsset(reader)) != null) {
+                children[child!] = ();
               }
               oldFeatures.remove(asset.setContainer(SurfaceFeature(children)));
             case fcGrid:
@@ -220,12 +218,11 @@ class SystemServer {
               final int height = reader.readInt32();
               assert(height > 0);
               final Map<AssetNode, GridParameters> children = <AssetNode, GridParameters>{};
-              final int count = reader.readInt32();
-              for (int index = 0; index < count; index += 1) {
+              AssetNode? child;
+              while ((child = _readAsset(reader)) != null) {
                 final int x = reader.readInt32();
                 final int y = reader.readInt32();
-                final AssetNode child = _readAsset(reader);
-                children[child] = (x: x, y: y);
+                children[child!] = (x: x, y: y);
               }
               oldFeatures.remove(asset.setContainer(GridFeature(spaceTime, cellSize, width, height, children)));
             case fcPopulation:
@@ -236,11 +233,10 @@ class SystemServer {
                 happiness: happiness,
               )));
             case fcMessageBoard:
-              final int count = reader.readInt32();
               final Map<AssetNode, MessageBoardParameters> children = <AssetNode, MessageBoardParameters>{};
-              for (int index = 0; index < count; index += 1) {
-                final AssetNode child = _readAsset(reader);
-                children[child] = ();
+              AssetNode? child;
+              while ((child = _readAsset(reader)) != null) {
+                children[child!] = ();
               }
               oldFeatures.remove(asset.setContainer(MessageBoardFeature(children)));
             case fcMessage:

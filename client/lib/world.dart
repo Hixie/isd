@@ -12,16 +12,21 @@ abstract class WorldNode extends ChangeNotifier {
   // For orphan nodes (e.g. while nodes are being parsed in an update message)
   // and for the root node, this will be null.
   //
-  // Changing this does _not_ trigger notifications. This is expected to be set
-  // before the node is used in the render tree. When a node's parent changes,
-  // the parent is expected to trigger notifications so that _it_ can be
-  // rebuilt; the child does not need to update.
+  // Changing this (via attach/detach) does _not_ trigger notifications. This is
+  // expected to be set before the node is used in the render tree. When a
+  // node's parent changes, the parent is expected to trigger notifications so
+  // that _it_ can be rebuilt; the child does not need to update.
+  WorldNode? get parent => _parent;
   WorldNode? _parent;
 
-  WorldNode? get parent => _parent;
-  set parent(WorldNode? value) {
-    assert(value != this);
-    _parent = value;
+  void attach(WorldNode parent) {
+    assert(_parent == null);
+    _parent = parent;
+  }
+
+  void detach() {
+    assert(_parent != null);
+    _parent = null;
   }
 
   // in meters

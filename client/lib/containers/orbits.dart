@@ -72,20 +72,20 @@ class OrbitFeature extends ContainerFeature {
   void attach(AssetNode parent) {
     super.attach(parent);
     assert(originChild.parent == null);
-    originChild.parent = parent;
+    originChild.attach(parent);
     for (AssetNode child in children.keys) {
       assert(child.parent == null, '$child (${child.hashCode}) already has a parent: ${child.parent} (${child.parent.hashCode})');
-      child.parent = parent;
+      child.attach(parent);
     }
   }
 
   @override
   void detach() {
     assert(originChild.parent == parent);
-    originChild.parent = null;
+    originChild.detach();
     for (AssetNode child in children.keys) {
       assert(child.parent == parent);
-      child.parent = null;
+      child.detach();
     }
     super.detach();
   }

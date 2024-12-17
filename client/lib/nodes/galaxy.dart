@@ -141,7 +141,7 @@ class GalaxyNode extends WorldNode {
   void addSystem(SystemNode system) {
     if (systems.add(system)) {
       assert(system.parent == null);
-      system.parent = this;
+      system.attach(this);
       markChildrenDirty();
     }
   }
@@ -149,7 +149,7 @@ class GalaxyNode extends WorldNode {
   void removeSystem(SystemNode system) {
     if (systems.remove(system)) {
       assert(system.parent == this);
-      system.parent = null;
+      system.detach();
       markChildrenDirty();
     }
   }
@@ -158,7 +158,7 @@ class GalaxyNode extends WorldNode {
     if (systems.isNotEmpty) {
       for (SystemNode system in systems) {
         assert(system.parent == this);
-        system.parent = null;
+        system.detach();
       }
       systems.clear();
       markChildrenDirty();

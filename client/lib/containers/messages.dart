@@ -23,7 +23,7 @@ class MessageBoardFeature extends ContainerFeature {
   void attach(AssetNode parent) {
     super.attach(parent);
     for (AssetNode child in children.keys) {
-      child.parent = parent;
+      child.attach(parent);
     }
   }
 
@@ -31,7 +31,7 @@ class MessageBoardFeature extends ContainerFeature {
   void detach() {
     for (AssetNode child in children.keys) {
       if (child.parent == parent) {
-        child.parent = null;
+        child.detach();
         // if its parent is not the same as our parent,
         // then maybe it was already added to some other container
       }
