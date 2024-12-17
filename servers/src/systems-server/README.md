@@ -140,8 +140,7 @@ include it in its list of children, and no other asset includes it in
 its list of children), then the ID is considered "released" and may be
 reused for another asset.
 
-Currently, asset IDs are guaranteed to be in the range 1..2^24. Asset
-ID zero is reserved or indicating the absence of an asset.
+Asset ID zero is reserved for indicating the absence of an asset.
 
 The `<properties>` are the owner dynasty ID (zero for unowned assets),
 the asset's mass in kg, the asset's rough diameter in meters, the

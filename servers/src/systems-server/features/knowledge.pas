@@ -159,9 +159,22 @@ end;
 
 
 destructor TKnowledgeBusFeatureNode.Destroy();
+var
+   Materials: TMaterialHashSet;
+   Assets: TAssetClassHashSet;
 begin
-   FreeAndNil(FKnownMaterials);
-   FreeAndNil(FKnownAssetClasses);
+   if (Assigned(FKnownMaterials)) then
+   begin
+      for Materials in FKnownMaterials.Values do
+         Materials.Free();
+      FreeAndNil(FKnownMaterials);
+   end;
+   if (Assigned(FKnownAssetClasses)) then
+   begin
+      for Assets in FKnownAssetClasses.Values do
+         Assets.Free();
+      FreeAndNil(FKnownAssetClasses);
+   end;
    inherited;
 end;
 

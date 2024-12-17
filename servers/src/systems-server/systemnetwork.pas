@@ -346,12 +346,7 @@ begin
       exit;
    end;
    SystemID := Message.Input.ReadCardinal();
-   AssetID := Message.Input.ReadCardinal();
-   if (AssetID > High(TAssetID)) then
-   begin
-      Message.Error(ieInvalidCommand);
-      exit;
-   end;
+   AssetID := TAssetID(Message.Input.ReadCardinal());
    Command := Message.Input.ReadString();
    // attempt to dispatch message
    System := FServer.FSystems[SystemID];

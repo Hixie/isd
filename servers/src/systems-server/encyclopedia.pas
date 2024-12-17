@@ -215,6 +215,7 @@ var
 begin
    FRegion.Free();
    FPlaceholderShip.Free();
+   FMessage.Free();
    FDarkMatter.Free();
    FMaterials.Free();
    for AssetClass in FStars do
