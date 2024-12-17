@@ -209,17 +209,15 @@ new planetary body with no structures on it.
 #### `fcSpace` (0x02)
 
 ```bnf
-<featuredata>       ::= <assetid> <childcount> <child>*
-<childcount>        ::= <int32>
-<child>             ::= <double>{2} <assetid>
+<featuredata>       ::= <assetid> <child>* <zero32>
+<child>             ::= <assetid> <double>{2}
 ```
 
 The first `<assetid>` is the asset at the origin.
 
-There are many `<child>` repetitions as `<childcount>`. These children
-have two `<double>` parameters which are the distance from the origin,
-and the angle in radians clockwise from the positive x axis to that
-child (the angle may be negative).
+The children have two `<double>` parameters which are the distance
+from the origin, and the angle in radians clockwise from the positive
+x axis to that child (the angle may be negative).
 
 It is extremely likely, though not guaranteed, that the listed assets
 will have an `fcOrbit` feature.
@@ -230,17 +228,14 @@ will have an `fcOrbit` feature.
 #### `fcOrbit` (0x03)
 
 ```bnf
-<featuredata>       ::= <assetid> <orbitcount> <orbit>*
-<orbitcount>        ::= <int32>
-<orbit>             ::= <double>{3} <time> <direction> <assetid>
+<featuredata>       ::= <assetid> <orbit>* <zero32>
+<orbit>             ::= <assetid> <double>{3} <time> <direction>
 <direction>         ::= <bitflag> ; 0x01 or 0x00
 ```
 
-There are as many `<orbit>` repetitions as specified by
-`<orbitcount>`. The first `<assetid>` is the child at the focal point.
-That asset will not have an `fcOrbit` feature. (It is extremely
-likely, though not guaranteed, that the other listed assets _will_
-have such a feature.)
+The first `<assetid>` is the child at the focal point. That asset will
+not have an `fcOrbit` feature. It is extremely likely, though not
+guaranteed, that the other listed assets _will_ have such a feature.
 
 The three `<double>` parameters for the `<orbit>` children are the
 semi-major axis (in meters), the eccentricity, and _omega_ (tilt of
@@ -439,8 +434,7 @@ feature's data, which will be one of the following:
 ### `fcSurface` (0x09)
 
 ```bnf
-<featuredata>       ::= <regioncount> <region>*
-<regioncount>       ::= <int32> ; always 1
+<featuredata>       ::= <region>* <zero32>
 <region>            ::= <assetid>
 ```
 
@@ -458,12 +452,11 @@ The assets in regions of a planetary surface are expected to have the
 ### `fcGrid` (0x0A)
 
 ```bnf
-<featuredata>       ::= <cellsize> <width> <height> <count> <cell>*
+<featuredata>       ::= <cellsize> <width> <height> <cell>* <zero32>
 <cellsize>          ::= <double> ; meters
 <width>             ::= <int32> ; greater than zero
 <height>            ::= <int32> ; greater than zero
-<count>             ::= <int32>
-<cell>              ::= <x> <y> <assetid>
+<cell>              ::= <assetid> <x> <y>
 <x>                 ::= <int32> ; 0..width-1
 <y>                 ::= <int32> ; 0..height-1
 ```
@@ -475,9 +468,8 @@ grid, in meters.
 
 There are `<width>` cells horizontally and `<height>` cells vertically.
 
-Precisely `<count>` instances of `<cell>` follow the dimensions. These
-specify the contents of the grid, in no particular order. Each cell is
-at the specified `<x>`/`<y>` coordinate in the grid.
+The children (the grid contents) are provided in no particular order.
+Each cell is at the specified `<x>`/`<y>` coordinate in the grid.
 
 > TODO: provide geology within each cell.
 
@@ -497,12 +489,11 @@ The double is their mean happiness.
 ### `fcMessageBoard` (0x0C)
 
 ```bnf
-<featuredata>       ::= <messagecount> <message>*
-<messagecount>      ::= <int32>
+<featuredata>       ::= <message>* <zero32>
 <message>           ::= <assetid>
 ```
 
-The number of children, followed by all their IDs.
+> TODO: Positioning information for children?
 
 Children are expected to have `fcMessage` features, though this is not
 guaranteed.

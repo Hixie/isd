@@ -151,12 +151,13 @@ var
    Child: TAssetNode;
 begin
    Writer.WriteCardinal(fcSurface);
-   Writer.WriteCardinal(Length(FChildren));
    for Child in FChildren do
    begin
       Assert(Assigned(Child));
-      Writer.WriteCardinal(Child.ID(CachedSystem, DynastyIndex));
+      if (Child.IsVisibleFor(DynastyIndex, CachedSystem)) then
+         Writer.WriteCardinal(Child.ID(CachedSystem, DynastyIndex));
    end;
+   Writer.WriteCardinal(0);
 end;
 
 procedure TSurfaceFeatureNode.UpdateJournal(Journal: TJournalWriter);

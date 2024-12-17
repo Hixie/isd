@@ -237,17 +237,20 @@ begin
    Writer.WriteDouble(FCellSize);
    Writer.WriteCardinal(FDimension);
    Writer.WriteCardinal(FDimension);
-   Writer.WriteCardinal(FCount);
    Assert((not FPacked) or (FCount = Length(FChildren)));
    for Child in FChildren do
    begin
       if (Assigned(Child)) then
       begin
-         Writer.WriteCardinal(PGridData(Child.ParentData)^.X);
-         Writer.WriteCardinal(PGridData(Child.ParentData)^.Y);
-         Writer.WriteCardinal(Child.ID(CachedSystem, DynastyIndex));
+         if (Child.IsVisibleFor(DynastyIndex, CachedSystem)) then
+         begin
+            Writer.WriteCardinal(Child.ID(CachedSystem, DynastyIndex));
+            Writer.WriteCardinal(PGridData(Child.ParentData)^.X);
+            Writer.WriteCardinal(PGridData(Child.ParentData)^.Y);
+         end;
       end;
    end;
+   Writer.WriteCardinal(0);
 end;
 
 procedure TGridFeatureNode.UpdateJournal(Journal: TJournalWriter);

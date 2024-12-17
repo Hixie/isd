@@ -57,8 +57,7 @@ type
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
       function ManageBusMessage(Message: TBusMessage): Boolean; override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
-      procedure ApplyVisibility(VisibilityHelper: TVisibilityHelper); override;
-      procedure InferVisibilityByIndex(DynastyIndex: Cardinal; VisibilityHelper: TVisibilityHelper); override;
+      procedure CheckVisibilityChanged(VisibilityHelper: TVisibilityHelper); override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
       procedure HandleCrash(var Data);
    public
@@ -449,18 +448,34 @@ begin
    Result := False;
 end;
 
-procedure TOrbitFeatureNode.ApplyVisibility(VisibilityHelper: TVisibilityHelper);
+procedure TOrbitFeatureNode.CheckVisibilityChanged(VisibilityHelper: TVisibilityHelper);
+var
+   Visible: Boolean;
+   DynastyIndex: Cardinal;
+   Child: TAssetNode;
 begin
-   VisibilityHelper.AddBroadVisibility([dmClassKnown], Parent);
-end;
-
-procedure TOrbitFeatureNode.InferVisibilityByIndex(DynastyIndex: Cardinal; VisibilityHelper: TVisibilityHelper);
-begin
-   Assert(Assigned(FPrimaryChild));
-   inherited;
-   // The following is not an infinite loop only because the child's asset parent already has dmInference by the time we get here.
-   Assert(dmInference in Parent.ReadVisibilityFor(DynastyIndex, VisibilityHelper.System));
-   VisibilityHelper.AddSpecificVisibilityByIndex(DynastyIndex, [dmInference] + FPrimaryChild.ReadVisibilityFor(DynastyIndex, VisibilityHelper.System), Parent);
+   if (VisibilityHelper.System.DynastyCount > 0) then
+   begin
+      for DynastyIndex := 0 to VisibilityHelper.System.DynastyCount - 1 do // $R-
+      begin
+         Visible := FPrimaryChild.IsVisibleFor(DynastyIndex, VisibilityHelper.System);
+         if (not Visible) then
+         begin
+            for Child in FChildren do
+            begin
+               Visible := Visible or Child.IsVisibleFor(DynastyIndex, VisibilityHelper.System);
+               if (Visible) then
+                  break;
+            end;
+         end;
+         if (Visible) then
+         begin
+            Assert(dmInference in Parent.ReadVisibilityFor(DynastyIndex, VisibilityHelper.System));
+            VisibilityHelper.AddSpecificVisibilityByIndex(DynastyIndex, Parent.ReadVisibilityFor(DynastyIndex, VisibilityHelper.System), FPrimaryChild);
+            VisibilityHelper.AddSpecificVisibilityByIndex(DynastyIndex, [dmClassKnown] + FPrimaryChild.ReadVisibilityFor(DynastyIndex, VisibilityHelper.System), Parent);
+         end;
+      end;
+   end;
 end;
 
 function TOrbitFeatureNode.GetOrbitName(): UTF8String;
@@ -480,18 +495,22 @@ var
 begin
    Assert(Assigned(FPrimaryChild));
    Writer.WriteCardinal(fcOrbit);
+   Assert(FPrimaryChild.IsVisibleFor(DynastyIndex, CachedSystem));
    Writer.WriteCardinal(FPrimaryChild.ID(CachedSystem, DynastyIndex));
-   Writer.WriteCardinal(Length(FChildren));
    for Child in FChildren do
    begin
       Assert(Assigned(Child));
-      Writer.WriteDouble(POrbitData(Child.ParentData)^.SemiMajorAxis);
-      Writer.WriteDouble(POrbitData(Child.ParentData)^.Eccentricity);
-      Writer.WriteDouble(POrbitData(Child.ParentData)^.Omega);
-      Writer.WriteInt64(POrbitData(Child.ParentData)^.TimeOrigin.AsInt64);
-      Writer.WriteBoolean(POrbitData(Child.ParentData)^.Clockwise);
-      Writer.WriteCardinal(Child.ID(CachedSystem, DynastyIndex));
+      if (Child.IsVisibleFor(DynastyIndex, CachedSystem)) then
+      begin
+         Writer.WriteCardinal(Child.ID(CachedSystem, DynastyIndex));
+         Writer.WriteDouble(POrbitData(Child.ParentData)^.SemiMajorAxis);
+         Writer.WriteDouble(POrbitData(Child.ParentData)^.Eccentricity);
+         Writer.WriteDouble(POrbitData(Child.ParentData)^.Omega);
+         Writer.WriteInt64(POrbitData(Child.ParentData)^.TimeOrigin.AsInt64);
+         Writer.WriteBoolean(POrbitData(Child.ParentData)^.Clockwise);
+      end;
    end;
+   Writer.WriteCardinal(0);
 end;
 
 procedure TOrbitFeatureNode.UpdateJournal(Journal: TJournalWriter);

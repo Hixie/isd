@@ -231,11 +231,12 @@ begin
    if (dmInternals in Visibility) then
    begin
       Writer.WriteCardinal(fcMessageBoard);
-      Writer.WriteCardinal(Length(FChildren)); // $R-
       for Child in FChildren do
       begin
-         Writer.WriteCardinal(Child.ID(CachedSystem, DynastyIndex));
+         if (Child.IsVisibleFor(DynastyIndex, CachedSystem)) then
+            Writer.WriteCardinal(Child.ID(CachedSystem, DynastyIndex));
       end;
+      Writer.WriteCardinal(0);
    end;
 end;
 

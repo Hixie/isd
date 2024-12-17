@@ -300,16 +300,19 @@ begin
    Assert(Length(FChildren) > 0); // otherwise who are we reporting this to?
    Assert(Assigned(FChildren[0]));
    Writer.WriteCardinal(FChildren[0].ID(CachedSystem, DynastyIndex));
-   Writer.WriteCardinal(Length(FChildren) - 1); // $R-
    if (Length(FChildren) > 1) then
       for Index := 1 to Length(FChildren) - 1 do // $R-
       begin
          Child := FChildren[Index];
          Assert(Assigned(Child));
-         Writer.WriteDouble(PSolarSystemData(Child.ParentData)^.DistanceFromCenter);
-         Writer.WriteDouble(PSolarSystemData(Child.ParentData)^.Theta);
-         Writer.WriteCardinal(Child.ID(CachedSystem, DynastyIndex));
+         if (Child.IsVisibleFor(DynastyIndex, CachedSystem)) then
+         begin
+            Writer.WriteCardinal(Child.ID(CachedSystem, DynastyIndex));
+            Writer.WriteDouble(PSolarSystemData(Child.ParentData)^.DistanceFromCenter);
+            Writer.WriteDouble(PSolarSystemData(Child.ParentData)^.Theta);
+         end;
       end;
+   Writer.WriteCardinal(0);
 end;
 
 procedure TSolarSystemFeatureNode.UpdateJournal(Journal: TJournalWriter);

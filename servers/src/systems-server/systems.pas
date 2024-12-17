@@ -28,7 +28,7 @@ uses
 // old and new dynasties. Otherwise, it just calls
 // TAssetNode.ResetVisibility on every asset. Then, it calls
 // TAssetNode.ApplyVisibility for each asset, and finally it calls
-// TAssetNode.CheckVisibilityChanged on each asset.
+// TAssetNode.CheckVisibilityChanged on each asset in tree order.
 //
 // TAssetNode.ResetDynastyNotes calls TFeatureNode.ResetDynastyNotes
 // on every feature in the system, copies the IDs over from the old
@@ -59,29 +59,26 @@ uses
 //  * TVisibilityHelper.AddSpecificVisibility: marks an asset as
 //    having a particular TVisibility (in addition to any that it
 //    already has). In addition, it initializes the asset's dynasty
-//    data (FDynastyNotes) if necessary, and marks the ancestor
-//    chain as having inferred visibility (by starting with the parent
-//    feature node).
+//    data (FDynastyNotes) if necessary, and marks the ancestor chain
+//    as having inferred visibility (by calling the same API
+//    recursively).
 //
 //  * TVisibilityHelper.AddBroadVisibility adds a particular
 //    visibility for every dynasty, then marks the ancestor chain as
 //    having inferred visibility.
 //
-// To mark the ancestor chain as having inferred visibility, the
-// TVisibilityHelper code uses TFeatureNode.InferVisibilityByIndex,
-// the default behavior for which is just to call
-// TVisibilityHelper.AddSpecificVisibility for dmInference on its
-// parent asset node.
-//
-// TAssetNode.CheckVisibilityChanged checks if the visibility changed
-// since the last update, and calls MarkAsDirty as appropriate.
+// TAssetNode.CheckVisibilityChanged first calls
+// TFeatureNode.CheckVisibilityChanged on all its features, then
+// checks if the visibility changed since the last update, and calls
+// MarkAsDirty as appropriate.
 //
 // Some features do special things with visibility:
 //
 //  * Orbit features and space features mark themselves as
 //    dmClassKnown so that nobody needs to research orbits and space.
 //
-//  * Orbits forward inferred visibility to their primary child.
+//  * Orbits forward inferred visibility to their primary child, and
+//    make their visibility match their child's.
 //
 //  * Sensor nodes walk the tree.
 //
@@ -350,8 +347,8 @@ type
       procedure ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynastyHashSet; CachedSystem: TSystem); virtual;
       procedure ResetVisibility(CachedSystem: TSystem); virtual;
       procedure ApplyVisibility(VisibilityHelper: TVisibilityHelper); virtual;
-      procedure InferVisibilityByIndex(DynastyIndex: Cardinal; VisibilityHelper: TVisibilityHelper); virtual;
       procedure HandleVisibility(const DynastyIndex: Cardinal; var Visibility: TVisibility; const Sensors: ISensorsProvider; const VisibilityHelper: TVisibilityHelper); virtual;
+      procedure CheckVisibilityChanged(VisibilityHelper: TVisibilityHelper); virtual;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); virtual; abstract;
       property Parent: TAssetNode read GetParent write SetParent;
       property System: TSystem read GetSystem;
@@ -439,12 +436,13 @@ type
       procedure ResetVisibility(CachedSystem: TSystem);
       procedure ApplyVisibility(VisibilityHelper: TVisibilityHelper);
       procedure HandleVisibility(const DynastyIndex: Cardinal; var Visibility: TVisibility; const Sensors: ISensorsProvider; const VisibilityHelper: TVisibilityHelper);
-      procedure CheckVisibilityChanged(CachedSystem: TSystem);
-      function ReadVisibilityFor(DynastyIndex: Cardinal; CachedSystem: TSystem): TVisibility;
+      procedure CheckVisibilityChanged(VisibilityHelper: TVisibilityHelper);
+      function ReadVisibilityFor(DynastyIndex: Cardinal; CachedSystem: TSystem): TVisibility; inline;
+      function IsVisibleFor(DynastyIndex: Cardinal; CachedSystem: TSystem): Boolean; inline;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
       procedure UpdateJournal(Journal: TJournalWriter);
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
-      function ID(CachedSystem: TSystem; DynastyIndex: Cardinal): TAssetID;
+      function ID(CachedSystem: TSystem; DynastyIndex: Cardinal; AllowZero: Boolean = False): TAssetID;
       procedure HandleCommand(Command: UTF8String; var Message: TMessage);
       property Parent: TFeatureNode read FParent;
       property Dirty: TDirtyKinds read FDirty;
@@ -895,12 +893,11 @@ procedure TFeatureNode.ApplyVisibility(VisibilityHelper: TVisibilityHelper);
 begin
 end;
 
-procedure TFeatureNode.InferVisibilityByIndex(DynastyIndex: Cardinal; VisibilityHelper: TVisibilityHelper);
+procedure TFeatureNode.HandleVisibility(const DynastyIndex: Cardinal; var Visibility: TVisibility; const Sensors: ISensorsProvider; const VisibilityHelper: TVisibilityHelper);
 begin
-   VisibilityHelper.AddSpecificVisibilityByIndex(DynastyIndex, [dmInference], Parent);
 end;
 
-procedure TFeatureNode.HandleVisibility(const DynastyIndex: Cardinal; var Visibility: TVisibility; const Sensors: ISensorsProvider; const VisibilityHelper: TVisibilityHelper);
+procedure TFeatureNode.CheckVisibilityChanged(VisibilityHelper: TVisibilityHelper);
 begin
 end;
 
@@ -1386,7 +1383,7 @@ begin
       VisibilityHelper.AddSpecificVisibilityByIndex(DynastyIndex, Visibility, Self);
 end;
 
-procedure TAssetNode.CheckVisibilityChanged(CachedSystem: TSystem);
+procedure TAssetNode.CheckVisibilityChanged(VisibilityHelper: TVisibilityHelper);
 
    function HandleChanged(const DynastyIndex: Cardinal; var Notes: TDynastyNotes): Boolean;
    begin
@@ -1404,8 +1401,8 @@ procedure TAssetNode.CheckVisibilityChanged(CachedSystem: TSystem);
          begin
             if (not Notes.HasID) then
             begin
-               Inc(CachedSystem.FDynastyMaxAssetIDs[DynastyIndex]);
-               Notes.AssetID := CachedSystem.FDynastyMaxAssetIDs[DynastyIndex];
+               Inc(VisibilityHelper.System.FDynastyMaxAssetIDs[DynastyIndex]);
+               Notes.AssetID := VisibilityHelper.System.FDynastyMaxAssetIDs[DynastyIndex];
                Writeln('Assigned ID ', Notes.AssetID, ' to ', DebugName);
             end;
          end;
@@ -1415,13 +1412,16 @@ procedure TAssetNode.CheckVisibilityChanged(CachedSystem: TSystem);
 var
    DynastyIndex: Cardinal;
    Changed: Boolean;
+   Feature: TFeatureNode;
 begin
-   if (CachedSystem.DynastyCount > 0) then
+   for Feature in FFeatures do
+      Feature.CheckVisibilityChanged(VisibilityHelper);
+   if (VisibilityHelper.System.DynastyCount > 0) then
    begin
       Changed := False;
-      for DynastyIndex := 0 to CachedSystem.DynastyCount - 1 do // $R-
+      for DynastyIndex := 0 to VisibilityHelper.System.DynastyCount - 1 do // $R-
       begin
-         if (CachedSystem.IsLongVisibilityMode) then
+         if (VisibilityHelper.System.IsLongVisibilityMode) then
          begin
             Changed := Changed or HandleChanged(DynastyIndex, FDynastyNotes.AsLongDynasties^[DynastyIndex]);
          end
@@ -1449,13 +1449,16 @@ begin
    end;
 end;
 
+function TAssetNode.IsVisibleFor(DynastyIndex: Cardinal; CachedSystem: TSystem): Boolean;
+begin
+   Result := ReadVisibilityFor(DynastyIndex, CachedSystem) <> [];
+end;
+
 procedure TAssetNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
 var
    Feature: TFeatureNode;
-   Visibility: TVisibility;
 begin
-   Visibility := ReadVisibilityFor(DynastyIndex, CachedSystem);
-   if (Visibility <> []) then
+   if (IsVisibleFor(DynastyIndex, CachedSystem)) then
    begin
       Writer.WriteCardinal(ID(CachedSystem, DynastyIndex));
       if (Assigned(FOwner)) then
@@ -1544,7 +1547,7 @@ begin
    Parent.Parent.ReportChildIsPermanentlyGone(Child);
 end;
 
-function TAssetNode.ID(CachedSystem: TSystem; DynastyIndex: Cardinal): TAssetID;
+function TAssetNode.ID(CachedSystem: TSystem; DynastyIndex: Cardinal; AllowZero: Boolean = False): TAssetID;
 begin
    if (CachedSystem.IsLongVisibilityMode) then
    begin
@@ -1554,6 +1557,7 @@ begin
    begin
       Result := FDynastyNotes.AsShortDynasties[DynastyIndex].AssetID;
    end;
+   Assert(AllowZero or (Result > 0));
 end;
 
 procedure TAssetNode.UpdateID(CachedSystem: TSystem; DynastyIndex: Cardinal; ID: TAssetID);
@@ -1800,7 +1804,7 @@ procedure TSystem.RecordUpdate();
    begin
       Journal.WriteAssetNodeReference(Asset);
       for Dynasty in FDynastyIndices do
-         Journal.WriteCardinal(Asset.ID(Self, FDynastyIndices[Dynasty]));
+         Journal.WriteCardinal(Asset.ID(Self, FDynastyIndices[Dynasty], True {AllowZero}));
       Result := True;
    end;
    
@@ -2004,7 +2008,7 @@ var
 
    function CheckVisibility(Asset: TAssetNode): Boolean;
    begin
-      Asset.CheckVisibilityChanged(Self);
+      Asset.CheckVisibilityChanged(VisibilityHelper);
       Result := True;
    end;
    
@@ -2178,7 +2182,7 @@ var
    
    function Search(Asset: TAssetNode): Boolean;
    begin
-      if ((Asset.Owner = Dynasty) and (Asset.ID(Self, DynastyIndex) = AssetID)) then
+      if ((Asset.Owner = Dynasty) and (Asset.ID(Self, DynastyIndex, True {AllowZero}) = AssetID)) then
       begin
          FoundAsset := Asset;
       end;
@@ -2338,7 +2342,7 @@ begin
    end;
    if ((not (dmInference in Current)) and Assigned(Asset.Parent)) then
    begin
-      Asset.Parent.InferVisibilityByIndex(DynastyIndex, Self);
+      AddSpecificVisibilityByIndex(DynastyIndex, [dmInference], Asset.Parent.Parent);
    end;
 end;
 
@@ -2377,7 +2381,7 @@ begin
    begin
       for DynastyIndex := 0 to DynastyCount - 1 do // $R-
       begin
-         Asset.Parent.InferVisibilityByIndex(DynastyIndex, Self);
+         AddSpecificVisibilityByIndex(DynastyIndex, [dmInference], Asset.Parent.Parent);
       end;
    end;
 end;
