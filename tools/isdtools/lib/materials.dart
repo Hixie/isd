@@ -64,7 +64,7 @@ class MaterialNode implements Comparable<MaterialNode> {
 }
 
 class Material {
-  Material(this.id, this.label, this.ambiguousName, this.description, this.color, this.tags, this.density, this.abundanceDistribution);
+  Material(this.id, this.label, this.ambiguousName, this.description, this.color, this.tags, this.density, this.bondAlbedo, this.abundanceDistribution);
 
   final int id;
   final String label;
@@ -73,6 +73,7 @@ class Material {
   final Color color;
   final Set<String> tags;
   final double density;
+  final double? bondAlbedo;
   final List<MaterialNode> abundanceDistribution;
 
   double abundanceAt(double distance) {
@@ -152,13 +153,15 @@ class _MaterialsPaneState extends State<MaterialsPane> {
           final Color color = Color(int.parse(readLine(), radix: 16) | 0xFF000000);
           final Set<String> tags = readLine().split(',').toSet();
           final double density = double.parse(readLine());
+          final String bondAlbedoLine = readLine();
+          final double? bondAlbedo = bondAlbedoLine == 'n/a' ? null : double.parse(bondAlbedoLine);
           String line;
           final List<MaterialNode> abundanceDistribution = <MaterialNode>[];
           while ((line = readLine()) != '') {
             final List<double> parts = line.split(',').map(double.parse).toList();
             abundanceDistribution.add(MaterialNode(distance: parts[0], abundance: parts[1]));
           }
-          _materials.add(Material(id, name, ambiguousName, description, color, tags, density, abundanceDistribution));
+          _materials.add(Material(id, name, ambiguousName, description, color, tags, density, bondAlbedo, abundanceDistribution));
         }
       } on FileSystemException catch (e) {
         print('$e');
@@ -180,6 +183,7 @@ class _MaterialsPaneState extends State<MaterialsPane> {
       buffer.writeln(encodeColor(material.color));
       buffer.writeln(material.tags.join(','));
       buffer.writeln(material.density);
+      buffer.writeln(material.bondAlbedo ?? 'n/a');
       for (MaterialNode node in material.abundanceDistribution) {
         buffer.writeln('${node.distance},${node.abundance}');
       }
@@ -194,10 +198,12 @@ class _MaterialsPaneState extends State<MaterialsPane> {
         Material(
           0,
           'Material #${_materials.length}',
-          'Unknown material.',
+          'Unknown material',
+          'Non-descript material.',
           Color(0xFF303030 | random.nextInt(0xFFFFFF)),
           <String>{'matter'},
           1000.0,
+          null,
           <MaterialNode>[
             MaterialNode(distance: minDistance, abundance: 0.0),
           ],
