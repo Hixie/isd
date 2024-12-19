@@ -215,6 +215,7 @@ begin
       end;
       SolarSystem.ComputeHillSpheres();
       FServer.Encyclopedia.CondenseProtoplanetaryDisks(SolarSystem, System);
+      FServer.Encyclopedia.FindTemperatureEquilibria(System); // TODO: figure out when we should recompute these
       Write(#$01);
    end
    else

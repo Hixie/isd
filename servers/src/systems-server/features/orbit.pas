@@ -33,7 +33,6 @@ type
       property Assets: TAssetNodeArray read FAssets;
    end;
    
-
 type
    TOrbitFeatureClass = class(TFeatureClass)
    strict protected
@@ -67,6 +66,7 @@ type
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
       function GetHillDiameter(Child: TAssetNode; ChildPrimaryMass: Double): Double;
       function GetRocheLimit(ChildRadius, ChildMass: Double): Double; // returns minimum semi-major axis for a hypothetical child planetary body orbitting our primary
+      function GetAverageDistance(Child: TAssetNode): Double;
       // given child should have a TOrbitFeatureNode, use Encyclopedia.WrapAssetForOrbit
       procedure AddOrbitingChild(CachedSystem: TSystem; Child: TAssetNode; SemiMajorAxis: Double; Eccentricity: Double; Omega: Double; TimeOrigin: TTimeInMilliseconds; Clockwise: Boolean);
       procedure UpdateOrbitingChild(CachedSystem: TSystem; Child: TAssetNode; SemiMajorAxis: Double; Eccentricity: Double; Omega: Double; TimeOrigin: TTimeInMilliseconds; Clockwise: Boolean; Index: Cardinal);
@@ -245,6 +245,18 @@ begin
    Result := ChildRadius * ((2 * FPrimaryChild.Mass / ChildMass) ** (1.0 / 3.0)); // $R-
 end;
 
+function TOrbitFeatureNode.GetAverageDistance(Child: TAssetNode): Double;
+var
+   SemiMajorAxis, Eccentricity: Double;
+begin
+   // This must remain equilavent to the code in protoplanetary.pas
+   Assert(Child.Parent = Self);
+   Assert(Assigned(Child.ParentData));
+   SemiMajorAxis := POrbitData(Child.ParentData)^.SemiMajorAxis;
+   Eccentricity := POrbitData(Child.ParentData)^.Eccentricity;
+   Result := SemiMajorAxis * (1 + Eccentricity * Eccentricity / 2.0);
+end;
+   
 procedure TOrbitFeatureNode.AddOrbitingChild(CachedSystem: TSystem; Child: TAssetNode; SemiMajorAxis: Double; Eccentricity: Double; Omega: Double; TimeOrigin: TTimeInMilliseconds; Clockwise: Boolean);
 begin
    Assert(Child.AssetClass.ID = idOrbits);

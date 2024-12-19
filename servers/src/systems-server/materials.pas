@@ -33,7 +33,8 @@ type
       mtStarFuel, // TODO: marks the material as the one that stars are made of
       mtPressurized, // TODO: marks a material that is under high pressure (e.g. core of Jupiter)
       mtSolid, // TODO: indicates the material can be carried on belts and so forth
-      mtFluid // TODO: indicates the material is handled by pipes (if we even implement pipes, which we really should probably not)
+      mtFluid, // TODO: indicates the material is handled by pipes (if we even implement pipes, which we really should probably not)
+      mtAtmospheric // TODO: indicates that the material would be available in the atmosphere, if any
    );
    TMaterialTags = set of TMaterialTag;
    
@@ -53,10 +54,11 @@ type
       FUnitKind: TUnitKind;
       FMassPerUnit: Double; // kg
       FDensity: Double; // m^3
+      FBondAlbedo: Double;
       FTags: TMaterialTags;
       FAbundance: TMaterialAbundance;
    public
-      constructor Create(AID: TMaterialID; AName, AAmbiguousName, ADescription: UTF8String; AIcon: TIcon; AColor: TMaterialColor; AUnitKind: TUnitKind; AMassPerUnit: Double; ADensity: Double; ATags: TMaterialTags; AAbundance: TMaterialAbundance);
+      constructor Create(AID: TMaterialID; AName, AAmbiguousName, ADescription: UTF8String; AIcon: TIcon; AColor: TMaterialColor; AUnitKind: TUnitKind; AMassPerUnit, ADensity, ABondAlbedo: Double; ATags: TMaterialTags; AAbundance: TMaterialAbundance);
       property ID: TMaterialID read FID;
       property AmbiguousName: UTF8String read FAmbiguousName;
       property Name: UTF8String read FName;
@@ -66,6 +68,7 @@ type
       property UnitKind: TUnitKind read FUnitKind;
       property MassPerUnit: Double read FMassPerUnit; // kg
       property Density: Double read FDensity; // kg/m^3
+      property BondAlbedo: Double read FBondAlbedo;
       property Tags: TMaterialTags read FTags;
       property Abundance: TMaterialAbundance read FAbundance;
    end;
@@ -78,7 +81,7 @@ function LoadMaterialRecords(Filename: RawByteString): TMaterialHashSet;
 implementation
 
 uses
-   hashfunctions, sysutils, strutils;
+   hashfunctions, sysutils, strutils, math;
 
 function MaterialHash32(const Key: TMaterial): DWord;
 begin
@@ -95,7 +98,7 @@ begin
    inherited Create(@LongIntHash32);
 end;
 
-constructor TMaterial.Create(AID: TMaterialID; AName, AAmbiguousName, ADescription: UTF8String; AIcon: TIcon; AColor: TMaterialColor; AUnitKind: TUnitKind; AMassPerUnit: Double; ADensity: Double; ATags: TMaterialTags; AAbundance: TMaterialAbundance);
+constructor TMaterial.Create(AID: TMaterialID; AName, AAmbiguousName, ADescription: UTF8String; AIcon: TIcon; AColor: TMaterialColor; AUnitKind: TUnitKind; AMassPerUnit, ADensity, ABondAlbedo: Double; ATags: TMaterialTags; AAbundance: TMaterialAbundance);
 begin
    inherited Create();
    Assert(AID <> 0); // zero means "not recognized"
@@ -112,6 +115,7 @@ begin
    FUnitKind := AUnitKind;
    FMassPerUnit := AMassPerUnit;
    FDensity := ADensity;
+   FBondAlbedo := ABondAlbedo;
    FTags := ATags;
    FAbundance := AAbundance;
 end;
@@ -148,7 +152,7 @@ function LoadMaterialRecords(Filename: RawByteString): TMaterialHashSet;
 
 var
    F: Text;
-   IDLine, ColorLine, TagsLine, DensityLine, AbundanceLine: UTF8String;
+   IDLine, ColorLine, TagsLine, DensityLine, BondAlbedoLine, AbundanceLine: UTF8String;
    Tag: UTF8String;
    TagList: array of UTF8String;
    Index: SizeInt;
@@ -157,7 +161,7 @@ var
    MaterialIcon: TIcon;
    MaterialColor: TMaterialColor;
    MaterialTags: TMaterialTags;
-   MaterialDensity, MaterialDistance, MaterialAbundance: Double;
+   MaterialDensity, MaterialBondAlbedo, MaterialDistance, MaterialAbundance: Double;
    MaterialAbundances: array of TMaterialAbundanceParameters;
    Material: TMaterial;
 begin
@@ -186,12 +190,22 @@ begin
             'terrestrial': Include(MaterialTags, mtTerrestrial);
             'system-unique': Include(MaterialTags, mtSystemUnique);
             'star-fuel': Include(MaterialTags, mtStarFuel);
+            'atmospheric': Include(MaterialTags, mtAtmospheric);
          else
             raise EConvertError.Create('Unknown material tag "' + Tag + '"');
          end;
       end;
       Readln(F, DensityLine); // floating point number
       MaterialDensity := ParseDouble(DensityLine);
+      Readln(F, BondAlbedoLine); // floating point number
+      if (BondAlbedoLine = 'n/a') then
+      begin
+         MaterialBondAlbedo := NaN;
+      end
+      else
+      begin
+         MaterialBondAlbedo := ParseDouble(BondAlbedoLine);
+      end;
       SetLength(MaterialAbundances, 0); {BOGUS Hint: Local variable "MaterialAbundances" does not seem to be initialized}
       repeat
          Readln(F, AbundanceLine); // two comma-separated floating-point numbers
@@ -226,6 +240,7 @@ begin
          ukBulkResource,
          0.001,
          MaterialDensity,
+         MaterialBondAlbedo,
          MaterialTags,
          MaterialAbundances
       );

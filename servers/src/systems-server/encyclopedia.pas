@@ -34,6 +34,7 @@ type
       function WrapAssetForOrbit(Child: TAssetNode): TAssetNode;
       function CreateLoneStar(StarID: TStarID): TAssetNode;
       procedure CondenseProtoplanetaryDisks(Space: TSolarSystemFeatureNode; System: TSystem);
+      procedure FindTemperatureEquilibria(System: TSystem);
       property RegionClass: TAssetClass read FRegion;
       property MessageClass: TAssetClass read FMessage;
       property ProtoplanetaryMaterials: TMaterialHashSet read FProtoplanetaryMaterials;
@@ -58,7 +59,7 @@ implementation
 uses
    icons, orbit, structure, stellar, name, sensors, exceptions,
    sysutils, planetary, protoplanetary, plot, surface, grid, time,
-   population, messages, knowledge;
+   population, messages, knowledge, math;
 
 function RoundAboveZero(Value: Double): Cardinal;
 begin
@@ -99,6 +100,7 @@ begin
    FOrbits := TAssetClass.Create(idOrbits, 'Orbit', 'Orbit', 'Objects in space are attracted to each other in a way that makes them spin around each other.', [ TOrbitFeatureClass.Create() ], OrbitIcon);
    RegisterAssetClass(FOrbits);
 
+   // TODO: move these names and descriptions into TStarFeatureNode
    FStars[2] := TAssetClass.Create(idStars - 2,
                                    'Brown dwarf star', 'Star',
                                    'A late class M star. Class M stars are among the coldest stars in the galaxy at around 3000K. ' +
@@ -150,6 +152,7 @@ begin
       ukBulkResource,
       1e-3, // smallest unit is 1 gram
       1.0, // kg per m^3
+      0.0,
       [], // tags
       ZeroAbundance // abundances
    );
@@ -320,6 +323,7 @@ procedure TEncyclopedia.CondenseProtoplanetaryDisks(Space: TSolarSystemFeatureNo
          [
             TPlanetaryBodyFeatureNode.Create(
                Body.Radius * 2.0, // diameter
+               Body.Temperature,
                AssetComposition,
                RoundAboveZero(Body.Radius), // hp
                Body.Habitable // whether to consider this body when selecting a crash landing point
@@ -367,6 +371,7 @@ var
    Planets: TBodyArray;
    Body: TBody;
    StarOrbitFeature: TOrbitFeatureNode;
+   StarFeature: TStarFeatureNode;
 begin
    Assert(Space.ChildCount > 0);
    for Index := 0 to Space.ChildCount - 1 do // $R-
@@ -374,14 +379,78 @@ begin
       StarOrbit := Space.Children[Index];
       StarOrbitFeature := StarOrbit.GetFeatureByClass(TOrbitFeatureClass) as TOrbitFeatureNode;
       Star := StarOrbitFeature.PrimaryChild;
+      StarFeature := Star.GetFeatureByClass(TStarFeatureClass) as TStarFeatureNode;
       StarHillDiameter := Space.GetHillDiameter(StarOrbit, Star.Mass);
       if (StarHillDiameter > Star.Size) then
       begin
-         Planets := CondenseProtoplanetaryDisk(Star.Mass, Star.Size / 2.0, StarHillDiameter / 2.0, FProtoplanetaryMaterials, System);
+         Planets := CondenseProtoplanetaryDisk(Star.Mass, Star.Size / 2.0, StarHillDiameter / 2.0, StarFeature.Temperature, FProtoplanetaryMaterials, System);
          for Body in Planets do
             AddBody(Body, StarOrbitFeature);
       end;
    end;
+end;
+
+procedure TEncyclopedia.FindTemperatureEquilibria(System: TSystem);
+
+   function FindSuns(Asset: TAssetNode): Boolean;
+   var
+      SunOrbit: TOrbitFeatureNode;
+      Sun: TStarFeatureNode;
+      SunTemperature, SunRadius: Double;
+
+      function ComputeAverageDistance(Asset: TAssetNode): Double;
+      begin
+         while (Asset.Parent <> SunOrbit) do
+            Asset := Asset.Parent.Parent;
+         Result := SunOrbit.GetAverageDistance(Asset);
+      end;
+
+      function FindPlanets(Asset: TAssetNode): Boolean;
+      var
+         PlanetOrbit: TOrbitFeatureNode;
+         Planet: TPlanetaryBodyFeatureNode;
+         PlanetAverageOrbitalDistance, PlanetBondAlbedo, PlanetTemperature: Double;
+      begin
+         PlanetOrbit := Asset.GetFeatureByClass(TOrbitFeatureClass) as TOrbitFeatureNode;
+         if (Assigned(PlanetOrbit)) then
+         begin
+            Assert(Assigned(PlanetOrbit.PrimaryChild));
+            Planet := PlanetOrbit.PrimaryChild.GetFeatureByClass(TPlanetaryBodyFeatureClass) as TPlanetaryBodyFeatureNode;
+            if (Assigned(Planet)) then
+            begin
+               PlanetAverageOrbitalDistance := ComputeAverageDistance(Asset);
+               PlanetBondAlbedo := Planet.BondAlbedo;
+               PlanetTemperature := SunTemperature * SqRt(SunRadius / (2.0 * PlanetAverageOrbitalDistance)) * Power(1 - PlanetBondAlbedo, 1.0 / 4.0); // $R-
+               Assert(PlanetTemperature >= 0.0);
+               Assert(PlanetTemperature <= SunTemperature);
+               Planet.SetTemperature(PlanetTemperature);
+            end;
+            Result := True;
+         end
+         else
+            Result := False;
+      end;
+
+   begin
+      SunOrbit := Asset.GetFeatureByClass(TOrbitFeatureClass) as TOrbitFeatureNode;
+      if (Assigned(SunOrbit)) then
+      begin
+         Assert(Assigned(SunOrbit.PrimaryChild));
+         Sun := SunOrbit.PrimaryChild.GetFeatureByClass(TStarFeatureClass) as TStarFeatureNode;
+         if (Assigned(Sun)) then
+         begin
+            SunTemperature := Sun.Temperature;
+            SunRadius := Sun.Size / 2.0;
+            Asset.Walk(@FindPlanets, nil);
+         end;
+         Result := False;
+      end
+      else
+         Result := True;
+   end;
+
+begin
+   System.RootNode.Walk(@FindSuns, nil);
 end;
 
 end.

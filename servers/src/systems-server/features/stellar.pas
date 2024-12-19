@@ -16,9 +16,11 @@ type
    end;
 
    TStarFeatureNode = class(TFeatureNode, IAssetNameProvider)
-   protected
+   strict private
       FStarID: TStarID;
       function GetCategory(): TStarCategory; inline;
+      function GetTemperature(): Double;
+   protected
       function GetMass(): Double; override;
       function GetSize(): Double; override;
       function GetFeatureName(): UTF8String; override;
@@ -33,6 +35,7 @@ type
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
       property Category: TStarCategory read GetCategory;
       property StarID: TStarID read FStarID;
+      property Temperature: Double read GetTemperature;
    end;
 
 implementation
@@ -104,6 +107,26 @@ begin
       Result := 0.0;
    end;
    Result := Result * Modifier(0.9, 1.1, StarID, SizeSalt);
+end;
+
+function TStarFeatureNode.GetTemperature(): Double;
+begin
+   case Category of
+      2: Result := 3000;
+      3: Result := 3000;
+      4: Result := 6000;
+      5: Result := 7000;
+      6: Result := 10000;
+      7: Result := 30000;
+      8: Result := 4000;
+      9: Result := 10000;
+      10: Result := 5000;
+   else
+      Assert(False);
+      Result := 0.0;
+   end;
+   // TODO: when we generate the description dynamically, vary the temperature also
+   // Result := Result * Modifier(0.9, 1.1, StarID, TemperatureSalt);
 end;
 
 function TStarFeatureNode.GetFeatureName(): UTF8String;

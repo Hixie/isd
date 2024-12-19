@@ -18,12 +18,15 @@ type
    TBody = record
    private
       Mass: Double; // cache used during generation, not source of truth
+      function GetAverageDistance(): Double;
    public
       Distance, Eccentricity: Double;
       Clockwise, Habitable: Boolean;
       Composition: array of TBodyComposition;
       Radius: Double; // also HP
+      Temperature: Double;
       Moons: PBodyArray;
+      property AverageOrbitalDistance: Double read GetAverageDistance;
    end;
 
    TBodyDistanceUtils = record
@@ -35,7 +38,7 @@ type
    TBodyArray = specialize PlasticArray<TBody, TBodyDistanceUtils>;
 
 // TODO: have different logic for home systems, support systems, and other random systems
-function CondenseProtoplanetaryDisk(StarMass, StarRadius, HillRadius: Double; Materials: TMaterialHashSet; System: TSystem): TBodyArray;
+function CondenseProtoplanetaryDisk(StarMass, StarRadius, HillRadius, StarTemperature: Double; Materials: TMaterialHashSet; System: TSystem): TBodyArray;
 
 {$IFDEF DEBUG}
 function WeighBody(const Body: TBody): Double;
@@ -64,7 +67,10 @@ const
    TargetTerrestrialCount = 3;
    TerrestrialFractionThreshold = 0.01;
    MinimumTerrestrialRadius = 12756e3 / 4.0; // half Earth radius
+   MinimumTerrestrialTemperature = 0; //225; // around -50 Celsius // TODO: guarantee to generate planets in the right temperature regime
+   MaximumTerrestrialTemperature = 1000000; //350; // around +75 Celsius
    TypicalOuterPlanetDiameter = 2e6;
+   MoonMassRatio = 0.5;
    CompositionPerturbationParameters: TPerturbationParameters = (
       ProbabilityZero: 0.01; // chance of a material just not being there
       ProbabilityRandomize: 0.01; // chance of ignoring normal density for a material
@@ -122,6 +128,12 @@ begin
    Result := A.Distance > B.Distance;
 end;
 
+function TBody.GetAverageDistance(): Double;
+begin
+   // This must remain equivalent to the code in orbit.pas
+   Result := Distance * (1 + Eccentricity * Eccentricity / 2.0);
+end;
+   
 function WeighBody(const Body: TBody): Double;
 var
    Index: Cardinal;
@@ -147,6 +159,33 @@ begin
    end;
 end;
 
+function GetBondAlbedo(Body: TBody): Double;
+// This function should remain equivalent to TPlanetaryBodyFeatureNode.GetBondAlbedo
+var
+   Index: Cardinal;
+   Weight, Numerator, Denominator: Double;
+   Material: TMaterial;
+begin
+   Numerator := 0.0;
+   Denominator := 0.0;
+   Assert(Length(Body.Composition) > 0);
+   for Index := Low(Body.Composition) to High(Body.Composition) do // $R-
+   begin
+      Material := Body.Composition[Index].Material;
+      if (not IsNaN(Material.BondAlbedo)) then
+      begin
+         Weight := Body.Composition[Index].RelativeVolume;
+         Numerator := Numerator + Material.BondAlbedo * Weight;
+         Denominator := Denominator + Weight;
+      end;
+   end;
+   Result := Numerator / Denominator;
+   if (IsNan(Result)) then
+      Result := 1.0;
+   Assert(Result >= 0.0);
+   Assert(Result <= 1.0);
+end;
+
 procedure SetHabitability(var Planet: TBody);
 var
    Index: Cardinal;
@@ -154,6 +193,12 @@ var
 begin
    if (Planet.Radius > MinimumTerrestrialRadius) then
    begin
+      if ((Planet.Temperature < MinimumTerrestrialTemperature) or
+          (Planet.Temperature > MaximumTerrestrialTemperature)) then
+      begin
+         Planet.Habitable := False;
+         exit;
+      end;
       TotalRelativeVolume := 0.0;
       for Index := Low(Planet.Composition) to High(Planet.Composition) do // $R-
       begin
@@ -174,6 +219,11 @@ begin
    end
    else
       Planet.Habitable := False;
+end;
+
+procedure SetTemperature(var Planet: TBody; SunTemperature, SunRadius, PlanetAverageOrbitalDistance: Double);
+begin
+   Planet.Temperature := SunTemperature * SqRt(SunRadius / (2.0 * PlanetAverageOrbitalDistance)) * Power(1 - GetBondAlbedo(Planet), 1.0 / 4.0); // $R-
 end;
 
 function NeedsMorePlanets(const Planets: TBodyArray): Boolean;
@@ -263,14 +313,14 @@ begin
    Result := SecondaryRadius * ((2.0 * PrimaryMass / SecondaryMass) ** (1.0 / 3.0)); // $R-
 end;
 
-function CondenseProtoplanetaryDisk(StarMass, StarRadius, HillRadius: Double; Materials: TMaterialHashSet; System: TSystem): TBodyArray;
+function CondenseProtoplanetaryDisk(StarMass, StarRadius, HillRadius, StarTemperature: Double; Materials: TMaterialHashSet; System: TSystem): TBodyArray;
 var
    Randomizer: TRandomNumberGenerator;
    Index, PlanetIndex, GenerationStart: Cardinal;
    Min, Max, Distance, MoonDistance, PreviousDistance, NextDistance, Alpha, Beta, PlanetDistance, Area,
    PlanetProbability, ProtoplanetaryDiscHeight, LocalProtoplanetaryDiscHeight, PlanetMass, ProtoplanetaryDiscRadius,
-   MoonSize, PlanetHillRadius: Double;
-   Clockwise: Boolean;
+   MoonSize, PlanetHillRadius, CumulativeMoonMasses: Double;
+   Clockwise, DidAddPlanet: Boolean;
    Planets: TBodyArray;
    Planet, Moon: TBody;
 begin
@@ -291,7 +341,22 @@ begin
       Distance := Min + Randomizer.GetDouble(Min, Max);
       while (Distance < HillRadius) do
       begin
-         if (Randomizer.GetBoolean(PlanetProbability)) then
+         DidAddPlanet := False;
+         Planet := Default(TBody);
+         Planet.Distance := Distance;
+         Planet.Clockwise := Clockwise;
+         if (AddMaterialsTo(Planet, Distance, Materials, Randomizer)) then
+         begin
+            Planet.Eccentricity := Randomizer.Perturb(DefaultEccentricity, EccentricityPerturbationParameters);
+            SetTemperature(Planet, StarTemperature, StarRadius, Planet.AverageOrbitalDistance);
+            SetHabitability(Planet);
+            if (Planet.Habitable or Randomizer.GetBoolean(PlanetProbability)) then
+            begin
+               Planets.Push(Planet);
+               DidAddPlanet := True;
+            end;
+         end;
+         if (DidAddPlanet) then
          begin
             if (Distance < ProtoplanetaryDiscRadius) then
             begin
@@ -300,14 +365,6 @@ begin
             else
             begin
                PlanetProbability := LowProbability;
-            end;
-            Planet := Default(TBody);
-            Planet.Distance := Distance;
-            Planet.Clockwise := Clockwise;
-            if (AddMaterialsTo(Planet, Distance, Materials, Randomizer)) then
-            begin
-               SetHabitability(Planet);
-               Planets.Push(Planet);
             end;
          end
          else
@@ -362,14 +419,13 @@ begin
             end
             else
             begin
-               Planet.Eccentricity := Randomizer.Perturb(DefaultEccentricity, EccentricityPerturbationParameters);
-
                // MOONS
                Assert(Length(Planet.Composition) > 0);
                Distance := Planet.Distance;
                PlanetHillRadius := Distance * (1 - Planet.Eccentricity) * Power((PlanetMass / (3 * (PlanetMass + StarMass))), 1/3); // $R-
                MoonSize := Randomizer.Perturb(Planet.Radius * MaxMoonSizeRatio, MoonSizePerturbationParameters);
-               while (MoonSize > MinMoonSize) do
+               CumulativeMoonMasses := 0.0;
+               while ((MoonSize > MinMoonSize) and (CumulativeMoonMasses < Planet.Mass * MoonMassRatio)) do
                begin
                   MoonDistance := Randomizer.GetDouble(0.0, PlanetHillRadius);
                   Moon := Default(TBody);
@@ -386,14 +442,16 @@ begin
                   if (AddMaterialsTo(Moon, Distance, Materials, Randomizer)) then
                   begin
                      Moon.Mass := WeighBody(Moon);
-                     if ((MoonDistance > RocheLimit(PlanetMass, Moon.Mass, MoonSize)) and (Moon.Mass < PlanetMass)) then
+                     if ((MoonDistance > RocheLimit(PlanetMass, Moon.Mass, MoonSize)) and (CumulativeMoonMasses + Moon.Mass < PlanetMass)) then
                      begin
                         if (not Assigned(Planet.Moons)) then
                         begin
                            Planet.Moons := New(PBodyArray);
                            Planet.Moons^.Init();
                         end;
+                        CumulativeMoonMasses := CumulativeMoonMasses + Moon.Mass;
                         Moon.Eccentricity := Randomizer.Perturb(DefaultEccentricity, EccentricityPerturbationParameters);
+                        SetTemperature(Moon, StarTemperature, StarRadius, Planet.AverageOrbitalDistance); // planet distance, not moon distance!
                         SetHabitability(Moon);
                         Planet.Moons^.Push(Moon);
                      end;

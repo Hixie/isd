@@ -350,7 +350,6 @@ type
       procedure HandleVisibility(const DynastyIndex: Cardinal; var Visibility: TVisibility; const Sensors: ISensorsProvider; const VisibilityHelper: TVisibilityHelper); virtual;
       procedure CheckVisibilityChanged(VisibilityHelper: TVisibilityHelper); virtual;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); virtual; abstract;
-      property Parent: TAssetNode read GetParent write SetParent;
       property System: TSystem read GetSystem;
    public
       destructor Destroy(); override;
@@ -360,6 +359,7 @@ type
       property Mass: Double read GetMass;
       property Size: Double read GetSize;
       property FeatureName: UTF8String read GetFeatureName;
+      property Parent: TAssetNode read FParent;
    end;
 
    TFeatureNodeArray = array of TFeatureNode;
@@ -1403,7 +1403,6 @@ procedure TAssetNode.CheckVisibilityChanged(VisibilityHelper: TVisibilityHelper)
             begin
                Inc(VisibilityHelper.System.FDynastyMaxAssetIDs[DynastyIndex]);
                Notes.AssetID := VisibilityHelper.System.FDynastyMaxAssetIDs[DynastyIndex];
-               Writeln('Assigned ID ', Notes.AssetID, ' to ', DebugName);
             end;
          end;
       end;

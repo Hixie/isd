@@ -24,11 +24,14 @@ type
    end;
 
    TPlanetaryBodyFeatureNode = class(TFeatureNode)
-   protected
+   strict private
       FComposition: TPlanetaryComposition;
       FStructuralIntegrity: Cardinal;
-      FDiameter: Double;
+      FDiameter: Double; // m
       FConsiderForDynastyStart: Boolean;
+      FTemperature: Double; // K
+      function GetBondAlbedo(): Double;
+   protected
       function GetMass(): Double; override; // kg
       function GetSize(): Double; override; // m
       function GetFeatureName(): UTF8String; override;
@@ -36,17 +39,20 @@ type
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
    public
-      constructor Create(ADiameter: Double; AComposition: TPlanetaryComposition; AStructuralIntegrity: Cardinal; AConsiderForDynastyStart: Boolean);
+      constructor Create(ADiameter, ATemperature: Double; AComposition: TPlanetaryComposition; AStructuralIntegrity: Cardinal; AConsiderForDynastyStart: Boolean);
       procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
+      procedure SetTemperature(ATemperature: Double); // stores a computed temperature
       property StructuralIntegrity: Cardinal read FStructuralIntegrity;
       property ConsiderForDynastyStart: Boolean read FConsiderForDynastyStart;
+      property BondAlbedo: Double read GetBondAlbedo;
+      property Temperature: Double read FTemperature; // K
    end;
 
 implementation
 
 uses
-   isdprotocol, sysutils, exceptions;
+   isdprotocol, sysutils, exceptions, math;
 
 constructor TPlanetaryCompositionEntry.Create(AMaterial: TMaterial; AMass: Double);
 begin
@@ -68,10 +74,11 @@ begin
 end;
 
 
-constructor TPlanetaryBodyFeatureNode.Create(ADiameter: Double; AComposition: TPlanetaryComposition; AStructuralIntegrity: Cardinal; AConsiderForDynastyStart: Boolean);
+constructor TPlanetaryBodyFeatureNode.Create(ADiameter, ATemperature: Double; AComposition: TPlanetaryComposition; AStructuralIntegrity: Cardinal; AConsiderForDynastyStart: Boolean);
 begin
    inherited Create();
    FDiameter := ADiameter;
+   FTemperature := ATemperature;
    FComposition := AComposition;
    FStructuralIntegrity := AStructuralIntegrity;
    FConsiderForDynastyStart := AConsiderForDynastyStart;
@@ -89,6 +96,33 @@ end;
 function TPlanetaryBodyFeatureNode.GetSize(): Double;
 begin
    Result := FDiameter;
+end;
+
+function TPlanetaryBodyFeatureNode.GetBondAlbedo(): Double;
+// This function should remain equivalent to the GetBondAlbedo function in protoplanetary.pas
+var
+   Index: Cardinal;
+   Weight, Numerator, Denominator: Double;
+   Material: TMaterial;
+begin
+   Numerator := 0.0;
+   Denominator := 0.0;
+   Assert(Length(FComposition) > 0);
+   for Index := Low(FComposition) to High(FComposition) do // $R-
+   begin
+      Material := FComposition[Index].Material;
+      if (not IsNaN(Material.BondAlbedo)) then
+      begin
+         Weight := FComposition[Index].Mass / Material.Density;
+         Numerator := Numerator + Material.BondAlbedo * Weight;
+         Denominator := Denominator + Weight;
+      end;
+   end;
+   Result := Numerator / Denominator;
+   if (IsNan(Result)) then
+      Result := 1.0;
+   Assert(Result >= 0.0);
+   Assert(Result <= 1.0);
 end;
 
 function TPlanetaryBodyFeatureNode.GetFeatureName(): UTF8String;
@@ -125,6 +159,7 @@ begin
    end;
    Journal.WriteCardinal(FStructuralIntegrity);
    Journal.WriteBoolean(FConsiderForDynastyStart);
+   Journal.WriteDouble(FTemperature);
 end;
 
 procedure TPlanetaryBodyFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
@@ -141,6 +176,13 @@ begin
    end;
    FStructuralIntegrity := Journal.ReadCardinal();
    FConsiderForDynastyStart := Journal.ReadBoolean();
+   FTemperature := Journal.ReadDouble();
+end;
+
+procedure TPlanetaryBodyFeatureNode.SetTemperature(ATemperature: Double);
+begin
+   FTemperature := ATemperature;
+   Writeln('Setting temperature of ', Parent.DebugName, ' to ', ATemperature:0:2, 'K (', ConsiderForDynastyStart, ')');
 end;
 
 end.
