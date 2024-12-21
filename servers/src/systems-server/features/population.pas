@@ -5,7 +5,7 @@ unit population;
 interface
 
 uses
-   systems, serverstream, materials;
+   systems, serverstream, materials, food, systemdynasty;
 
 type
    TPopulationFeatureClass = class(TFeatureClass)
@@ -15,10 +15,13 @@ type
       function InitFeatureNode(): TFeatureNode; override;
    end;
 
-   TPopulationFeatureNode = class(TFeatureNode)
+   TPopulationFeatureNode = class(TFeatureNode, IFoodConsumer)
    private
       FPopulation: Int64;
+      FFoodAvailable: Int64;
       FMeanHappiness: Double;
+      function GetOwner(): TDynasty;
+      procedure SetFoodUsage(Quantity: Int64);
    protected
       function GetMass(): Double; override;
       function GetSize(): Double; override;
@@ -88,6 +91,11 @@ begin
       if (not Result) then
          Writeln('Discarding message from population center (subject "', HelpMessage.Subject, '")');
       FreeAndNil(HelpMessage);
+   end
+   else
+   if (Message is TInitFoodMessage) then
+   begin
+      (Message as TInitFoodMessage).RequestFoodToEat(Self, FPopulation);
    end;
    Result := False;
 end;
@@ -111,4 +119,15 @@ begin
    FMeanHappiness := Journal.ReadDouble();
 end;
 
+function TPopulationFeatureNode.GetOwner(): TDynasty;
+begin
+   Result := Parent.Owner;
+end;
+
+procedure TPopulationFeatureNode.SetFoodUsage(Quantity: Int64);
+begin
+   FFoodAvailable := Quantity;
+   FMeanHappiness := FFoodAvailable / FPopulation;
+end;
+   
 end.

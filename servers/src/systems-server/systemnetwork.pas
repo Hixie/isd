@@ -97,7 +97,7 @@ implementation
 uses
    sysutils, hashfunctions, isdprotocol, passwords, exceptions, space,
    orbit, sensors, structure, errors, plot, planetary, math, time,
-   population, messages, knowledge, isderrors;
+   population, messages, knowledge, isderrors, food;
 
 constructor TSystemHashTable.Create();
 begin
@@ -256,7 +256,9 @@ begin
                TDynastyOriginalColonyShipFeatureNode.Create(Dynasty),
                TPopulationFeatureNode.CreatePopulated(2000, 1.0),
                TMessageBoardFeatureNode.Create(FServer.Encyclopedia.PlaceholderShip.Features[4] as TMessageBoardFeatureClass),
-               TKnowledgeBusFeatureNode.Create()
+               TKnowledgeBusFeatureNode.Create(),
+               TFoodBusFeatureNode.Create(),
+               TFoodGenerationFeatureNode.Create()
             ]
          )),
          A,

@@ -59,7 +59,7 @@ implementation
 uses
    icons, orbit, structure, stellar, name, sensors, exceptions,
    sysutils, planetary, protoplanetary, plot, surface, grid, time,
-   population, messages, knowledge, math;
+   population, messages, knowledge, math, food;
 
 function RoundAboveZero(Value: Double): Cardinal;
 begin
@@ -179,7 +179,9 @@ begin
          TDynastyOriginalColonyShipFeatureClass.Create(),
          TPopulationFeatureClass.Create(),
          TMessageBoardFeatureClass.Create(FMessage),
-         TKnowledgeBusFeatureClass.Create()
+         TKnowledgeBusFeatureClass.Create(),
+         TFoodBusFeatureClass.Create(),
+         TFoodGenerationFeatureClass.Create(100)
       ],
       ColonyShipIcon
    );
@@ -205,7 +207,8 @@ begin
       'An area of a planetary body.',
       [
          TGridFeatureClass.Create(),
-         TKnowledgeBusFeatureClass.Create()
+         TKnowledgeBusFeatureClass.Create(),
+         TFoodBusFeatureClass.Create()
       ],
       PlanetRegionIcon
    );
@@ -278,10 +281,12 @@ procedure TEncyclopedia.CondenseProtoplanetaryDisks(Space: TSolarSystemFeatureNo
    function CreateRegions(BodyRadius: Double; BodyComposition: TPlanetaryComposition): TAssetNodeArray;
    begin
       // TODO: this should do things based on the body composition, create geology, etc
+      // TODO: only do this on demand
       SetLength(Result, 1); // {BOGUS Warning: Function result variable of a managed type does not seem to be initialized}
       Result[0] := FRegion.Spawn(nil, [
          TGridFeatureNode.Create(100.0, 5),
-         TKnowledgeBusFeatureNode.Create()
+         TKnowledgeBusFeatureNode.Create(),
+         TFoodBusFeatureNode.Create()
       ]);
    end;
 

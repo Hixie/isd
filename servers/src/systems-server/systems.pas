@@ -313,7 +313,9 @@ type
    // ** dkNew can't be used with MarkAsDirty.
 
 const
+   dkAll = [Low(TDirtyKind) .. High(TDirtyKind)];
    dkAffectsTreeStructure = [dkAffectsVisibility, dkAffectsNames, dkAffectsKnowledge, dkVisibilityDidChange, dkSelf, dkChildren];
+   dkWillNeedChangesWalk = [dkChildren];
    
 type
    ISensorsProvider = interface ['ISensorsProvider']
@@ -350,6 +352,7 @@ type
       procedure HandleVisibility(const DynastyIndex: Cardinal; var Visibility: TVisibility; const Sensors: ISensorsProvider; const VisibilityHelper: TVisibilityHelper); virtual;
       procedure CheckVisibilityChanged(VisibilityHelper: TVisibilityHelper); virtual;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); virtual; abstract;
+      procedure HandleChanges(); virtual;
       property System: TSystem read GetSystem;
    public
       destructor Destroy(); override;
@@ -439,6 +442,7 @@ type
       procedure CheckVisibilityChanged(VisibilityHelper: TVisibilityHelper);
       function ReadVisibilityFor(DynastyIndex: Cardinal; CachedSystem: TSystem): TVisibility; inline;
       function IsVisibleFor(DynastyIndex: Cardinal; CachedSystem: TSystem): Boolean; inline;
+      procedure HandleChanges();
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
       procedure UpdateJournal(Journal: TJournalWriter);
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
@@ -901,6 +905,10 @@ procedure TFeatureNode.CheckVisibilityChanged(VisibilityHelper: TVisibilityHelpe
 begin
 end;
 
+procedure TFeatureNode.HandleChanges();
+begin
+end;
+
 function TFeatureNode.HandleCommand(Command: UTF8String; var Message: TMessage): Boolean;
 begin
    Result := False;
@@ -1098,7 +1106,7 @@ begin
       begin
          Feature.SetParent(Self);
       end;
-      FDirty := [dkNew, dkSelf, dkDescendant, dkChildren];
+      FDirty := dkAll;
    except
       ReportCurrentException();
       raise;
@@ -1110,7 +1118,7 @@ begin
    inherited Create();
    try
       ApplyJournal(Journal, ASystem);
-      FDirty := [dkNew, dkSelf, dkDescendant, dkChildren];
+      FDirty := dkAll;
    except
       ReportCurrentException();
       raise;
@@ -1453,6 +1461,14 @@ begin
    Result := ReadVisibilityFor(DynastyIndex, CachedSystem) <> [];
 end;
 
+procedure TAssetNode.HandleChanges();
+var
+   Feature: TFeatureNode;
+begin
+   for Feature in FFeatures do
+      Feature.HandleChanges();
+end;
+
 procedure TAssetNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
 var
    Feature: TFeatureNode;
@@ -1608,18 +1624,19 @@ begin
       ReportCurrentException();
       raise;
    end;
-   OpenJournal(FConfigurationDirectory + JournalDatabaseFileName);
+   OpenJournal(FConfigurationDirectory + JournalDatabaseFileName); // This walks the entire tree, updates everything, writes it all to the journal, and cleans the dirty flags.
 end;
 
 constructor TSystem.CreateFromDisk(AConfigurationDirectory: UTF8String; ASystemID: Cardinal; ARootClass: TAssetClass; AServer: TBaseServer; ADynastyDatabase: TDynastyDatabase; AEncyclopedia: TEncyclopediaView);
 begin
    Init(AConfigurationDirectory, ASystemID, ARootClass, AServer, ADynastyDatabase, AEncyclopedia);
    ApplyJournal(FConfigurationDirectory + JournalDatabaseFileName);
-   OpenJournal(FConfigurationDirectory + JournalDatabaseFileName);
+   OpenJournal(FConfigurationDirectory + JournalDatabaseFileName); // This walks the entire tree, updates everything, writes it all to the journal, and cleans the dirty flags.
 end;
 
 procedure TSystem.Init(AConfigurationDirectory: UTF8String; ASystemID: Cardinal; ARootClass: TAssetClass; AServer: TBaseServer; ADynastyDatabase: TDynastyDatabase; AEncyclopedia: TEncyclopediaView);
 begin
+   FChanges := dkAll;
    FConfigurationDirectory := AConfigurationDirectory;
    FSystemID := ASystemID;
    FRandomNumberGenerator := TRandomNumberGenerator.Create(FSystemID);
@@ -1752,7 +1769,6 @@ begin
       Close(FJournalFile);
    end;
    FRoot.Walk(nil, @IncRefDynasties);
-   RecomputeVisibility(); // the IDs won't have changed but the visibility might have
 end;
 
 procedure TSystem.OpenJournal(FileName: UTF8String);
@@ -1769,11 +1785,10 @@ begin
       FJournalWriter.WriteCardinal(jcSystemUpdate);
       FJournalWriter.WriteUInt64(FRandomNumberGenerator.State);
       FJournalWriter.WriteDouble(FTimeFactor.AsDouble);
-      RecordUpdate();
+      ReportChanges(); // This walks the entire tree, updates everything, writes it all to the journal, and cleans the dirty flags.
       Close(FJournalFile);
       DeleteFile(FileName);
       RenameFile(FileName + TemporaryExtension, FileName);
-      Clean();
       Assign(FJournalFile, FileName);
       FileMode := 2;
       Reset(FJournalFile, 1);
@@ -2040,12 +2055,20 @@ var
       TServerStreamWriter(Writer).Clear();
    end;      
 
+   function HandleChanges(Asset: TAssetNode): Boolean;
+   begin
+      Asset.HandleChanges();
+      Result := (dkWillNeedChangesWalk * Asset.FDirty <> []) and (dkDescendant in Asset.FDirty);
+   end;
+
 begin
    if (not Dirty) then
       exit;
    Assert((dkAffectsVisibility in FChanges) or not (dkAffectsDynastyCount in FChanges)); // dkAffectsDynastyCount requires dkAffectsVisibility
    if (dkAffectsVisibility in FChanges) then
       RecomputeVisibility();
+   if (dkWillNeedChangesWalk * FChanges <> []) then
+      FRoot.Walk(@HandleChanges, nil);
    RecordUpdate();
    // TODO: tell the clients if anything stopped being visible? or is that implied?
    // TODO: tell the clients if _everything_ stopped being visible
