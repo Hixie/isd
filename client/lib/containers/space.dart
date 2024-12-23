@@ -48,6 +48,7 @@ class SpaceFeature extends ContainerFeature {
   @override
   void walk(WalkCallback callback) {
     for (AssetNode child in children.keys) {
+      assert(child.parent == parent);
       child.walk(callback);
     }
   }

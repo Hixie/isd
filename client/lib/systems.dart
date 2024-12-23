@@ -254,6 +254,13 @@ class SystemServer {
         asset.removeFeatures(oldFeatures);
       }
       system.markAsUpdated();
+      assert(() {
+        system.root.walk((AssetNode node) {
+          // we're just checking that the asserts in the walk methods don't fire
+          return true;
+        });
+        return true;
+      }());
     }
     if (colonyShip != null) {
       onColonyShip(colonyShip);

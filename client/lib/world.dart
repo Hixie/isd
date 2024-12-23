@@ -19,8 +19,10 @@ abstract class WorldNode extends ChangeNotifier {
   WorldNode? get parent => _parent;
   WorldNode? _parent;
 
+  // ignore: use_setters_to_change_properties
   void attach(WorldNode parent) {
-    assert(_parent == null);
+    // it's possible that _parent is not null here
+    // because the child might get updated before the old parent
     _parent = parent;
   }
 
