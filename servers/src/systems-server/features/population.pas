@@ -127,7 +127,8 @@ end;
 procedure TPopulationFeatureNode.SetFoodUsage(Quantity: Int64);
 begin
    FFoodAvailable := Quantity;
-   FMeanHappiness := FFoodAvailable / FPopulation;
+   // TODO: happiness should change over time, not instantly
+   FMeanHappiness := FFoodAvailable / FPopulation; // TODO: expose why the happiness is as it is
 end;
    
 end.
