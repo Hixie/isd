@@ -4,6 +4,7 @@ import 'dart:ui' show Offset;
 import 'abilities/message.dart';
 import 'abilities/planets.dart';
 import 'abilities/population.dart';
+import 'abilities/rubble.dart';
 import 'abilities/sensors.dart';
 import 'abilities/stars.dart';
 import 'abilities/structure.dart';
@@ -14,6 +15,7 @@ import 'connection.dart';
 import 'containers/grid.dart';
 import 'containers/messages.dart';
 import 'containers/orbits.dart';
+import 'containers/proxy.dart';
 import 'containers/space.dart';
 import 'containers/surface.dart';
 import 'dynasty.dart';
@@ -56,6 +58,8 @@ class SystemServer {
   static const int fcPopulation = 0x0B;
   static const int fcMessageBoard = 0x0C;
   static const int fcMessage = 0x0D;
+  static const int fcRubblePile = 0x0E;
+  static const int fcProxy = 0x0F;
   static const int expectedVersion = fcMessage;
 
   Future<void> _handleLogin() async {
@@ -247,6 +251,11 @@ class SystemServer {
               final String from = reader.readString();
               final String body = reader.readString();
               oldFeatures.remove(asset.setAbility(MessageFeature(systemID, timestamp, isRead, subject, from, body)));
+            case fcRubblePile:
+              oldFeatures.remove(asset.setAbility(RubblePileFeature()));
+            case fcProxy:
+              final AssetNode? child = _readAsset(reader);
+              oldFeatures.remove(asset.setContainer(ProxyFeature(child)));
             default:
               throw NetworkError('Client does not support feature code 0x${featureCode.toRadixString(16).padLeft(8, "0")}, cannot parse server message.');
           }
