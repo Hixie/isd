@@ -44,6 +44,7 @@ type
       function GetOutput(): TStringStreamWriter;
       function GetInputClosed(): Boolean;
       function GetOutputClosed(): Boolean;
+      function GetConnection(): TBaseIncomingCapableConnection;
    public
       constructor Create(AConversation: TMessageConversationHandle);
       function CloseInput(): Boolean;
@@ -54,6 +55,7 @@ type
       property Output: TStringStreamWriter read GetOutput;
       property InputClosed: Boolean read GetInputClosed;
       property OutputClosed: Boolean read GetOutputClosed;
+      property Connection: TBaseIncomingCapableConnection read GetConnection;
    end;
 
    TConnectionCallback = procedure (Connection: TBaseIncomingCapableConnection; Data: Pointer) is nested;
@@ -306,6 +308,11 @@ end;
 function TMessage.GetOutputClosed(): Boolean;
 begin
    Result := Output.Closed;
+end;
+
+function TMessage.GetConnection(): TBaseIncomingCapableConnection;
+begin
+   Result := FConversation.Value.FConnection;
 end;
 
 procedure TMessage.CloseOutput();

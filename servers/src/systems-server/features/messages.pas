@@ -50,6 +50,7 @@ type
       destructor Destroy(); override;
       procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
+      procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); override;
    end;
 
 type
@@ -80,6 +81,7 @@ type
       procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
       function HandleCommand(Command: UTF8String; var Message: TMessage): Boolean; override;
+      procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); override;
    end;
 
 implementation
@@ -301,6 +303,10 @@ begin
    until False;
 end;
 
+procedure TMessageBoardFeatureNode.DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean);
+begin
+end;
+
 
 function TMessageFeatureClass.GetFeatureNodeClass(): FeatureNodeReference;
 begin
@@ -398,25 +404,34 @@ function TMessageFeatureNode.HandleCommand(Command: UTF8String; var Message: TMe
 begin
    if (Command = 'mark-read') then
    begin
-      Message.CloseInput();
-      Message.Reply();
-      Message.CloseOutput();
-      FIsRead := True;
-      MarkAsDirty([dkSelf]);
+      if (Message.CloseInput()) then
+      begin
+         Message.Reply();
+         Message.CloseOutput();
+         FIsRead := True;
+         MarkAsDirty([dkSelf]);
+      end;
       Result := True;
    end
    else
    if (Command = 'mark-unread') then
    begin
-      Message.CloseInput();
-      Message.Reply();
-      Message.CloseOutput();
-      FIsRead := False;
-      MarkAsDirty([dkSelf]);
+      if (Message.CloseInput()) then
+      begin
+         Message.Reply();
+         Message.CloseOutput();
+         FIsRead := False;
+         MarkAsDirty([dkSelf]);
+      end;
       Result := True;
    end
    else
       Result := inherited;
+end;
+
+procedure TMessageFeatureNode.DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean);
+begin
+   IsDefinitelyReal := True;
 end;
 
 end.

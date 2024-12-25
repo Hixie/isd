@@ -30,6 +30,7 @@ type
       constructor Create(AAssetName: UTF8String);
       procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
+      procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); override;
       property AssetName: UTF8String read FAssetName;
    end;
 
@@ -98,6 +99,10 @@ end;
 function TAssetNameFeatureNode.GetAssetName(): UTF8String;
 begin
    Result := AssetName;
+end;
+
+procedure TAssetNameFeatureNode.DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean);
+begin
 end;
 
 end.

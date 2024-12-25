@@ -75,6 +75,7 @@ type
       destructor Destroy(); override;
       procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
+      procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); override;
    end;
 
 type
@@ -96,7 +97,7 @@ type
       function GetOwner(): TDynasty;
       procedure SetFoodConsumption(Quantity: Int64);
    protected
-      constructor Create(AFeatureClass: TFoodGenerationFeatureClass);
+      constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
       function GetMass(): Double; override;
       function GetSize(): Double; override;
       function GetFeatureName(): UTF8String; override;
@@ -104,9 +105,10 @@ type
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
    public
-      constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
+      constructor Create(AFeatureClass: TFoodGenerationFeatureClass);
       procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
+      procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); override;
    end;
 
 implementation
@@ -331,6 +333,10 @@ procedure TFoodBusFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem
 begin
 end;
 
+procedure TFoodBusFeatureNode.DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean);
+begin
+end;
+
 
 constructor TFoodGenerationFeatureClass.Create(ASize: Int64);
 begin
@@ -352,6 +358,7 @@ end;
 constructor TFoodGenerationFeatureNode.Create(AFeatureClass: TFoodGenerationFeatureClass);
 begin
    inherited Create();
+   Assert(Assigned(AFeatureClass));
    FFeatureClass := AFeatureClass;
 end;
 
@@ -385,6 +392,7 @@ function TFoodGenerationFeatureNode.HandleBusMessage(Message: TBusMessage): Bool
 begin
    if (Message is TInitFoodMessage) then
    begin
+      Assert(Assigned(FFeatureClass));
       (Message as TInitFoodMessage).ReportFoodGenerationCapacity(Self, FFeatureClass.Size);
    end;
    Result := False;
@@ -411,6 +419,10 @@ end;
 procedure TFoodGenerationFeatureNode.SetFoodConsumption(Quantity: Int64);
 begin
    FFoodConsumption := Quantity;
+end;
+
+procedure TFoodGenerationFeatureNode.DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean);
+begin
 end;
 
 end.

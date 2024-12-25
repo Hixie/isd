@@ -58,6 +58,7 @@ type
       destructor Destroy(); override;
       procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
+      procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); override;
       property MaterialsQuantity: Cardinal read FMaterialsQuantity; // how much of the feature's bill of materials is actually present
       property StructuralIntegrity: Cardinal read FStructuralIntegrity; // how much of the materials are actually in good shape (affects efficiency)
    end;
@@ -65,7 +66,7 @@ type
 implementation
 
 uses
-   isdprotocol, exceptions;
+   isdprotocol, exceptions, rubble;
 
 constructor TMaterialLineItem.Create(AComponentName: UTF8String; AMaterial: TMaterial; AQuantity: Cardinal);
 begin
@@ -205,8 +206,26 @@ begin
 end;
 
 function TStructureFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
+var
+   RubbleMessage: TRubbleCollectionMessage;
+   Index: Cardinal;
+   LineItem: TMaterialLineItem;
 begin
    Result := False;
+   if (Message is TRubbleCollectionMessage) then
+   begin
+      RubbleMessage := Message as TRubbleCollectionMessage;
+      RubbleMessage.Grow(FFeatureClass.BillOfMaterialsLength);
+      if (FFeatureClass.BillOfMaterialsLength > 0) then
+      begin
+         for Index := 0 to FFeatureClass.BillOfMaterialsLength - 1 do // $R-
+         begin
+            LineItem := FFeatureClass.BillOfMaterials[Index];
+            RubbleMessage.AddMaterial(LineItem.Material, LineItem.Quantity);
+         end;
+      end;
+      exit;
+   end;
 end;
 
 procedure TStructureFeatureNode.ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynastyHashSet; CachedSystem: TSystem);
@@ -311,6 +330,13 @@ procedure TStructureFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSyst
 begin
    FMaterialsQuantity := Journal.ReadCardinal();
    FStructuralIntegrity := Journal.ReadCardinal();
+end;
+
+procedure TStructureFeatureNode.DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean);
+begin
+   IsDefinitelyReal := FMaterialsQuantity > 0;
+   IsDefinitelyGhost := FMaterialsQuantity = 0;
+   // TODO: if FMaterialsQuantity changes whether it equals 0, then MarkAsDirty([dkAffectsVisibility])
 end;
 
 end.

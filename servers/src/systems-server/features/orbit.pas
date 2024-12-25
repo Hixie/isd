@@ -71,6 +71,7 @@ type
       procedure AddOrbitingChild(CachedSystem: TSystem; Child: TAssetNode; SemiMajorAxis: Double; Eccentricity: Double; Omega: Double; TimeOrigin: TTimeInMilliseconds; Clockwise: Boolean);
       procedure UpdateOrbitingChild(CachedSystem: TSystem; Child: TAssetNode; SemiMajorAxis: Double; Eccentricity: Double; Omega: Double; TimeOrigin: TTimeInMilliseconds; Clockwise: Boolean; Index: Cardinal);
       function IAssetNameProvider.GetAssetName = GetOrbitName;
+      procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); override;
       property PrimaryChild: TAssetNode read FPrimaryChild;
    end;
    
@@ -323,7 +324,7 @@ begin
 
    Writeln('Crashing "', Child.AssetName, '" (a ', Child.AssetClass.Name, ')');
 
-   // TODO: send a notification to the clients a few seconds early, so they can trigger an animation
+   // TODO: give the clients the predicted crash time when we know it, so they can trigger animations appropriately
    
    CrashReport := New(PCrashReport);
    
@@ -378,16 +379,18 @@ end;
 
 function TOrbitFeatureNode.GetSize(): Double;
 begin
-   Assert(Assigned(FPrimaryChild));
-   if (Parent.Parent is IHillDiameterProvider) then
+   if (Assigned(FPrimaryChild)) then
    begin
-      Result := (Parent.Parent as IHillDiameterProvider).GetHillDiameter(Parent, FPrimaryChild.Mass);
-      Assert(Result > 0.0, 'Zero hill diameter returned by "' + Parent.Parent.ClassName + '" of asset "' + Parent.Parent.Parent.AssetName + '" (of class "' + Parent.Parent.Parent.AssetClass.Name + '")');
+      if (Parent.Parent is IHillDiameterProvider) then
+      begin
+         Result := (Parent.Parent as IHillDiameterProvider).GetHillDiameter(Parent, FPrimaryChild.Mass);
+         Assert(Result > 0.0, 'Zero hill diameter returned by "' + Parent.Parent.ClassName + '" of asset "' + Parent.Parent.Parent.AssetName + '" (of class "' + Parent.Parent.Parent.AssetClass.Name + '")');
+      end
+      else
+         Result := FPrimaryChild.Size;
    end
    else
-   begin
-      Result := FPrimaryChild.Size;
-   end;
+      Result := 0.0;
 end;
 
 function TOrbitFeatureNode.GetFeatureName(): UTF8String;
@@ -619,6 +622,12 @@ begin
          ckEndOfList: break;
       end;
    until False;
+end;
+
+procedure TOrbitFeatureNode.DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean);
+begin
+   Assert(FPrimaryChild.IsReal()); // TODO: if this is not true, we must not have orbitting children
+   IsDefinitelyReal := True;
 end;
 
 end.

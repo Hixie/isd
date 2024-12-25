@@ -475,6 +475,21 @@ Each cell is at the specified `<x>`/`<y>` coordinate in the grid.
 
 > TODO: support rectangular grids. Current width and height are always equal.
 
+This feature supports the following commands:
+
+ * `catalog`: two numeric fields, x and y, indicating an empty cell.
+   Returns a list of asset classes that could be built on the grid at
+   that location; each entry consisting of the numeric asset class ID,
+   a string giving an icon name, a string giving a class name, and a
+   string giving a description.
+
+ * `build`: two numeric fields, x and y, indicating an empty cell,
+   followed by the asset class ID (from the `catalog` command).
+   Returns the numeric asset ID of the new asset.
+
+Asset class IDs are numbers in the range -2,147,483,648 to
+2,147,483,647, but not zero (i.e. signed 32 bit integers).
+
 
 ### `fcPopulation` (0x0B)
 
@@ -547,6 +562,30 @@ This feature supports the following commands:
 
  * `mark-read`: no additional fields. Sets the "read" bit to 0x01.
  * `mark-unread`: no additional fields. Sets the "read" bit to 0x00.
+
+
+### `fcRubblePile` (0x0E)
+
+```bnf
+<featuredata>       ::= ; nothing
+```
+
+Indicates that the asset contains, possibly among other things, a pile
+of rubble.
+
+> TODO: Expose the contents of the rubble somehow.
+
+
+### `fcProxy` (0x0F)
+
+```bnf
+<featuredata>       ::= <assetid>
+```
+
+Includes the specified asset by reference into the current asset. For
+example, a crater with a ship in the middle consists of an
+`fcRubblePile` and an `fcProxy` with the ship as the asset in the
+proxy feature.
 
 
 # Systems Server Internal Protocol

@@ -5,26 +5,35 @@ unit grid;
 interface
 
 uses
-   systems, serverstream;
+   systems, serverstream, basenetwork, systemdynasty;
 
 type
-   TGridFeatureClass = class(TFeatureClass)
+   TGenericGridFeatureClass = class(TFeatureClass)
    strict protected
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
       function InitFeatureNode(): TFeatureNode; override;
    end;
    
+   TParameterizedGridFeatureClass = class(TFeatureClass)
+   strict private
+      FBuildEnvironment: TBuildEnvironment;
+      FCellSize: Double;
+      FDimension: Cardinal;
+   public
+      constructor Create(ABuildEnvironment: TBuildEnvironment; ACellSize: Double; ADimension: Cardinal);
+      function InitFeatureNode(): TFeatureNode; override;
+   end;
+   
    TGridFeatureNode = class(TFeatureNode)
    strict private
-      FCellSize: Double; // meters
-      FDimension, FCount: Cardinal;
-      FPacked: Boolean; // true=FChildren is just the list of children, unordered; false=FChildren is the full grid in order, with holes set to nil
+      FBuildEnvironment: TBuildEnvironment;
+      FCellSize: Double;
+      FDimension: Cardinal;
       FChildren: TAssetNodeArray; // TODO: plastic array? sorted array with binary search? map?
-      function GetChild(X, Y: Cardinal): TAssetNode;
+      function GetChild(X, Y: Cardinal; GhostOwner: TDynasty): TAssetNode; // to only get non-ghosts, set GhostOwner to nil
       procedure AdoptGridChild(Child: TAssetNode; X, Y: Cardinal);
    protected
-      constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
       procedure DropChild(Child: TAssetNode); override;
       function GetMass(): Double; override;
       function GetSize(): Double; override;
@@ -33,10 +42,12 @@ type
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
    public
-      constructor Create(ACellSize: Double; ADimension: Cardinal);
+      constructor Create(ABuildEnvironment: TBuildEnvironment; ACellSize: Double; ADimension: Cardinal);
       destructor Destroy(); override;
       procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
+      function HandleCommand(Command: UTF8String; var Message: TMessage): Boolean; override;
+      procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); override;
       property Dimension: Cardinal read FDimension;
       property CellSize: Double read FCellSize;
    end;
@@ -44,7 +55,7 @@ type
 implementation
 
 uses
-   sysutils, isdprotocol, orbit, exceptions;
+   sysutils, isdprotocol, orbit, exceptions, knowledge, systemnetwork, isderrors;
 
 type
    PGridData = ^TGridData;
@@ -56,30 +67,38 @@ type
    end;
 
 
-function TGridFeatureClass.GetFeatureNodeClass(): FeatureNodeReference;
+function TGenericGridFeatureClass.GetFeatureNodeClass(): FeatureNodeReference;
 begin
    Result := TGridFeatureNode;
 end;
 
-function TGridFeatureClass.InitFeatureNode(): TFeatureNode;
+function TGenericGridFeatureClass.InitFeatureNode(): TFeatureNode;
 begin
    Result := nil;
-   raise Exception.Create('Cannot create a TGridFeatureNode from a prototype, it must have a size.');
+   Assert(False, 'Generic grid features cannot spawn feature nodes.');
 end;
 
 
-constructor TGridFeatureNode.Create(ACellSize: Double; ADimension: Cardinal);
+constructor TParameterizedGridFeatureClass.Create(ABuildEnvironment: TBuildEnvironment; ACellSize: Double; ADimension: Cardinal);
 begin
    inherited Create();
+   FBuildEnvironment := ABuildEnvironment;
    FCellSize := ACellSize;
    FDimension := ADimension;
-   FPacked := True;
 end;
 
-constructor TGridFeatureNode.CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem);
+function TParameterizedGridFeatureClass.InitFeatureNode(): TFeatureNode;
 begin
-   FPacked := True;
-   inherited;
+   Result := TGridFeatureNode.Create(FBuildEnvironment, FCellSize, FDimension);
+end;
+
+
+constructor TGridFeatureNode.Create(ABuildEnvironment: TBuildEnvironment; ACellSize: Double; ADimension: Cardinal);
+begin
+   inherited Create();
+   FBuildEnvironment := ABuildEnvironment;
+   FCellSize := ACellSize;
+   FDimension := ADimension;
 end;
 
 destructor TGridFeatureNode.Destroy();
@@ -93,26 +112,34 @@ begin
 end;
 
 procedure TGridFeatureNode.AdoptGridChild(Child: TAssetNode; X, Y: Cardinal);
+var
+   OldChild: TAssetNode;
 begin
    Assert(Assigned(Child));
-   Assert(not Assigned(GetChild(X, Y)));
+   Assert(not Assigned(GetChild(X, Y, nil)));
    AdoptChild(Child);
    Child.ParentData := New(PGridData);
    PGridData(Child.ParentData)^.IsNew := True;
    PGridData(Child.ParentData)^.IsChanged := True;
    PGridData(Child.ParentData)^.X := X;
    PGridData(Child.ParentData)^.Y := Y;
-   if (FPacked) then
+   SetLength(FChildren, Length(FChildren) + 1);
+   FChildren[High(FChildren)] := Child;
+   PGridData(Child.ParentData)^.Index := High(FChildren); // $R-
+   if (Child.IsReal()) then
    begin
-      SetLength(FChildren, Length(FChildren) + 1);
-      FChildren[High(FChildren)] := Child;
-      PGridData(Child.ParentData)^.Index := High(FChildren); // $R-
-   end
-   else
-   begin
-      FChildren[X + Y * FDimension] := Child;
+      for OldChild in FChildren do
+      begin
+         if ((PGridData(OldChild.ParentData)^.X = X) and
+             (PGridData(OldChild.ParentData)^.Y = Y)) then
+         begin
+            if (not OldChild.IsReal()) then
+            begin
+               DropChild(OldChild);
+            end;
+         end;
+      end;
    end;
-   Inc(FCount);
 end;
 
 procedure TGridFeatureNode.DropChild(Child: TAssetNode);
@@ -120,46 +147,34 @@ var
    Index: Cardinal;
 begin
    Assert(Assigned(Child));
-   if (FPacked) then
-   begin
-      Delete(FChildren, PGridData(Child.ParentData)^.Index, 1);
-      if (PGridData(Child.ParentData)^.Index < Length(FChildren)) then
-         for Index := PGridData(Child.ParentData)^.Index to High(FChildren) do // $R-
-            PGridData(FChildren[Index].ParentData)^.Index := Index;
-   end
-   else
-   begin
-      FChildren[PGridData(Child.ParentData)^.X + PGridData(Child.ParentData)^.Y * FDimension] := nil;
-   end;
+   Delete(FChildren, PGridData(Child.ParentData)^.Index, 1);
+   if (PGridData(Child.ParentData)^.Index < Length(FChildren)) then
+      for Index := PGridData(Child.ParentData)^.Index to High(FChildren) do // $R-
+         PGridData(FChildren[Index].ParentData)^.Index := Index;
    Dispose(PGridData(Child.ParentData));
    Child.ParentData := nil;
-   Dec(FCount);
    inherited;
 end;
 
-function TGridFeatureNode.GetChild(X, Y: Cardinal): TAssetNode;
+function TGridFeatureNode.GetChild(X, Y: Cardinal; GhostOwner: TDynasty): TAssetNode;
 var
    Child: TAssetNode;
 begin
    Assert(X < FDimension);
    Assert(Y < FDimension);
-   if (FPacked) then
+   for Child in FChildren do
    begin
-      for Child in FChildren do
+      if ((PGridData(Child.ParentData)^.X = X) and
+          (PGridData(Child.ParentData)^.Y = Y)) then
       begin
-         if ((PGridData(Child.ParentData)^.X = X) and
-             (PGridData(Child.ParentData)^.Y = Y)) then
+         if (Child.IsReal() or (Child.Owner = GhostOwner)) then
          begin
             Result := Child;
             exit;
          end;
       end;
-      Result := nil;
-   end
-   else
-   begin
-      Result := FChildren[X + Y * FDimension];
    end;
+   Result := nil;
 end;
 
 function TGridFeatureNode.GetMass(): Double;
@@ -193,28 +208,22 @@ end;
 
 function TGridFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
 var
-   Child, Child2: TAssetNode;
+   Child, Crater, OldChild: TAssetNode;
    X, Y: Cardinal;
+   CachedSystem: TSystem;
 begin
    if (Message is TReceiveCrashingAssetMessage) then
    begin
+      CachedSystem := System;
       for Child in TReceiveCrashingAssetMessage(Message).Assets do
       begin
-         // TODO: make it not precisely the center
-         X := Dimension div 2; // $R-
-         Y := Dimension div 2; // $R-
-         if (Assigned(GetChild(X, Y))) then
-         begin
-            Writeln('uh, we tried to crash something into a grid that already had something: ');
-            Child2 := GetChild(X, Y);
-            Writeln('  victim = ', Child.DebugName);
-            Writeln('  target = ', Child2.DebugName);
-            // TODO: handle crashing into something that's already there
-            XXX;
-         end;
-         AdoptGridChild(Child, X, Y);
-         Result := True;
+         X := CachedSystem.RandomNumberGenerator.GetCardinal(0, Dimension);
+         Y := CachedSystem.RandomNumberGenerator.GetCardinal(0, Dimension);
+         OldChild := GetChild(X, Y, nil);
+         Crater := CachedSystem.Encyclopedia.Craterize(CellSize, OldChild, Child);
+         AdoptGridChild(Crater, X, Y);
       end;
+      Result := True;
       exit;
    end;
    for Child in FChildren do
@@ -237,7 +246,6 @@ begin
    Writer.WriteDouble(FCellSize);
    Writer.WriteCardinal(FDimension);
    Writer.WriteCardinal(FDimension);
-   Assert((not FPacked) or (FCount = Length(FChildren)));
    for Child in FChildren do
    begin
       if (Assigned(Child)) then
@@ -263,16 +271,16 @@ procedure TGridFeatureNode.UpdateJournal(Journal: TJournalWriter);
          begin
             Journal.WriteAssetChangeKind(ckAdd);
             Journal.WriteAssetNodeReference(Child);
+            Journal.WriteCardinal(PGridData(Child.ParentData)^.X);
+            Journal.WriteCardinal(PGridData(Child.ParentData)^.Y);
             PGridData(Child.ParentData)^.IsNew := False;
          end
          else
          begin
             Journal.WriteAssetChangeKind(ckChange);
-            Assert(False); // there's nothing to update, currently
-            // TODO: would be more efficient when reading to actually store the node reference instead of relying on x,y lookup...
+            Journal.WriteAssetNodeReference(Child);
+            Assert(False); // nothing to actually update right now...
          end;
-         Journal.WriteCardinal(PGridData(Child.ParentData)^.X);
-         Journal.WriteCardinal(PGridData(Child.ParentData)^.Y);
          PGridData(Child.ParentData)^.IsChanged := False;
       end;
    end;
@@ -283,7 +291,6 @@ begin
    Journal.WriteDouble(FCellSize);
    Journal.WriteCardinal(FDimension);
    Assert(FDimension > 0);
-   Assert((not FPacked) or (FCount = Length(FChildren)));
    for Child in FChildren do
       if (Assigned(Child)) then
          ReportChild(Child);
@@ -308,14 +315,9 @@ procedure TGridFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: T
 
    procedure ChangeChild();
    var
-      X, Y: Cardinal;
       Child: TAssetNode;
    begin
-      X := Journal.ReadCardinal();
-      Y := Journal.ReadCardinal();
-      Assert(X < FDimension);
-      Assert(Y < FDimension);
-      Child := GetChild(X, Y);
+      Child := Journal.ReadAssetNodeReference();
       Assert(Assigned(Child));
       Assert(False); // nothing to update currently
       PGridData(Child.ParentData)^.IsChanged := True;
@@ -327,7 +329,7 @@ var
 begin
    FCellSize := Journal.ReadDouble();
    NewDimension := Journal.ReadCardinal();
-   Assert(FDimension <= NewDimension);
+   Assert(FDimension <= NewDimension); // otherwise we have to check all the existing children and make sure they're in the new grid as well
    FDimension := NewDimension;
    while (True) do
    begin
@@ -338,6 +340,106 @@ begin
          ckEndOfList: break;
       end;
    end;
+end;
+
+function TGridFeatureNode.HandleCommand(Command: UTF8String; var Message: TMessage): Boolean;
+var
+   KnownAssetClasses: TGetKnownAssetClassesMessage;
+   X, Y: Cardinal;
+   AssetClassID: TAssetClassID;
+   AssetClass: TAssetClass;
+   Asset: TAssetNode;
+   PlayerDynasty: TDynasty;
+   CachedSystem: TSystem;
+begin
+   // what can i build at coordinates x,y?
+   // build something at coordinates x,y
+   if (Command = 'catalog') then
+   begin
+      Result := True;
+      X := Message.Input.ReadCardinal();
+      Y := Message.Input.ReadCardinal();
+      if ((X >= FDimension) or (Y >= FDimension)) then
+      begin
+         Message.Error(ieInvalidCommand);
+         exit;
+      end;
+      PlayerDynasty := (Message.Connection as TConnection).PlayerDynasty;
+      if (Assigned(GetChild(X, Y, PlayerDynasty))) then
+      begin
+         Message.Error(ieInvalidCommand);
+         exit;
+      end;
+      if (Message.CloseInput()) then
+      begin
+         Message.Reply();
+         KnownAssetClasses := TGetKnownAssetClassesMessage.Create(PlayerDynasty);
+         InjectBusMessage(KnownAssetClasses); // we ignore the result - it doesn't matter if it wasn't handled
+         for AssetClass in KnownAssetClasses do
+         begin
+            if (AssetClass.CanBuild(FBuildEnvironment)) then
+            begin
+               Message.Output.WriteLongint(AssetClass.ID);
+               AssetClass.Serialize(Message.Output);
+            end;
+         end;
+         Message.CloseOutput();
+      end;
+   end
+   else
+   if (Command = 'build') then
+   begin
+      Result := True;
+      X := Message.Input.ReadCardinal();
+      Y := Message.Input.ReadCardinal();
+      if ((X >= FDimension) or (Y >= FDimension)) then
+      begin
+         Message.Error(ieInvalidCommand);
+         exit;
+      end;
+      PlayerDynasty := (Message.Connection as TConnection).PlayerDynasty;
+      if (Assigned(GetChild(X, Y, PlayerDynasty))) then
+      begin
+         Message.Error(ieInvalidCommand);
+         exit;
+      end;
+      AssetClassID := Message.Input.ReadLongint();
+      CachedSystem := System;
+      AssetClass := CachedSystem.Encyclopedia.AssetClasses[AssetClassID];
+      if (not Assigned(AssetClass)) then
+      begin
+         Message.Error(ieInvalidCommand);
+         exit;
+      end;
+      KnownAssetClasses := TGetKnownAssetClassesMessage.Create((Message.Connection as TConnection).PlayerDynasty);
+      InjectBusMessage(KnownAssetClasses); // we ignore the result - it doesn't matter if it wasn't handled
+      if (not KnownAssetClasses.Knows(AssetClass)) then
+      begin
+         Message.Error(ieInvalidCommand);
+         exit;
+      end;
+      if (not AssetClass.CanBuild(FBuildEnvironment)) then
+      begin
+         Message.Error(ieInvalidCommand);
+         exit;
+      end;
+      if (Message.CloseInput()) then
+      begin
+         Message.Reply();
+         Asset := AssetClass.Spawn(PlayerDynasty);
+         AdoptGridChild(Asset, X, Y);
+         Assert(not Asset.IsReal());
+         Message.Output.WriteCardinal(Asset.ID(System, CachedSystem.DynastyIndex[PlayerDynasty]));
+         Message.CloseOutput();
+      end;
+   end
+   else
+      Result := inherited;
+end;
+
+procedure TGridFeatureNode.DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean);
+begin
+   IsDefinitelyReal := True;
 end;
 
 end.

@@ -10,8 +10,8 @@ uses
 type
    TPlanetaryCompositionEntry = record
       Material: TMaterial;
-      Mass: Double;
-      constructor Create(AMaterial: TMaterial; AMass: Double);
+      Quantity: Double;
+      constructor Create(AMaterial: TMaterial; AQuantity: Double);
    end;
 
    TPlanetaryComposition = array of TPlanetaryCompositionEntry;
@@ -43,6 +43,7 @@ type
       procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
       procedure SetTemperature(ATemperature: Double); // stores a computed temperature
+      procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); override;
       property StructuralIntegrity: Cardinal read FStructuralIntegrity;
       property ConsiderForDynastyStart: Boolean read FConsiderForDynastyStart;
       property BondAlbedo: Double read GetBondAlbedo;
@@ -52,12 +53,12 @@ type
 implementation
 
 uses
-   isdprotocol, sysutils, exceptions, math;
+   isdprotocol, sysutils, exceptions, math, rubble;
 
-constructor TPlanetaryCompositionEntry.Create(AMaterial: TMaterial; AMass: Double);
+constructor TPlanetaryCompositionEntry.Create(AMaterial: TMaterial; AQuantity: Double);
 begin
    Material := AMaterial;
-   Mass := AMass;
+   Quantity := AQuantity;
 end;
 
 
@@ -90,7 +91,7 @@ var
 begin
    Result := 0.0;
    for CompositionEntry in FComposition do
-      Result := Result + CompositionEntry.Mass;
+      Result := Result + CompositionEntry.Material.MassPerUnit * CompositionEntry.Quantity;
 end;
 
 function TPlanetaryBodyFeatureNode.GetSize(): Double;
@@ -102,7 +103,7 @@ function TPlanetaryBodyFeatureNode.GetBondAlbedo(): Double;
 // This function should remain equivalent to the GetBondAlbedo function in protoplanetary.pas
 var
    Index: Cardinal;
-   Weight, Numerator, Denominator: Double;
+   Factor, Numerator, Denominator: Double;
    Material: TMaterial;
 begin
    Numerator := 0.0;
@@ -113,9 +114,9 @@ begin
       Material := FComposition[Index].Material;
       if (not IsNaN(Material.BondAlbedo)) then
       begin
-         Weight := FComposition[Index].Mass / Material.Density;
-         Numerator := Numerator + Material.BondAlbedo * Weight;
-         Denominator := Denominator + Weight;
+         Factor := FComposition[Index].Quantity * Material.MassPerUnit / Material.Density;
+         Numerator := Numerator + Material.BondAlbedo * Factor;
+         Denominator := Denominator + Factor;
       end;
    end;
    Result := Numerator / Denominator;
@@ -135,8 +136,29 @@ begin
 end;
 
 function TPlanetaryBodyFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
+var
+   RubbleMessage: TRubbleCollectionMessage;
+   Entry: TPlanetaryCompositionEntry;
 begin
    Result := False;
+   if (Message is TRubbleCollectionMessage) then
+   begin
+      RubbleMessage := Message as TRubbleCollectionMessage;
+      RubbleMessage.Grow(Length(FComposition)); // $R-
+      for Entry in FComposition do
+      begin
+         if (Entry.Quantity <= High(Int64)) then
+         begin
+            RubbleMessage.AddMaterial(Entry.Material, Round(Entry.Quantity));
+         end
+         else
+         begin
+            // now what
+            Assert(False, 'Could not convert plantery body ' + Entry.Material.Name + ' to rubble (quantity too high).');
+         end;
+      end;
+      exit;
+   end;
 end;
 
 procedure TPlanetaryBodyFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
@@ -155,7 +177,7 @@ begin
    for Index := Low(FComposition) to High(FComposition) do // $R-
    begin
       Journal.WriteMaterialReference(FComposition[Index].Material);
-      Journal.WriteDouble(FComposition[Index].Mass);
+      Journal.WriteDouble(FComposition[Index].Quantity);
    end;
    Journal.WriteCardinal(FStructuralIntegrity);
    Journal.WriteBoolean(FConsiderForDynastyStart);
@@ -172,7 +194,7 @@ begin
    for Index := Low(FComposition) to High(FComposition) do // $R-
    begin
       FComposition[Index].Material := Journal.ReadMaterialReference();
-      FComposition[Index].Mass := Journal.ReadDouble();
+      FComposition[Index].Quantity := Journal.ReadDouble();
    end;
    FStructuralIntegrity := Journal.ReadCardinal();
    FConsiderForDynastyStart := Journal.ReadBoolean();
@@ -182,7 +204,12 @@ end;
 procedure TPlanetaryBodyFeatureNode.SetTemperature(ATemperature: Double);
 begin
    FTemperature := ATemperature;
-   Writeln('Setting temperature of ', Parent.DebugName, ' to ', ATemperature:0:2, 'K (', ConsiderForDynastyStart, ')');
+   // Writeln('Setting temperature of ', Parent.DebugName, ' to ', ATemperature:0:2, 'K (', ConsiderForDynastyStart, ')');
+end;
+
+procedure TPlanetaryBodyFeatureNode.DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean);
+begin
+   IsDefinitelyReal := True;
 end;
 
 end.

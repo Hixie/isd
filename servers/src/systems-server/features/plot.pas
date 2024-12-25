@@ -33,6 +33,7 @@ type
       constructor Create(ADynasty: TDynasty);
       procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
+      procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); override;
       property Dynasty: TDynasty read FDynasty;
    end;
 
@@ -102,6 +103,10 @@ end;
 procedure TDynastyOriginalColonyShipFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
 begin
    FDynasty := Journal.ReadDynastyReference();
+end;
+
+procedure TDynastyOriginalColonyShipFeatureNode.DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean);
+begin
 end;
 
 end.

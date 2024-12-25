@@ -48,6 +48,7 @@ type
       procedure ComputeHillSpheres(); // call this after all stars have been added
       function GetAssetName(): UTF8String;
       function GetHillDiameter(Child: TAssetNode; ChildPrimaryMass: Double): Double;
+      procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); override;
       property Children[Index: Cardinal]: TAssetNode read GetChild; // child might be nil
       property ChildCount: Cardinal read GetChildCount; // some of the children might be nil
    end;
@@ -442,6 +443,11 @@ end;
 function TSolarSystemFeatureNode.GetHillDiameter(Child: TAssetNode; ChildPrimaryMass: Double): Double;
 begin
    Result := PSolarSystemData(Child.ParentData)^.HillDiameter;
+end;
+
+procedure TSolarSystemFeatureNode.DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean);
+begin
+   IsDefinitelyReal := True;
 end;
 
 end.

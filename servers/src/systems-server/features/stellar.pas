@@ -33,6 +33,7 @@ type
       constructor Create(AStarID: TStarID);
       procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
+      procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); override;
       property Category: TStarCategory read GetCategory;
       property StarID: TStarID read FStarID;
       property Temperature: Double read GetTemperature;
@@ -170,6 +171,11 @@ end;
 function TStarFeatureNode.GetAssetName(): UTF8String;
 begin
    Result := StarNameOf(StarID);
+end;
+
+procedure TStarFeatureNode.DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean);
+begin
+   IsDefinitelyReal := True;
 end;
 
 end.

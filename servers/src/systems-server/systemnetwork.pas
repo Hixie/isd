@@ -36,6 +36,7 @@ type
       constructor Create(AListener: TListenerSocket; AServer: TServer);
       destructor Destroy(); override;
       procedure Invoke(Callback: TConnectionCallback); override;
+      property PlayerDynasty: TDynasty read FDynasty;
    end;
 
    TInternalDynastyConnection = class(TNetworkSocket)
@@ -258,7 +259,7 @@ begin
                TMessageBoardFeatureNode.Create(FServer.Encyclopedia.PlaceholderShip.Features[4] as TMessageBoardFeatureClass),
                TKnowledgeBusFeatureNode.Create(),
                TFoodBusFeatureNode.Create(),
-               TFoodGenerationFeatureNode.Create()
+               TFoodGenerationFeatureNode.Create(FServer.Encyclopedia.PlaceholderShip.Features[7] as TFoodGenerationFeatureClass)
             ]
          )),
          A,
@@ -355,7 +356,7 @@ begin
    System := FServer.FSystems[SystemID];
    if (Assigned(System)) then
    begin
-      Asset := System.FindOwnedAsset(FDynasty, TAssetID(AssetID));
+      Asset := System.FindCommandTarget(FDynasty, TAssetID(AssetID));
       if (Assigned(Asset)) then
       begin
          Asset.HandleCommand(Command, Message);

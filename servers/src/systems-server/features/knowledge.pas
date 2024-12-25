@@ -50,6 +50,7 @@ type
       constructor Create(AOwner: TDynasty);
       property Owner: TDynasty read FOwner;
       function Knows(AssetClass: TAssetClass): Boolean; inline;
+      function GetEnumerator(): TAssetClassHashSet.TEnumerator;
    end;
 
 type
@@ -80,6 +81,7 @@ type
       destructor Destroy(); override;
       procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
+      procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); override;
    end;
 
 implementation
@@ -144,6 +146,11 @@ end;
 function TGetKnownAssetClassesMessage.Knows(AssetClass: TAssetClass): Boolean;
 begin
    Result := Assigned(FKnownAssetClasses) and FKnownAssetClasses.Has(AssetClass);
+end;
+
+function TGetKnownAssetClassesMessage.GetEnumerator(): TAssetClassHashSet.TEnumerator;
+begin
+   Result := FKnownAssetClasses.GetEnumerator();
 end;
 
 
@@ -282,6 +289,10 @@ begin
 end;
 
 procedure TKnowledgeBusFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
+begin
+end;
+
+procedure TKnowledgeBusFeatureNode.DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean);
 begin
 end;
 

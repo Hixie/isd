@@ -6,7 +6,7 @@ interface
 
 uses
    systemdynasty, configuration, hashtable, hashset, genericutils,
-   icons, serverstream, random, materials, basenetwork, time;
+   icons, serverstream, stringstream, random, materials, basenetwork, time;
 
 // VISIBILITY
 //
@@ -359,6 +359,7 @@ type
       procedure UpdateJournal(Journal: TJournalWriter); virtual; abstract;
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); virtual; abstract;
       function HandleCommand(Command: UTF8String; var Message: TMessage): Boolean; virtual;
+      procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); virtual; abstract;
       property Mass: Double read GetMass;
       property Size: Double read GetSize;
       property FeatureName: UTF8String read GetFeatureName;
@@ -366,6 +367,9 @@ type
    end;
 
    TFeatureNodeArray = array of TFeatureNode;
+
+   TBuildEnvironment = (bePlanetRegion, beSpaceDock);
+   TBuildEnvironments = set of TBuildEnvironment;
    
    TAssetClass = class
    private
@@ -373,10 +377,11 @@ type
       FFeatures: TFeatureClassArray;
       FName, FAmbiguousName, FDescription: UTF8String;
       FIcon: TIcon;
+      FBuildEnvironments: TBuildEnvironments;
       function GetFeature(Index: Cardinal): TFeatureClass;
       function GetFeatureCount(): Cardinal;
    public
-      constructor Create(AID: TAssetClassID; AName, AAmbiguousName, ADescription: UTF8String; AFeatures: TFeatureClassArray; AIcon: TIcon);
+      constructor Create(AID: TAssetClassID; AName, AAmbiguousName, ADescription: UTF8String; AFeatures: TFeatureClassArray; AIcon: TIcon; ABuildEnvironments: TBuildEnvironments);
       destructor Destroy(); override;
       function SpawnFeatureNodes(): TFeatureNodeArray; // some feature nodes _can't_ be spawned this way (e.g. TAssetNameFeatureNode)
       function SpawnFeatureNodesFromJournal(Journal: TJournalReader; CachedSystem: TSystem): TFeatureNodeArray;
@@ -384,7 +389,9 @@ type
       function Spawn(AOwner: TDynasty): TAssetNode; overload;
       function Spawn(AOwner: TDynasty; AFeatures: TFeatureNodeArray): TAssetNode; overload;
    public // encoded in knowledge
-      procedure Serialize(AssetNode: TAssetNode; DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); virtual;
+      procedure Serialize(Writer: TStringStreamWriter);
+      procedure SerializeFor(AssetNode: TAssetNode; DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
+      function CanBuild(BuildEnvironment: TBuildEnvironment): Boolean;
       property Features[Index: Cardinal]: TFeatureClass read GetFeature;
       property FeatureCount: Cardinal read GetFeatureCount;
       property Name: UTF8String read FName;
@@ -400,6 +407,7 @@ type
       function GetAssetClass(ID: TAssetClassID): TAssetClass; virtual; abstract;
       function GetMaterial(ID: TMaterialID): TMaterial; virtual; abstract;
    public
+      function Craterize(Diameter: Double; OldAsset, NewAsset: TAssetNode): TAssetNode; virtual; abstract;
       property AssetClasses[ID: TAssetClassID]: TAssetClass read GetAssetClass;
       property Materials[ID: TMaterialID]: TMaterial read GetMaterial;
    end;
@@ -448,6 +456,7 @@ type
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
       function ID(CachedSystem: TSystem; DynastyIndex: Cardinal; AllowZero: Boolean = False): TAssetID;
       procedure HandleCommand(Command: UTF8String; var Message: TMessage);
+      function IsReal(): Boolean;
       property Parent: TFeatureNode read FParent;
       property Dirty: TDirtyKinds read FDirty;
       property AssetClass: TAssetClass read FAssetClass;
@@ -509,6 +518,7 @@ type
       function SelectNextEvent(): TSystemEvent;
       function GetNow(): TTimeInMilliseconds; inline;
       function GetDynastyCount(): Cardinal; inline;
+      function GetDynastyIndex(Dynasty: TDynasty): Cardinal; inline;
    private
       FDynastyIndices: TDynastyIndexHashTable; // for index into visibility tables; used by TVisibilityHelper
       FDynastyMaxAssetIDs: array of TAssetID; // used by TVisibilityHelper
@@ -529,7 +539,7 @@ type
       function HasDynasty(Dynasty: TDynasty): Boolean; inline;
       function ScheduleEvent(TimeDelta: TMillisecondsDuration; Callback: TEventCallback; var Data): TSystemEvent;
       function TimeUntilNext(TimeOrigin: TTimeInMilliseconds; Period: TMillisecondsDuration): TMillisecondsDuration;
-      function FindOwnedAsset(Dynasty: TDynasty; AssetID: TAssetID): TAssetNode;
+      function FindCommandTarget(Dynasty: TDynasty; AssetID: TAssetID): TAssetNode;
       property RootNode: TAssetNode read FRoot;
       property Dirty: Boolean read GetDirty;
       property SystemID: Cardinal read FSystemID;
@@ -537,6 +547,7 @@ type
       property IsLongVisibilityMode: Boolean read GetIsLongVisibilityMode;
       property DynastyDatabase: TDynastyDatabase read FDynastyDatabase;
       property DynastyCount: Cardinal read GetDynastyCount;
+      property DynastyIndex[Dynasty: TDynasty]: Cardinal read GetDynastyIndex;
       property Encyclopedia: TEncyclopediaView read FEncyclopedia; // used by TJournalReader/TJournalWriter
       property Journal: TJournalWriter read FJournalWriter;
       property Now: TTimeInMilliseconds read GetNow;
@@ -920,7 +931,7 @@ begin
 end;
 
 
-constructor TAssetClass.Create(AID: TAssetClassID; AName, AAmbiguousName, ADescription: UTF8String; AFeatures: TFeatureClassArray; AIcon: TIcon);
+constructor TAssetClass.Create(AID: TAssetClassID; AName, AAmbiguousName, ADescription: UTF8String; AFeatures: TFeatureClassArray; AIcon: TIcon; ABuildEnvironments: TBuildEnvironments);
 begin
    inherited Create();
    FID := AID;
@@ -933,6 +944,7 @@ begin
    FFeatures := AFeatures;
    FIcon := AIcon;
    Assert(FIcon <> '');
+   FBuildEnvironments := ABuildEnvironments;
 end;
 
 destructor TAssetClass.Destroy();
@@ -1049,7 +1061,14 @@ begin
    Result := TAssetNode.Create(Self, AOwner, AFeatures);
 end;
 
-procedure TAssetClass.Serialize(AssetNode: TAssetNode; DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
+procedure TAssetClass.Serialize(Writer: TStringStreamWriter);
+begin
+   Writer.WriteString(FIcon);
+   Writer.WriteString(FName);
+   Writer.WriteString(FDescription);
+end;
+
+procedure TAssetClass.SerializeFor(AssetNode: TAssetNode; DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
 var
    Visibility: TVisibility;
    Detectable, Recognizable: Boolean;
@@ -1088,7 +1107,12 @@ begin
    Assert(ReportedDescription <> '');
    Writer.WriteStringReference(ReportedDescription);
 end;
-   
+
+function TAssetClass.CanBuild(BuildEnvironment: TBuildEnvironment): Boolean;
+begin
+   Result := BuildEnvironment in FBuildEnvironments;
+end;
+
 
 constructor TAssetNode.Create(AAssetClass: TAssetClass; AOwner: TDynasty; AFeatures: TFeatureNodeArray);
 var
@@ -1385,6 +1409,7 @@ procedure TAssetNode.HandleVisibility(const DynastyIndex: Cardinal; var Visibili
 var
    Feature: TFeatureNode;
 begin
+   Assert((not Assigned(Owner)) or (VisibilityHelper.GetDynastyIndex(Owner) = DynastyIndex) or IsReal());
    for Feature in FFeatures do
       Feature.HandleVisibility(DynastyIndex, Visibility, Sensors, VisibilityHelper);
    if (Visibility <> []) then
@@ -1488,7 +1513,7 @@ begin
       Assert(Size > 0.0);
       Writer.WriteDouble(Size);
       Writer.WriteStringReference(AssetName);
-      FAssetClass.Serialize(Self, DynastyIndex, Writer, CachedSystem);
+      FAssetClass.SerializeFor(Self, DynastyIndex, Writer, CachedSystem);
       for Feature in FFeatures do
          Feature.Serialize(DynastyIndex, Writer, CachedSystem);
       Writer.WriteCardinal(fcTerminator);
@@ -1601,6 +1626,31 @@ begin
       if (Feature.HandleCommand(Command, Message)) then
          exit;
    end;
+end;
+
+function TAssetNode.IsReal(): Boolean;
+var
+   IsDefinitelyReal, IsDefinitelyGhost: Boolean;
+   Feature: TFeatureNode;
+begin
+   IsDefinitelyReal := False;
+   IsDefinitelyGhost := False;
+   for Feature in FFeatures do
+   begin
+      Feature.DescribeExistentiality(IsDefinitelyReal, IsDefinitelyGhost);
+      if (IsDefinitelyReal) then
+      begin
+         Result := True;
+         exit;
+      end;
+      if (IsDefinitelyGhost) then
+      begin
+         Assert(Mass = 0);
+         Result := False;
+         exit;
+      end;
+   end;
+   Result := True;
 end;
 
 function TAssetNode.GetDebugName(): UTF8String;
@@ -1857,19 +1907,19 @@ end;
 function TSystem.SerializeSystem(Dynasty: TDynasty; Writer: TServerStreamWriter; DirtyOnly: Boolean): Boolean;
 var
    FoundASelfDirty: Boolean;
-   DynastyIndex: Cardinal;
+   CachedDynastyIndex: Cardinal;
    
    function Serialize(Asset: TAssetNode): Boolean;
    var
       Visibility: TVisibility;
    begin
-      Visibility := Asset.ReadVisibilityFor(DynastyIndex, Self);
+      Visibility := Asset.ReadVisibilityFor(CachedDynastyIndex, Self);
       if (Visibility <> []) then
       begin
          if ((dkSelf in Asset.FDirty) or not DirtyOnly) then
          begin
             FoundASelfDirty := True;
-            Asset.Serialize(DynastyIndex, Writer, Self);
+            Asset.Serialize(CachedDynastyIndex, Writer, Self);
          end;
          Result := (dkDescendant in Asset.FDirty) or not DirtyOnly;
       end
@@ -1880,11 +1930,11 @@ var
 begin
    FoundASelfDirty := False;
    Assert(FDynastyIndices.Has(Dynasty));
-   DynastyIndex := FDynastyIndices[Dynasty];
+   CachedDynastyIndex := DynastyIndex[Dynasty];
    Writer.WriteCardinal(SystemID);
    Writer.WriteInt64(Now.AsInt64);
    Writer.WriteDouble(FTimeFactor.AsDouble);
-   Writer.WriteCardinal(FRoot.ID(Self, DynastyIndex));
+   Writer.WriteCardinal(FRoot.ID(Self, CachedDynastyIndex));
    Writer.WriteDouble(FX);
    Writer.WriteDouble(FY);
    FRoot.Walk(@Serialize, nil);
@@ -1913,6 +1963,12 @@ end;
 function TSystem.GetDynastyCount(): Cardinal;
 begin
    Result := FDynastyIndices.Count;
+end;
+
+function TSystem.GetDynastyIndex(Dynasty: TDynasty): Cardinal;
+begin
+   Assert(FDynastyIndices.Has(Dynasty));
+   Result := FDynastyIndices.Items[Dynasty];
 end;
 
 procedure TSystem.UnwindDynastyNotesArenas(Arena: Pointer);
@@ -2197,14 +2253,14 @@ begin
    Result := TTimeInMilliseconds(0) + TWallMillisecondsDuration(MillisecondsBetween(FServer.Clock.Now(), FTimeOrigin)) * FTimeFactor;
 end;
 
-function TSystem.FindOwnedAsset(Dynasty: TDynasty; AssetID: TAssetID): TAssetNode;
+function TSystem.FindCommandTarget(Dynasty: TDynasty; AssetID: TAssetID): TAssetNode;
 var
-   DynastyIndex: Cardinal;
+   CachedDynastyIndex: Cardinal;
    FoundAsset: TAssetNode;
    
    function Search(Asset: TAssetNode): Boolean;
    begin
-      if ((Asset.Owner = Dynasty) and (Asset.ID(Self, DynastyIndex, True {AllowZero}) = AssetID)) then
+      if (((not Assigned(Asset.Owner)) or (Asset.Owner = Dynasty)) and (Asset.ID(Self, CachedDynastyIndex, True {AllowZero}) = AssetID)) then
       begin
          FoundAsset := Asset;
       end;
@@ -2217,7 +2273,7 @@ begin
       Result := nil;
       exit;
    end;
-   DynastyIndex := FDynastyIndices[Dynasty];
+   CachedDynastyIndex := DynastyIndex[Dynasty];
    FoundAsset := nil;
    FRoot.Walk(@Search, nil);
    Result := FoundAsset;
@@ -2349,6 +2405,8 @@ procedure TVisibilityHelper.AddSpecificVisibilityByIndex(const DynastyIndex: Car
 var
    Current: TVisibility;
 begin
+   Assert(Assigned(Asset.Owner) or Asset.IsReal());
+   Assert((FSystem.FDynastyIndices.Items[Asset.Owner] = DynastyIndex) or Asset.IsReal());
    Assert(Visibility <> []);
    if (FSystem.IsLongVisibilityMode) then
    begin
@@ -2380,6 +2438,7 @@ var
 begin
    Assert(Visibility <> []);
    Assert(Assigned(Asset));
+   Assert(Asset.IsReal());
    DynastyCount := FSystem.FDynastyIndices.Count;
    if (DynastyCount = 0) then
       exit;

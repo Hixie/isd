@@ -34,7 +34,9 @@ const
    fcPopulation = $0B;
    fcMessageBoard = $0C;
    fcMessage = $0D;
-   fcHighestKnownFeatureCode = fcMessage;
+   fcRubblePile = $0E;
+   fcProxy = $0F;
+   fcHighestKnownFeatureCode = fcProxy;
    
 implementation
 

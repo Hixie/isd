@@ -39,6 +39,7 @@ type
       procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
       function Knows(Material: TMaterial): Boolean;
+      procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); override;
    end;
 
 implementation
@@ -116,9 +117,12 @@ var
       if (Asset.Size >= FFeatureClass.FMinSize) then
       begin
          Visibility := FFeatureClass.FSensorKind;
-         Asset.HandleVisibility(OwnerIndex, Visibility, Self, VisibilityHelper);
-         if (Visibility <> []) then
-            Inc(FLastCountDetected);
+         if ((Asset.Owner = Parent.Owner) or (not Assigned(Asset.Owner)) or Asset.IsReal()) then
+         begin
+            Asset.HandleVisibility(OwnerIndex, Visibility, Self, VisibilityHelper);
+            if (Visibility <> []) then
+               Inc(FLastCountDetected);
+         end;
       end;
       Result := Depth < Target;
       Inc(Depth);
@@ -217,6 +221,10 @@ begin
 end;
 
 procedure TSpaceSensorFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
+begin
+end;
+
+procedure TSpaceSensorFeatureNode.DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean);
 begin
 end;
 
