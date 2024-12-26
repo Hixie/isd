@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'dart:ui' show Offset;
 
+import 'abilities/knowledge.dart';
 import 'abilities/message.dart';
 import 'abilities/planets.dart';
 import 'abilities/population.dart';
@@ -60,6 +61,7 @@ class SystemServer {
   static const int fcMessage = 0x0D;
   static const int fcRubblePile = 0x0E;
   static const int fcProxy = 0x0F;
+  static const int fcAssetClassKnowledge = 0x10;
   static const int expectedVersion = fcMessage;
 
   Future<void> _handleLogin() async {
@@ -109,6 +111,7 @@ class SystemServer {
         asset.mass = reader.readDouble();
         asset.size = reader.readDouble();
         asset.name = reader.readString();
+        asset.assetClass = reader.readSignedInt32();
         asset.icon = reader.readString();
         asset.className = reader.readString();
         asset.description = reader.readString();
@@ -256,6 +259,20 @@ class SystemServer {
             case fcProxy:
               final AssetNode? child = _readAsset(reader);
               oldFeatures.remove(asset.setContainer(ProxyFeature(child)));
+            case fcAssetClassKnowledge:
+              final int assetClass = reader.readSignedInt32();
+              String? icon, className, description;
+              if (assetClass != 0) {
+                icon = reader.readString();
+                className = reader.readString();
+                description = reader.readString();
+              }
+              oldFeatures.remove(asset.setAbility(AssetClassKnowledgeFeature(
+                assetClass: assetClass,
+                icon: icon,
+                name: className,
+                description: description,
+              )));
             default:
               throw NetworkError('Client does not support feature code 0x${featureCode.toRadixString(16).padLeft(8, "0")}, cannot parse server message.');
           }

@@ -29,6 +29,12 @@ class BinaryStreamReader {
     return result;
   }
 
+  int readSignedInt32() {
+    final int result = _source.getInt32(_position, Endian.little);
+    _position += 4;
+    return result;
+  }
+
   int readInt64() {
     final int result = _source.getInt64(_position, Endian.little);
     _position += 8;
