@@ -82,12 +82,15 @@ There are currently no notifications defined.
 
 <assetupdate>       ::= <assetid> <properties> <feature>* <zero32>
 
-<assetid>           ::= non-zero 32 bit integer
+<assetid>           ::= <int32> ; non-zero
+
+<assetclassid>      ::= <signedint32> ; zero indicates absence
 
 <properties>        ::= <dynasty> ; owner
                         <double>  ; mass
                         <double>  ; size
                         <string>  ; name
+                        <assetclassid> ; zero if class is not known
                         <string>  ; icon
                         <string>  ; class name
                         <string>  ; description
@@ -107,6 +110,8 @@ There are currently no notifications defined.
 <bitflag>           ::= 8 bits
 
 <double>            ::= 64 bit float
+
+<signedint32>       ::= 32 bit signed integer
 
 <int32>             ::= 32 bit unsigned integer
 
@@ -586,6 +591,22 @@ Includes the specified asset by reference into the current asset. For
 example, a crater with a ship in the middle consists of an
 `fcRubblePile` and an `fcProxy` with the ship as the asset in the
 proxy feature.
+
+
+### `fcAssetClassKnowledge` (0x10)
+
+```bnf
+<featuredata>       ::= [ <zero32> | <assetclass> ]
+<assetclass>        ::= <assetclassid> ; id, non-zero
+                        <string>  ; icon
+                        <string>  ; class name
+                        <string>  ; description
+```
+
+Represents knowledge of a particular asset class. If the data starts
+with a zero, then the details are omitted. (Might happen, e.g., if
+another dynasty cannot see the internals of a message with this
+feature.)
 
 
 # Systems Server Internal Protocol

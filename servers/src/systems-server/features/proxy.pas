@@ -23,7 +23,6 @@ type
       procedure DropChild(Child: TAssetNode); override;
       function GetMass(): Double; override;
       function GetSize(): Double; override;
-      function GetFeatureName(): UTF8String; override;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
@@ -32,7 +31,6 @@ type
       destructor Destroy(); override;
       procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
-      procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); override;
       property Child: TAssetNode read FChild;
    end;
    
@@ -108,11 +106,6 @@ begin
       Result := 0.0;
 end;
 
-function TProxyFeatureNode.GetFeatureName(): UTF8String;
-begin
-   Result := '';
-end;
-
 procedure TProxyFeatureNode.Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback);
 begin
    FChild.Walk(PreCallback, PostCallback);
@@ -155,10 +148,6 @@ begin
          DropChild(FChild);
       end;
    end;
-end;
-
-procedure TProxyFeatureNode.DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean);
-begin
 end;
 
 end.

@@ -52,7 +52,6 @@ type
       procedure MarkAsDirty(DirtyKinds: TDirtyKinds); override;
       function GetMass(): Double; override;
       function GetSize(): Double; override;
-      function GetFeatureName(): UTF8String; override;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
       function ManageBusMessage(Message: TBusMessage): Boolean; override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
@@ -391,11 +390,6 @@ begin
    end
    else
       Result := 0.0;
-end;
-
-function TOrbitFeatureNode.GetFeatureName(): UTF8String;
-begin
-   Result := '';
 end;
 
 procedure TOrbitFeatureNode.Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback);

@@ -12,12 +12,14 @@ type
    private
       FSource: TAssetNode;
       FSubject, FFrom, FBody: UTF8String;
+      FAssetClass: TAssetClass;
    public
-      constructor Create(ASource: TAssetNode; ASubject, AFrom, ABody: UTF8String);
+      constructor Create(ASource: TAssetNode; ASubject, AFrom, ABody: UTF8String; AAssetClass: TAssetClass = nil);
       property Source: TAssetNode read FSource;
       property Subject: UTF8String read FSubject;
       property From: UTF8String read FFrom;
       property Body: UTF8String read FBody;
+      property AssetClass: TAssetClass read FAssetClass;
    end;
 
 type
@@ -50,7 +52,6 @@ type
       destructor Destroy(); override;
       procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
-      procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); override;
    end;
 
 type
@@ -68,11 +69,7 @@ type
       FIsRead: Boolean;
       FSubject, FFrom, FBody: UTF8String;
    protected
-      function GetMass(): Double; override;
       function GetSize(): Double; override;
-      function GetFeatureName(): UTF8String; override;
-      procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
-      function HandleBusMessage(Message: TBusMessage): Boolean; override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
    public
       constructor Create();
@@ -97,13 +94,14 @@ type
    end;
 
 
-constructor TNotificationMessage.Create(ASource: TAssetNode; ASubject, AFrom, ABody: UTF8String);
+constructor TNotificationMessage.Create(ASource: TAssetNode; ASubject, AFrom, ABody: UTF8String; AAssetClass: TAssetClass = nil);
 begin
    inherited Create();
    FSource := ASource;
    FSubject := ASubject;
    FFrom := AFrom;
    FBody := ABody;
+   FAssetClass := AAssetClass;
 end;
 
 
@@ -303,10 +301,6 @@ begin
    until False;
 end;
 
-procedure TMessageBoardFeatureNode.DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean);
-begin
-end;
-
 
 function TMessageFeatureClass.GetFeatureNodeClass(): FeatureNodeReference;
 begin
@@ -335,29 +329,10 @@ begin
    FBody := ABody;
 end;
 
-function TMessageFeatureNode.GetMass(): Double;
-begin
-   Result := 0.0;
-end;
-
 function TMessageFeatureNode.GetSize(): Double;
 begin
    // Result := 1.0e-8;
    Result := 50.0;
-end;
-
-function TMessageFeatureNode.GetFeatureName(): UTF8String;
-begin
-   Result := '';
-end;
-
-procedure TMessageFeatureNode.Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback);
-begin
-end;
-
-function TMessageFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
-begin
-   Result := False;
 end;
 
 procedure TMessageFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);

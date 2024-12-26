@@ -47,8 +47,6 @@ type
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
       function GetMass(): Double; override; // kg
       function GetSize(): Double; override; // m
-      function GetFeatureName(): UTF8String; override;
-      procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
       procedure ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynastyHashSet; CachedSystem: TSystem); override;
       procedure HandleVisibility(const DynastyIndex: Cardinal; var Visibility: TVisibility; const Sensors: ISensorsProvider; const VisibilityHelper: TVisibilityHelper); override;
@@ -194,15 +192,6 @@ end;
 function TStructureFeatureNode.GetSize(): Double;
 begin
    Result := FFeatureClass.DefaultSize;
-end;
-
-function TStructureFeatureNode.GetFeatureName(): UTF8String;
-begin
-   Result := '';
-end;
-
-procedure TStructureFeatureNode.Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback);
-begin
 end;
 
 function TStructureFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;

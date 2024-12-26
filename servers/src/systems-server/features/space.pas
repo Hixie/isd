@@ -34,7 +34,6 @@ type
       procedure AddPolarChildFromJournal(Child: TAssetNode; Distance, Theta, HillDiameter: Double); // meters
       function GetMass(): Double; override;
       function GetSize(): Double; override;
-      function GetFeatureName(): UTF8String; override;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
       procedure ApplyVisibility(VisibilityHelper: TVisibilityHelper); override;
@@ -257,11 +256,6 @@ begin
    // to have that kind of padding). The diameter (our size) is twice
    // that. Hence:
    Result := GetFurthestDistanceFromCenter() * 2.0 + FFeatureClass.FStarGroupingThreshold;
-end;
-
-function TSolarSystemFeatureNode.GetFeatureName(): UTF8String;
-begin
-   Result := '';
 end;
 
 procedure TSolarSystemFeatureNode.Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback);

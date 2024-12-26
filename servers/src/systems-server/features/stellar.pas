@@ -23,9 +23,6 @@ type
    protected
       function GetMass(): Double; override;
       function GetSize(): Double; override;
-      function GetFeatureName(): UTF8String; override;
-      procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
-      function HandleBusMessage(Message: TBusMessage): Boolean; override;
       procedure ApplyVisibility(VisibilityHelper: TVisibilityHelper); override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
       function GetAssetName(): UTF8String;
@@ -128,20 +125,6 @@ begin
    end;
    // TODO: when we generate the description dynamically, vary the temperature also
    // Result := Result * Modifier(0.9, 1.1, StarID, TemperatureSalt);
-end;
-
-function TStarFeatureNode.GetFeatureName(): UTF8String;
-begin
-   Result := '';
-end;
-
-procedure TStarFeatureNode.Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback);
-begin
-end;
-
-function TStarFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
-begin
-   Result := False;
 end;
 
 procedure TStarFeatureNode.ApplyVisibility(VisibilityHelper: TVisibilityHelper);

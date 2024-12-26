@@ -27,11 +27,6 @@ type
       FLastBottom, FLastTop: TAssetNode;
       FLastCountDetected: Cardinal;
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
-      function GetMass(): Double; override;
-      function GetSize(): Double; override;
-      function GetFeatureName(): UTF8String; override;
-      procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
-      function HandleBusMessage(Message: TBusMessage): Boolean; override;
       procedure ApplyVisibility(VisibilityHelper: TVisibilityHelper); override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
    public
@@ -39,7 +34,6 @@ type
       procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
       function Knows(Material: TMaterial): Boolean;
-      procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); override;
    end;
 
 implementation
@@ -79,30 +73,6 @@ begin
    inherited CreateFromJournal(Journal, AFeatureClass, ASystem);
    Assert(Assigned(AFeatureClass));
    FFeatureClass := AFeatureClass as TSpaceSensorFeatureClass;
-end;
-
-function TSpaceSensorFeatureNode.GetMass(): Double;
-begin
-   Result := 0.0;
-end;
-
-function TSpaceSensorFeatureNode.GetSize(): Double;
-begin
-   Result := 0.0;
-end;
-
-function TSpaceSensorFeatureNode.GetFeatureName(): UTF8String;
-begin
-   Result := '';
-end;
-
-procedure TSpaceSensorFeatureNode.Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback);
-begin
-end;
-
-function TSpaceSensorFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
-begin
-   Result := False;
 end;
 
 procedure TSpaceSensorFeatureNode.ApplyVisibility(VisibilityHelper: TVisibilityHelper);
@@ -221,10 +191,6 @@ begin
 end;
 
 procedure TSpaceSensorFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
-begin
-end;
-
-procedure TSpaceSensorFeatureNode.DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean);
 begin
 end;
 

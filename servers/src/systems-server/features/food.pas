@@ -63,19 +63,13 @@ type
    
    TFoodBusFeatureNode = class(TFeatureNode)
    protected
-      function GetMass(): Double; override;
-      function GetSize(): Double; override;
-      function GetFeatureName(): UTF8String; override;
-      procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
       function ManageBusMessage(Message: TBusMessage): Boolean; override;
-      function HandleBusMessage(Message: TBusMessage): Boolean; override;
       procedure HandleChanges(); override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
    public
       destructor Destroy(); override;
       procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
-      procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); override;
    end;
 
 type
@@ -98,17 +92,12 @@ type
       procedure SetFoodConsumption(Quantity: Int64);
    protected
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
-      function GetMass(): Double; override;
-      function GetSize(): Double; override;
-      function GetFeatureName(): UTF8String; override;
-      procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
    public
       constructor Create(AFeatureClass: TFoodGenerationFeatureClass);
       procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
-      procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); override;
    end;
 
 implementation
@@ -253,25 +242,6 @@ begin
    inherited;
 end;
 
-function TFoodBusFeatureNode.GetMass(): Double;
-begin
-   Result := 0.0;
-end;
-
-function TFoodBusFeatureNode.GetSize(): Double;
-begin
-   Result := 0.0;
-end;
-
-function TFoodBusFeatureNode.GetFeatureName(): UTF8String;
-begin
-   Result := '';
-end;
-
-procedure TFoodBusFeatureNode.Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback);
-begin
-end;
-
 function TFoodBusFeatureNode.ManageBusMessage(Message: TBusMessage): Boolean;
 var
    FoodMessage: TInitFoodMessage;
@@ -303,11 +273,6 @@ begin
       Result := inherited;
 end;
 
-function TFoodBusFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
-begin
-   Result := False;
-end;
-
 procedure TFoodBusFeatureNode.HandleChanges();
 var
    InitFoodMessage: TInitFoodMessage;
@@ -330,10 +295,6 @@ begin
 end;
 
 procedure TFoodBusFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
-begin
-end;
-
-procedure TFoodBusFeatureNode.DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean);
 begin
 end;
 
@@ -369,25 +330,6 @@ begin
    FFeatureClass := AFeatureClass as TFoodGenerationFeatureClass;
 end;
 
-function TFoodGenerationFeatureNode.GetMass(): Double;
-begin
-   Result := 0.0;
-end;
-
-function TFoodGenerationFeatureNode.GetSize(): Double;
-begin
-   Result := 0.0;
-end;
-
-function TFoodGenerationFeatureNode.GetFeatureName(): UTF8String;
-begin
-   Result := '';
-end;
-
-procedure TFoodGenerationFeatureNode.Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback);
-begin
-end;
-
 function TFoodGenerationFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
 begin
    if (Message is TInitFoodMessage) then
@@ -419,10 +361,6 @@ end;
 procedure TFoodGenerationFeatureNode.SetFoodConsumption(Quantity: Int64);
 begin
    FFoodConsumption := Quantity;
-end;
-
-procedure TFoodGenerationFeatureNode.DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean);
-begin
 end;
 
 end.

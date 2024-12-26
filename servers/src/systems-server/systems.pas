@@ -339,13 +339,13 @@ type
       procedure AdoptChild(Child: TAssetNode); virtual;
       procedure DropChild(Child: TAssetNode); virtual;
       procedure MarkAsDirty(DirtyKinds: TDirtyKinds); virtual;
-      function GetMass(): Double; virtual; abstract; // kg
-      function GetSize(): Double; virtual; abstract; // m
-      function GetFeatureName(): UTF8String; virtual; abstract;
-      procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); virtual; abstract;
+      function GetMass(): Double; virtual; // kg
+      function GetSize(): Double; virtual; // m
+      function GetFeatureName(): UTF8String; virtual;
+      procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); virtual;
       function InjectBusMessage(Message: TBusMessage): Boolean;
       function ManageBusMessage(Message: TBusMessage): Boolean; virtual;
-      function HandleBusMessage(Message: TBusMessage): Boolean; virtual; abstract;
+      function HandleBusMessage(Message: TBusMessage): Boolean; virtual;
       procedure ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynastyHashSet; CachedSystem: TSystem); virtual;
       procedure ResetVisibility(CachedSystem: TSystem); virtual;
       procedure ApplyVisibility(VisibilityHelper: TVisibilityHelper); virtual;
@@ -359,7 +359,7 @@ type
       procedure UpdateJournal(Journal: TJournalWriter); virtual; abstract;
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); virtual; abstract;
       function HandleCommand(Command: UTF8String; var Message: TMessage): Boolean; virtual;
-      procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); virtual; abstract;
+      procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); virtual;
       property Mass: Double read GetMass;
       property Size: Double read GetSize;
       property FeatureName: UTF8String read GetFeatureName;
@@ -389,7 +389,8 @@ type
       function Spawn(AOwner: TDynasty): TAssetNode; overload;
       function Spawn(AOwner: TDynasty; AFeatures: TFeatureNodeArray): TAssetNode; overload;
    public // encoded in knowledge
-      procedure Serialize(Writer: TStringStreamWriter);
+      procedure Serialize(Writer: TStringStreamWriter); overload;
+      procedure Serialize(Writer: TServerStreamWriter); overload;
       procedure SerializeFor(AssetNode: TAssetNode; DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
       function CanBuild(BuildEnvironment: TBuildEnvironment): Boolean;
       property Features[Index: Cardinal]: TFeatureClass read GetFeature;
@@ -886,6 +887,31 @@ begin
       FParent.MarkAsDirty(DirtyKinds);
 end;
 
+function TFeatureNode.GetMass(): Double;
+begin
+   Result := 0.0;
+end;
+
+function TFeatureNode.GetSize(): Double;
+begin
+   // Result := 1.0e-8;
+   Result := 50.0;
+end;
+
+function TFeatureNode.GetFeatureName(): UTF8String;
+begin
+   Result := '';
+end;
+
+procedure TFeatureNode.Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback);
+begin
+end;
+
+function TFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
+begin
+   Result := False;
+end;
+
 function TFeatureNode.InjectBusMessage(Message: TBusMessage): Boolean;
 begin
    Result := Parent.InjectBusMessage(Message);
@@ -923,6 +949,10 @@ end;
 function TFeatureNode.HandleCommand(Command: UTF8String; var Message: TMessage): Boolean;
 begin
    Result := False;
+end;
+
+procedure TFeatureNode.DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean);
+begin
 end;
 
 destructor TFeatureNode.Destroy();
@@ -1063,6 +1093,15 @@ end;
 
 procedure TAssetClass.Serialize(Writer: TStringStreamWriter);
 begin
+   Writer.WriteLongint(FID);
+   Writer.WriteString(FIcon);
+   Writer.WriteString(FName);
+   Writer.WriteString(FDescription);
+end;
+
+procedure TAssetClass.Serialize(Writer: TServerStreamWriter);
+begin
+   Writer.WriteInt32(FID);
    Writer.WriteString(FIcon);
    Writer.WriteString(FName);
    Writer.WriteString(FDescription);
@@ -1071,6 +1110,7 @@ end;
 procedure TAssetClass.SerializeFor(AssetNode: TAssetNode; DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
 var
    Visibility: TVisibility;
+   ReportedClassID: TAssetClassID;
    Detectable, Recognizable: Boolean;
    ReportedIcon, ReportedName, ReportedDescription: UTF8String;
 begin
@@ -1081,12 +1121,14 @@ begin
    // TODO: e.g. planets and planetary regions should self-describe rather than using the region class description
    if (Detectable and Recognizable) then
    begin
+      ReportedClassID := FID;
       ReportedIcon := FIcon;
       ReportedName := FName;
       ReportedDescription := FDescription;
    end
    else
    begin
+      ReportedClassID := 0;
       if (Detectable) then
       begin
          Assert(not Recognizable);
@@ -1102,6 +1144,7 @@ begin
          ReportedDescription := 'We can infer that something must be here, but cannot detect it.';
       end;
    end;
+   Writer.WriteInt32(ReportedClassID);
    Writer.WriteStringReference(ReportedIcon);
    Writer.WriteStringReference(ReportedName);
    Assert(ReportedDescription <> '');

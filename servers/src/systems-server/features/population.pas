@@ -24,9 +24,6 @@ type
       procedure SetFoodUsage(Quantity: Int64);
    protected
       function GetMass(): Double; override;
-      function GetSize(): Double; override;
-      function GetFeatureName(): UTF8String; override;
-      procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
    public
@@ -65,20 +62,6 @@ end;
 function TPopulationFeatureNode.GetMass(): Double;
 begin
    Result := MeanIndividualMass * FPopulation;
-end;
-
-function TPopulationFeatureNode.GetSize(): Double;
-begin
-   Result := 0.0;
-end;
-
-function TPopulationFeatureNode.GetFeatureName(): UTF8String;
-begin
-   Result := '';
-end;
-
-procedure TPopulationFeatureNode.Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback);
-begin
 end;
 
 function TPopulationFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;

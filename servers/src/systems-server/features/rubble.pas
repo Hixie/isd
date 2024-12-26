@@ -42,8 +42,6 @@ type
    protected
       function GetMass(): Double; override; // kg
       function GetSize(): Double; override; // m
-      function GetFeatureName(): UTF8String; override;
-      procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
    public
@@ -118,15 +116,6 @@ end;
 function TRubblePileFeatureNode.GetSize(): Double;
 begin
    Result := FDiameter;
-end;
-
-function TRubblePileFeatureNode.GetFeatureName(): UTF8String;
-begin
-   Result := '';
-end;
-
-procedure TRubblePileFeatureNode.Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback);
-begin
 end;
 
 function TRubblePileFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;

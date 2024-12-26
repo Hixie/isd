@@ -70,15 +70,31 @@ type
       FKnownAssetClasses: TCachedKnownAssetClassesHashMap;
    protected
       procedure MarkAsDirty(DirtyKinds: TDirtyKinds); override;
-      function GetMass(): Double; override;
-      function GetSize(): Double; override;
-      function GetFeatureName(): UTF8String; override;
-      procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
       function ManageBusMessage(Message: TBusMessage): Boolean; override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
    public
       destructor Destroy(); override;
+      procedure UpdateJournal(Journal: TJournalWriter); override;
+      procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
+   end;
+
+type
+   TAssetClassKnowledgeFeatureClass = class(TFeatureClass)
+   strict protected
+      function GetFeatureNodeClass(): FeatureNodeReference; override;
+   public
+      function InitFeatureNode(): TFeatureNode; override;
+   end;
+   
+   TAssetClassKnowledgeFeatureNode = class(TFeatureNode)
+   private
+      FAssetClassKnowledge: TAssetClass;
+   protected
+      function HandleBusMessage(Message: TBusMessage): Boolean; override;
+      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
+   public
+      constructor Create(AAssetClassKnowledge: TAssetClass);
       procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
       procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); override;
@@ -87,7 +103,7 @@ type
 implementation
 
 uses
-   sysutils;
+   sysutils, isdprotocol;
 
 constructor TCollectKnownMaterialsMessage.Create(AKnownMaterials: TMaterialHashSet; AOwner: TDynasty);
 begin
@@ -195,25 +211,6 @@ begin
    inherited;
 end;
 
-function TKnowledgeBusFeatureNode.GetMass(): Double;
-begin
-   Result := 0.0;
-end;
-
-function TKnowledgeBusFeatureNode.GetSize(): Double;
-begin
-   Result := 0.0;
-end;
-
-function TKnowledgeBusFeatureNode.GetFeatureName(): UTF8String;
-begin
-   Result := '';
-end;
-
-procedure TKnowledgeBusFeatureNode.Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback);
-begin
-end;
-
 function TKnowledgeBusFeatureNode.ManageBusMessage(Message: TBusMessage): Boolean;
 begin
    if (Message is TKnowledgeBusMessage) then
@@ -292,8 +289,66 @@ procedure TKnowledgeBusFeatureNode.ApplyJournal(Journal: TJournalReader; CachedS
 begin
 end;
 
-procedure TKnowledgeBusFeatureNode.DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean);
+
+function TAssetClassKnowledgeFeatureClass.GetFeatureNodeClass(): FeatureNodeReference;
 begin
+   Result := TAssetClassKnowledgeFeatureNode;
 end;
 
+function TAssetClassKnowledgeFeatureClass.InitFeatureNode(): TFeatureNode;
+begin
+   Result := TAssetClassKnowledgeFeatureNode.Create(nil);
+end;
+
+   
+constructor TAssetClassKnowledgeFeatureNode.Create(AAssetClassKnowledge: TAssetClass);
+begin
+   inherited Create;
+   FAssetClassKnowledge := AAssetClassKnowledge
+end;
+
+function TAssetClassKnowledgeFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
+begin
+   if (Message is TCollectKnownAssetClassesMessage) then
+   begin
+      if (Assigned(FAssetClassKnowledge) and (Parent.Owner = (Message as TCollectKnownAssetClassesMessage).Owner)) then
+      begin
+         (Message as TCollectKnownAssetClassesMessage).AddKnownAssetClass(FAssetClassKnowledge);
+      end;
+   end;
+   Result := False;
+end;
+   
+procedure TAssetClassKnowledgeFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
+var
+   Visibility: TVisibility;
+begin
+   Visibility := Parent.ReadVisibilityFor(DynastyIndex, CachedSystem);
+   if ((dmDetectable * Visibility <> []) and (dmClassKnown in Visibility)) then
+   begin
+      Writer.WriteCardinal(fcAssetClassKnowledge);
+      if (Assigned(FAssetClassKnowledge) and (dmInternals in Visibility)) then
+      begin
+         FAssetClassKnowledge.Serialize(Writer);
+      end
+      else
+         Writer.WriteCardinal(0);
+   end;
+end;
+   
+procedure TAssetClassKnowledgeFeatureNode.UpdateJournal(Journal: TJournalWriter);
+begin
+   Journal.WriteAssetClassReference(FAssetClassKnowledge);
+end;
+   
+procedure TAssetClassKnowledgeFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
+begin
+   FAssetClassKnowledge := Journal.ReadAssetClassReference();
+end;
+   
+procedure TAssetClassKnowledgeFeatureNode.DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean);
+begin
+   IsDefinitelyReal := True;
+end;
+   
 end.

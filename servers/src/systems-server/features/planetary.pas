@@ -34,8 +34,6 @@ type
    protected
       function GetMass(): Double; override; // kg
       function GetSize(): Double; override; // m
-      function GetFeatureName(): UTF8String; override;
-      procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
    public
@@ -124,15 +122,6 @@ begin
       Result := 1.0;
    Assert(Result >= 0.0);
    Assert(Result <= 1.0);
-end;
-
-function TPlanetaryBodyFeatureNode.GetFeatureName(): UTF8String;
-begin
-   Result := '';
-end;
-
-procedure TPlanetaryBodyFeatureNode.Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback);
-begin
 end;
 
 function TPlanetaryBodyFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;

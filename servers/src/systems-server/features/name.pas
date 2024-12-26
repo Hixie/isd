@@ -19,18 +19,12 @@ type
    TAssetNameFeatureNode = class(TFeatureNode, IAssetNameProvider)
    protected
       FAssetName: UTF8String;
-      function GetMass(): Double; override;
-      function GetSize(): Double; override;
-      function GetFeatureName(): UTF8String; override;
-      procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
-      function HandleBusMessage(Message: TBusMessage): Boolean; override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
       function GetAssetName(): UTF8String;
    public
       constructor Create(AAssetName: UTF8String);
       procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
-      procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); override;
       property AssetName: UTF8String read FAssetName;
    end;
 
@@ -57,30 +51,6 @@ begin
    FAssetName := AAssetName;
 end;
 
-function TAssetNameFeatureNode.GetMass(): Double;
-begin
-   Result := 0.0;
-end;
-
-function TAssetNameFeatureNode.GetSize(): Double;
-begin
-   Result := 0.0;
-end;
-
-function TAssetNameFeatureNode.GetFeatureName(): UTF8String;
-begin
-   Result := '';
-end;
-
-procedure TAssetNameFeatureNode.Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback);
-begin
-end;
-
-function TAssetNameFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
-begin
-   Result := False;
-end;
-
 procedure TAssetNameFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
 begin
    // client receives this as a property of the asset via IAssetNameProvider
@@ -99,10 +69,6 @@ end;
 function TAssetNameFeatureNode.GetAssetName(): UTF8String;
 begin
    Result := AssetName;
-end;
-
-procedure TAssetNameFeatureNode.DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean);
-begin
 end;
 
 end.

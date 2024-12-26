@@ -24,7 +24,6 @@ type
       procedure DropChild(Child: TAssetNode); override;
       function GetMass(): Double; override;
       function GetSize(): Double; override;
-      function GetFeatureName(): UTF8String; override;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
@@ -118,11 +117,6 @@ end;
 function TSurfaceFeatureNode.GetSize(): Double;
 begin
    Result := FSize;
-end;
-
-function TSurfaceFeatureNode.GetFeatureName(): UTF8String;
-begin
-   Result := '';
 end;
 
 procedure TSurfaceFeatureNode.Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback);

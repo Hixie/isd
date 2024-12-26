@@ -23,17 +23,11 @@ type
    private
       FDynasty: TDynasty; // TODO: what if this dynasty disappears from the system?
    protected
-      function GetMass(): Double; override;
-      function GetSize(): Double; override;
-      function GetFeatureName(): UTF8String; override;
-      procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
-      function HandleBusMessage(Message: TBusMessage): Boolean; override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
    public
       constructor Create(ADynasty: TDynasty);
       procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
-      procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); override;
       property Dynasty: TDynasty read FDynasty;
    end;
 
@@ -60,30 +54,6 @@ begin
    FDynasty := ADynasty;
 end;
 
-function TDynastyOriginalColonyShipFeatureNode.GetMass(): Double;
-begin
-   Result := 0.0;
-end;
-
-function TDynastyOriginalColonyShipFeatureNode.GetSize(): Double;
-begin
-   Result := 0.0;
-end;
-
-function TDynastyOriginalColonyShipFeatureNode.GetFeatureName(): UTF8String;
-begin
-   Result := '';
-end;
-
-procedure TDynastyOriginalColonyShipFeatureNode.Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback);
-begin
-end;
-
-function TDynastyOriginalColonyShipFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
-begin
-   Result := False;
-end;
-
 procedure TDynastyOriginalColonyShipFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
 begin
    Assert(Assigned(FDynasty));
@@ -103,10 +73,6 @@ end;
 procedure TDynastyOriginalColonyShipFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
 begin
    FDynasty := Journal.ReadDynastyReference();
-end;
-
-procedure TDynastyOriginalColonyShipFeatureNode.DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean);
-begin
 end;
 
 end.

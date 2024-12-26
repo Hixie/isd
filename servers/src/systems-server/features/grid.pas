@@ -37,7 +37,6 @@ type
       procedure DropChild(Child: TAssetNode); override;
       function GetMass(): Double; override;
       function GetSize(): Double; override;
-      function GetFeatureName(): UTF8String; override;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
@@ -190,11 +189,6 @@ end;
 function TGridFeatureNode.GetSize(): Double;
 begin
    Result := FCellSize * FDimension;
-end;
-
-function TGridFeatureNode.GetFeatureName(): UTF8String;
-begin
-   Result := '';
 end;
 
 procedure TGridFeatureNode.Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback);
@@ -379,7 +373,6 @@ begin
          begin
             if (AssetClass.CanBuild(FBuildEnvironment)) then
             begin
-               Message.Output.WriteLongint(AssetClass.ID);
                AssetClass.Serialize(Message.Output);
             end;
          end;
