@@ -26,6 +26,7 @@ const
    PlaceholderIcon: TIcon = 'placeholder';
    ColonyShipIcon: TIcon = 'colony-ship';
    MessageIcon: TIcon = 'message';
+   CairnIcon: TIcon = 'rock-pile';
    UnknownIcon: TIcon = 'unknown';
 
 const

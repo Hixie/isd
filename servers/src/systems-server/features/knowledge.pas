@@ -9,8 +9,10 @@ uses
 
 type
    TKnowledgeBusMessage = class abstract(TPhysicalConnectionBusMessage) end;
+   TTargetedKnowledgeBusMessage = class abstract(TKnowledgeBusMessage) end;
+   TGlobalKnowledgeBusMessage = class abstract(TKnowledgeBusMessage) end;
 
-   TCollectKnownMaterialsMessage = class(TKnowledgeBusMessage)
+   TCollectKnownMaterialsMessage = class(TGlobalKnowledgeBusMessage)
    private
       FKnownMaterials: TMaterialHashSet;
       FOwner: TDynasty;
@@ -20,7 +22,7 @@ type
       property Owner: TDynasty read FOwner;
    end;
    
-   TCollectKnownAssetClassesMessage = class(TKnowledgeBusMessage)
+   TCollectKnownAssetClassesMessage = class(TGlobalKnowledgeBusMessage)
    private
       FKnownAssetClasses: TAssetClassHashSet;
       FOwner: TDynasty;
@@ -30,7 +32,7 @@ type
       property Owner: TDynasty read FOwner;
    end;
    
-   TGetKnownMaterialsMessage = class(TKnowledgeBusMessage)
+   TGetKnownMaterialsMessage = class(TTargetedKnowledgeBusMessage)
    private
       FOwner: TDynasty;
       FKnownMaterials: TMaterialHashSet;
@@ -41,7 +43,7 @@ type
       function Knows(Material: TMaterial): Boolean; inline;
    end;
    
-   TGetKnownAssetClassesMessage = class(TKnowledgeBusMessage)
+   TGetKnownAssetClassesMessage = class(TTargetedKnowledgeBusMessage)
    private
       FOwner: TDynasty;
       FKnownAssetClasses: TAssetClassHashSet;
@@ -95,6 +97,7 @@ type
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
    public
       constructor Create(AAssetClassKnowledge: TAssetClass);
+      procedure SetAssetClassKnowledge(AAssetClassKnowledge: TAssetClass);
       procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
       procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); override;
@@ -166,7 +169,14 @@ end;
 
 function TGetKnownAssetClassesMessage.GetEnumerator(): TAssetClassHashSet.TEnumerator;
 begin
-   Result := FKnownAssetClasses.GetEnumerator();
+   if (Assigned(FKnownAssetClasses)) then
+   begin
+      Result := FKnownAssetClasses.GetEnumerator();
+   end
+   else
+   begin
+      Result := nil;
+   end;
 end;
 
 
@@ -212,14 +222,23 @@ begin
 end;
 
 function TKnowledgeBusFeatureNode.ManageBusMessage(Message: TBusMessage): Boolean;
+var
+   Handled: Boolean;
 begin
    if (Message is TKnowledgeBusMessage) then
    begin
       Result := False;
       if (Assigned(Parent.Parent)) then
+      begin
          Result := Parent.Parent.InjectBusMessage(Message);
+      end;
       if (not Result) then
-         Result := Parent.HandleBusMessage(Message);
+      begin
+         Handled := Parent.HandleBusMessage(Message);
+         Assert((not (Message is TTargetedKnowledgeBusMessage)) or Handled);
+         Assert((not (Message is TGlobalKnowledgeBusMessage)) or not Handled);
+         Result := True;
+      end;
    end
    else
       Result := inherited;
@@ -246,7 +265,7 @@ begin
          KnownMaterialsForDynasty := TMaterialHashSet.Create();
          CollectMaterialsMessage := TCollectKnownMaterialsMessage.Create(KnownMaterialsForDynasty, Dynasty);
          Handled := InjectBusMessage(CollectMaterialsMessage);
-         Assert(not Handled, 'TCollectKnownMaterialsMessage should not be marked as handled');
+         Assert(Handled); // at a minimum, we should have handled it
          FKnownMaterials[Dynasty] := KnownMaterialsForDynasty;
          FreeAndNil(CollectMaterialsMessage);
       end;
@@ -266,7 +285,7 @@ begin
          KnownAssetClassesForDynasty := TAssetClassHashSet.Create();
          CollectAssetClassesMessage := TCollectKnownAssetClassesMessage.Create(KnownAssetClassesForDynasty, Dynasty);
          Handled := InjectBusMessage(CollectAssetClassesMessage);
-         Assert(not Handled, 'TCollectKnownAssetClassesMessage should not be marked as handled');
+         Assert(Handled); // at a minimum, we should have handled it
          FKnownAssetClasses[Dynasty] := KnownAssetClassesForDynasty;
          FreeAndNil(CollectAssetClassesMessage);
       end;
@@ -305,6 +324,12 @@ constructor TAssetClassKnowledgeFeatureNode.Create(AAssetClassKnowledge: TAssetC
 begin
    inherited Create;
    FAssetClassKnowledge := AAssetClassKnowledge
+end;
+
+procedure TAssetClassKnowledgeFeatureNode.SetAssetClassKnowledge(AAssetClassKnowledge: TAssetClass);
+begin
+   FAssetClassKnowledge := AAssetClassKnowledge;
+   MarkAsDirty([dkSelf]);
 end;
 
 function TAssetClassKnowledgeFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;

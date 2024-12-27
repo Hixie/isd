@@ -113,7 +113,14 @@ end;
 
 function TProxyFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
 begin
-   Result := False;
+   if (Assigned(FChild)) then
+   begin
+      Result := Child.HandleBusMessage(Message);
+   end
+   else
+   begin     
+      Result := False;
+   end;
 end;
 
 procedure TProxyFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);

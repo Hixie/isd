@@ -701,7 +701,12 @@ var
 begin
    Assert(SizeOf(Cardinal) = SizeOf(TAssetClassID));
    ID := TAssetClassID(ReadCardinal());
-   Result := FSystem.Encyclopedia.AssetClasses[ID];
+   if (ID <> 0) then
+   begin
+      Result := FSystem.Encyclopedia.AssetClasses[ID];
+   end
+   else
+      Result := nil;
 end;
 
 function TJournalReader.ReadDynastyReference(): TDynasty;
@@ -791,9 +796,14 @@ end;
 
 procedure TJournalWriter.WriteAssetClassReference(AssetClass: TAssetClass);
 begin
-   Assert(Assigned(AssetClass));
-   Assert(AssetClass.ID <> 0);
-   WriteCardinal(Cardinal(AssetClass.ID));
+   if (Assigned(AssetClass)) then
+   begin
+      WriteCardinal(Cardinal(AssetClass.ID));
+   end
+   else
+   begin
+      WriteCardinal(0);
+   end;
 end;
 
 procedure TJournalWriter.WriteDynastyReference(Dynasty: TDynasty);
@@ -1102,9 +1112,9 @@ end;
 procedure TAssetClass.Serialize(Writer: TServerStreamWriter);
 begin
    Writer.WriteInt32(FID);
-   Writer.WriteString(FIcon);
-   Writer.WriteString(FName);
-   Writer.WriteString(FDescription);
+   Writer.WriteStringReference(FIcon);
+   Writer.WriteStringReference(FName);
+   Writer.WriteStringReference(FDescription);
 end;
 
 procedure TAssetClass.SerializeFor(AssetNode: TAssetNode; DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
@@ -1328,6 +1338,7 @@ end;
 function TAssetNode.InjectBusMessage(Message: TBusMessage): Boolean;
 var
    Feature: TFeatureNode;
+   Handled: Boolean;
 begin
    Result := False;
    for Feature in FFeatures do
@@ -1344,11 +1355,12 @@ begin
    begin
       if (Message is TAssetManagementBusMessage) then
       begin
-         Result := HandleBusMessage(Message);
+         Handled := HandleBusMessage(Message);
+         Assert(not Handled);
+         Result := True;
       end
       else
       begin
-         // Writeln('Discarding message ', Message.ClassName, ' without injecting.');
          Result := False;
       end;
    end;

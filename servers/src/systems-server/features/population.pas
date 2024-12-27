@@ -36,7 +36,7 @@ type
 implementation
 
 uses
-   isdprotocol, messages, orbit, sysutils;
+   isdprotocol, messages, orbit, sysutils, encyclopedia;
 
 const
    MeanIndividualMass = 70; // kg // TODO: allow species to diverge and such, with different demographics, etc
@@ -70,7 +70,14 @@ var
 begin
    if (Message is TCrashReportMessage) then
    begin
-      HelpMessage := TNotificationMessage.Create(Parent, 'URGENT QUERY REGARDING RECENT EVENTS ABOARD COLONY SHIP', 'Passengers', 'WHAT THE HECK WHY DID WE JUST CRASH WHAT IS HAPPENING');
+      HelpMessage := TNotificationMessage.Create(
+         Parent,
+         'URGENT QUERY REGARDING RECENT EVENTS ABOARD COLONY SHIP',
+         'Passengers',
+         'WHAT THE HECK WHY DID WE JUST CRASH WHAT IS HAPPENING' + #$0A +
+         'Should we start making piles of rocks. Would that help.',
+         (System.Encyclopedia as TEncyclopedia).RockPileClass
+      );
       Result := InjectBusMessage(HelpMessage);
       if (not Result) then
          Writeln('Discarding message from population center (subject "', HelpMessage.Subject, '")');

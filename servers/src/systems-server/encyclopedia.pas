@@ -13,7 +13,7 @@ type
       var
          FAssetClasses: TAssetClassHashTable; 
          FSpace, FOrbits: TAssetClass;
-         FPlaceholderShip: TAssetClass;
+         FPlaceholderShip, FRockPile: TAssetClass;
          FCrater: TAssetClass;
          FMessage: TAssetClass;
          FStars: array[TStarCategory] of TAssetClass;
@@ -40,6 +40,7 @@ type
       property RegionClass: TAssetClass read FRegion;
       property MessageClass: TAssetClass read FMessage;
       property ProtoplanetaryMaterials: TMaterialHashSet read FProtoplanetaryMaterials;
+      property RockPileClass: TAssetClass read FRockPile;
    end;
 
 const
@@ -49,6 +50,7 @@ const
    idPlaceholderShip = -3;
    idMessage = -4;
    idCrater = -5;
+   idRockPile = -6;
    idStars = -100; // -100..-199
    idPlanetaryBody = -200;
    idRegion = -201;
@@ -176,7 +178,8 @@ begin
       'Message', 'Some sort of text',
       'A notification.',
       [
-         TMessageFeatureClass.Create()
+         TMessageFeatureClass.Create(),
+         TAssetClassKnowledgeFeatureClass.Create()
       ],
       MessageIcon,
       []
@@ -244,6 +247,19 @@ begin
       []
    );
    RegisterAssetClass(FRegion);
+
+   FRockPile := TAssetClass.Create(
+      idRockPile,
+      'Cairn',
+      'Pile of rocks',
+      'A carefully stacked pile of rocks.',
+      [
+         TStructureFeatureClass.Create([TMaterialLineItem.Create('Rocks', FMaterials[20], 1000)], 300, 1)
+      ],
+      CairnIcon,
+      [bePlanetRegion]
+   );
+   RegisterAssetClass(FRockPile);
 end;
 
 destructor TEncyclopedia.Destroy();
@@ -252,6 +268,7 @@ var
 begin
    FRegion.Free();
    FPlaceholderShip.Free();
+   FRockPile.Free();
    FMessage.Free();
    FDarkMatter.Free();
    FMaterials.Free();

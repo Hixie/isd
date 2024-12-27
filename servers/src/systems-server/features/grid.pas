@@ -376,6 +376,7 @@ begin
                AssetClass.Serialize(Message.Output);
             end;
          end;
+         KnownAssetClasses.Free();
          Message.CloseOutput();
       end;
    end
@@ -422,7 +423,6 @@ begin
          Asset := AssetClass.Spawn(PlayerDynasty);
          AdoptGridChild(Asset, X, Y);
          Assert(not Asset.IsReal());
-         Message.Output.WriteCardinal(Asset.ID(System, CachedSystem.DynastyIndex[PlayerDynasty]));
          Message.CloseOutput();
       end;
    end

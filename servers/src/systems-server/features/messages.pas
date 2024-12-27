@@ -196,7 +196,8 @@ function TMessageBoardFeatureNode.HandleBusMessage(Message: TBusMessage): Boolea
 var
    Child: TAssetNode;
    Notification: TNotificationMessage;
-   Feature: TMessageFeatureNode;
+   MessageFeature: TMessageFeatureNode;
+   AssetClassKnowledgeFeature: TAssetClassKnowledgeFeatureNode;
    CachedSystem: TSystem;
 begin
    if (Message is TNotificationMessage) then
@@ -204,10 +205,12 @@ begin
       Notification := Message as TNotificationMessage;
       if (Notification.Source.Owner = Parent.Owner) then
       begin
-         Child := FFeatureClass.FMessageAssetClass.Spawn(Parent.Owner);
-         Feature := Child.GetFeatureByClass(TMessageFeatureClass) as TMessageFeatureNode;
          CachedSystem := System;
-         Feature.SetMessage(CachedSystem.SystemID, CachedSystem.Now, Notification.Subject, Notification.From, Notification.Body);
+         Child := FFeatureClass.FMessageAssetClass.Spawn(Parent.Owner);
+         MessageFeature := Child.GetFeatureByClass(TMessageFeatureClass) as TMessageFeatureNode;
+         MessageFeature.SetMessage(CachedSystem.SystemID, CachedSystem.Now, Notification.Subject, Notification.From, Notification.Body);
+         AssetClassKnowledgeFeature := Child.GetFeatureByClass(TAssetClassKnowledgeFeatureClass) as TAssetClassKnowledgeFeatureNode;
+         AssetClassKnowledgeFeature.SetAssetClassKnowledge(Notification.AssetClass);
          AdoptChild(Child);
          Result := True;
          exit;
@@ -373,6 +376,7 @@ begin
    FSubject := ASubject;
    FFrom := AFrom;
    FBody := ABody;
+   MarkAsDirty([dkSelf]);
 end;
 
 function TMessageFeatureNode.HandleCommand(Command: UTF8String; var Message: TMessage): Boolean;

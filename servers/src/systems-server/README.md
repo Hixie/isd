@@ -149,9 +149,13 @@ Asset ID zero is reserved for indicating the absence of an asset.
 
 The `<properties>` are the owner dynasty ID (zero for unowned assets),
 the asset's mass in kg, the asset's rough diameter in meters, the
-asset's name (if any; this is often the empty string), the icon name,
-a class name (brief description of the object, e.g. "star", "planet",
-"ship"), and a longer description of the object.
+asset's name (if any; this is often the empty string), the asset's
+class ID, the class' icon name, a class name (brief description of the
+object, e.g. "star", "planet", "ship"), and a longer description of
+the object.
+
+Asset class IDs are numbers in the range -2,147,483,648 to
+2,147,483,647, but not zero (i.e. signed 32 bit integers).
 
 The diameter is always bigger than zero.
 
@@ -490,10 +494,7 @@ This feature supports the following commands:
 
  * `build`: two numeric fields, x and y, indicating an empty cell,
    followed by the asset class ID (from the `catalog` command).
-   Returns the numeric asset ID of the new asset.
-
-Asset class IDs are numbers in the range -2,147,483,648 to
-2,147,483,647, but not zero (i.e. signed 32 bit integers).
+   No data is returned.
 
 
 ### `fcPopulation` (0x0B)
