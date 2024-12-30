@@ -2,7 +2,8 @@
 {$INCLUDE settings.inc}
 program main;
 
-uses sysutils, dynastynetwork, configuration, csvdocument, servers;
+uses
+   sysutils, intutils, dynastynetwork, configuration, csvdocument, servers;
 
 var
    Server: TServer;
@@ -16,7 +17,7 @@ begin
       Writeln('Usage: dynasties-server <id>');
       exit;
    end;
-   ServerIndex := StrToIntDef(ParamStr(1), -1);
+   ServerIndex := ParseInt32(ParamStr(1), -1);
    if (ServerIndex <= 0) then
    begin
       Writeln('Invalid dynasties server ID. Value must be an integer greater than zero.');
@@ -31,7 +32,7 @@ begin
          Writeln('Invalid dynasties server ID. There are ', ServerCount, ' configured servers; valid range is 1..', ServerCount, '.');
          exit;
       end;
-      Port := StrToIntDef(ServerFile[ServerDirectPortCell, ServerIndex], -1);
+      Port := ParseInt32(ServerFile[ServerDirectPortCell, ServerIndex], -1);
       Password := ServerFile[ServerDirectPasswordCell, ServerIndex];
    finally
       FreeAndNil(ServerFile);

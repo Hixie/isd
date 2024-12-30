@@ -35,7 +35,8 @@ type
 
 implementation
 
-uses sysutils, sockets, configuration;
+uses
+   sysutils, sockets, configuration, intutils;
 
 function TServerEntry.GetURL(): UTF8String;
 begin
@@ -54,9 +55,9 @@ begin
    begin
       New(FServers[Index]);
       FServers[Index]^.HostName := Source[ServerHostNameCell, Index]; // $R-
-      FServers[Index]^.WebSocketPort := StrToInt(Source[ServerWebSocketPortCell, Index]); // $R-
+      FServers[Index]^.WebSocketPort := ParseInt32(Source[ServerWebSocketPortCell, Index]); // $R-
       FServers[Index]^.DirectHost := StrToHostAddr(Source[ServerDirectHostCell, Index]).s_addr; // $R-
-      FServers[Index]^.DirectPort := StrToInt(Source[ServerDirectPortCell, Index]); // $R-
+      FServers[Index]^.DirectPort := ParseInt32(Source[ServerDirectPortCell, Index]); // $R-
       FServers[Index]^.DirectPassword := Source[ServerDirectPasswordCell, Index]; // $R-
       FServers[Index]^.UsageCount := 0;
    end;

@@ -81,7 +81,7 @@ function LoadMaterialRecords(Filename: RawByteString): TMaterialHashSet;
 implementation
 
 uses
-   hashfunctions, sysutils, strutils, math;
+   hashfunctions, sysutils, strutils, math, intutils;
 
 function MaterialHash32(const Key: TMaterial): DWord;
 begin
@@ -171,7 +171,9 @@ begin
    while (not EOF(F)) do
    begin
       Readln(F, IDLine);
-      MaterialID := StrToInt(IDLine); // TODO: make this strictly support only 0-9 // $R-
+      MaterialID := ParseInt32(IDLine); // $R-
+      if (MaterialID = 0) then
+         raise EConvertError.Create('Invalid material ID (" + IDLine + ")');
       Readln(F, MaterialName);
       Readln(F, MaterialAmbiguousName);
       Readln(F, MaterialDescription);

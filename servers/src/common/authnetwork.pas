@@ -25,7 +25,7 @@ type
 implementation
 
 uses
-   isdprotocol, isderrors;
+   isdprotocol, isderrors, intutils;
 
 function TAuthenticatableBaseIncomingConnection.VerifyLogin(var Message: TMessage): Integer;
 {$I *}
@@ -51,7 +51,7 @@ begin
       Message.Error(ieUnrecognizedCredentials);
       exit;
    end;     
-   Result := StrToIntDef(Copy(Token, 1, SeparatorIndex - 1), -1);
+   Result := ParseInt32(Copy(Token, 1, SeparatorIndex - 1), -1);
    if (Result < 0) then
    begin
       Message.Error(ieUnrecognizedCredentials);

@@ -2,7 +2,8 @@
 {$INCLUDE settings.inc}
 program main;
 
-uses sysutils, systemnetwork, configuration, csvdocument, servers, materials, clock, exceptions;
+uses
+   sysutils, systemnetwork, configuration, csvdocument, servers, materials, clock, exceptions, intutils;
 
 procedure AssertHandler(const Message: ShortString; const FileName: ShortString; LineNumber: LongInt; ErrorAddr: Pointer);
 begin
@@ -27,7 +28,7 @@ begin
       Writeln('Usage: systems-server <id>');
       exit;
    end;
-   ServerIndex := StrToIntDef(ParamStr(1), -1);
+   ServerIndex := ParseInt32(ParamStr(1), -1);
    if (ServerIndex <= 0) then
    begin
       Writeln('Invalid systems server ID. Value must be an integer greater than zero.');

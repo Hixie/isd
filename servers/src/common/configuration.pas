@@ -85,7 +85,7 @@ procedure EnsureDirectoryExists(DirectoryName: UTF8String);
 implementation
 
 uses
-   sysutils;
+   sysutils, intutils;
 
 function LoadDynastiesServersConfiguration(): TCSVDocument;
 begin
@@ -111,7 +111,7 @@ var
       ParsedValue: Integer;
    begin
       Value := Settings.Cells[1, Index]; // $R-
-      ParsedValue := StrToInt(Value);
+      ParsedValue := ParseInt32(Value);
       if ((ParsedValue < 0) or (ParsedValue > Max)) then
          raise ERangeError.Create('Setting "' + Setting + '" out of range; got ' + Value + ' but range is 0..' + IntToStr(Max) + '.');
       Result := ParsedValue; // $R-
@@ -160,7 +160,7 @@ var
          Value := Settings.Cells[SubIndex, Index]; // $R-
          if (Value <> '') then
          begin
-            ParsedValue := StrToInt(Value);
+            ParsedValue := ParseInt32(Value);
             if ((ParsedValue < 0) or (ParsedValue > High(TStarCategory))) then
                raise ERangeError.Create('Setting "' + Setting + '" out of range; got ' + Value + ' but range is 0..' + IntToStr(High(TStarCategory)) + '.');
             Include(Result, ParsedValue); // $R-

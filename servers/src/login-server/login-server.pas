@@ -2,7 +2,8 @@
 {$INCLUDE settings.inc}
 program main;
 
-uses sysutils, loginnetwork, users, logindynasty, servers, configuration, csvdocument, binaries, galaxy;
+uses
+   sysutils, loginnetwork, users, logindynasty, servers, configuration, csvdocument, binaries, galaxy;
 
 procedure CountDynastiesForServers(UserDatabase: TUserDatabase; ServerDatabase: TServerDatabase);
 var
