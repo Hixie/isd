@@ -185,14 +185,12 @@ destructor TOrbitFeatureNode.Destroy();
 var
    Child: TAssetNode;
 begin
-   if (Assigned(FPrimaryChild)) then
-      FreeAndNil(FPrimaryChild);
+   FreeAndNil(FPrimaryChild);
    for Child in FChildren do
    begin
       Assert(Assigned(Child));
       Child.Free();
    end;
-   SetLength(FChildren, 0);
    inherited;
 end;
 

@@ -250,7 +250,7 @@ var
    KnownAssetClassesForDynasty: TAssetClassHashSet;
    CollectMaterialsMessage: TCollectKnownMaterialsMessage;
    CollectAssetClassesMessage: TCollectKnownAssetClassesMessage;
-   Handled: Boolean;
+   Injected: Boolean;
    Dynasty: TDynasty;
 begin
    if (Message is TGetKnownMaterialsMessage) then
@@ -264,8 +264,8 @@ begin
       begin
          KnownMaterialsForDynasty := TMaterialHashSet.Create();
          CollectMaterialsMessage := TCollectKnownMaterialsMessage.Create(KnownMaterialsForDynasty, Dynasty);
-         Handled := InjectBusMessage(CollectMaterialsMessage);
-         Assert(Handled); // at a minimum, we should have handled it
+         Injected := InjectBusMessage(CollectMaterialsMessage);
+         Assert(Injected); // we are a bus for this message!
          FKnownMaterials[Dynasty] := KnownMaterialsForDynasty;
          FreeAndNil(CollectMaterialsMessage);
       end;
@@ -284,8 +284,8 @@ begin
       begin
          KnownAssetClassesForDynasty := TAssetClassHashSet.Create();
          CollectAssetClassesMessage := TCollectKnownAssetClassesMessage.Create(KnownAssetClassesForDynasty, Dynasty);
-         Handled := InjectBusMessage(CollectAssetClassesMessage);
-         Assert(Handled); // at a minimum, we should have handled it
+         Injected := InjectBusMessage(CollectAssetClassesMessage);
+         Assert(Injected); // we are a bus for this message!
          FKnownAssetClasses[Dynasty] := KnownAssetClassesForDynasty;
          FreeAndNil(CollectAssetClassesMessage);
       end;

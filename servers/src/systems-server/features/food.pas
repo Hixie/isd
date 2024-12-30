@@ -276,11 +276,11 @@ end;
 procedure TFoodBusFeatureNode.HandleChanges();
 var
    InitFoodMessage: TInitFoodMessage;
-   Handled: Boolean;
+   Injected: Boolean;
 begin
    InitFoodMessage := TInitFoodMessage.Create();
-   Handled := InjectBusMessage(InitFoodMessage);
-   Assert(Handled);
+   Injected := InjectBusMessage(InitFoodMessage);
+   Assert(Injected);
    InitFoodMessage.Process();
    InitFoodMessage.Free();
    inherited;

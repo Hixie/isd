@@ -343,9 +343,9 @@ type
       function GetSize(): Double; virtual; // m
       function GetFeatureName(): UTF8String; virtual;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); virtual;
-      function InjectBusMessage(Message: TBusMessage): Boolean;
-      function ManageBusMessage(Message: TBusMessage): Boolean; virtual;
-      function HandleBusMessage(Message: TBusMessage): Boolean; virtual;
+      function InjectBusMessage(Message: TBusMessage): Boolean; // returns true if message found a bus
+      function ManageBusMessage(Message: TBusMessage): Boolean; virtual; // returns true if feature was a bus for this message
+      function HandleBusMessage(Message: TBusMessage): Boolean; virtual; // returns true if feature handled the message and should stop propagation
       procedure ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynastyHashSet; CachedSystem: TSystem); virtual;
       procedure ResetVisibility(CachedSystem: TSystem); virtual;
       procedure ApplyVisibility(VisibilityHelper: TVisibilityHelper); virtual;
@@ -442,8 +442,8 @@ type
       procedure ReportPermanentlyGone();
       function GetFeatureByClass(FeatureClass: FeatureClassReference): TFeatureNode; // returns nil if feature is absent
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback);
-      function InjectBusMessage(Message: TBusMessage): Boolean; // called by a node to send a message on the bus
-      function HandleBusMessage(Message: TBusMessage): Boolean; // called by a bus to send a message down the tree
+      function InjectBusMessage(Message: TBusMessage): Boolean; // called by a node to send a message on the bus; returns true if bus was found
+      function HandleBusMessage(Message: TBusMessage): Boolean; // called by a bus to send a message down the tree; returs true if message was handled
       procedure ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynastyHashSet; CachedSystem: TSystem);
       procedure ResetVisibility(CachedSystem: TSystem);
       procedure ApplyVisibility(VisibilityHelper: TVisibilityHelper);
@@ -1223,13 +1223,13 @@ end;
 procedure TAssetNode.ReportPermanentlyGone();
 var
    Message: TAssetGoingAway;
-   Handled: Boolean;
+   Injected: Boolean;
 begin
    if (Assigned(FOwner)) then
       FOwner.DecRef();
    Message := TAssetGoingAway.Create(Self);
-   Handled := InjectBusMessage(Message);
-   Assert(not Handled, 'TAssetGoingAway should never be marked as handled.');
+   Injected := InjectBusMessage(Message);
+   Assert(Injected, 'TAssetGoingAway should always be injected.');
    FreeAndNil(Message);
    ReportChildIsPermanentlyGone(Self);
 end;
@@ -1356,7 +1356,7 @@ begin
       if (Message is TAssetManagementBusMessage) then
       begin
          Handled := HandleBusMessage(Message);
-         Assert(not Handled);
+         Assert(not Handled, 'TAssetManagementBusMessages should not be marked as handled');
          Result := True;
       end
       else

@@ -68,8 +68,7 @@ end;
 
 destructor TProxyFeatureNode.Destroy();
 begin
-   if (Assigned(FChild)) then
-      FreeAndNil(FChild);
+   FreeAndNil(FChild);
    inherited;
 end;
 

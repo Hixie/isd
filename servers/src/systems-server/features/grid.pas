@@ -105,8 +105,7 @@ var
    Child: TAssetNode;
 begin
    for Child in FChildren do
-      if (Assigned(Child)) then
-         Child.Free();
+      Child.Free();
    inherited;
 end;
 
@@ -182,8 +181,7 @@ var
 begin
    Result := 0.0;
    for Child in FChildren do
-      if (Assigned(Child)) then
-         Result := Result + Child.Mass;
+      Result := Result + Child.Mass;
 end;
 
 function TGridFeatureNode.GetSize(): Double;
@@ -196,8 +194,7 @@ var
    Child: TAssetNode;
 begin
    for Child in FChildren do
-      if (Assigned(Child)) then
-         Child.Walk(PreCallback, PostCallback);
+      Child.Walk(PreCallback, PostCallback);
 end;
 
 function TGridFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
@@ -222,12 +219,9 @@ begin
    end;
    for Child in FChildren do
    begin
-      if (Assigned(Child)) then
-      begin
-         Result := Child.HandleBusMessage(Message);
-         if (Result) then
-            exit;
-      end;
+      Result := Child.HandleBusMessage(Message);
+      if (Result) then
+         exit;
    end;
    Result := False;
 end;
@@ -242,14 +236,11 @@ begin
    Writer.WriteCardinal(FDimension);
    for Child in FChildren do
    begin
-      if (Assigned(Child)) then
+      if (Child.IsVisibleFor(DynastyIndex, CachedSystem)) then
       begin
-         if (Child.IsVisibleFor(DynastyIndex, CachedSystem)) then
-         begin
-            Writer.WriteCardinal(Child.ID(CachedSystem, DynastyIndex));
-            Writer.WriteCardinal(PGridData(Child.ParentData)^.X);
-            Writer.WriteCardinal(PGridData(Child.ParentData)^.Y);
-         end;
+         Writer.WriteCardinal(Child.ID(CachedSystem, DynastyIndex));
+         Writer.WriteCardinal(PGridData(Child.ParentData)^.X);
+         Writer.WriteCardinal(PGridData(Child.ParentData)^.Y);
       end;
    end;
    Writer.WriteCardinal(0);
@@ -286,8 +277,7 @@ begin
    Journal.WriteCardinal(FDimension);
    Assert(FDimension > 0);
    for Child in FChildren do
-      if (Assigned(Child)) then
-         ReportChild(Child);
+      ReportChild(Child);
    Journal.WriteAssetChangeKind(ckEndOfList);
 end;
 

@@ -120,7 +120,6 @@ var
 begin
    for Child in FChildren do
       Child.Free();
-   SetLength(FChildren, 0);
    inherited;
 end;
 
