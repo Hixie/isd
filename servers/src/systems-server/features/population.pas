@@ -38,7 +38,7 @@ type
 implementation
 
 uses
-   isdprotocol, messages, orbit, sysutils;
+   isdprotocol, messages, orbit, sysutils, math;
 
 const
    MeanIndividualMass = 70; // kg // TODO: allow species to diverge and such, with different demographics, etc
@@ -100,10 +100,19 @@ begin
 end;
 
 procedure TPopulationFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
+var
+   Visibility: TVisibility;
 begin
-   Writer.WriteCardinal(fcPopulation);
-   Writer.WriteInt64(FPopulation);
-   Writer.WriteDouble(FMeanHappiness);
+   Visibility := Parent.ReadVisibilityFor(DynastyIndex, CachedSystem);
+   if (dmDetectable * Visibility <> []) then
+   begin
+      Writer.WriteCardinal(fcPopulation);
+      Writer.WriteInt64(FPopulation);
+      if (dmInternals in Visibility) then
+         Writer.WriteDouble(FMeanHappiness)
+      else
+         Writer.WriteDouble(NaN);
+   end;
 end;
 
 procedure TPopulationFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);

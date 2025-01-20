@@ -157,9 +157,15 @@ begin
 end;
 
 procedure TPlanetaryBodyFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
+var
+   Visibility: TVisibility;
 begin
-   Writer.WriteCardinal(fcPlanetaryBody);
-   Writer.WriteCardinal(FStructuralIntegrity);
+   Visibility := Parent.ReadVisibilityFor(DynastyIndex, CachedSystem);
+   if ((dmDetectable * Visibility <> []) and (dmClassKnown in Visibility) and (dmInternals in Visibility)) then
+   begin
+      Writer.WriteCardinal(fcPlanetaryBody);
+      Writer.WriteCardinal(FStructuralIntegrity);
+   end;
 end;
 
 procedure TPlanetaryBodyFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);

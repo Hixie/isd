@@ -260,6 +260,7 @@ procedure TGridFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStre
 var
    Child: TAssetNode;
 begin
+   // You always know the size of a grid because if anything is inferred inside it, we need the size to place it.
    Writer.WriteCardinal(fcGrid);
    Writer.WriteDouble(FCellSize);
    Writer.WriteCardinal(FDimension);

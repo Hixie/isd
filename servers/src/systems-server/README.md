@@ -506,8 +506,9 @@ This feature supports the following commands:
 <featuredata>       ::= <int64> <double>
 ```
 
-The integer is the number of people at this population center.
-The double is their mean happiness.
+The integer is the number of people at this population center. The
+double is their mean happiness. It might be a NaN, if the happiness
+cannot be determined.
 
 
 ### `fcMessageBoard` (0x0C)

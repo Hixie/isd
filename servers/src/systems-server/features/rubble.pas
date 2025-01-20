@@ -144,6 +144,7 @@ end;
 procedure TRubblePileFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
 begin
    Writer.WriteCardinal(fcRubblePile);
+   // TODO: contents?
 end;
 
 procedure TRubblePileFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);

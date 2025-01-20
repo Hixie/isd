@@ -290,61 +290,64 @@ var
    Visibility: TVisibility;
    ClassKnown: Boolean;
 begin
-   Writer.WriteCardinal(fcStructure);
-   Remaining := MaterialsQuantity;
    Visibility := Parent.ReadVisibilityFor(DynastyIndex, CachedSystem);
-   ClassKnown := dmClassKnown in Visibility;
-   if (FFeatureClass.BillOfMaterialsLength > 0) then
+   if (dmDetectable * Visibility <> []) then
    begin
-      for Index := 0 to FFeatureClass.BillOfMaterialsLength - 1 do // $R-
+      Writer.WriteCardinal(fcStructure);
+      ClassKnown := dmClassKnown in Visibility;
+      Remaining := MaterialsQuantity;
+      if (FFeatureClass.BillOfMaterialsLength > 0) then
       begin
-         if ((Remaining > 0) or ClassKnown) then
+         for Index := 0 to FFeatureClass.BillOfMaterialsLength - 1 do // $R-
          begin
-            Writer.WriteCardinal($FFFFFFFF); // sentinel
-            Quantity := FFeatureClass.BillOfMaterials[Index].Quantity;
-            if (Quantity < Remaining) then
+            if ((Remaining > 0) or ClassKnown) then
             begin
-               Writer.WriteCardinal(Quantity);
-               Dec(Remaining, Quantity);
+               Writer.WriteCardinal($FFFFFFFF); // sentinel
+               Quantity := FFeatureClass.BillOfMaterials[Index].Quantity;
+               if (Quantity < Remaining) then
+               begin
+                  Writer.WriteCardinal(Quantity);
+                  Dec(Remaining, Quantity);
+               end
+               else
+               begin
+                  Writer.WriteCardinal(Remaining);
+                  Remaining := 0;
+               end;
+               if (ClassKnown) then
+               begin
+                  Writer.WriteCardinal(Quantity);
+                  Writer.WriteStringReference(FFeatureClass.BillOfMaterials[Index].ComponentName);
+               end
+               else
+               begin
+                  Writer.WriteCardinal(0); // expected quantity unknown
+                  Writer.WriteStringReference(''); // component name unknown
+               end;
+               Writer.WriteStringReference(FFeatureClass.BillOfMaterials[Index].Material.AmbiguousName);
+               if (FDynastyKnowledge[Index].GetEntry(DynastyIndex)) then
+               begin
+                  Writer.WriteInt32(FFeatureClass.BillOfMaterials[Index].Material.ID);
+               end
+               else
+               begin
+                  Writer.WriteInt32(0);
+               end;
             end
             else
-            begin
-               Writer.WriteCardinal(Remaining);
-               Remaining := 0;
-            end;
-            if (ClassKnown) then
-            begin
-               Writer.WriteCardinal(Quantity);
-               Writer.WriteStringReference(FFeatureClass.BillOfMaterials[Index].ComponentName);
-            end
-            else
-            begin
-               Writer.WriteCardinal(0); // expected quantity unknown
-               Writer.WriteStringReference(''); // component name unknown
-            end;
-            Writer.WriteStringReference(FFeatureClass.BillOfMaterials[Index].Material.AmbiguousName);
-            if (FDynastyKnowledge[Index].GetEntry(DynastyIndex)) then
-            begin
-               Writer.WriteInt32(FFeatureClass.BillOfMaterials[Index].Material.ID);
-            end
-            else
-            begin
-               Writer.WriteInt32(0);
-            end;
-         end
-         else
-            break;
+               break;
+         end;
       end;
-   end;
-   Writer.WriteCardinal(0); // material terminator marker
-   Writer.WriteCardinal(StructuralIntegrity);
-   if (ClassKnown) then
-   begin
-      Writer.WriteCardinal(FFeatureClass.MinimumFunctionalQuantity);
-   end
-   else
-   begin
-      Writer.WriteCardinal(0);
+      Writer.WriteCardinal(0); // material terminator marker
+      Writer.WriteCardinal(StructuralIntegrity);
+      if (ClassKnown) then
+      begin
+         Writer.WriteCardinal(FFeatureClass.MinimumFunctionalQuantity);
+      end
+      else
+      begin
+         Writer.WriteCardinal(0);
+      end;
    end;
 end;
 

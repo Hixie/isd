@@ -220,19 +220,14 @@ end;
 procedure TMessageBoardFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
 var
    Child: TAssetNode;
-   Visibility: TVisibility;
 begin
-   Visibility := Parent.ReadVisibilityFor(DynastyIndex, CachedSystem);
-   if (dmInternals in Visibility) then
+   Writer.WriteCardinal(fcMessageBoard);
+   for Child in FChildren do
    begin
-      Writer.WriteCardinal(fcMessageBoard);
-      for Child in FChildren do
-      begin
-         if (Child.IsVisibleFor(DynastyIndex, CachedSystem)) then
-            Writer.WriteCardinal(Child.ID(CachedSystem, DynastyIndex));
-      end;
-      Writer.WriteCardinal(0);
+      if (Child.IsVisibleFor(DynastyIndex, CachedSystem)) then
+         Writer.WriteCardinal(Child.ID(CachedSystem, DynastyIndex));
    end;
+   Writer.WriteCardinal(0);
 end;
 
 procedure TMessageBoardFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);

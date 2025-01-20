@@ -109,7 +109,7 @@ type
 
 const
    dmNil = [];
-   dmDetectable = [dmVisibleSpectrum];
+   dmDetectable = [dmVisibleSpectrum]; // need one of these to get any data beyond what you can infer
    dmOwnership = [dmInference, dmVisibleSpectrum, dmInternals];
    
 type

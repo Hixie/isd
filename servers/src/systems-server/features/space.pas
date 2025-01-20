@@ -306,7 +306,7 @@ begin
    Writer.WriteCardinal(fcSpace);
    Assert(Length(FChildren) > 0); // otherwise who are we reporting this to?
    Assert(Assigned(FChildren[0]));
-   Writer.WriteCardinal(FChildren[0].ID(CachedSystem, DynastyIndex));
+   Writer.WriteCardinal(FChildren[0].ID(CachedSystem, DynastyIndex)); // TODO: only if visible
    if (Length(FChildren) > 1) then
       for Index := 1 to Length(FChildren) - 1 do // $R-
       begin
