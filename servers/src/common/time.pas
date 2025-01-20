@@ -8,10 +8,15 @@ type
    TMillisecondsDuration = record // solar system milliseconds duration
    private
       Value: Int64;
+      function GetZero(): Boolean; inline;
+      function GetNegative(): Boolean; inline;
    public
       function ToString(): UTF8String;
       function ToSIUnits(): Double; // returns the value in seconds
       function Scale(Factor: Double): TMillisecondsDuration;
+      property IsZero: Boolean read GetZero;
+      property IsNegative: Boolean read GetNegative;
+      property AsInt64: Int64 read Value;
    end;
 
    TTimeInMilliseconds = record // solar system absolute time (in milliseconds)
@@ -38,7 +43,7 @@ type
 operator explicit (A: Double): TMillisecondsDuration;
 operator explicit (A: Int64): TMillisecondsDuration; inline;
 operator + (A: TMillisecondsDuration; B: TMillisecondsDuration): TMillisecondsDuration; inline;
-operator - (A: TMillisecondsDuration; B: TMillisecondsDuration): TMillisecondsDuration; inline;
+operator - (A, B: TMillisecondsDuration): TMillisecondsDuration; inline;
 operator mod (A: TMillisecondsDuration; B: TMillisecondsDuration): TMillisecondsDuration; inline;
 
 operator explicit (A: Int64): TTimeInMilliseconds;
@@ -73,8 +78,33 @@ begin
 end;
 
 function TMillisecondsDuration.Scale(Factor: Double): TMillisecondsDuration;
+var
+   Temp: Double;
 begin
-   Result.Value := Round(Value * Factor);
+   Temp := Value * Factor;
+   if (Temp <= Low(Result.Value)) then
+   begin
+      Result.Value := Low(Result.Value);
+   end
+   else
+   if (Temp >= High(Result.Value)) then
+   begin
+      Result.Value := High(Result.Value);
+   end
+   else
+   begin
+      Result.Value := Round(Temp);
+   end;
+end;
+
+function TMillisecondsDuration.GetZero(): Boolean;
+begin
+   Result := Value = 0;
+end;
+
+function TMillisecondsDuration.GetNegative(): Boolean;
+begin
+   Result := Value < 0;
 end;
 
 operator explicit (A: Double): TMillisecondsDuration;
@@ -88,12 +118,12 @@ begin
    Result.Value := A;
 end;
 
-operator + (A: TTimeInMilliseconds; B: TMillisecondsDuration): TTimeInMilliseconds;
+operator + (A: TMillisecondsDuration; B: TMillisecondsDuration): TMillisecondsDuration;
 begin
    Result.Value := A.Value + B.Value;
 end;
 
-operator - (A: TTimeInMilliseconds; B: TMillisecondsDuration): TTimeInMilliseconds;
+operator - (A: TMillisecondsDuration; B: TMillisecondsDuration): TMillisecondsDuration;
 begin
    Result.Value := A.Value - B.Value;
 end;
@@ -140,12 +170,12 @@ begin
    Result := IntToStr(Value) + 'ms';
 end;
 
-operator + (A: TMillisecondsDuration; B: TMillisecondsDuration): TMillisecondsDuration;
+operator + (A: TTimeInMilliseconds; B: TMillisecondsDuration): TTimeInMilliseconds;
 begin
    Result.Value := A.Value + B.Value;
 end;
 
-operator - (A: TMillisecondsDuration; B: TMillisecondsDuration): TMillisecondsDuration;
+operator - (A: TTimeInMilliseconds; B: TMillisecondsDuration): TTimeInMilliseconds;
 begin
    Result.Value := A.Value - B.Value;
 end;
