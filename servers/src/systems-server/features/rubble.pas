@@ -5,7 +5,7 @@ unit rubble;
 interface
 
 uses
-   systems, serverstream, materials;
+   systems, serverstream, materials, techtree, tttokenizer;
 
 type
    TRubbleCompositionEntry = record
@@ -32,6 +32,7 @@ type
    strict protected
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
+      constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
       function InitFeatureNode(): TFeatureNode; override;
    end;
 
@@ -46,7 +47,7 @@ type
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
    public
       constructor Create(ADiameter: Double; AComposition: TRubbleComposition);
-      procedure UpdateJournal(Journal: TJournalWriter); override;
+      procedure UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem); override;
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
       procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); override;
    end;
@@ -83,6 +84,12 @@ begin
    Result := FResult;
 end;
 
+
+constructor TRubblePileFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
+begin
+   inherited Create();
+   Reader.Tokens.Error('Feature class %s is reserved for internal asset classes', [ClassName]);
+end;
 
 function TRubblePileFeatureClass.GetFeatureNodeClass(): FeatureNodeReference;
 begin
@@ -139,7 +146,7 @@ begin
    Writer.WriteCardinal(fcRubblePile);
 end;
 
-procedure TRubblePileFeatureNode.UpdateJournal(Journal: TJournalWriter);
+procedure TRubblePileFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
 var
    Index: Cardinal;
 begin
@@ -171,4 +178,6 @@ begin
    IsDefinitelyReal := True;
 end;
 
+initialization
+   RegisterFeatureClass(TRubblePileFeatureClass);
 end.

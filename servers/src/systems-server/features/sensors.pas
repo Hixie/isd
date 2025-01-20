@@ -5,7 +5,7 @@ unit sensors;
 interface
 
 uses
-   systems, serverstream, materials, knowledge;
+   systems, serverstream, materials, knowledge, techtree, tttokenizer;
 
 type
    TSpaceSensorFeatureClass = class(TFeatureClass)
@@ -16,6 +16,7 @@ type
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
       constructor Create(AMaxStepsToOrbit, AStepsUpFromOrbit, AStepsDownFromTop: Cardinal; AMinSize: Double; ASensorKind: TVisibility);
+      constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
       function InitFeatureNode(): TFeatureNode; override;
    end;
 
@@ -31,7 +32,7 @@ type
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
    public
       constructor Create(AFeatureClass: TSpaceSensorFeatureClass);
-      procedure UpdateJournal(Journal: TJournalWriter); override;
+      procedure UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem); override;
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
       function Knows(Material: TMaterial): Boolean;
    end;
@@ -49,6 +50,45 @@ begin
    FStepsDownFromTop := AStepsDownFromTop;
    FMinSize := AMinSize;
    FSensorKind := ASensorKind;
+end;
+
+constructor TSpaceSensorFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
+var
+   Keyword: UTF8String;
+
+   procedure AddSensorKind(Mechanism: TDetectionMechanism);
+   begin
+      if (Mechanism in FSensorKind) then
+         Reader.Tokens.Error('Duplicate sensor kind "%s"', [Keyword]);
+      Include(FSensorKind, Mechanism);
+   end;
+   
+begin
+   inherited Create();
+   FMaxStepsToOrbit := ReadNumber(Reader.Tokens, Low(FMaxStepsToOrbit), High(FMaxStepsToOrbit)); // $R-
+   Reader.Tokens.ReadIdentifier('to');
+   Reader.Tokens.ReadIdentifier('orbit');
+   Reader.Tokens.ReadComma();
+   Reader.Tokens.ReadIdentifier('up');
+   FStepsUpFromOrbit := ReadNumber(Reader.Tokens, Low(FStepsUpFromOrbit), High(FStepsUpFromOrbit)); // $R-
+   Reader.Tokens.ReadIdentifier('down');
+   FStepsDownFromTop := ReadNumber(Reader.Tokens, Low(FStepsDownFromTop), High(FStepsDownFromTop)); // $R-
+   Reader.Tokens.ReadComma();
+   Reader.Tokens.ReadIdentifier('min');
+   Reader.Tokens.ReadIdentifier('size');
+   FMinSize := ReadLength(Reader.Tokens);
+   repeat
+      Reader.Tokens.ReadComma();
+      Keyword := Reader.Tokens.ReadIdentifier();
+      case Keyword of
+         'inference': AddSensorKind(dmInference);
+         'light': AddSensorKind(dmVisibleSpectrum);
+         'class': AddSensorKind(dmClassKnown);
+         'internals': AddSensorKind(dmInternals);
+      else
+         Reader.Tokens.Error('Invalid sensor type "%s", supported sensor types are "light", "internals", "class", "inference"', []);
+      end;
+   until Reader.Tokens.IsSemicolon();
 end;
 
 function TSpaceSensorFeatureClass.GetFeatureNodeClass(): FeatureNodeReference;
@@ -135,6 +175,10 @@ begin
    ActualStepsUp := Index;
    Depth := 0;
    Target := FFeatureClass.FStepsDownFromTop;
+
+   // TODO: get a knowledge base (list of known classes)
+   // TODO: only give dmClassKnown if it's a known class!
+   
    Feature.Parent.Walk(@SenseDown, @SenseUp);
    Assert(Depth = 0);
    if (ActualStepsUp > FFeatureClass.FStepsDownFromTop) then
@@ -186,7 +230,7 @@ begin
    end;
 end;
 
-procedure TSpaceSensorFeatureNode.UpdateJournal(Journal: TJournalWriter);
+procedure TSpaceSensorFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
 begin
 end;
 
@@ -194,4 +238,6 @@ procedure TSpaceSensorFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSy
 begin
 end;
 
+initialization
+   RegisterFeatureClass(TSpaceSensorFeatureClass);
 end.

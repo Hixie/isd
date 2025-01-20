@@ -5,7 +5,7 @@ unit food;
 interface
 
 uses
-   systems, systemdynasty, serverstream, materials, hashtable, genericutils;
+   systems, systemdynasty, serverstream, materials, hashtable, genericutils, techtree, tttokenizer;
 
 type
    IFoodConsumer = interface ['IFoodConsumer']
@@ -58,17 +58,18 @@ type
    strict protected
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
+      constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
       function InitFeatureNode(): TFeatureNode; override;
    end;
    
    TFoodBusFeatureNode = class(TFeatureNode)
    protected
       function ManageBusMessage(Message: TBusMessage): Boolean; override;
-      procedure HandleChanges(); override;
+      procedure HandleChanges(CachedSystem: TSystem); override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
    public
       destructor Destroy(); override;
-      procedure UpdateJournal(Journal: TJournalWriter); override;
+      procedure UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem); override;
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
    end;
 
@@ -80,6 +81,7 @@ type
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
       constructor Create(ASize: Int64);
+      constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
       function InitFeatureNode(): TFeatureNode; override;
       property Size: Int64 read FSize;
    end;
@@ -96,7 +98,7 @@ type
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
    public
       constructor Create(AFeatureClass: TFoodGenerationFeatureClass);
-      procedure UpdateJournal(Journal: TJournalWriter); override;
+      procedure UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem); override;
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
    end;
 
@@ -226,6 +228,11 @@ begin
 end;
 
 
+constructor TFoodBusFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
+begin
+   inherited Create();
+end;
+
 function TFoodBusFeatureClass.GetFeatureNodeClass(): FeatureNodeReference;
 begin
    Result := TFoodBusFeatureNode;
@@ -273,7 +280,7 @@ begin
       Result := inherited;
 end;
 
-procedure TFoodBusFeatureNode.HandleChanges();
+procedure TFoodBusFeatureNode.HandleChanges(CachedSystem: TSystem);
 var
    InitFoodMessage: TInitFoodMessage;
    Injected: Boolean;
@@ -290,7 +297,7 @@ procedure TFoodBusFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerS
 begin
 end;
 
-procedure TFoodBusFeatureNode.UpdateJournal(Journal: TJournalWriter);
+procedure TFoodBusFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
 begin
 end;
 
@@ -303,6 +310,15 @@ constructor TFoodGenerationFeatureClass.Create(ASize: Int64);
 begin
    inherited Create();
    FSize := ASize;
+end;
+
+constructor TFoodGenerationFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
+begin
+   inherited Create();
+   Reader.Tokens.ReadIdentifier('size');
+   FSize := Reader.Tokens.ReadNumber();
+   if (FSize <= 0) then
+      Reader.Tokens.Error('Size must be positive and non-zero', []);
 end;
 
 function TFoodGenerationFeatureClass.GetFeatureNodeClass(): FeatureNodeReference;
@@ -345,7 +361,7 @@ begin
    //Writer.WriteCardinal(fcFoodGeneration);
 end;
 
-procedure TFoodGenerationFeatureNode.UpdateJournal(Journal: TJournalWriter);
+procedure TFoodGenerationFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
 begin
 end;
 
@@ -363,4 +379,7 @@ begin
    FFoodConsumption := Quantity;
 end;
 
+initialization
+   RegisterFeatureClass(TFoodBusFeatureClass);
+   RegisterFeatureClass(TFoodGenerationFeatureClass);
 end.

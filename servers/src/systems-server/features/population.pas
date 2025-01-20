@@ -5,13 +5,15 @@ unit population;
 interface
 
 uses
-   systems, serverstream, materials, food, systemdynasty;
+   systems, serverstream, materials, food, systemdynasty, techtree;
 
 type
    TPopulationFeatureClass = class(TFeatureClass)
    strict protected
+      // TODO: max population?
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
+      constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
       function InitFeatureNode(): TFeatureNode; override;
    end;
 
@@ -28,7 +30,7 @@ type
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
    public
       constructor CreatePopulated(APopulation: Int64; AMeanHappiness: Double); // only for use in plot-generated population centers
-      procedure UpdateJournal(Journal: TJournalWriter); override;
+      procedure UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem); override;
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
       procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); override;
    end;
@@ -36,10 +38,16 @@ type
 implementation
 
 uses
-   isdprotocol, messages, orbit, sysutils, encyclopedia;
+   isdprotocol, messages, orbit, sysutils;
 
 const
    MeanIndividualMass = 70; // kg // TODO: allow species to diverge and such, with different demographics, etc
+
+  
+constructor TPopulationFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
+begin
+   inherited Create();
+end;
 
 function TPopulationFeatureClass.GetFeatureNodeClass(): FeatureNodeReference;
 begin
@@ -49,6 +57,7 @@ end;
 function TPopulationFeatureClass.InitFeatureNode(): TFeatureNode;
 begin
    Result := TPopulationFeatureNode.Create();
+   // TODO: people need to actually join the population center presumably
 end;
 
 
@@ -72,15 +81,14 @@ begin
    begin
       HelpMessage := TNotificationMessage.Create(
          Parent,
-         'URGENT QUERY REGARDING RECENT EVENTS ABOARD COLONY SHIP',
-         'Passengers',
-         'WHAT THE HECK WHY DID WE JUST CRASH WHAT IS HAPPENING' + #$0A +
-         'Should we start making piles of rocks. Would that help.',
-         (System.Encyclopedia as TEncyclopedia).RockPileClass
+         'URGENT QUERY REGARDING RECENT EVENTS ABOARD COLONY SHIP'#$0A +
+         'From: Passengers'#$0A +
+         'WHAT THE HECK WHY DID WE JUST CRASH WHAT IS HAPPENING',
+         nil
       );
       Result := InjectBusMessage(HelpMessage);
       if (not Result) then
-         Writeln('Discarding message from population center (subject "', HelpMessage.Subject, '")');
+         Writeln('Discarding message from population center ("', HelpMessage.Body, '")');
       FreeAndNil(HelpMessage);
    end
    else
@@ -98,7 +106,7 @@ begin
    Writer.WriteDouble(FMeanHappiness);
 end;
 
-procedure TPopulationFeatureNode.UpdateJournal(Journal: TJournalWriter);
+procedure TPopulationFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
 begin
    Journal.WriteInt64(FPopulation);
    Journal.WriteDouble(FMeanHappiness);
@@ -127,4 +135,6 @@ begin
    IsDefinitelyReal := FPopulation > 0; // TODO: if FPopulation ever changes whether it's 0 or not, MarkAsDirty([dkAffectsVisibility])
 end;
 
+initialization
+   RegisterFeatureClass(TPopulationFeatureClass);
 end.

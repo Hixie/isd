@@ -5,13 +5,14 @@ unit grid;
 interface
 
 uses
-   systems, serverstream, basenetwork, systemdynasty;
+   systems, serverstream, basenetwork, systemdynasty, techtree, tttokenizer;
 
 type
    TGenericGridFeatureClass = class(TFeatureClass)
    strict protected
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
+      constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
       function InitFeatureNode(): TFeatureNode; override;
    end;
    
@@ -20,8 +21,11 @@ type
       FBuildEnvironment: TBuildEnvironment;
       FCellSize: Double;
       FDimension: Cardinal;
+   strict protected
+      function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
       constructor Create(ABuildEnvironment: TBuildEnvironment; ACellSize: Double; ADimension: Cardinal);
+      constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
       function InitFeatureNode(): TFeatureNode; override;
    end;
    
@@ -30,7 +34,7 @@ type
       FBuildEnvironment: TBuildEnvironment;
       FCellSize: Double;
       FDimension: Cardinal;
-      FChildren: TAssetNodeArray; // TODO: plastic array? sorted array with binary search? map?
+      FChildren: TAssetNode.TArray; // TODO: plastic array? sorted array with binary search? map?
       function GetChild(X, Y: Cardinal; GhostOwner: TDynasty): TAssetNode; // to only get non-ghosts, set GhostOwner to nil
       procedure AdoptGridChild(Child: TAssetNode; X, Y: Cardinal);
    protected
@@ -43,10 +47,9 @@ type
    public
       constructor Create(ABuildEnvironment: TBuildEnvironment; ACellSize: Double; ADimension: Cardinal);
       destructor Destroy(); override;
-      procedure UpdateJournal(Journal: TJournalWriter); override;
+      procedure UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem); override;
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
       function HandleCommand(Command: UTF8String; var Message: TMessage): Boolean; override;
-      procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); override;
       property Dimension: Cardinal read FDimension;
       property CellSize: Double read FCellSize;
    end;
@@ -66,6 +69,12 @@ type
    end;
 
 
+constructor TGenericGridFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
+begin
+   inherited Create();
+   Reader.Tokens.Error('Feature class %s is reserved for internal asset classes', [ClassName]);
+end;
+
 function TGenericGridFeatureClass.GetFeatureNodeClass(): FeatureNodeReference;
 begin
    Result := TGridFeatureNode;
@@ -84,6 +93,27 @@ begin
    FBuildEnvironment := ABuildEnvironment;
    FCellSize := ACellSize;
    FDimension := ADimension;
+end;
+
+constructor TParameterizedGridFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
+var
+   Value: Int64;
+begin
+   inherited Create();
+   FDimension := ReadNumber(Reader.Tokens, 1, High(FDimension)); // $R-
+   Reader.Tokens.ReadAsterisk();
+   Value := Reader.Tokens.ReadNumber();
+   if (Value <> FDimension) then
+      Reader.Tokens.Error('Grids must be square; %dx%d is not square', [FDimension, Value]);
+   Reader.Tokens.ReadComma();
+   FCellSize := ReadLength(Reader.Tokens);
+   Reader.Tokens.ReadComma();
+   FBuildEnvironment := ReadBuildEnvironment(Reader.Tokens);
+end;
+
+function TParameterizedGridFeatureClass.GetFeatureNodeClass(): FeatureNodeReference;
+begin
+   Result := TGridFeatureNode;
 end;
 
 function TParameterizedGridFeatureClass.InitFeatureNode(): TFeatureNode;
@@ -246,7 +276,7 @@ begin
    Writer.WriteCardinal(0);
 end;
 
-procedure TGridFeatureNode.UpdateJournal(Journal: TJournalWriter);
+procedure TGridFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
 
    procedure ReportChild(Child: TAssetNode);
    begin
@@ -338,7 +368,7 @@ var
 begin
    // what can i build at coordinates x,y?
    // build something at coordinates x,y
-   if (Command = 'catalog') then
+   if (Command = 'get-buildings') then
    begin
       Result := True;
       X := Message.Input.ReadCardinal();
@@ -413,6 +443,7 @@ begin
          Asset := AssetClass.Spawn(PlayerDynasty);
          AdoptGridChild(Asset, X, Y);
          Assert(not Asset.IsReal());
+         Assert(Asset.Size <= FCellSize);
          Message.CloseOutput();
       end;
    end
@@ -420,9 +451,7 @@ begin
       Result := inherited;
 end;
 
-procedure TGridFeatureNode.DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean);
-begin
-   IsDefinitelyReal := True;
-end;
-
+initialization
+   RegisterFeatureClass(TGenericGridFeatureClass);
+   RegisterFeatureClass(TParameterizedGridFeatureClass);
 end.

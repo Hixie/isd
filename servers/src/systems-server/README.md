@@ -95,6 +95,8 @@ There are currently no notifications defined.
                         <string>  ; class name
                         <string>  ; description
 
+<materialid>        ::= <signedint32> ; non-zero material id
+
 <dynasty>           ::= <int32> ; zero for unowned
 
 <feature>           ::= <featurecode> <featuredata>
@@ -107,7 +109,7 @@ There are currently no notifications defined.
 
 <time>              ::= 64 bit integer ; milliseconds
 
-<bitflag>           ::= 8 bits
+<byte>              ::= 8 bits
 
 <double>            ::= 64 bit float
 
@@ -116,6 +118,8 @@ There are currently no notifications defined.
 <int32>             ::= 32 bit unsigned integer
 
 <int64>             ::= 64 bit unsigned integer
+
+<zero8>             ::= 8 bit zero
 
 <zero32>            ::= 32 bit zero
 
@@ -239,7 +243,7 @@ will have an `fcOrbit` feature.
 ```bnf
 <featuredata>       ::= <assetid> <orbit>* <zero32>
 <orbit>             ::= <assetid> <double>{3} <time> <direction>
-<direction>         ::= <bitflag> ; 0x01 or 0x00
+<direction>         ::= <byte> ; 0x01 or 0x00
 ```
 
 The first `<assetid>` is the child at the focal point. That asset will
@@ -322,13 +326,12 @@ approximation, and in practice will use different features (e.g. an
 
 ```bnf
 <featuredata>       ::= <material-lineitem>* <zero32> <hp> <minhp>
-<material-lineitem> ::= <marker> <quantity> <max> <componentname> <materialname> <materialid>
+<material-lineitem> ::= <marker> <quantity> <max> <componentname> <materialname> [<materialid> | <zero32>]
 <marker>            ::= 0xFFFFFFFF as an unsigned 32 bit integer
 <quantity>          ::= <int32>
 <max>               ::= <int32>
 <componentname>     ::= <string>
 <materialname>      ::= <string>
-<materialid>        ::= <int32> ; non-zero material id, or zero if it's not recognized
 <hp>                ::= <int32>
 <minhp>             ::= <int32>
 ```
@@ -355,8 +358,8 @@ Material line items that have zero material present are skipped when
 the asset class is not known.
 
 The description of the material in this list (`<materialname>`) can be
-ignored if the material is known, as the material data (found in a
-knowledge base) will have a more detailed description.
+ignored if the material is known, as the material data (found in an
+fcKnowledge feature) will have a more detailed description.
 
 The list of material line items is terminated by a zero (instead of
 the 0xFFFFFFFF marker).
@@ -486,11 +489,11 @@ Each cell is at the specified `<x>`/`<y>` coordinate in the grid.
 
 This feature supports the following commands:
 
- * `catalog`: two numeric fields, x and y, indicating an empty cell.
-   Returns a list of asset classes that could be built on the grid at
-   that location; each entry consisting of the numeric asset class ID,
-   a string giving an icon name, a string giving a class name, and a
-   string giving a description.
+ * `get-buildings`: two numeric fields, x and y, indicating an empty
+   cell. Returns a list of asset classes that could be built on the
+   grid at that location; each entry consisting of the numeric asset
+   class ID, a string giving an icon name, a string giving a class
+   name, and a string giving a description.
 
  * `build`: two numeric fields, x and y, indicating an empty cell,
    followed by the asset class ID (from the `catalog` command).
@@ -523,12 +526,10 @@ guaranteed.
 ### `fcMessage` (0x0D)
 
 ```bnf
-<featuredata>       ::= <source> <timestamp> <flags> <subject> <from> <body>
+<featuredata>       ::= <source> <timestamp> <flags> <body>
 <source>            ::= <systemid>
 <timestamp>         ::= <time> ; system time
-<flags>             ::= <bitflag> ; 0x01 means "read"
-<subject>           ::= <string>
-<from>              ::= <string>
+<flags>             ::= <byte> ; 0x01 means "read"
 <body>              ::= <string>
 ```
 
@@ -548,21 +549,28 @@ The `<flags>` bit field has eight bits interpreted as follows:
    6      : reserved, always zero
    7 (MSB): reserved, always zero
 
-The `<subject>` is a string that is guaranteed to not contain a line
-feed, that is a heading for the message.
+The message contains a `<body>`, which is a string representing the
+message. Currently this is plain text. The first line of the body
+(everything up to the first newline) is the _subject_. The next line
+should start with the string "From: ", everything from character
+following that space, up to the next newline, is considered the
+_sender_.
 
-The `<from>` is a string that somehow identifies (to the player) the
+The _subject_ is the heading for the message.
+
+The _sender_ is a string that somehow identifies (to the player) the
 source of the message. This might be a character in the story, or a
 specific asset, or something else. For example, "Dr Blank" or
 "Stockpile #3 in Geneva on Earth in the Sol system". Clients are
 advised against attempting to map this string to actual assets in the
 game world, as the strings are not unambiguous.
 
-Finally the message contains a `<body>`, which is a string representing
-the message. Currently this is plain text.
+The remainder of the string is the _text_ of the message. Newlines
+separate paragraphs in the _text_.
 
-> TODO: A future version of this protocol will change `<body>` to
-> support formatting, images, links to assets, etc.
+> TODO: A future version of this protocol will change _text_ (and
+> possibly _subject_ and _sender_) to support formatting, images,
+> links to assets, etc.
 
 This feature supports the following commands:
 
@@ -594,20 +602,87 @@ example, a crater with a ship in the middle consists of an
 proxy feature.
 
 
-### `fcAssetClassKnowledge` (0x10)
+### `fcKnowledge` (0x10)
 
 ```bnf
-<featuredata>       ::= [ <zero32> | <assetclass> ]
-<assetclass>        ::= <assetclassid> ; id, non-zero
+<featuredata>       ::= [ <assetclass> | <material> ]* <zero8>
+<assetclass>        ::= <byte> ; always 0x01
+                        <assetclassid> ; id, non-zero
                         <string>  ; icon
                         <string>  ; class name
                         <string>  ; description
+<material>          ::= <byte> ; always 0x02
+                        <materialid> ; id, non-zero
+                        <string>  ; icon
+                        <string>  ; material name
+                        <string>  ; description
+                        <int64>   ; flags, see below
+                        <double>  ; mass (kg) per unit
+                        <double>  ; mass (kg) per cubic meter (density)
 ```
 
-Represents knowledge of a particular asset class. If the data starts
-with a zero, then the details are omitted. (Might happen, e.g., if
-another dynasty cannot see the internals of a message with this
-feature.)
+A list of pieces of knowledge (asset classes and materials).
+
+Asset classes are prefixed by the code 0x01, and consist of an asset
+class id (a _signed_ non-zero 32 bit integer; may be negative), an
+icon, name, and description.
+
+Materials are prefixed by the code 0x02, and consist of a material ID
+(a _signed_ non-zero 32 bit integer; may be negative), an icon, a name, a
+description, and then material-specific properties.
+
+The first property is a 64 bit bit field, whose bits have the
+following meanings:
+
+   0 (LSB): if unset, material is solid; otherwise, material is fluid
+   1      : if unset, this is a bulk resource; if set, this is a component
+   2      : reserved, always zero
+   3      : if set, this material is pressurized
+4-62      : reserved, always zero
+  63 (MSB): reserved, always zero
+
+Quantities of bulk resources should be presented in mass or volume.
+Quantities of components can be presented as a count, mass, or volume.
+
+Solid (including components) vs fluid determines how resources are
+transferred and stored.
+
+Quantities of resources (e.g. in fcStructure features) are specified
+in terms of the mass (kg) per unit. For example, if Iron has a mass
+per unit of 0.001, then 1000 Iron is equivalent to 1kg of Iron.
+
+Fluids are never components (So bits 0-2 can also be read as a three
+bit integer with three defined values, 000=solid, 001=fluid,
+010=component).
+
+For asset classes and materials, names never end with punctuation,
+descriptions always do.
+
+
+### `fcResearch` (0x11)
+
+```bnf
+<featuredata>       ::= <topic>
+<topic>             ::= <string>
+```
+
+The `<topic>` is the currently selected area of research for the
+research facility. It defaults to the empty string (undirected
+research). It can be changed using the `set-topic` command (see
+below).
+
+This feature supports the following commands (only allowed from the
+asset owner):
+
+ * `get-topics`: No fields. Returns a list of pairs of strings and
+   booleans, each representing a topic that can be specified in
+   `set-topic`. The boolean is T if the topic is still active, and F
+   if the topic is obsolete. The last field is always the empty string
+   followed by an F boolean.
+
+ * `set-topic`: One field, a string, which must match a field in
+   `get-topics`. Setting one that is obsolete has no effect. The empty
+   string is a valid selection (that has no effect).
 
 
 # Systems Server Internal Protocol

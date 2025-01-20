@@ -5,13 +5,14 @@ unit proxy;
 interface
 
 uses
-   systems, serverstream;
+   systems, serverstream, techtree;
 
 type
    TProxyFeatureClass = class(TFeatureClass)
    strict protected
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
+      constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
       function InitFeatureNode(): TFeatureNode; override;
    end;
 
@@ -29,7 +30,7 @@ type
    public
       constructor Create(AChild: TAssetNode);
       destructor Destroy(); override;
-      procedure UpdateJournal(Journal: TJournalWriter); override;
+      procedure UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem); override;
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
       property Child: TAssetNode read FChild;
    end;
@@ -39,6 +40,11 @@ implementation
 uses
    sysutils, isdprotocol, exceptions;
 
+
+constructor TProxyFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
+begin
+   inherited Create();
+end;
 
 function TProxyFeatureClass.GetFeatureNodeClass(): FeatureNodeReference;
 begin
@@ -133,7 +139,7 @@ begin
       Writer.WriteCardinal(0);
 end;
 
-procedure TProxyFeatureNode.UpdateJournal(Journal: TJournalWriter);
+procedure TProxyFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
 begin
    Journal.WriteAssetNodeReference(FChild);
 end;
@@ -156,4 +162,6 @@ begin
    end;
 end;
 
+initialization
+   RegisterFeatureClass(TProxyFeatureClass);
 end.

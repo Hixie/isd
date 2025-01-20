@@ -19,6 +19,7 @@ const
    GalaxyBlobFilename = DataDirectory + 'galaxy.dat';
    SystemsBlobFilename = DataDirectory + 'systems.dat';
    MaterialRecordsFilename = DataDirectory + 'materials.mrf'; // mrf = material record file
+   TechnologyTreeFilename = DataDirectory + 'base.tt'; // tt = technology tree
 
    ServerSettingsFilename = DataDirectory + 'settings.csv';
    DynastiesServersListFilename = DataDirectory + 'dynasty-servers.csv';

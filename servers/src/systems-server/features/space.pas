@@ -5,7 +5,7 @@ unit space;
 interface
 
 uses
-   systems, providers, serverstream;
+   systems, providers, serverstream, techtree;
 
 type
    TSolarSystemFeatureClass = class(TFeatureClass)
@@ -16,13 +16,14 @@ type
       FGravitionalInfluenceConstant: Double;
    public
       constructor Create(AStarGroupingThreshold: Double; AGravitionalInfluenceConstant: Double);
+      constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
       function InitFeatureNode(): TFeatureNode; override;
    end;
 
    TSolarSystemFeatureNode = class(TFeatureNode, IAssetNameProvider, IHillDiameterProvider)
    private
       FFeatureClass: TSolarSystemFeatureClass;
-      FChildren: TAssetNodeArray;
+      FChildren: TAssetNode.TArray;
       function GetChild(Index: Cardinal): TAssetNode;
       function GetChildCount(): Cardinal;
       function GetFurthestDistanceFromCenter(): Double;
@@ -30,7 +31,7 @@ type
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
       procedure AdoptSolarSystemChild(Child: TAssetNode; DistanceFromCenter, Theta, HillDiameter: Double);
       procedure DropChild(Child: TAssetNode); override;
-      procedure MarkAsDirty(DirtyKinds: TDirtyKinds); override;
+      procedure ParentMarkedAsDirty(ParentDirtyKinds, NewDirtyKinds: TDirtyKinds); override;
       procedure AddPolarChildFromJournal(Child: TAssetNode; Distance, Theta, HillDiameter: Double); // meters
       function GetMass(): Double; override;
       function GetSize(): Double; override;
@@ -41,7 +42,7 @@ type
    public
       constructor Create(AFeatureClass: TSolarSystemFeatureClass);
       destructor Destroy(); override;
-      procedure UpdateJournal(Journal: TJournalWriter); override;
+      procedure UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem); override;
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
       procedure AddCartesianChild(Child: TAssetNode; X, Y: Double); // meters, first must be at 0,0; call ComputeHillSpheres after calling AddCartesianChild for all children // marks the child as new
       procedure ComputeHillSpheres(); // call this after all stars have been added
@@ -88,6 +89,18 @@ begin
    inherited Create();
    FStarGroupingThreshold := AStarGroupingThreshold;
    FGravitionalInfluenceConstant := AGravitionalInfluenceConstant;
+end;
+
+constructor TSolarSystemFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
+begin
+   inherited Create();
+   Reader.Tokens.ReadIdentifier('group');
+   Reader.Tokens.ReadIdentifier('threshold');
+   FStarGroupingThreshold := ReadLength(Reader.Tokens);
+   Reader.Tokens.ReadComma();
+   Reader.Tokens.ReadIdentifier('gravitational');
+   Reader.Tokens.ReadIdentifier('influence');
+   FGravitionalInfluenceConstant := ReadNumber(Reader.Tokens, 0, High(Int64));
 end;
 
 function TSolarSystemFeatureClass.GetFeatureNodeClass(): FeatureNodeReference;
@@ -231,10 +244,10 @@ begin
    AdoptSolarSystemChild(Child, Distance, Theta, HillDiameter);
 end;
 
-procedure TSolarSystemFeatureNode.MarkAsDirty(DirtyKinds: TDirtyKinds);
+procedure TSolarSystemFeatureNode.ParentMarkedAsDirty(ParentDirtyKinds, NewDirtyKinds: TDirtyKinds);
 begin
-   if (dkAffectsNames in DirtyKinds) then
-      Include(DirtyKinds, dkSelf);
+   if (dkAffectsNames in NewDirtyKinds) then
+      MarkAsDirty([dkSelf]);
    inherited;
 end;
 
@@ -309,7 +322,7 @@ begin
    Writer.WriteCardinal(0);
 end;
 
-procedure TSolarSystemFeatureNode.UpdateJournal(Journal: TJournalWriter);
+procedure TSolarSystemFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
 var
    Child: TAssetNode;
 begin
@@ -443,4 +456,6 @@ begin
    IsDefinitelyReal := True;
 end;
 
+initialization
+   RegisterFeatureClass(TSolarSystemFeatureClass);
 end.

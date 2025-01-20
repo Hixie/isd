@@ -5,13 +5,14 @@ unit stellar;
 interface
 
 uses
-   sysutils, systems, astronomy, providers, serverstream;
+   sysutils, systems, astronomy, providers, serverstream, techtree, tttokenizer;
 
 type
    TStarFeatureClass = class(TFeatureClass)
    strict protected
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
+      constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
       function InitFeatureNode(): TFeatureNode; override;
    end;
 
@@ -28,7 +29,7 @@ type
       function GetAssetName(): UTF8String;
    public
       constructor Create(AStarID: TStarID);
-      procedure UpdateJournal(Journal: TJournalWriter); override;
+      procedure UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem); override;
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
       procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); override;
       property Category: TStarCategory read GetCategory;
@@ -44,6 +45,12 @@ uses
 const
    MassSalt = $04551455;
    SizeSalt = $51535153;
+
+   
+constructor TStarFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
+begin
+   Reader.Tokens.Error('Feature class %s is reserved for internal asset classes', [ClassName]);
+end;
 
 function TStarFeatureClass.GetFeatureNodeClass(): FeatureNodeReference;
 begin
@@ -140,7 +147,7 @@ begin
    Writer.WriteCardinal(StarID); // $R-
 end;
 
-procedure TStarFeatureNode.UpdateJournal(Journal: TJournalWriter);
+procedure TStarFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
 begin
    Assert(StarID >= 0);
    Journal.WriteCardinal(StarID); // $R-
@@ -161,4 +168,6 @@ begin
    IsDefinitelyReal := True;
 end;
 
+initialization
+   RegisterFeatureClass(TStarFeatureClass);
 end.

@@ -5,20 +5,21 @@ unit surface;
 interface
 
 uses
-   systems, serverstream;
+   systems, serverstream, techtree;
 
 type
    TSurfaceFeatureClass = class(TFeatureClass)
    strict protected
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
+      constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
       function InitFeatureNode(): TFeatureNode; override;
    end;
    
    TSurfaceFeatureNode = class(TFeatureNode)
    private
       FSize: Double;
-      FChildren: TAssetNodeArray;
+      FChildren: TAssetNode.TArray;
       procedure AdoptRegionChild(Child: TAssetNode);
    protected
       procedure DropChild(Child: TAssetNode); override;
@@ -28,9 +29,9 @@ type
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
    public
-      constructor Create(ASize: Double; AChildren: TAssetNodeArray);
+      constructor Create(ASize: Double; AChildren: TAssetNode.TArray);
       destructor Destroy(); override;
-      procedure UpdateJournal(Journal: TJournalWriter); override;
+      procedure UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem); override;
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
       procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); override;
    end;
@@ -50,6 +51,11 @@ type
    end;
 
 
+constructor TSurfaceFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
+begin
+   Reader.Tokens.Error('Feature class %s is reserved for internal asset classes', [ClassName]);
+end;
+
 function TSurfaceFeatureClass.GetFeatureNodeClass(): FeatureNodeReference;
 begin
    Result := TSurfaceFeatureNode;
@@ -62,7 +68,7 @@ begin
 end;
 
 
-constructor TSurfaceFeatureNode.Create(ASize: Double; AChildren: TAssetNodeArray);
+constructor TSurfaceFeatureNode.Create(ASize: Double; AChildren: TAssetNode.TArray);
 var
    Child: TAssetNode;
 begin
@@ -155,7 +161,7 @@ begin
    Writer.WriteCardinal(0);
 end;
 
-procedure TSurfaceFeatureNode.UpdateJournal(Journal: TJournalWriter);
+procedure TSurfaceFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
 var
    Child: TAssetNode;
 begin
@@ -224,4 +230,6 @@ begin
    IsDefinitelyReal := True;
 end;
 
+initialization
+   RegisterFeatureClass(TSurfaceFeatureClass);
 end.

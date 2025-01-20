@@ -82,7 +82,7 @@ type
       function CreateSystem(SystemID: Cardinal; X, Y: Double): TSystem;
       procedure ReportChanges(); override;
    public
-      constructor Create(APort: Word; AClock: TClock; APassword: UTF8String; ASystemServerID: Cardinal; ASettings: PSettings; AMaterials: TMaterialHashSet; ADynastyServers: TServerDatabase; AConfigurationDirectory: UTF8String);
+      constructor Create(APort: Word; AClock: TClock; APassword: UTF8String; ASystemServerID: Cardinal; ASettings: PSettings; AEncyclopedia: TEncyclopedia; ADynastyServers: TServerDatabase; AConfigurationDirectory: UTF8String);
       destructor Destroy(); override;
       function SerializeAllSystemsFor(Dynasty: TDynasty; Writer: TServerStreamWriter): RawByteString;
       property Password: UTF8String read FPassword;
@@ -98,7 +98,7 @@ implementation
 uses
    sysutils, hashfunctions, isdprotocol, passwords, exceptions, space,
    orbit, sensors, structure, errors, plot, planetary, math, time,
-   population, messages, knowledge, isderrors, food;
+   population, messages, knowledge, isderrors, food, research;
 
 constructor TSystemHashTable.Create();
 begin
@@ -259,7 +259,8 @@ begin
                TMessageBoardFeatureNode.Create(FServer.Encyclopedia.PlaceholderShip.Features[4] as TMessageBoardFeatureClass),
                TKnowledgeBusFeatureNode.Create(),
                TFoodBusFeatureNode.Create(),
-               TFoodGenerationFeatureNode.Create(FServer.Encyclopedia.PlaceholderShip.Features[7] as TFoodGenerationFeatureClass)
+               TFoodGenerationFeatureNode.Create(FServer.Encyclopedia.PlaceholderShip.Features[7] as TFoodGenerationFeatureClass),
+               TResearchFeatureNode.Create(FServer.Encyclopedia.PlaceholderShip.Features[8] as TResearchFeatureClass)
             ]
          )),
          A,
@@ -527,7 +528,7 @@ begin
 end;
 
 
-constructor TServer.Create(APort: Word; AClock: TClock; APassword: UTF8String; ASystemServerID: Cardinal; ASettings: PSettings; AMaterials: TMaterialHashSet; ADynastyServers: TServerDatabase; AConfigurationDirectory: UTF8String);
+constructor TServer.Create(APort: Word; AClock: TClock; APassword: UTF8String; ASystemServerID: Cardinal; ASettings: PSettings; AEncyclopedia: TEncyclopedia; ADynastyServers: TServerDatabase; AConfigurationDirectory: UTF8String);
 var
    SystemsFile: File of Cardinal;
    SystemID: Cardinal;
@@ -538,7 +539,7 @@ begin
    FSettings := ASettings;
    FDynastyServers := ADynastyServers;
    FConfigurationDirectory := AConfigurationDirectory;
-   FEncyclopedia := TEncyclopedia.Create(ASettings, AMaterials);
+   FEncyclopedia := AEncyclopedia;
    FDynastyManager := TDynastyManager.Create(FConfigurationDirectory + DynastyDataSubDirectory, Self);
    FSystems := TSystemHashTable.Create();
    if (DirectoryExists(FConfigurationDirectory)) then

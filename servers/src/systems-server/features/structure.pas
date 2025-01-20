@@ -5,7 +5,7 @@ unit structure;
 interface
 
 uses
-   systems, serverstream, materials;
+   systems, serverstream, materials, techtree;
 
 type
    TMaterialLineItem = record // 24 bytes
@@ -30,6 +30,7 @@ type
       function GetTotalQuantity(): Cardinal;
    public
       constructor Create(ABillOfMaterials: TMaterialLineItemArray; AMinimumFunctionalQuantity: Cardinal; ADefaultSize: Double);
+      constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
       function InitFeatureNode(): TFeatureNode; override;
       property DefaultSize: Double read FDefaultSize;
       property BillOfMaterials[Index: Cardinal]: TMaterialLineItem read GetMaterialLineItem;
@@ -54,7 +55,7 @@ type
    public
       constructor Create(AFeatureClass: TStructureFeatureClass; AMaterialsQuantity: Cardinal; AStructuralIntegrity: Cardinal);
       destructor Destroy(); override;
-      procedure UpdateJournal(Journal: TJournalWriter); override;
+      procedure UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem); override;
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
       procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); override;
       property MaterialsQuantity: Cardinal read FMaterialsQuantity; // how much of the feature's bill of materials is actually present
@@ -64,7 +65,7 @@ type
 implementation
 
 uses
-   isdprotocol, exceptions, rubble;
+   isdprotocol, exceptions, rubble, plasticarrays, genericutils;
 
 constructor TMaterialLineItem.Create(AComponentName: UTF8String; AMaterial: TMaterial; AQuantity: Cardinal);
 begin
@@ -80,6 +81,44 @@ begin
    FBillOfMaterials := ABillOfMaterials;
    FMinimumFunctionalQuantity := AMinimumFunctionalQuantity;
    FDefaultSize := ADefaultSize;
+end;
+
+constructor TStructureFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
+var
+   MaterialsList: specialize PlasticArray<TMaterialLineItem, specialize IncomparableUtils<TMaterialLineItem>>;
+   ComponentName: UTF8String;
+   Material: TMaterial;
+   Quantity, Total: Cardinal;
+begin
+   // feature: TStructureFeatureClass size 20m, materials (
+   //    "Substructure": "Iron" x 700,
+   //    "Logic": "Circuit Board" x 5,
+   //    "Shell": "Iron" x 300,
+   // ), minimum 805;
+   MaterialsList.Init(2);
+   Reader.Tokens.ReadIdentifier('size');
+   FDefaultSize := ReadLength(Reader.Tokens);
+   Reader.Tokens.ReadComma();
+   Reader.Tokens.ReadIdentifier('materials');
+   Reader.Tokens.ReadOpenParenthesis();
+   Total := 0;
+   repeat
+      ComponentName := Reader.Tokens.ReadString();
+      Reader.Tokens.ReadColon();
+      Material := ReadMaterial(Reader);
+      Reader.Tokens.ReadAsterisk();
+      Quantity := ReadNumber(Reader.Tokens, 1, High(Quantity)); // $R-
+      MaterialsList.Push(TMaterialLineItem.Create(ComponentName, Material, Quantity));
+      Inc(Total, Quantity);
+      if (Reader.Tokens.IsCloseParenthesis()) then
+         break;
+      Reader.Tokens.ReadComma();
+   until Reader.Tokens.IsCloseParenthesis();
+   Reader.Tokens.ReadCloseParenthesis();
+   Reader.Tokens.ReadComma();
+   Reader.Tokens.ReadIdentifier('minimum');
+   FMinimumFunctionalQuantity := ReadNumber(Reader.Tokens, 1, Total); // $R-
+   FBillOfMaterials := MaterialsList.Distill();
 end;
 
 function TStructureFeatureClass.GetFeatureNodeClass(): FeatureNodeReference;
@@ -309,7 +348,7 @@ begin
    end;
 end;
 
-procedure TStructureFeatureNode.UpdateJournal(Journal: TJournalWriter);
+procedure TStructureFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
 begin
    Journal.WriteCardinal(MaterialsQuantity);
    Journal.WriteCardinal(StructuralIntegrity);
@@ -328,4 +367,6 @@ begin
    // TODO: if FMaterialsQuantity changes whether it equals 0, then MarkAsDirty([dkAffectsVisibility])
 end;
 
+initialization
+   RegisterFeatureClass(TStructureFeatureClass);
 end.

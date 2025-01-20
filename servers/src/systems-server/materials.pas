@@ -5,25 +5,27 @@ unit materials;
 interface
 
 uses
-   hashtable, hashset, genericutils, icons;
+   hashtable, hashset, hashfunctions, genericutils, stringutils, icons;
 
 type
    TMaterial = class;
 
    TMaterialID = LongInt; // signed because negative values are built-in, and positive values are in tech tree
    
-   TMaterialColor = $000000..$FFFFFF;
-
    TMaterialHashSet = class(specialize THashSet<TMaterial, TObjectUtils>)
       constructor Create();
    end;
 
-   TMaterialHashMap = class(specialize THashTable<TMaterialID, TMaterial, LongIntUtils>)
-      constructor Create();
+   TMaterialIDHashTable = class(specialize THashTable<TMaterialID, TMaterial, LongIntUtils>)
+      constructor Create(ACount: THashTableSizeInt = 8);
+   end;
+   
+   TMaterialNameHashTable = class(specialize THashTable<UTF8String, TMaterial, UTF8StringUtils>)
+      constructor Create(ACount: THashTableSizeInt = 8);
    end;
    
    TUnitKind = (
-      ukBulkResource, // UI shows it in kilograms
+      ukBulkResource, // UI shows it in kilograms (solids) or liters (fluids)
       ukComponent // UI shows it as number of units
    );
 
@@ -45,12 +47,14 @@ type
 
    TMaterialAbundance = array of TMaterialAbundanceParameters;
    
-   TMaterial = class
+   TMaterial = class sealed
+   public
+      type
+         TArray = array of TMaterial;
    protected
       FID: TMaterialID;
       FName, FAmbiguousName, FDescription: UTF8String;
       FIcon: TIcon;
-      FColor: TMaterialColor;
       FUnitKind: TUnitKind;
       FMassPerUnit: Double; // kg
       FDensity: Double; // m^3
@@ -58,13 +62,12 @@ type
       FTags: TMaterialTags;
       FAbundance: TMaterialAbundance;
    public
-      constructor Create(AID: TMaterialID; AName, AAmbiguousName, ADescription: UTF8String; AIcon: TIcon; AColor: TMaterialColor; AUnitKind: TUnitKind; AMassPerUnit, ADensity, ABondAlbedo: Double; ATags: TMaterialTags; AAbundance: TMaterialAbundance);
+      constructor Create(AID: TMaterialID; AName, AAmbiguousName, ADescription: UTF8String; AIcon: TIcon; AUnitKind: TUnitKind; AMassPerUnit, ADensity, ABondAlbedo: Double; ATags: TMaterialTags; AAbundance: TMaterialAbundance);
       property ID: TMaterialID read FID;
       property AmbiguousName: UTF8String read FAmbiguousName;
       property Name: UTF8String read FName;
       property Description: UTF8String read FDescription;
       property Icon: TIcon read FIcon;
-      property Color: TMaterialColor read FColor;
       property UnitKind: TUnitKind read FUnitKind;
       property MassPerUnit: Double read FMassPerUnit; // kg
       property Density: Double read FDensity; // kg/m^3
@@ -81,7 +84,7 @@ function LoadMaterialRecords(Filename: RawByteString): TMaterialHashSet;
 implementation
 
 uses
-   hashfunctions, sysutils, strutils, math, intutils;
+   sysutils, strutils, intutils, math;
 
 function MaterialHash32(const Key: TMaterial): DWord;
 begin
@@ -93,12 +96,17 @@ begin
    inherited Create(@MaterialHash32);
 end;
 
-constructor TMaterialHashMap.Create();
+constructor TMaterialIDHashTable.Create(ACount: THashTableSizeInt = 8);
 begin
-   inherited Create(@LongIntHash32);
+   inherited Create(@LongIntHash32, ACount);
 end;
 
-constructor TMaterial.Create(AID: TMaterialID; AName, AAmbiguousName, ADescription: UTF8String; AIcon: TIcon; AColor: TMaterialColor; AUnitKind: TUnitKind; AMassPerUnit, ADensity, ABondAlbedo: Double; ATags: TMaterialTags; AAbundance: TMaterialAbundance);
+constructor TMaterialNameHashTable.Create(ACount: THashTableSizeInt = 8);
+begin
+   inherited Create(@UTF8StringHash32, ACount);
+end;
+
+constructor TMaterial.Create(AID: TMaterialID; AName, AAmbiguousName, ADescription: UTF8String; AIcon: TIcon; AUnitKind: TUnitKind; AMassPerUnit, ADensity, ABondAlbedo: Double; ATags: TMaterialTags; AAbundance: TMaterialAbundance);
 begin
    inherited Create();
    Assert(AID <> 0); // zero means "not recognized"
@@ -110,7 +118,6 @@ begin
    FDescription := ADescription;
    Assert(FDescription <> '');
    FIcon := AIcon;
-   FColor := AColor;
    Assert(FIcon <> '');
    FUnitKind := AUnitKind;
    FMassPerUnit := AMassPerUnit;
@@ -150,6 +157,8 @@ function LoadMaterialRecords(Filename: RawByteString): TMaterialHashSet;
       Result := StrToFloat(Value, FloatFormat); // $R-
    end;
 
+type
+   TMaterialColor = $000000..$FFFFFF;
 var
    F: Text;
    IDLine, ColorLine, TagsLine, DensityLine, BondAlbedoLine, AbundanceLine: UTF8String;
@@ -238,7 +247,6 @@ begin
          MaterialAmbiguousName,
          MaterialDescription,
          MaterialIcon,
-         MaterialColor,
          ukBulkResource,
          0.001,
          MaterialDensity,

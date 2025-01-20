@@ -6,7 +6,8 @@ interface
 
 uses
    systemdynasty, configuration, hashtable, hashset, genericutils,
-   icons, serverstream, stringstream, random, materials, basenetwork, time;
+   icons, serverstream, stringstream, random, materials, basenetwork,
+   time, tttokenizer, stringutils;
 
 // VISIBILITY
 //
@@ -127,7 +128,11 @@ type
       constructor Create();
    end;
 
-   TAssetClassHashTable = class(specialize THashTable<TAssetClassID, TAssetClass, IntegerUtils>)
+   TAssetClassIDHashTable = class(specialize THashTable<TAssetClassID, TAssetClass, IntegerUtils>)
+      constructor Create();
+   end;
+
+   TAssetClassIdentifierHashTable = class(specialize THashTable<UTF8String, TAssetClass, UTF8StringUtils>)
       constructor Create();
    end;
 
@@ -231,6 +236,7 @@ type
       destructor Destroy(); override;
       function ReadBoolean(): Boolean;
       function ReadCardinal(): Cardinal;
+      function ReadInt32(): Int32;
       function ReadInt64(): Int64;
       function ReadUInt64(): UInt64;
       function ReadPtrUInt(): PtrUInt;
@@ -250,6 +256,7 @@ type
       constructor Create(ASystem: TSystem);
       procedure WriteBoolean(Value: Boolean); // {BOGUS Hint: Value parameter "Value" is assigned but never used}
       procedure WriteCardinal(Value: Cardinal); // {BOGUS Hint: Value parameter "Value" is assigned but never used}
+      procedure WriteInt32(Value: Int32); // {BOGUS Hint: Value parameter "Value" is assigned but never used}
       procedure WriteInt64(Value: Int64); // {BOGUS Hint: Value parameter "Value" is assigned but never used}
       procedure WriteUInt64(Value: UInt64); // {BOGUS Hint: Value parameter "Value" is assigned but never used}
       procedure WritePtrUInt(Value: PtrUInt); // {BOGUS Hint: Value parameter "Value" is assigned but never used}
@@ -285,16 +292,171 @@ type
    FeatureClassReference = class of TFeatureClass;
    FeatureNodeReference = class of TFeatureNode;
 
+   TWeight = Cardinal;
+   TWeightDelta = Integer;
+
+   TReward = record
+   public
+      type
+         TArray = array of TReward;
+         {$PUSH}
+         {$PACKENUM 1}
+         TRewardKind = (rkMessage = $00, rkAssetClass = $01, rkMaterial = $02);
+         {$POP}
+   strict private
+      const
+         TypeMask = $07;
+         {$IF (High(TRewardKind) and not TypeMask) <> 0)} {$FATAL Reward kinds don't fit in alignment bits.} {$ENDIF}
+      var
+         FData: PtrUInt;
+      function GetKind(): TRewardKind; inline;
+      function GetMessage(): UTF8String; inline;
+      function GetAssetClass(): TAssetClass; inline;
+      function GetMaterial(): TMaterial; inline;
+   public
+      constructor CreateForMessage(var Message: UTF8String);
+      constructor CreateForAssetClass(AssetClass: TAssetClass);
+      constructor CreateForMaterial(Material: TMaterial);
+      procedure Free();
+      property Message: UTF8String read GetMessage;
+      property AssetClass: TAssetClass read GetAssetClass;
+      property Material: TMaterial read GetMaterial;
+      property Kind: TRewardKind read GetKind;
+   end;
+   {$IF SizeOf(TReward) <> 8} {$FATAL TReward has an unexpected size} {$ENDIF}
+
+   TNode = class
+   public
+      type
+         TNodeArray = array of TNode;
+   strict private
+      FUnlocks: TNodeArray;
+   private
+      procedure PropagateRequirements(Requirements: TNodeArray);
+   strict protected
+      function GetIsRoot(): Boolean; virtual; abstract;
+   public
+      property IsRoot: Boolean read GetIsRoot;
+      property Unlocks: TNodeArray read FUnlocks;
+      function ToString(): UTF8String; override;
+   end;
+
+   TBonus = record // 24 bytes
+   public
+      type
+         TArray = array of TBonus;
+   strict private
+      FNode: TNode; // 8 bytes
+      FTimeDelta: TMillisecondsDuration; // 8 bytes
+      FWeightDelta: TWeightDelta; // 4 bytes
+      FNegate: Boolean; // 4 bytes (31 bits unused)
+   public
+      constructor Create(ANode: TNode; ATimeDelta: TMillisecondsDuration; AWeightDelta: TWeightDelta; ANegate: Boolean);
+      function ToString(): UTF8String;
+      property Node: TNode read FNode;
+      property TimeDelta: TMillisecondsDuration read FTimeDelta;
+      property WeightDelta: TWeightDelta read FWeightDelta;
+      property Negate: Boolean read FNegate;
+   end;
+   {$IF SizeOf(TBonus) <> 24} {$FATAL TBonus has an unexpected size} {$ENDIF}
+
+   TResearchID = 0 .. High(Integer); // Integer range means we can use A-B to compare IDs, and use $FFFFFFFF as a sentinel.
+   
+   TResearch = class(TNode)
+   public
+      type
+         TArray = array of TResearch;
+      const
+         kNil = $FFFFFFFF;
+   strict private
+      FID: TResearchID;
+      FDefaultTime: TMillisecondsDuration;
+      FDefaultWeight: TWeight;
+      FRequirements: TNode.TNodeArray;
+      FBonuses: TBonus.TArray;
+      FRewards: TReward.TArray;
+   strict protected
+      function GetIsRoot(): Boolean; override;
+   public
+      constructor Create(AID: TResearchID; ADefaultTime: TMillisecondsDuration; ADefaultWeight: TWeight; ARequirements: TNode.TNodeArray; ABonuses: TBonus.TArray; ARewards: TReward.TArray);
+      destructor Destroy(); override;
+      property ID: TResearchID read FID;
+      property DefaultTime: TMillisecondsDuration read FDefaultTime;
+      property DefaultWeight: TWeight read FDefaultWeight;
+      property Requirements: TNode.TNodeArray read FRequirements; // do not mutate the array through this accessor
+      property Bonuses: TBonus.TArray read FBonuses; // do not mutate the array through this accessor
+      property Rewards: TReward.TArray read FRewards; // do not mutate the array through this accessor
+      function ToString(): UTF8String; override;
+   end;
+
+   TResearchHashSet = class(specialize THashSet<TResearch, TObjectUtils>)
+      constructor Create();
+   end;
+
+   TResearchIDHashTable = class(specialize THashTable<TResearchID, TResearch, CardinalUtils>)
+      constructor Create();
+   end;
+
+   TWeightedResearchHashTable = class(specialize THashTable<TResearch, TWeight, TObjectUtils>)
+      constructor Create();
+   end;
+   
+   TTopic = class(TNode)
+   public
+      type
+         TArray = array of TTopic;
+   strict private
+      FValue: UTF8String;
+      FSelectable: Boolean;
+      FRequirements: TResearch.TArray;
+      FObsoletes: TTopic.TArray;
+   strict protected
+      function GetIsRoot(): Boolean; override;
+   public
+      constructor Create(AValue: UTF8String; ASelectable: Boolean; ARequirements: TResearch.TArray; AObsoletes: TTopic.TArray);
+      property Value: UTF8String read FValue;
+      property Selectable: Boolean read FSelectable;
+      property Requirements: TResearch.TArray read FRequirements;
+      property Obsoletes: TTopic.TArray read FObsoletes;
+   end;
+
+   TTopicHashTable = class(specialize THashTable<UTF8String, TTopic, UTF8StringUtils>)
+      constructor Create();
+   end;
+
+   TTopicHashSet = class(specialize THashSet<TTopic, TObjectUtils>)
+      constructor Create();
+   end;
+
+   TTechTreeReader = record
+   strict private
+      FTokenizer: TTokenizer;
+      FAssetClasses: TAssetClassIdentifierHashTable;
+      FMaterialNames: TMaterialNameHashTable;
+      FTopics: TTopicHashTable;
+      function GetAssetClass(Identifier: UTF8String): TAssetClass; inline;
+      function GetMaterial(Name: UTF8String): TMaterial; inline;      
+      function GetTopic(Name: UTF8String): TTopic; inline;      
+   public
+      constructor Create(ATokenizer: TTokenizer; AAssetClasses: TAssetClassIdentifierHashTable; AMaterialNames: TMaterialNameHashTable; ATopics: TTopicHashTable);
+      property AssetClasses[Identifier: UTF8String]: TAssetClass read GetAssetClass;
+      property Materials[Name: UTF8String]: TMaterial read GetMaterial;
+      property Topics[Name: UTF8String]: TTopic read GetTopic;
+      property Tokens: TTokenizer read FTokenizer;
+   end;
+   
    TFeatureClass = class abstract
+   public
+      type
+         TArray = array of TFeatureClass;
    strict protected
       function GetFeatureNodeClass(): FeatureNodeReference; virtual; abstract;
    public
+      constructor CreateFromTechnologyTree(Reader: TTechTreeReader); virtual; abstract;
       function InitFeatureNode(): TFeatureNode; virtual; abstract;
       property FeatureNodeClass: FeatureNodeReference read GetFeatureNodeClass;
    end;
    
-   TFeatureClassArray = array of TFeatureClass;
-
    TDirtyKind = (
       dkSelf, // this asset node is dirty, all ancestors have dkDescendant set*
       dkNew, // this asset node is newly created, dkSelf must also be set**
@@ -305,7 +467,8 @@ type
       dkAffectsDynastyCount, // system needs to redo a dynasty census (requires dkAffectsVisibility)
       dkAffectsVisibility, // system needs to redo a visibility scan
       dkAffectsNames, // any nodes listening to names of descendants should consider itself dirty
-      dkAffectsKnowledge // any nodes caching knowledge
+      dkAffectsKnowledge, // any nodes caching knowledge
+      dkNeedsHandleChanges // the node or one of its descendants wants HandleChanges to be called
    );
    TDirtyKinds = set of TDirtyKind;
    //  * dkSelf and dkChildren are unset when walking up the tree.
@@ -315,7 +478,6 @@ type
 const
    dkAll = [Low(TDirtyKind) .. High(TDirtyKind)];
    dkAffectsTreeStructure = [dkAffectsVisibility, dkAffectsNames, dkAffectsKnowledge, dkVisibilityDidChange, dkSelf, dkChildren];
-   dkWillNeedChangesWalk = [dkChildren];
    
 type
    ISensorsProvider = interface ['ISensorsProvider']
@@ -328,6 +490,9 @@ type
    end;
    
    TFeatureNode = class abstract
+   public
+      type
+         TArray = array of TFeatureNode;
    strict private
       FParent: TAssetNode;
    private
@@ -338,7 +503,8 @@ type
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); virtual;
       procedure AdoptChild(Child: TAssetNode); virtual;
       procedure DropChild(Child: TAssetNode); virtual;
-      procedure MarkAsDirty(DirtyKinds: TDirtyKinds); virtual;
+      procedure MarkAsDirty(DirtyKinds: TDirtyKinds); inline; // Utility function, calls Parent.MarkAsDirty().
+      procedure ParentMarkedAsDirty(ParentDirtyKinds, NewDirtyKinds: TDirtyKinds); virtual; // Called when the parent is marked as dirty.
       function GetMass(): Double; virtual; // kg
       function GetSize(): Double; virtual; // m
       function GetFeatureName(): UTF8String; virtual;
@@ -352,11 +518,11 @@ type
       procedure HandleVisibility(const DynastyIndex: Cardinal; var Visibility: TVisibility; const Sensors: ISensorsProvider; const VisibilityHelper: TVisibilityHelper); virtual;
       procedure CheckVisibilityChanged(VisibilityHelper: TVisibilityHelper); virtual;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); virtual; abstract;
-      procedure HandleChanges(); virtual;
+      procedure HandleChanges(CachedSystem: TSystem); virtual;
       property System: TSystem read GetSystem;
    public
       destructor Destroy(); override;
-      procedure UpdateJournal(Journal: TJournalWriter); virtual; abstract;
+      procedure UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem); virtual; abstract;
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); virtual; abstract;
       function HandleCommand(Command: UTF8String; var Message: TMessage): Boolean; virtual;
       procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); virtual;
@@ -366,28 +532,29 @@ type
       property Parent: TAssetNode read FParent;
    end;
 
-   TFeatureNodeArray = array of TFeatureNode;
-
    TBuildEnvironment = (bePlanetRegion, beSpaceDock);
    TBuildEnvironments = set of TBuildEnvironment;
    
    TAssetClass = class
+   public
+      type
+         TArray = array of TAssetClass;
    private
       FID: TAssetClassID;
-      FFeatures: TFeatureClassArray;
+      FFeatures: TFeatureClass.TArray;
       FName, FAmbiguousName, FDescription: UTF8String;
       FIcon: TIcon;
       FBuildEnvironments: TBuildEnvironments;
       function GetFeature(Index: Cardinal): TFeatureClass;
       function GetFeatureCount(): Cardinal;
    public
-      constructor Create(AID: TAssetClassID; AName, AAmbiguousName, ADescription: UTF8String; AFeatures: TFeatureClassArray; AIcon: TIcon; ABuildEnvironments: TBuildEnvironments);
+      constructor Create(AID: TAssetClassID; AName, AAmbiguousName, ADescription: UTF8String; AFeatures: TFeatureClass.TArray; AIcon: TIcon; ABuildEnvironments: TBuildEnvironments);
       destructor Destroy(); override;
-      function SpawnFeatureNodes(): TFeatureNodeArray; // some feature nodes _can't_ be spawned this way (e.g. TAssetNameFeatureNode)
-      function SpawnFeatureNodesFromJournal(Journal: TJournalReader; CachedSystem: TSystem): TFeatureNodeArray;
+      function SpawnFeatureNodes(): TFeatureNode.TArray; // some feature nodes _can't_ be spawned this way (e.g. TAssetNameFeatureNode)
+      function SpawnFeatureNodesFromJournal(Journal: TJournalReader; CachedSystem: TSystem): TFeatureNode.TArray;
       procedure ApplyFeatureNodesFromJournal(Journal: TJournalReader; AssetNode: TAssetNode; CachedSystem: TSystem);
       function Spawn(AOwner: TDynasty): TAssetNode; overload;
-      function Spawn(AOwner: TDynasty; AFeatures: TFeatureNodeArray): TAssetNode; overload;
+      function Spawn(AOwner: TDynasty; AFeatures: TFeatureNode.TArray): TAssetNode; overload;
    public // encoded in knowledge
       procedure Serialize(Writer: TStringStreamWriter); overload;
       procedure Serialize(Writer: TServerStreamWriter); overload;
@@ -407,22 +574,29 @@ type
    protected
       function GetAssetClass(ID: TAssetClassID): TAssetClass; virtual; abstract;
       function GetMaterial(ID: TMaterialID): TMaterial; virtual; abstract;
+      function GetResearch(ID: TResearchID): TResearch; virtual; abstract;
+      function GetTopic(Name: UTF8String): TTopic; virtual; abstract;
    public
       function Craterize(Diameter: Double; OldAsset, NewAsset: TAssetNode): TAssetNode; virtual; abstract;
       property AssetClasses[ID: TAssetClassID]: TAssetClass read GetAssetClass;
       property Materials[ID: TMaterialID]: TMaterial read GetMaterial;
+      property Researches[ID: TResearchID]: TResearch read GetResearch;
+      property Topics[Name: UTF8String]: TTopic read GetTopic;
    end;
    
    TAssetNode = class
+   public
+      type
+         TArray = array of TAssetNode;
    strict protected
       FAssetClass: TAssetClass;
       FOwner: TDynasty;
-      FFeatures: TFeatureNodeArray;
+      FFeatures: TFeatureNode.TArray;
    protected
       FParent: TFeatureNode;
       FDirty: TDirtyKinds;
       FDynastyNotes: TDynastyNotesPackage; // TDynastyNotesPackage is a 64 bit record, not a pointer to heap-allocated data
-      constructor Create(AAssetClass: TAssetClass; AOwner: TDynasty; AFeatures: TFeatureNodeArray);
+      constructor Create(AAssetClass: TAssetClass; AOwner: TDynasty; AFeatures: TFeatureNode.TArray);
       function GetFeature(Index: Cardinal): TFeatureNode;
       function GetMass(): Double; // kg
       function GetSize(): Double; // m
@@ -451,9 +625,9 @@ type
       procedure CheckVisibilityChanged(VisibilityHelper: TVisibilityHelper);
       function ReadVisibilityFor(DynastyIndex: Cardinal; CachedSystem: TSystem): TVisibility; inline;
       function IsVisibleFor(DynastyIndex: Cardinal; CachedSystem: TSystem): Boolean; inline;
-      procedure HandleChanges();
+      procedure HandleChanges(CachedSystem: TSystem);
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
-      procedure UpdateJournal(Journal: TJournalWriter);
+      procedure UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
       function ID(CachedSystem: TSystem; DynastyIndex: Cardinal; AllowZero: Boolean = False): TAssetID;
       procedure HandleCommand(Command: UTF8String; var Message: TMessage);
@@ -470,8 +644,6 @@ type
       property DebugName: UTF8String read GetDebugName;
       property System: TSystem read GetSystem;
    end;
-
-   TAssetNodeArray = array of TAssetNode;
    
    // pointers to these objects are not valid after the event has run or been canceled
    TSystemEvent = class
@@ -554,11 +726,18 @@ type
       property Now: TTimeInMilliseconds read GetNow;
       property TimeFactor: TTimeFactor read FTimeFactor;
    end;
+
+function ResearchIDHash32(const Key: TResearchID): DWord;
+function ResearchHash32(const Key: TResearch): DWord;
    
 implementation
 
 uses
-   sysutils, exceptions, hashfunctions, isdprotocol, providers, typedump, dateutils, math;
+   sysutils, rtlutils, dateutils,
+   exceptions, typedump,
+   hashfunctions,
+   math,
+   isdprotocol, providers;
    
 type
    TRootAssetNode = class(TAssetNode)
@@ -568,7 +747,7 @@ type
       procedure MarkAsDirty(DirtyKinds: TDirtyKinds); override;
       procedure ReportChildIsPermanentlyGone(Child: TAssetNode); override;
    public
-      constructor Create(AAssetClass: TAssetClass; ASystem: TSystem; AFeatures: TFeatureNodeArray);
+      constructor Create(AAssetClass: TAssetClass; ASystem: TSystem; AFeatures: TFeatureNode.TArray);
    end;
 
 function AssetClassHash32(const Key: TAssetClass): DWord;
@@ -586,9 +765,14 @@ begin
    inherited Create(@DynastyHash32);
 end;
 
-constructor TAssetClassHashTable.Create();
+constructor TAssetClassIDHashTable.Create();
 begin
    inherited Create(@LongIntHash32);
+end;
+
+constructor TAssetClassIdentifierHashTable.Create();
+begin
+   inherited Create(@UTF8StringHash32);
 end;
 
 constructor TAssetClassHashSet.Create();
@@ -604,6 +788,225 @@ end;
 function SystemEventHash32(const Key: TSystemEvent): DWord;
 begin
    Result := ObjectHash32(Key);
+end;
+
+
+constructor TReward.CreateForMessage(var Message: UTF8String);
+begin
+   Assert((PtrUInt(Message) and TypeMask) = $00);
+   {$IFOPT C+} AssertStringIsReffed(Message, 1); {$ENDIF}
+   IncRefCount(Message);
+   FData := PtrUInt(Message) or PtrUInt(rkMessage);
+end;
+
+constructor TReward.CreateForAssetClass(AssetClass: TAssetClass);
+begin
+   Assert((PtrUInt(AssetClass) and TypeMask) = $00);
+   FData := PtrUInt(AssetClass) or PtrUInt(rkAssetClass);
+end;
+
+constructor TReward.CreateForMaterial(Material: TMaterial);
+begin
+   Assert((PtrUInt(Material) and TypeMask) = $00);
+   FData := PtrUInt(Material) or PtrUInt(rkMaterial);
+end;
+
+procedure TReward.Free();
+var
+   Value: UTF8String;
+begin
+   case GetKind() of
+      rkMessage:
+         begin
+            Value := GetMessage();
+            DecRefCount(Value);
+            {$IFOPT C+} AssertStringIsReffed(Message, 0); {$ENDIF}
+         end;
+      rkAssetClass,
+      rkMaterial: ; // these are references, we don't own them
+   end;
+   {$IFOPT C+}
+   FData := PtrUInt(not 0);
+   {$ENDIF}
+end;
+
+function TReward.GetKind(): TRewardKind;
+begin
+   Result := TRewardKind(FData and TypeMask);
+end;
+
+function TReward.GetMessage(): UTF8String;
+begin
+   Assert((PtrUInt(FData) and TypeMask) = PtrUInt(rkMessage));
+   Result := UTF8String(Pointer(FData and not TypeMask)); // {BOGUS Hint: Conversion between ordinals and pointers is not portable}
+   // If we get random crashes, consider if maybe this needs to increase the ref count
+end;
+
+function TReward.GetAssetClass(): TAssetClass;
+begin
+   Assert((PtrUInt(FData) and TypeMask) = PtrUInt(rkAssetClass));
+   Result := TAssetClass(Pointer(FData and not TypeMask)); // {BOGUS Hint: Conversion between ordinals and pointers is not portable}
+end;
+
+function TReward.GetMaterial(): TMaterial;
+begin
+   Assert((PtrUInt(FData) and TypeMask) = PtrUInt(rkMaterial));
+   Result := TMaterial(Pointer(FData and not TypeMask)); // {BOGUS Hint: Conversion between ordinals and pointers is not portable}
+end;
+
+
+procedure TNode.PropagateRequirements(Requirements: TNodeArray);
+var
+   Requirement: TNode;
+begin
+   for Requirement in Requirements do
+   begin
+      SetLength(Requirement.FUnlocks, Length(Requirement.FUnlocks) + 1);
+      Requirement.FUnlocks[High(Requirement.FUnlocks)] := Self;
+   end;
+end;
+
+function TNode.ToString(): UTF8String;
+begin
+   Result := '<TNode: ' + ClassName + '>';
+end;
+
+
+constructor TBonus.Create(ANode: TNode; ATimeDelta: TMillisecondsDuration; AWeightDelta: TWeightDelta; ANegate: Boolean);
+begin
+   FNode := ANode;
+   FTimeDelta := ATimeDelta;
+   FWeightDelta := AWeightDelta;
+   FNegate := ANegate;
+end;
+
+function TBonus.ToString(): UTF8String;
+begin
+   Result := '<TBonus: ' + Node.ToString() + '; ' + IntToStr(TimeDelta.AsInt64) + 'ms; ' + IntToStr(WeightDelta) + ' weight; negate=' + HexStr(LongInt(Negate), 8) + '>';
+end;
+
+
+constructor TResearch.Create(AID: TResearchID; ADefaultTime: TMillisecondsDuration; ADefaultWeight: TWeight; ARequirements: TNode.TNodeArray; ABonuses: TBonus.TArray; ARewards: TReward.TArray);
+begin
+   inherited Create();
+   FID := AID;
+   FDefaultTime := ADefaultTime;
+   FDefaultWeight := ADefaultWeight;
+   FRequirements := ARequirements;
+   FBonuses := ABonuses;
+   FRewards := ARewards;
+   PropagateRequirements(FRequirements);
+end;
+
+destructor TResearch.Destroy();
+var
+   Reward: TReward;
+begin
+   for Reward in FRewards do
+      Reward.Free();
+   inherited;
+end;
+
+function TResearch.GetIsRoot(): Boolean;
+begin
+   Result := Length(FRequirements) = 0;
+end;
+
+function TResearch.ToString(): UTF8String;
+var
+   Bonus: TBonus;
+   Unlock: TNode;
+begin
+   Result := '<Research ' + IntToStr(FID) + '; time=' + IntToStr(FDefaultTime.AsInt64) + 'ms; weight=' + IntToStr(FDefaultTime.AsInt64) + '; ' + IntToStr(Length(FRequirements)) + ' reqs; ' + IntToStr(Length(FBonuses)) + ' bonuses>';
+   for Bonus in FBonuses do
+      Result := Result + #$0A + '  bonus: ' + Bonus.ToString();
+   for Unlock in Unlocks do
+      Result := Result + #$0A + '  unlock: ' + Unlock.ToString();
+end;
+
+
+function ResearchHash32(const Key: TResearch): DWord;
+begin
+   Result := ObjectHash32(Key);
+end;
+
+function ResearchIDHash32(const Key: TResearchID): DWord;
+begin
+   Result := Integer32Hash32(Key);
+end;
+
+constructor TResearchHashSet.Create();
+begin
+   inherited Create(@ResearchHash32);
+end;
+
+constructor TResearchIDHashTable.Create();
+begin
+   inherited Create(@ResearchIDHash32);
+end;
+
+constructor TWeightedResearchHashTable.Create();
+begin
+   inherited Create(@ResearchHash32);
+end;
+
+
+constructor TTopic.Create(AValue: UTF8String; ASelectable: Boolean; ARequirements: TResearch.TArray; AObsoletes: TTopic.TArray);
+begin
+   inherited Create();
+   Assert((not ASelectable) or (AValue <> ''), 'Unnamed topics cannot be selectable.');
+   FValue := AValue;
+   FSelectable := ASelectable;
+   FRequirements := ARequirements;
+   FObsoletes := AObsoletes;
+   PropagateRequirements(TNode.TNodeArray(FRequirements));
+end;
+
+function TTopic.GetIsRoot(): Boolean;
+begin
+   Result := Length(FRequirements) = 0;
+end;
+
+
+function TopicHash32(const Key: TTopic): DWord;
+begin
+   Result := ObjectHash32(Key);
+end;
+
+
+constructor TTopicHashTable.Create();
+begin
+   inherited Create(@UTF8StringHash32);
+end;
+
+
+constructor TTopicHashSet.Create();
+begin
+   inherited Create(@TopicHash32);
+end;
+
+
+constructor TTechTreeReader.Create(ATokenizer: TTokenizer; AAssetClasses: TAssetClassIdentifierHashTable; AMaterialNames: TMaterialNameHashTable; ATopics: TTopicHashTable);
+begin
+   FTokenizer := ATokenizer;
+   FAssetClasses := AAssetClasses;
+   FMaterialNames := AMaterialNames;
+   FTopics := ATopics;
+end;
+
+function TTechTreeReader.GetAssetClass(Identifier: UTF8String): TAssetClass;
+begin
+   Result := FAssetClasses[Identifier];
+end;
+
+function TTechTreeReader.GetMaterial(Name: UTF8String): TMaterial;
+begin
+   Result := FMaterialNames[Name];
+end;
+
+function TTechTreeReader.GetTopic(Name: UTF8String): TTopic;
+begin
+   Result := FTopics[Name];
 end;
 
 
@@ -640,6 +1043,11 @@ begin
 end;
 
 function TJournalReader.ReadCardinal(): Cardinal;
+begin
+   BlockRead(FSystem.FJournalFile, Result, SizeOf(Result)); {BOGUS Hint: Function result variable does not seem to be initialized}
+end;
+
+function TJournalReader.ReadInt32(): Int32;
 begin
    BlockRead(FSystem.FJournalFile, Result, SizeOf(Result)); {BOGUS Hint: Function result variable does not seem to be initialized}
 end;
@@ -746,6 +1154,11 @@ begin
 end;
 
 procedure TJournalWriter.WriteCardinal(Value: Cardinal);
+begin
+   BlockWrite(FSystem.FJournalFile, Value, SizeOf(Value));
+end;
+
+procedure TJournalWriter.WriteInt32(Value: Int32);
 begin
    BlockWrite(FSystem.FJournalFile, Value, SizeOf(Value));
 end;
@@ -897,6 +1310,10 @@ begin
       FParent.MarkAsDirty(DirtyKinds);
 end;
 
+procedure TFeatureNode.ParentMarkedAsDirty(ParentDirtyKinds, NewDirtyKinds: TDirtyKinds);
+begin
+end;
+
 function TFeatureNode.GetMass(): Double;
 begin
    Result := 0.0;
@@ -904,8 +1321,7 @@ end;
 
 function TFeatureNode.GetSize(): Double;
 begin
-   // Result := 1.0e-8;
-   Result := 50.0;
+   Result := 0.0;
 end;
 
 function TFeatureNode.GetFeatureName(): UTF8String;
@@ -952,7 +1368,7 @@ procedure TFeatureNode.CheckVisibilityChanged(VisibilityHelper: TVisibilityHelpe
 begin
 end;
 
-procedure TFeatureNode.HandleChanges();
+procedure TFeatureNode.HandleChanges(CachedSystem: TSystem);
 begin
 end;
 
@@ -971,7 +1387,7 @@ begin
 end;
 
 
-constructor TAssetClass.Create(AID: TAssetClassID; AName, AAmbiguousName, ADescription: UTF8String; AFeatures: TFeatureClassArray; AIcon: TIcon; ABuildEnvironments: TBuildEnvironments);
+constructor TAssetClass.Create(AID: TAssetClassID; AName, AAmbiguousName, ADescription: UTF8String; AFeatures: TFeatureClass.TArray; AIcon: TIcon; ABuildEnvironments: TBuildEnvironments);
 begin
    inherited Create();
    FID := AID;
@@ -1007,9 +1423,9 @@ begin
    Result := Length(FFeatures); // $R-
 end;
 
-function TAssetClass.SpawnFeatureNodes(): TFeatureNodeArray;
+function TAssetClass.SpawnFeatureNodes(): TFeatureNode.TArray;
 var
-   FeatureNodes: TFeatureNodeArray;
+   FeatureNodes: TFeatureNode.TArray;
    Index: Cardinal;
 begin
    SetLength(FeatureNodes, Length(FFeatures));
@@ -1019,7 +1435,7 @@ begin
    Result := FeatureNodes;
 end;
 
-function TAssetClass.SpawnFeatureNodesFromJournal(Journal: TJournalReader; CachedSystem: TSystem): TFeatureNodeArray;
+function TAssetClass.SpawnFeatureNodesFromJournal(Journal: TJournalReader; CachedSystem: TSystem): TFeatureNode.TArray;
 var
    Index, FallbackIndex: Cardinal;
    Value: Cardinal;
@@ -1096,7 +1512,7 @@ begin
    Result := TAssetNode.Create(Self, AOwner, SpawnFeatureNodes());
 end;
 
-function TAssetClass.Spawn(AOwner: TDynasty; AFeatures: TFeatureNodeArray): TAssetNode;
+function TAssetClass.Spawn(AOwner: TDynasty; AFeatures: TFeatureNode.TArray): TAssetNode;
 begin
    Result := TAssetNode.Create(Self, AOwner, AFeatures);
 end;
@@ -1167,7 +1583,7 @@ begin
 end;
 
 
-constructor TAssetNode.Create(AAssetClass: TAssetClass; AOwner: TDynasty; AFeatures: TFeatureNodeArray);
+constructor TAssetNode.Create(AAssetClass: TAssetClass; AOwner: TDynasty; AFeatures: TFeatureNode.TArray);
 var
    Feature: TFeatureNode;
 begin
@@ -1210,13 +1626,15 @@ end;
 
 destructor TAssetNode.Destroy();
 var
+   OldFeatures: TFeatureNode.TArray;
    Feature: TFeatureNode;
 begin
-   for Feature in FFeatures do
-      Feature.Free();
-   SetLength(FFeatures, 0);
    if (Assigned(Parent)) then
       Parent.DropChild(Self);
+   OldFeatures := FFeatures;
+   SetLength(FFeatures, 0);
+   for Feature in OldFeatures do
+      Feature.Free();
    inherited;
 end;
 
@@ -1304,11 +1722,18 @@ begin
 end;
 
 procedure TAssetNode.MarkAsDirty(DirtyKinds: TDirtyKinds);
+var
+   Feature: TFeatureNode;
+   NewFlags: TDirtyKinds;
 begin
+   Assert((dkSelf in DirtyKinds) or (dkDescendant in DirtyKinds));
    Assert(not (dkNew in DirtyKinds));
    if (DirtyKinds - FDirty <> []) then
    begin
+      NewFlags := DirtyKinds - FDirty;
       FDirty := FDirty + DirtyKinds;
+      for Feature in FFeatures do
+         Feature.ParentMarkedAsDirty(FDirty, NewFlags);
       if (Assigned(FParent)) then
       begin
          Exclude(DirtyKinds, dkChildren);
@@ -1317,9 +1742,11 @@ begin
             Exclude(DirtyKinds, dkSelf);
             Include(DirtyKinds, dkDescendant);
             if (dkVisibilityDidChange in DirtyKinds) then
-               Include(DirtyKinds, dkChildren);
+            begin
+               Include(DirtyKinds, dkNeedsHandleChanges);
+            end;
          end;
-         FParent.Parent.MarkAsDirty(DirtyKinds);
+         FParent.MarkAsDirty(DirtyKinds);
       end;
    end;
 end;
@@ -1541,12 +1968,12 @@ begin
    Result := ReadVisibilityFor(DynastyIndex, CachedSystem) <> [];
 end;
 
-procedure TAssetNode.HandleChanges();
+procedure TAssetNode.HandleChanges(CachedSystem: TSystem);
 var
    Feature: TFeatureNode;
 begin
    for Feature in FFeatures do
-      Feature.HandleChanges();
+      Feature.HandleChanges(CachedSystem);
 end;
 
 procedure TAssetNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
@@ -1575,7 +2002,7 @@ begin
    end;
 end;
 
-procedure TAssetNode.UpdateJournal(Journal: TJournalWriter);
+procedure TAssetNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
 var
    Feature: TFeatureNode;
 begin
@@ -1594,7 +2021,7 @@ begin
    for Feature in FFeatures do
    begin
       Journal.WriteCardinal(jcStartOfFeature);
-      Feature.UpdateJournal(Journal);
+      Feature.UpdateJournal(Journal, CachedSystem);
       Journal.WriteCardinal(jcEndOfFeature);
    end;
    Journal.WriteCardinal(jcEndOfFeatures);
@@ -1685,27 +2112,44 @@ end;
 
 function TAssetNode.IsReal(): Boolean;
 var
-   IsDefinitelyReal, IsDefinitelyGhost: Boolean;
+   IsDefinitelyReal, IsDefinitelyGhost, HaveAnswer: Boolean;
    Feature: TFeatureNode;
 begin
+   {$IFOPT C-} {$IFDEF VERBOSE} {$FATAL Can't be verbose without asserts.} {$ENDIF} {$ENDIF}
+   HaveAnswer := False;
    IsDefinitelyReal := False;
    IsDefinitelyGhost := False;
+   {$IFDEF VERBOSE} Writeln(DebugName, ' existentiality report:'); {$ENDIF}
    for Feature in FFeatures do
    begin
       Feature.DescribeExistentiality(IsDefinitelyReal, IsDefinitelyGhost);
+      {$IFDEF VERBOSE} Writeln('  ', Feature.ClassName, ': ', IsDefinitelyReal, ' ', IsDefinitelyGhost); {$ENDIF}
+      Assert((not IsDefinitelyReal) or (not IsDefinitelyGhost));
       if (IsDefinitelyReal) then
       begin
+         Assert((not HaveAnswer) or Result, 'This asset is having an existential crisis: ' + DebugName); {BOGUS Warning: Function result variable does not seem to be initialized}
          Result := True;
-         exit;
-      end;
+         HaveAnswer := True;
+      end
+      else
       if (IsDefinitelyGhost) then
       begin
+         Assert((not HaveAnswer) or not Result, 'This asset is having an existential crisis: ' + DebugName); {BOGUS Warning: Function result variable does not seem to be initialized}
          Assert(Mass = 0);
          Result := False;
-         exit;
+         HaveAnswer := True;
       end;
+      {$IFOPT C-}
+      if (HaveAnswer) then
+         exit;
+      {$ELSE}
+      IsDefinitelyReal := False;
+      IsDefinitelyGhost := False;
+      {$ENDIF}
    end;
-   Result := True;
+   {$IFOPT C+} if (not HaveAnswer) then {$ENDIF}
+      Result := True;
+   {$IFDEF VERBOSE} Writeln('  Conclusion: ', Result); {$ENDIF}
 end;
 
 function TAssetNode.GetDebugName(): UTF8String;
@@ -1752,6 +2196,7 @@ begin
    FEncyclopedia := AEncyclopedia;
    FRoot := TRootAssetNode.Create(ARootClass, Self, ARootClass.SpawnFeatureNodes());
    Exclude(FRoot.FDirty, dkNew);
+   FChanges := dkAll;
 end;
 
 destructor TSystem.Destroy();
@@ -1762,6 +2207,7 @@ begin
       Close(FJournalFile);
    end;
    FRoot.Free();
+   Assert(FScheduledEvents.IsEmpty);
    FScheduledEvents.Free();
    FDynastyIndices.Free();
    UnwindDynastyNotesArenas(FDynastyNotesBuffer);
@@ -1914,7 +2360,7 @@ procedure TSystem.RecordUpdate();
    procedure RecordDirtyAsset(Asset: TAssetNode);
    begin
       if (dkSelf in Asset.Dirty) then
-         Asset.UpdateJournal(Journal);
+         Asset.UpdateJournal(Journal, Self);
    end;
 
    function RecordAssetIDs(Asset: TAssetNode): Boolean;
@@ -2168,8 +2614,8 @@ var
 
    function HandleChanges(Asset: TAssetNode): Boolean;
    begin
-      Asset.HandleChanges();
-      Result := (dkWillNeedChangesWalk * Asset.FDirty <> []) and (dkDescendant in Asset.FDirty);
+      Asset.HandleChanges(Self);
+      Result := (dkNeedsHandleChanges in Asset.FDirty) and (dkDescendant in Asset.FDirty);
    end;
 
 begin
@@ -2178,7 +2624,7 @@ begin
    Assert((dkAffectsVisibility in FChanges) or not (dkAffectsDynastyCount in FChanges)); // dkAffectsDynastyCount requires dkAffectsVisibility
    if (dkAffectsVisibility in FChanges) then
       RecomputeVisibility();
-   if (dkWillNeedChangesWalk * FChanges <> []) then
+   if (dkNeedsHandleChanges in FChanges) then
       FRoot.Walk(@HandleChanges, nil);
    RecordUpdate();
    // TODO: tell the clients if anything stopped being visible? or is that implied?
@@ -2207,7 +2653,7 @@ begin
    FScheduledEvents.Remove(Event);
    FNextEvent := nil;
    FNextEventHandle := nil;
-   Event.FCallback(Event.FData);
+   Event.FCallback(Event.FData); // (could call ScheduleEvent and thus set FNextEvent)
    FreeAndNil(Event);
    if (not Assigned(FNextEvent)) then
    begin
@@ -2215,6 +2661,8 @@ begin
       if (Assigned(FNextEvent)) then
          ScheduleNextEvent();
    end;
+   Assert(Assigned(FNextEvent) = Assigned(FNextEventHandle));
+   Assert(Assigned(FNextEvent) = FScheduledEvents.IsNotEmpty);
 end;
 
 procedure TSystem.ScheduleNextEvent();
@@ -2229,6 +2677,8 @@ begin
    SystemTarget := FNextEvent.FTime;
    RealDelta := (SystemTarget - SystemNow) div FTimeFactor;
    FNextEventHandle := FServer.ScheduleEvent(FServer.Clock.Now() + RealDelta, @RunEvent, FNextEvent);
+   Assert(Assigned(FNextEvent) = Assigned(FNextEventHandle));
+   Assert(Assigned(FNextEvent) = FScheduledEvents.IsNotEmpty);
 end;   
 
 procedure TSystem.RescheduleNextEvent();
@@ -2241,6 +2691,8 @@ begin
       Assert(not Assigned(FNextEventHandle));
       ScheduleNextEvent();
    end;
+   Assert(Assigned(FNextEvent) = Assigned(FNextEventHandle));
+   Assert(Assigned(FNextEvent) = FScheduledEvents.IsNotEmpty);
 end;   
 
 function TSystem.SelectNextEvent(): TSystemEvent;
@@ -2250,7 +2702,6 @@ begin
    Result := nil;
    if (FScheduledEvents.IsNotEmpty) then
    begin
-      Result := nil;
       for Event in FScheduledEvents do
       begin
          if (not Assigned(Result) or (Event.FTime < Result.FTime)) then
@@ -2270,7 +2721,7 @@ begin
       Self
    );
    FScheduledEvents.Add(Result);
-   if ((not Assigned(FNextEvent)) or (FNextEvent.FTime <= Result.FTime)) then
+   if ((not Assigned(FNextEvent)) or (Result.FTime <= FNextEvent.FTime)) then
    begin
       if (Assigned(FNextEvent)) then
          FServer.CancelEvent(FNextEventHandle);
@@ -2278,6 +2729,8 @@ begin
       FNextEvent := Result;
       ScheduleNextEvent();
    end;
+   Assert(Assigned(FNextEvent) = Assigned(FNextEventHandle));
+   Assert(Assigned(FNextEvent) = FScheduledEvents.IsNotEmpty);
 end;
 
 procedure TSystem.CancelEvent(Event: TSystemEvent);
@@ -2294,6 +2747,10 @@ begin
       begin
          FNextEvent := SelectNextEvent();
          ScheduleNextEvent();
+      end
+      else
+      begin
+         FNextEvent := nil;
       end;
    end;
 end;
@@ -2523,7 +2980,7 @@ begin
 end;
 
 
-constructor TRootAssetNode.Create(AAssetClass: TAssetClass; ASystem: TSystem; AFeatures: TFeatureNodeArray);
+constructor TRootAssetNode.Create(AAssetClass: TAssetClass; ASystem: TSystem; AFeatures: TFeatureNode.TArray);
 begin
    inherited Create(AAssetClass, nil, AFeatures);
    Assert(Assigned(ASystem));

@@ -5,13 +5,16 @@ unit encyclopedia;
 interface
 
 uses
-   systems, configuration, astronomy, space, materials, random;
+   systems, configuration, astronomy, space, materials, random, techtree;
 
 type
    TEncyclopedia = class(TEncyclopediaView)
    private
       var
-         FAssetClasses: TAssetClassHashTable; 
+         FMaterials: TMaterialIDHashTable;
+         FAssetClasses: TAssetClassIDHashTable;
+         FResearches: TResearchIDHashTable;
+         FTopics: TTopicHashTable;
          FSpace, FOrbits: TAssetClass;
          FPlaceholderShip, FRockPile: TAssetClass;
          FCrater: TAssetClass;
@@ -19,16 +22,19 @@ type
          FStars: array[TStarCategory] of TAssetClass;
          FPlanetaryBody, FRegion: TAssetClass;
          FProtoplanetaryMaterials: TMaterialHashSet;
-         FMaterials: TMaterialHashMap; // TODO: once we have a tech tree, reconsider this
          FDarkMatter: TMaterial;
       function GetStarClass(Category: TStarCategory): TAssetClass;
    protected
       function GetAssetClass(ID: Integer): TAssetClass; override;
       function GetMaterial(ID: TMaterialID): TMaterial; override;
+      function GetResearch(ID: TResearchID): TResearch; override;
+      function GetTopic(Name: UTF8String): TTopic; override;
       procedure RegisterAssetClass(AssetClass: TAssetClass);
    public
-      constructor Create(Settings: PSettings; AMaterials: TMaterialHashSet);
+      constructor Create(Settings: PSettings; AMaterials: TMaterialHashSet; TechTree: TTechnologyTree);
       destructor Destroy(); override;
+      procedure RegisterMaterials(AMaterials: TMaterialHashSet);
+      procedure ProcessTechTree(TechTree: TTechnologyTree);
       property SpaceClass: TAssetClass read FSpace;
       property PlaceholderShip: TAssetClass read FPlaceholderShip;
       property StarClass[Category: TStarCategory]: TAssetClass read GetStarClass;
@@ -39,7 +45,6 @@ type
       function Craterize(Diameter: Double; OldAsset, NewAsset: TAssetNode): TAssetNode; override;
       property RegionClass: TAssetClass read FRegion;
       property MessageClass: TAssetClass read FMessage;
-      property ProtoplanetaryMaterials: TMaterialHashSet read FProtoplanetaryMaterials;
       property RockPileClass: TAssetClass read FRockPile;
    end;
 
@@ -65,7 +70,7 @@ uses
    icons, orbit, structure, stellar, name, sensors, exceptions,
    sysutils, planetary, protoplanetary, plot, surface, grid, time,
    population, messages, knowledge, math, food, proxy, rubble,
-   floatutils;
+   floatutils, research;
 
 function RoundAboveZero(Value: Double): Cardinal;
 begin
@@ -76,23 +81,25 @@ begin
       Result := 1;
 end;
    
-constructor TEncyclopedia.Create(Settings: PSettings; AMaterials: TMaterialHashSet);
+constructor TEncyclopedia.Create(Settings: PSettings; AMaterials: TMaterialHashSet; TechTree: TTechnologyTree);
 
-   function CreateStarFeatures(): TFeatureClassArray;
+   function CreateStarFeatures(): TFeatureClass.TArray;
    begin
       Result := [ TStarFeatureClass.Create(), TAssetNameFeatureClass.Create() ];
    end;
    
 var
    AssetClass: TAssetClass;
-   Material: TMaterial;
 begin
    inherited Create();
-   FMaterials := TMaterialHashMap.Create();
+   FMaterials := TMaterialIDHashTable.Create();
    FProtoplanetaryMaterials := AMaterials;
-   for Material in FProtoplanetaryMaterials do
-      FMaterials[Material.ID] := Material;
-   FAssetClasses := TAssetClassHashTable.Create();
+   RegisterMaterials(FProtoplanetaryMaterials);
+   FAssetClasses := TAssetClassIDHashTable.Create();
+   FResearches := TResearchIDHashTable.Create();
+   FTopics := TTopicHashTable.Create();
+   ProcessTechTree(TechTree);
+   
    FSpace := TAssetClass.Create(
       idSpace,
       'Space',
@@ -163,7 +170,6 @@ begin
       'A murky black material',
       'The most fundamental and least useful material in the universe, used only for placeholders.',
       DarkMatterIcon,
-      $000000,
       ukBulkResource,
       1e-3, // smallest unit is 1 gram
       1.0, // kg per m^3
@@ -179,7 +185,7 @@ begin
       'A notification.',
       [
          TMessageFeatureClass.Create(),
-         TAssetClassKnowledgeFeatureClass.Create()
+         TKnowledgeFeatureClass.Create()
       ],
       MessageIcon,
       []
@@ -198,7 +204,8 @@ begin
          TMessageBoardFeatureClass.Create(FMessage),
          TKnowledgeBusFeatureClass.Create(),
          TFoodBusFeatureClass.Create(),
-         TFoodGenerationFeatureClass.Create(100)
+         TFoodGenerationFeatureClass.Create(100),
+         TResearchFeatureClass.Create()
       ],
       ColonyShipIcon,
       [beSpaceDock]
@@ -265,21 +272,56 @@ end;
 destructor TEncyclopedia.Destroy();
 var
    AssetClass: TAssetClass;
+   Research: TResearch;
+   Material: TMaterial;
+   Topic: TTopic;
 begin
-   FRegion.Free();
-   FPlaceholderShip.Free();
-   FRockPile.Free();
-   FMessage.Free();
-   FDarkMatter.Free();
+   for Research in FResearches.Values do
+      Research.Free();
+   FResearches.Free();
+   for Material in FMaterials.Values do
+      Material.Free();
    FMaterials.Free();
-   for AssetClass in FStars do
+   for AssetClass in FAssetClasses.Values do
       AssetClass.Free();
-   FCrater.Free();
-   FPlanetaryBody.Free();
-   FOrbits.Free();
-   FSpace.Free();
    FAssetClasses.Free();
+   for Topic in FTopics.Values do
+      Topic.Free();
+   FTopics.Free();
    inherited;
+end;
+
+procedure TEncyclopedia.RegisterMaterials(AMaterials: TMaterialHashSet);
+var
+   Material: TMaterial;
+begin
+   for Material in AMaterials do
+      FMaterials[Material.ID] := Material;
+end;
+
+procedure TEncyclopedia.ProcessTechTree(TechTree: TTechnologyTree);
+var
+   TechTreeMaterials: TMaterial.TArray;
+   Material: TMaterial;
+   TechTreeAssetClasses: TAssetClass.TArray;
+   AssetClass: TAssetClass;
+   TechTreeResearches: TResearch.TArray;
+   Research: TResearch;
+   TechTreeTopics: TTopic.TArray;
+   Topic: TTopic;
+begin
+   TechTreeMaterials := TechTree.ExtractMaterials();
+   for Material in TechTreeMaterials do
+      FMaterials[Material.ID] := Material;
+   TechTreeAssetClasses := TechTree.ExtractAssetClasses();
+   for AssetClass in TechTreeAssetClasses do
+      FAssetClasses[AssetClass.ID] := AssetClass;
+   TechTreeResearches := TechTree.ExtractResearches();
+   for Research in TechTreeResearches do
+      FResearches[Research.ID] := Research;
+   TechTreeTopics := TechTree.ExtractTopics();
+   for Topic in TechTreeTopics do
+      FTopics[Topic.Value] := Topic;
 end;
 
 function TEncyclopedia.GetAssetClass(ID: Integer): TAssetClass;
@@ -290,6 +332,16 @@ end;
 function TEncyclopedia.GetMaterial(ID: TMaterialID): TMaterial;
 begin
    Result := FMaterials[ID];
+end;
+
+function TEncyclopedia.GetResearch(ID: TResearchID): TResearch;
+begin
+   Result := FResearches[ID];
+end;
+
+function TEncyclopedia.GetTopic(Name: UTF8String): TTopic;
+begin
+   Result := FTopics[Name];
 end;
 
 procedure TEncyclopedia.RegisterAssetClass(AssetClass: TAssetClass);
@@ -327,7 +379,7 @@ end;
 
 procedure TEncyclopedia.CondenseProtoplanetaryDisks(Space: TSolarSystemFeatureNode; System: TSystem);
 
-   function CreateRegions(BodyRadius: Double; BodyComposition: TPlanetaryComposition): TAssetNodeArray;
+   function CreateRegions(BodyRadius: Double; BodyComposition: TPlanetaryComposition): TAssetNode.TArray;
    begin
       // TODO: this should do things based on the body composition, create geology, etc
       // TODO: only do this on demand
@@ -362,12 +414,15 @@ procedure TEncyclopedia.CondenseProtoplanetaryDisks(Space: TSolarSystemFeatureNo
       SetLength(AssetComposition, Count);
       TotalVolume := Body.Radius * Body.Radius * Body.Radius * Pi * 4.0 / 3.0; // $R-
       Index := 0;
+      Assert(TotalVolume > 0);
       for BodyComposition in Body.Composition do
       begin
          if (BodyComposition.RelativeVolume > 0) then
          begin
             AssetComposition[Index].Material := BodyComposition.Material;
+            Assert(BodyComposition.RelativeVolume > 0);
             Assert(BodyComposition.Material.MassPerUnit > 0);
+            Assert(BodyComposition.Material.Density > 0);
             AssetComposition[Index].Quantity := (BodyComposition.RelativeVolume / TotalRelativeVolume) * TotalVolume * BodyComposition.Material.Density / BodyComposition.Material.MassPerUnit;
             Assert(AssetComposition[Index].Quantity > 0);
             Inc(Index);

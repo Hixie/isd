@@ -5,12 +5,12 @@ unit planetary;
 interface
 
 uses
-   systems, serverstream, materials;
+   systems, serverstream, materials, techtree, tttokenizer;
 
 type
    TPlanetaryCompositionEntry = record
       Material: TMaterial;
-      Quantity: Double;
+      Quantity: Double; // TODO: how are we going to handle small changes to such large numbers?
       constructor Create(AMaterial: TMaterial; AQuantity: Double);
    end;
 
@@ -20,6 +20,7 @@ type
    strict protected
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
+      constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
       function InitFeatureNode(): TFeatureNode; override;
    end;
 
@@ -38,7 +39,7 @@ type
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
    public
       constructor Create(ADiameter, ATemperature: Double; AComposition: TPlanetaryComposition; AStructuralIntegrity: Cardinal; AConsiderForDynastyStart: Boolean);
-      procedure UpdateJournal(Journal: TJournalWriter); override;
+      procedure UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem); override;
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
       procedure SetTemperature(ATemperature: Double); // stores a computed temperature
       procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); override;
@@ -59,6 +60,11 @@ begin
    Quantity := AQuantity;
 end;
 
+
+constructor TPlanetaryBodyFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
+begin
+   Reader.Tokens.Error('Feature class %s is reserved for internal asset classes', [ClassName]);
+end;
 
 function TPlanetaryBodyFeatureClass.GetFeatureNodeClass(): FeatureNodeReference;
 begin
@@ -156,7 +162,7 @@ begin
    Writer.WriteCardinal(FStructuralIntegrity);
 end;
 
-procedure TPlanetaryBodyFeatureNode.UpdateJournal(Journal: TJournalWriter);
+procedure TPlanetaryBodyFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
 var
    Index: Cardinal;
 begin
@@ -201,4 +207,6 @@ begin
    IsDefinitelyReal := True;
 end;
 
+initialization
+   RegisterFeatureClass(TPlanetaryBodyFeatureClass);
 end.

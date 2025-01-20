@@ -5,7 +5,7 @@ unit name;
 interface
 
 uses
-   systems, serverstream, providers;
+   systems, serverstream, providers, techtree, tttokenizer;
 
 type
    // For assets that have globally known fixed names (e.g. stars).
@@ -13,6 +13,7 @@ type
    strict protected
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
+      constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
       function InitFeatureNode(): TFeatureNode; override;
    end;
 
@@ -23,7 +24,7 @@ type
       function GetAssetName(): UTF8String;
    public
       constructor Create(AAssetName: UTF8String);
-      procedure UpdateJournal(Journal: TJournalWriter); override;
+      procedure UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem); override;
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
       property AssetName: UTF8String read FAssetName;
    end;
@@ -32,6 +33,11 @@ implementation
 
 uses
    sysutils;
+
+constructor TAssetNameFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
+begin
+   Reader.Tokens.Error('Feature class %s is reserved for internal asset classes', [ClassName]);
+end;
 
 function TAssetNameFeatureClass.GetFeatureNodeClass(): FeatureNodeReference;
 begin
@@ -56,7 +62,7 @@ begin
    // client receives this as a property of the asset via IAssetNameProvider
 end;
 
-procedure TAssetNameFeatureNode.UpdateJournal(Journal: TJournalWriter);
+procedure TAssetNameFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
 begin
    Journal.WriteString(FAssetName);
 end;
@@ -71,4 +77,6 @@ begin
    Result := AssetName;
 end;
 
+initialization
+   RegisterFeatureClass(TAssetNameFeatureClass);
 end.

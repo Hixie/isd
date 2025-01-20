@@ -5,7 +5,7 @@ unit plot;
 interface
 
 uses
-   systems, systemdynasty, serverstream, materials;
+   systems, systemdynasty, serverstream, materials, techtree;
 
 const
    pcNothing = 0;
@@ -16,6 +16,7 @@ type
    strict protected
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
+      constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
       function InitFeatureNode(): TFeatureNode; override;
    end;
 
@@ -26,7 +27,7 @@ type
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
    public
       constructor Create(ADynasty: TDynasty);
-      procedure UpdateJournal(Journal: TJournalWriter); override;
+      procedure UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem); override;
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
       property Dynasty: TDynasty read FDynasty;
    end;
@@ -35,6 +36,12 @@ implementation
 
 uses
    sysutils, isdprotocol;
+
+
+constructor TDynastyOriginalColonyShipFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
+begin
+   Reader.Tokens.Error('Feature class %s is reserved for internal asset classes', [ClassName]);
+end;
 
 function TDynastyOriginalColonyShipFeatureClass.GetFeatureNodeClass(): FeatureNodeReference;
 begin
@@ -64,7 +71,7 @@ begin
    end;
 end;
 
-procedure TDynastyOriginalColonyShipFeatureNode.UpdateJournal(Journal: TJournalWriter);
+procedure TDynastyOriginalColonyShipFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
 begin
    Assert(Parent.Owner = FDynasty); // if this is ever false, we need to either clear FDynasty or support having dynasties that have no assets in the system
    Journal.WriteDynastyReference(FDynasty);
@@ -75,4 +82,6 @@ begin
    FDynasty := Journal.ReadDynastyReference();
 end;
 
+initialization
+   RegisterFeatureClass(TDynastyOriginalColonyShipFeatureClass);
 end.

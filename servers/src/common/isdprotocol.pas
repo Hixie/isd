@@ -36,8 +36,9 @@ const
    fcMessage = $0D;
    fcRubblePile = $0E;
    fcProxy = $0F;
-   fcAssetClassKnowledge = $10;
-   fcHighestKnownFeatureCode = fcAssetClassKnowledge;
+   fcKnowledge = $10;
+   fcResearch = $11;
+   fcHighestKnownFeatureCode = fcResearch;
    
 implementation
 

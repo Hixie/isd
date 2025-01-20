@@ -5,14 +5,14 @@ unit orbit;
 interface
 
 uses
-   systems, providers, serverstream, time;
+   systems, providers, serverstream, time, techtree;
 
 type
    TOrbitBusMessage = class abstract(TBusMessage) end;
    
    PCrashReport = ^TCrashReport;
    TCrashReport = record
-      Victims: TAssetNodeArray; // TODO: make populating this more efficient
+      Victims: TAssetNode.TArray; // TODO: make populating this more efficient
    end;
 
    // reporting this as handled implies that AddVictim has been called appropriately
@@ -27,10 +27,10 @@ type
    
    TReceiveCrashingAssetMessage = class(TOrbitBusMessage)
    private
-      FAssets: TAssetNodeArray;
+      FAssets: TAssetNode.TArray;
    public
       constructor Create(ACrashReport: PCrashReport);
-      property Assets: TAssetNodeArray read FAssets;
+      property Assets: TAssetNode.TArray read FAssets;
    end;
    
 type
@@ -38,18 +38,19 @@ type
    strict protected
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
+      constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
       function InitFeatureNode(): TFeatureNode; override;
    end;
 
    TOrbitFeatureNode = class(TFeatureNode, IHillDiameterProvider, IAssetNameProvider)
    private
       FPrimaryChild: TAssetNode;
-      FChildren: TAssetNodeArray;
+      FChildren: TAssetNode.TArray;
       function GetOrbitName(): UTF8String;
    protected
       procedure AdoptOrbitingChild(Child: TAssetNode); // Child must be an orbit.
       procedure DropChild(Child: TAssetNode); override;
-      procedure MarkAsDirty(DirtyKinds: TDirtyKinds); override;
+      procedure ParentMarkedAsDirty(ParentDirtyKinds, NewDirtyKinds: TDirtyKinds); override;
       function GetMass(): Double; override;
       function GetSize(): Double; override;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
@@ -61,7 +62,7 @@ type
    public
       constructor Create(APrimaryChild: TAssetNode);
       destructor Destroy(); override;
-      procedure UpdateJournal(Journal: TJournalWriter); override;
+      procedure UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem); override;
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
       function GetHillDiameter(Child: TAssetNode; ChildPrimaryMass: Double): Double;
       function GetRocheLimit(ChildRadius, ChildMass: Double): Double; // returns minimum semi-major axis for a hypothetical child planetary body orbitting our primary
@@ -136,6 +137,11 @@ begin
 end;
 
 
+constructor TOrbitFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
+begin
+   Reader.Tokens.Error('Feature class %s is reserved for internal asset classes', [ClassName]);
+end;
+
 function TOrbitFeatureClass.GetFeatureNodeClass(): FeatureNodeReference;
 begin
    Result := TOrbitFeatureNode;
@@ -189,7 +195,7 @@ begin
    for Child in FChildren do
    begin
       Assert(Assigned(Child));
-      Child.Free();
+      Child.Free(); // calls DropChild
    end;
    inherited;
 end;
@@ -350,10 +356,10 @@ begin
    end;
 end;
 
-procedure TOrbitFeatureNode.MarkAsDirty(DirtyKinds: TDirtyKinds);
+procedure TOrbitFeatureNode.ParentMarkedAsDirty(ParentDirtyKinds, NewDirtyKinds: TDirtyKinds);
 begin
-   if (dkAffectsNames in DirtyKinds) then
-      Include(DirtyKinds, dkSelf);
+   if (dkAffectsNames in NewDirtyKinds) then
+      MarkAsDirty([dkSelf]);
    inherited;
 end;
 
@@ -520,7 +526,7 @@ begin
    Writer.WriteCardinal(0);
 end;
 
-procedure TOrbitFeatureNode.UpdateJournal(Journal: TJournalWriter);
+procedure TOrbitFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
 var
    Child: TAssetNode;
 begin
@@ -622,4 +628,6 @@ begin
    IsDefinitelyReal := True;
 end;
 
+initialization
+   RegisterFeatureClass(TOrbitFeatureClass);
 end.
