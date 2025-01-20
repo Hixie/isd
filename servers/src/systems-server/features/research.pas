@@ -418,7 +418,7 @@ var
    var
       Temp: TResearch;
    begin
-      Temp := Candidates[B];
+      Temp := Candidates[A];
       Candidates[A] := Candidates[B];
       Candidates[B] := Temp;
    end;
@@ -513,7 +513,8 @@ begin
                         if (RequirementsMet) then
                            Inc(Weight, Bonus.WeightDelta);
                      end;
-                     WeightedCandidates[Candidate] := Weight;
+                     if (Weight > 0) then
+                        WeightedCandidates[Candidate] := Weight;
                      Inc(TotalWeight, Weight);
                   end;
                end;
@@ -539,18 +540,35 @@ begin
          Inc(Index);
       end;
       Sort(Length(Candidates), @CompareCandidates, @SwapCandidates); // $R-
+      Assert(Length(Candidates) = WeightedCandidates.Count);
 
       // Pick a random number using our seed.
       SelectedResearch := FSeed mod TotalWeight;
+      Assert(SelectedResearch >= 0);
+      Assert(SelectedResearch < TotalWeight);
 
       // Find the corresponding research
-      Index := 0;
+      Index := Low(Candidates);
       repeat
          Weight := WeightedCandidates[Candidates[Index]];
+         Assert(Weight > 0);
+         Assert(Weight <= TotalWeight);
          if (SelectedResearch < Weight) then
             break;
          Dec(SelectedResearch, Weight);
          Inc(Index);
+         {$IFOPT C+}
+         if (Index >= Length(Candidates)) then
+         begin
+            Writeln('Failed with index = ', Index, ', selected research = ', SelectedResearch);
+            Writeln('Total weight = ', TotalWeight);
+            Writeln('Selected research = ', FSeed mod TotalWeight);
+            Writeln(Length(Candidates), ' candidates:');
+            for Index := Low(Candidates) to High(Candidates) do // $R-
+               Writeln('  #', Index, ': research ', Candidates[Index].ID, ' has weight ', WeightedCandidates[Candidates[Index]]);
+            Assert(False);
+         end;
+         {$ENDIF}
          Assert(Index < Length(Candidates));
       until False;
 

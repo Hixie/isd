@@ -443,7 +443,7 @@ begin
          Asset := AssetClass.Spawn(PlayerDynasty);
          AdoptGridChild(Asset, X, Y);
          Assert(not Asset.IsReal());
-         Assert(Asset.Size <= FCellSize);
+         Assert(Asset.Size <= FCellSize, 'Tried to put ' + Asset.DebugName + ' of size ' + FloatToStr(Asset.Size) + 'm in cell size ' + FloatToStr(FCellSize) + 'm');
          Message.CloseOutput();
       end;
    end
