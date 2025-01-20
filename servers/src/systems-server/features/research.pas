@@ -39,7 +39,6 @@ type
       procedure ScheduleUpdateResearch();
    protected
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
-      function GetMass(): Double; override; // kg
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
       procedure HandleChanges(CachedSystem: TSystem); override;
    public
@@ -108,11 +107,6 @@ begin
    if (Assigned(FResearchEvent)) then
       FResearchEvent.Cancel();
    inherited;
-end;
-
-function TResearchFeatureNode.GetMass(): Double; // kg
-begin
-   Result := 0.0;
 end;
 
 procedure TResearchFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);

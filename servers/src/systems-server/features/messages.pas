@@ -40,7 +40,6 @@ type
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
       procedure AdoptChild(Child: TAssetNode); override;
       procedure DropChild(Child: TAssetNode); override;
-      function GetMass(): Double; override;
       function GetFeatureName(): UTF8String; override;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
@@ -170,11 +169,6 @@ begin
    Dispose(PMessageBoardData(Child.ParentData));
    Child.ParentData := nil;
    inherited;
-end;
-
-function TMessageBoardFeatureNode.GetMass(): Double;
-begin
-   Result := 0.0;
 end;
 
 function TMessageBoardFeatureNode.GetFeatureName(): UTF8String;
