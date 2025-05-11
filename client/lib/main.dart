@@ -3,13 +3,18 @@ import 'dart:math' as math;
 import 'dart:ui' show ImageFilter;
 
 import 'package:cross_local_storage/cross_local_storage.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'connection.dart';
 import 'game.dart';
+import 'http/http.dart' as http;
+import 'icons.dart';
 import 'root.dart';
 import 'shaders.dart';
+
+int kCacheSize = 10 * 1024 * 1024;
 
 void main() async {
   print('INTERSTELLAR DYNASTIES CLIENT');
@@ -19,8 +24,16 @@ void main() async {
         return true;
       return false;
     };
-  final ShaderLibrary shaders = await ShaderLibrary.initialize();
-  final LocalStorageInterface localStorage = await LocalStorage.getInstance();
+  // TODO: show widgets while the async load is happening
+  final Stopwatch stopwatch = Stopwatch()..start();
+  late final ShaderLibrary shaders;
+  late final LocalStorageInterface localStorage;
+  late final IconsManager icons;
+  await Future.wait(<Future<void>>[
+    ShaderLibrary.initialize().then((ShaderLibrary value) async { shaders = value; }),
+    IconsManager.initialize(http.createClient(userAgent: 'ISD/1', cacheSize: kCacheSize)).then((IconsManager value) async { icons = value; }),
+    Future<LocalStorageInterface>.value(LocalStorage.getInstance()).then((LocalStorageInterface value) async { localStorage = value; }),
+  ]);
   final Game game = Game(
     localStorage.getString('username'),
     localStorage.getString('password'),
@@ -35,41 +48,77 @@ void main() async {
       localStorage.setString('password', value.password);
     }
   });
-  runApp(GameRoot(game: game, shaders: shaders));
+  print('Startup took ${stopwatch.elapsed}');
+  runApp(GameRoot(
+    game: game,
+    shaders: shaders,
+    icons: icons,
+  ));
 }
 
-class GameRoot extends StatelessWidget {
-  const GameRoot({super.key, required this.game, required this.shaders});
+class GameRoot extends StatefulWidget {
+  const GameRoot({
+    super.key,
+    required this.game,
+    required this.shaders,
+    required this.icons,
+  });
 
   final Game game;
   final ShaderLibrary shaders;
+  final IconsManager icons;
 
   @override
+  State<GameRoot> createState() => _GameRootState();
+}
+
+class _GameRootState extends State<GameRoot> {
+  bool _debug = false;
+  
+  @override
   Widget build(BuildContext context) {
-    return ColoredBox(
+    Widget app = MaterialApp(
+      // showSemanticsDebugger: true, // TODO: fix a11y (all the RenderWorld nodes don't report semantics)
+      title: 'Interstellar Dynasties',
       color: const Color(0xFF000000),
-      child: MaterialApp(
-        title: 'Interstellar Dynasties',
-        color: const Color(0xFF000000),
-        home: AnnotatedRegion<SystemUiOverlayStyle>(
-          value: SystemUiOverlayStyle.light, // TODO: make this depend on the actual UI
-          child: Material(
-            type: MaterialType.transparency,
-            child: ShaderProvider(
-              shaders: shaders,
-              child: InterstellarDynasties(game: game),
+      home: AnnotatedRegion<SystemUiOverlayStyle>(
+        value: SystemUiOverlayStyle.light, // TODO: make this depend on the actual UI
+        child: Material(
+          type: MaterialType.transparency,
+          child: ShaderProvider(
+            shaders: widget.shaders,
+            child: IconsManagerProvider(
+              icons: widget.icons,
+              child: InterstellarDynasties(
+                game: widget.game,
+                onToggleDebug: () { setState(() { _debug = !_debug; }); },
+              ),
             ),
           ),
         ),
       ),
     );
+    if (_debug) {
+      app = Padding(
+        padding: const EdgeInsets.all(36.0),
+        child: app,
+      );
+    }
+    return ColoredBox(
+      color: const Color(0xFF000000),
+      child: app,
+    );
   }
 }
 
 class InterstellarDynasties extends StatefulWidget {
-  InterstellarDynasties({required this.game}) : super(key: ValueKey<Game>(game));
+  InterstellarDynasties({
+    required this.game,
+    required this.onToggleDebug,
+  }) : super(key: ValueKey<Game>(game));
 
   final Game game;
+  final VoidCallback onToggleDebug;
 
   @override
   _InterstellarDynastiesState createState() => _InterstellarDynastiesState();
@@ -255,10 +304,10 @@ class _InterstellarDynastiesState extends State<InterstellarDynasties> {
                   padding: const EdgeInsetsDirectional.fromSTEB(8.0, 8.0, 32.0, 32.0),
                   child: PopupMenuButton<void>(
                     icon: Icon(Icons.settings, shadows: kElevationToShadow[1]),
-                    popUpAnimationStyle: AnimationStyle(
+                    popUpAnimationStyle: const AnimationStyle(
                       curve: Curves.easeInCubic,
                       reverseCurve: Curves.decelerate,
-                      duration: const Duration(milliseconds: 400),
+                      duration: Duration(milliseconds: 400),
                     ),
                     iconColor: Theme.of(context).colorScheme.onSecondary,
                     itemBuilder: (BuildContext context) => <PopupMenuEntry<void>>[
@@ -278,6 +327,13 @@ class _InterstellarDynastiesState extends State<InterstellarDynasties> {
                         child: const Text('About'),
                         onTap: _doAbout,
                       ),
+                      if (!kReleaseMode)
+                        const PopupMenuDivider(),
+                      if (!kReleaseMode)
+                        PopupMenuItem<void>(
+                          child: const Text('Toggle Debug'),
+                          onTap: widget.onToggleDebug,
+                        ),
                     ],
                   ),
                 ),

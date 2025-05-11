@@ -3,24 +3,25 @@ import 'package:flutter/widgets.dart';
 
 import '../assets.dart';
 import '../layout.dart';
+import '../nodes/system.dart';
 import '../spacetime.dart';
 import '../world.dart';
 
 class PlanetFeature extends AbilityFeature {
-  PlanetFeature(this.spaceTime, this.hp);
-
-  final SpaceTime spaceTime;
-  final int hp;
+  PlanetFeature();
 
   @override
-  Widget? buildRenderer(BuildContext context, Widget? child) {
+  Widget buildRenderer(BuildContext context) {
     return PlanetWidget(
       node: parent,
       diameter: parent.diameter,
       maxDiameter: parent.maxRenderDiameter,
-      spaceTime: spaceTime,
+      spaceTime: SystemNode.of(context).spaceTime,
     );
   }
+
+  @override
+  RendererType get rendererType => RendererType.world;
 }
 
 class PlanetWidget extends LeafRenderObjectWidget {
@@ -98,14 +99,13 @@ class RenderPlanet extends RenderWorldNode {
   void computeLayout(WorldConstraints constraints) { }
 
   Paint get _planetPaint => Paint()
-    ..color = const Color(0xFFFFFFFF);
+    ..color = const Color(0xFF7FFF7F);
 
   @override
-  WorldGeometry computePaint(PaintingContext context, Offset offset) {
-    // this only gets used when the planet has no surface
+  double computePaint(PaintingContext context, Offset offset) {
     final double actualDiameter = computePaintDiameter(diameter, maxDiameter);
     context.canvas.drawCircle(offset, actualDiameter / 2.0, _planetPaint);
-    return WorldGeometry(shape: Circle(actualDiameter));
+    return actualDiameter;
   }
 
   @override

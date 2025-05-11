@@ -101,7 +101,7 @@ class OrbitFeature extends ContainerFeature {
   }
 
   @override
-  Widget buildRenderer(BuildContext context, Widget? child) {
+  Widget buildRenderer(BuildContext context) {
     final List<Widget> childList = <Widget>[
       OrbitChildData(
         mass: originChild.mass,
@@ -139,7 +139,7 @@ class OrbitFeature extends ContainerFeature {
     }
     assert(children.containsKey(child), '$parent has no child $child; children are ${children.keys} and $originChild');
     parent.addTransientListeners(callbacks);
-    final double time = parent.computeTime(spaceTime, callbacks);
+    final double time = parent.computeTime(spaceTime, callbacks); // TODO: why parent.computeTime, instead of our own?
     return _computeOrbit(children[child]!, originChild.mass, time);
   }
 }
@@ -203,6 +203,7 @@ class OrbitChildData extends ParentDataWidget<OrbitParentData> {
 class OrbitParentData extends ParentData with ContainerParentDataMixin<RenderWorld> {
   double mass = 0.0;
   Orbit orbit = nilOrbit;
+  Offset? _computedPosition;
 }
 
 class RenderOrbit extends RenderWorldWithChildren<OrbitParentData> {
@@ -249,10 +250,11 @@ class RenderOrbit extends RenderWorldWithChildren<OrbitParentData> {
   }
 
   @override
-  WorldGeometry computePaint(PaintingContext context, Offset offset) {
+  double computePaint(PaintingContext context, Offset offset) {
     RenderWorld? child = firstChild;
     assert(child != null);
     final OrbitParentData primaryChildParentData = child!.parentData! as OrbitParentData;
+    primaryChildParentData._computedPosition = Offset.zero;
     child = primaryChildParentData.nextSibling;
     while (child != null) {
       final OrbitParentData childParentData = child.parentData! as OrbitParentData;
@@ -270,11 +272,12 @@ class RenderOrbit extends RenderWorldWithChildren<OrbitParentData> {
         context.canvas.drawOval(oval, Paint()..style= PaintingStyle.stroke..color = const Color(0x40FFFFFF));
         context.canvas.restore();
       }
-      context.paintChild(child, constraints.paintPositionFor(child.node, offset, <VoidCallback>[markNeedsPaint]));
+      childParentData._computedPosition = constraints.paintPositionFor(child.node, offset, <VoidCallback>[markNeedsPaint]);
+      context.paintChild(child, childParentData._computedPosition!);
       child = childParentData.nextSibling;
     }
     context.paintChild(firstChild!, offset);
-    return WorldGeometry(shape: Circle(diameter));
+    return diameter * constraints.scale;
   }
 
   @override

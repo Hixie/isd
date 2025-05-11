@@ -54,7 +54,7 @@ class SpaceFeature extends ContainerFeature {
   }
 
   @override
-  Widget buildRenderer(BuildContext context, Widget? child) {
+  Widget buildRenderer(BuildContext context) {
     return SpaceWidget(
       node: parent,
       diameter: parent.diameter,
@@ -90,7 +90,9 @@ class SpaceWidget extends MultiChildRenderObjectWidget {
   }
 }
 
-class SpaceParentData extends ParentData with ContainerParentDataMixin<RenderWorld> { }
+class SpaceParentData extends ParentData with ContainerParentDataMixin<RenderWorld> {
+  Offset? _computedPosition;
+}
 
 class RenderSpace extends RenderWorldWithChildren<SpaceParentData> {
   RenderSpace({
@@ -127,14 +129,15 @@ class RenderSpace extends RenderWorldWithChildren<SpaceParentData> {
   }
 
   @override
-  WorldGeometry computePaint(PaintingContext context, Offset offset) {
+  double computePaint(PaintingContext context, Offset offset) {
     RenderWorld? child = firstChild;
     while (child != null) {
       final SpaceParentData childParentData = child.parentData! as SpaceParentData;
-      context.paintChild(child, constraints.paintPositionFor(child.node, offset, <VoidCallback>[markNeedsPaint]));
+      childParentData._computedPosition = constraints.paintPositionFor(child.node, offset, <VoidCallback>[markNeedsPaint]);
+      context.paintChild(child, childParentData._computedPosition!);
       child = childParentData.nextSibling;
     }
-    return WorldGeometry(shape: Circle(diameter));
+    return diameter;
   }
 
   @override

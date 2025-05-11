@@ -2,7 +2,8 @@ import 'package:flutter/widgets.dart';
 
 import 'containers/orbits.dart';
 import 'dynasty.dart';
-import 'nodes/placeholder.dart';
+import 'icons.dart';
+import 'widgets.dart';
 import 'world.dart';
 
 abstract class Feature {
@@ -27,11 +28,16 @@ abstract class Feature {
 
 typedef WalkCallback = bool Function(AssetNode node);
 
+enum RendererType { none, box, world }
+
 abstract class AbilityFeature extends Feature {
   AbilityFeature();
 
-  Widget? buildRenderer(BuildContext context, Widget? child) {
-    return null;
+  RendererType get rendererType;
+  
+  Widget buildRenderer(BuildContext context) {
+    assert(rendererType == RendererType.none);
+    throw StateError('buildRenderer should not be called if rendererType is RendererType.none');
   }
 }
 
@@ -46,7 +52,7 @@ abstract class ContainerFeature extends Feature {
 
   void walk(WalkCallback callback);
 
-  Widget buildRenderer(BuildContext context, Widget? child);
+  Widget buildRenderer(BuildContext context); // this one is abstract; containers always need to build something
 }
 
 class AssetNode extends WorldNode {
@@ -54,11 +60,11 @@ class AssetNode extends WorldNode {
 
   final int id;
 
-  int get assetClass => _assetClass!;
-  int? _assetClass;
-  set assetClass(int value) {
-    if (_assetClass != value) {
-      _assetClass = value;
+  int get assetClassID => _assetClassID!;
+  int? _assetClassID;
+  set assetClassID(int value) {
+    if (_assetClassID != value) {
+      _assetClassID = value;
       notifyListeners();
     }
   }
@@ -77,6 +83,15 @@ class AssetNode extends WorldNode {
   set mass(double value) {
     if (_mass != value) {
       _mass = value;
+      notifyListeners();
+    }
+  }
+
+  double get massFlowRate => _massFlowRate!; // kg
+  double? _massFlowRate;
+  set massFlowRate(double value) {
+    if (_massFlowRate != value) {
+      _massFlowRate = value;
       notifyListeners();
     }
   }
@@ -196,30 +211,58 @@ class AssetNode extends WorldNode {
 
   @override
   Widget buildRenderer(BuildContext context, Widget? nil) {
-    if (_containers.length == 1) {
-      return _containers.values.single.buildRenderer(context, null);
-    }
+    // TODO: compute actualDiameter here, and short-circuit if it's too small
+    final List<Widget> backgrounds = <Widget>[];
+    List<Widget>? boxes;
     for (AbilityFeature feature in _abilities.values) {
-      final Widget? result = feature.buildRenderer(context, null);
-      if (result != null) {
-        return result;
+      switch (feature.rendererType) {
+        case RendererType.none:
+          ;
+        case RendererType.box:
+          boxes ??= <Widget>[];
+          boxes.add(feature.buildRenderer(context));
+        case RendererType.world:
+          backgrounds.add(feature.buildRenderer(context));
       }
     }
-    if (parent != null) {
-      parent!.addTransientListener(notifyListeners);
-      assert(parent!.diameter > 0.0, 'parent $parent has zero diameter');
-      return WorldPlaceholder(
+    for (ContainerFeature feature in _containers.values) {
+      backgrounds.add(feature.buildRenderer(context));
+    }
+    if (backgrounds.isEmpty) {
+      if (parent != null) {
+        addTransientListener(notifyListeners); // TODO: what does this line do
+        assert(parent!.diameter > 0.0, 'parent $parent has zero diameter');
+        backgrounds.add(WorldIcon(
+          node: this,
+          diameter: diameter,
+          maxDiameter: parent!.maxRenderDiameter,
+          icon: icon,
+        ));
+      }
+      backgrounds.add(WorldIcon(
         node: this,
         diameter: diameter,
-        maxDiameter: parent!.maxRenderDiameter,
-        color: const Color(0xFFFFFF00),
-      );
+        maxDiameter: maxRenderDiameter,
+        icon: icon,
+      ));
     }
-    return WorldPlaceholder(
+    if (boxes != null && boxes.isNotEmpty) {
+      backgrounds.add(WorldBoxGrid(
+        node: this,
+        maxDiameter: parent!.maxRenderDiameter,
+        diameter: diameter,
+        children: boxes,
+      ));
+    }
+    if (backgrounds.length == 1) {
+      return backgrounds.single;
+    }
+    assert(backgrounds.length > 1);
+    return WorldStack(
       node: this,
+      maxDiameter: parent!.maxRenderDiameter,
       diameter: diameter,
-      maxDiameter: maxRenderDiameter,
-      color: const Color(0xFFFF0000),
+      children: backgrounds,
     );
   }
 

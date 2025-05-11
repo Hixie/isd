@@ -88,12 +88,13 @@ class RenderWorldPlaceholder extends RenderWorldNode {
     ..style = PaintingStyle.stroke;
 
   @override
-  WorldGeometry computePaint(PaintingContext context, Offset offset) {
-    final double radius = computePaintDiameter(diameter, maxDiameter) / 2.0;
+  double computePaint(PaintingContext context, Offset offset) {
+    final double actualDiameter = computePaintDiameter(diameter, maxDiameter);
+    final double radius = actualDiameter / 2.0;
     context.canvas.drawCircle(offset, radius, _paint);
     context.canvas.drawLine(offset - Offset(radius, 0.0), offset + Offset(radius, 0.0), _paint);
     context.canvas.drawLine(offset - Offset(0.0, radius), offset + Offset(0.0, radius), _paint);
-    return WorldGeometry(shape: Circle(diameter));
+    return actualDiameter;
   }
 
   @override

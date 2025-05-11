@@ -18,4 +18,7 @@ class SpaceSensorsFeature extends AbilityFeature {
   final AssetNode? nearestOrbit;
   final AssetNode? topOrbit;
   final int? detectedCount;
+
+  @override
+  RendererType get rendererType => RendererType.none;
 }

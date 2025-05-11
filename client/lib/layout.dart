@@ -39,6 +39,7 @@ class WorldConstraints extends Constraints {
   // Offset to pass to paint method for render objects of specific nodes, giving
   // the pixel offset from the canvas center to the node center.
   // For some nodes, this is precomputed. For others, it's a delta from the parent's offset.
+
   // This includes the pan (because that's baked into the parent offset).
   Offset paintPositionFor(WorldNode node, Offset parentOffset, List<VoidCallback> callbacks) {
     if (_precomputedPositions.containsKey(node)) {
@@ -52,74 +53,10 @@ class WorldConstraints extends Constraints {
   String toString() => 'WorldConstraints(x$zoom, scale=${scale}px/m, viewport=${viewportSize}px)';
 }
 
-@immutable
-sealed class WorldShape {
-  const WorldShape();
-
-  Size get size;
-
-  double get diameter => size.longestSide;
-
-  bool contains(Offset center, Offset point);
-}
-
-class Square extends WorldShape {
-  const Square(this.sideLength);
-
-  final double sideLength;
-
-  @override
-  Size get size => Size.square(sideLength);
-
-  @override
-  bool contains(Offset center, Offset point) {
-    return Rect.fromCenter(center: center, width: sideLength, height: sideLength).contains(point);
-  }
-}
-
-class Rectangle extends WorldShape {
-  const Rectangle(this.size);
-
-  @override
-  final Size size;
-
-  @override
-  bool contains(Offset center, Offset point) {
-    return Rect.fromCenter(center: center, width: size.width, height: size.height).contains(point);
-  }
-}
-
-class Circle extends WorldShape {
-  const Circle(this.diameter);
-
-  @override
-  final double diameter;
-
-  double get radius => diameter / 2.0;
-
-  @override
-  Size get size => Size.square(diameter);
-
-  @override
-  bool contains(Offset center, Offset point) {
-    return (point - center).distance < radius;
-  }
-}
-
-@immutable
-class WorldGeometry {
-  const WorldGeometry({
-    required this.shape,
-  });
-
-  final WorldShape shape;
-
+sealed class WorldGeometry {
   static const double minSystemRenderDiameter = 4.0; // a system less than this size is not rendered at all, and fades in...
   static const double fullyVisibleRenderDiameter = 48.0; // ...up to the point where it's at least this size.
-
-  bool contains(Offset center, Offset point) => shape.contains(center, point);
 }
-
 
 // HIT TEST
 
@@ -135,6 +72,8 @@ abstract interface class WorldTapTarget {
 abstract class RenderWorld extends RenderObject {
   RenderWorld();
 
+  // this is used just to figure out the position of a child
+  // (the child's node is the first argument passed to constraints.paintPositionFor)
   WorldNode get node;
 
   @override
@@ -146,9 +85,6 @@ abstract class RenderWorld extends RenderObject {
   @override
   void performResize() { }
 
-  WorldGeometry get geometry => _geometry!;
-  WorldGeometry? _geometry;
-
   @override
   void performLayout() {
     computeLayout(constraints);
@@ -156,41 +92,57 @@ abstract class RenderWorld extends RenderObject {
 
   void computeLayout(WorldConstraints constraints);
 
+  Rect? _paintBounds;
+  
   @override
   @nonVirtual
   void paint(PaintingContext context, Offset offset) {
     assert(offset.isFinite);
-    _geometry = computePaint(context, offset);
+    _paintBounds = Rect.fromCircle(center: offset, radius: computePaint(context, offset) / 2.0);
   }
 
   // The offset parameter is the distance from the canvas origin to the asset origin, in pixels.
   // Canvas origin is the center of the viewport, whose size is constraints.viewportSize.
-  WorldGeometry computePaint(PaintingContext context, Offset offset);
-
+  // Returns the actual diameter in pixels.
+  double computePaint(PaintingContext context, Offset offset);
+  
+  @override
+  void applyPaintTransform(covariant RenderObject child, Matrix4 transform) {
+    // This intentionally does nothing, because Flutter's applyPaintTransform logic
+    // does not know how to handle our floating origin system.
+    // See WorldToBox in widgets.dart.
+  }
+  
   static const double _minDiameter = 20.0;
   static const double _maxDiameterRatio = 0.1;
 
   static double get _minCartoonDiameter => log(10e6); // 10,000 km, a bit smaller than earth
   static double get _maxCartoonDiameter => log( 1e9); // 2 million km, a bit bigger than our sun
 
-  double computePaintDiameter(double diameter, double maxDiameter) {
+  // TODO: remove the duplication of diameter/maxDiameter in many of the
+  // subclasses and rationalize how we do size-bumping (and how we don't --
+  // consider a bumped planet and its not-bumped regions)
+  double computePaintDiameter(double diameter, double parentDiameter) {
     final double cartoonScale = ((log(diameter) - _minCartoonDiameter) / (_maxCartoonDiameter - _minCartoonDiameter)).clamp(0.0, 1.0) * 2.5 + 1.0;
     assert(cartoonScale >= 1.0);
     assert(cartoonScale <= 3.5);
     return min(
       max(
-        _minDiameter * cartoonScale,
-        diameter * constraints.scale,
+        diameter * constraints.scale, // try to be your actual size, but
+        _minDiameter * cartoonScale, // ...don't be smaller than something visible
       ),
-      maxDiameter * _maxDiameterRatio * constraints.scale,
+      constraints.scale * max( // ...and...
+        parentDiameter * _maxDiameterRatio, // ...definitely don't be bigger than one tenth your parent
+        diameter, // ...unless you really are bigger than one tenth your parent
+      ),
     );
   }
 
   @override
-  Rect get paintBounds => Offset.zero & geometry.shape.size;
+  Rect get paintBounds => _paintBounds!;
 
   @override
-  Rect get semanticBounds => paintBounds;
+  Rect get semanticBounds => _paintBounds!; // TODO: actually implement semantics
 
   @override
   void debugAssertDoesMeetConstraints() { }

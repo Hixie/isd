@@ -382,7 +382,7 @@ class GalaxyParentData extends ParentData with ContainerParentDataMixin<RenderWo
   Offset? _reticuleCenter;
   double? _reticuleRadius;
 
-  Offset? _offset; // in pixels
+  Offset? _computedPosition; // in pixels
 }
 
 class StarType {
@@ -535,7 +535,7 @@ class RenderGalaxy extends RenderWorldWithChildren<GalaxyParentData> {
   }
 
   @override
-  WorldGeometry computePaint(PaintingContext context, Offset offset) {
+  double computePaint(PaintingContext context, Offset offset) {
     if (galaxy != null) {
       _drawGalaxyHalo(context, offset);
       final Rect wholeGalaxy = Rect.fromCircle(center: Offset.zero, radius: diameter / 2.0);
@@ -568,7 +568,7 @@ class RenderGalaxy extends RenderWorldWithChildren<GalaxyParentData> {
       _drawLegend(context);
       _drawHud(context, offset);
     }
-    return WorldGeometry(shape: Circle(diameter));
+    return diameter * constraints.scale;
   }
 
   void _drawGalaxyHalo(PaintingContext context, Offset offset) {
@@ -677,14 +677,14 @@ class RenderGalaxy extends RenderWorldWithChildren<GalaxyParentData> {
     RenderWorld? child = firstChild;
     while (child != null) {
       final GalaxyParentData childParentData = child.parentData! as GalaxyParentData;
-      childParentData._offset = constraints.paintPositionFor(child.node, offset, <VoidCallback>[markNeedsPaint]);
-      context.paintChild(child, childParentData._offset!);
+      childParentData._computedPosition = constraints.paintPositionFor(child.node, offset, <VoidCallback>[markNeedsPaint]);
+      context.paintChild(child, childParentData._computedPosition!);
       child = childParentData.nextSibling;
     }
   }
 
-  static (double, String) _selectLegend(double length, double m) {
-    assert(m > 0);
+  static (double, String) _selectLegend(double length, double scaleFactor) {
+    final double m = length / scaleFactor;
     double value;
     String units;
     final double ly = m / lightYearInM;
@@ -790,7 +790,7 @@ class RenderGalaxy extends RenderWorldWithChildren<GalaxyParentData> {
   }
 
   void _layoutLegend(WorldConstraints constraints) {
-    final (double legendLength, String legendText) = _selectLegend(constraints.viewportSize.width * 0.2, diameter * 0.2 / constraints.zoomFactor);
+    final (double legendLength, String legendText) = _selectLegend(constraints.viewportSize.width * 0.2, constraints.scale);
     _legendLength = legendLength;
     final TextStyle style = _legendStyle;
     _legendLabel.text = TextSpan(text: legendText, style: style);
@@ -841,7 +841,7 @@ class RenderGalaxy extends RenderWorldWithChildren<GalaxyParentData> {
       child = firstChild;
       while (child != null) {
         final GalaxyParentData childParentData = child.parentData! as GalaxyParentData;
-        final Offset center = childParentData._offset!; // offset + childParentData.position * constraints.scale;
+        final Offset center = childParentData._computedPosition!; // offset + childParentData.position * constraints.scale;
         childParentData._reticuleCenter = center;
         childParentData._reticuleRadius = hudAvoidanceRadius;
         context.canvas.drawCircle(center, hudOuterRadius, hudReticulePaint);
@@ -972,7 +972,7 @@ class RenderGalaxy extends RenderWorldWithChildren<GalaxyParentData> {
     RenderWorld? child = lastChild;
     while (child != null) {
       final GalaxyParentData childParentData = child.parentData! as GalaxyParentData;
-      final WorldTapTarget? result = child.routeTap(offset - childParentData._offset!);
+      final WorldTapTarget? result = child.routeTap(offset - childParentData._computedPosition!);
       if (result != null)
         return result;
       child = childParentData.previousSibling;

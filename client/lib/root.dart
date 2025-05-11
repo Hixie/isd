@@ -6,6 +6,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
 import 'dynasty.dart';
+import 'hud.dart';
 import 'layout.dart';
 import 'world.dart';
 
@@ -53,7 +54,7 @@ class WorldRoot extends StatefulWidget {
   _WorldRootState createState() => _WorldRootState();
 }
 
-class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMixin {
+class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMixin implements Listenable {
   late final AnimationController _controller = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 3000),
@@ -79,6 +80,13 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
   Map<WorldNode, Offset> _precomputedPositions = <WorldNode, Offset>{};
   Offset _rootPosition = Offset.zero;
 
+  // we would just mix in ChangeNotifier, but its dispose doesn't call super.dispose, which breaks State
+  final ChangeNotifier _notifierImplementation = ChangeNotifier();
+  @override
+  void addListener(VoidCallback listener) => _notifierImplementation.addListener(listener);
+  @override
+  void removeListener(VoidCallback listener) => _notifierImplementation.removeListener(listener);
+  
   @override
   void initState() {
     super.initState();
@@ -102,9 +110,12 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
   }
 
   void _handlePositionChange() {
-    setState(() {
-      _precomputedPositions = <WorldNode, Offset>{};
-    });
+    if (mounted) {
+      setState(() {
+        _precomputedPositions = <WorldNode, Offset>{};
+      });
+      _notifierImplementation.notifyListeners(); // ignore: invalid_use_of_protected_member, invalid_use_of_visible_for_testing_member
+    }
   }
 
   void _updateSnap(double zoom, Offset pan) {
@@ -131,14 +142,24 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
     WorldNode currentNode;
     currentNode = _centerNode;
     while (currentNode.parent != null) {
-      oldPos += currentNode.parent!.findLocationForChild(currentNode, <VoidCallback>[]);
-      currentNode = currentNode.parent!;
+      if (_precomputedPositions.containsKey(currentNode)) {
+        oldPos += _precomputedPositions[currentNode]!;
+        break;
+      } else {
+        oldPos += currentNode.parent!.findLocationForChild(currentNode, <VoidCallback>[]);
+        currentNode = currentNode.parent!;
+      }
     }
     Offset newPos = Offset.zero;
     currentNode = node;
     while (currentNode.parent != null) {
-      newPos += currentNode.parent!.findLocationForChild(currentNode, <VoidCallback>[]);
-      currentNode = currentNode.parent!;
+      if (_precomputedPositions.containsKey(currentNode)) {
+        newPos += _precomputedPositions[currentNode]!;
+        break;
+      } else {
+        newPos += currentNode.parent!.findLocationForChild(currentNode, <VoidCallback>[]);
+        currentNode = currentNode.parent!;
+      }
     }
     final Offset delta = oldPos - newPos;
     _centerNode = node;
@@ -248,48 +269,51 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
           }
         });
       },
-      child: GestureDetector(
-        trackpadScrollCausesScale: true,
-        onScaleUpdate: (ScaleUpdateDetails details) {
-          setState(() {
-            final RenderBoxToRenderWorldAdapter box = _worldRoot;
-            setState(() {
-              _lastScale ??= box.layoutScale;
-              final double newScale = max(box.minScale, _lastScale! * details.scale);
-              // TODO: check that this works when you pan AND zoom
-              _updatePan(_pan.value + details.focalPointDelta / _lastScale!, newScale, zoom: _zoom.value + log(details.scale));
-              _lastScale = newScale;
-            });
-          });
-        },
-        onTapDown: (TapDownDetails details) {
-          assert(_currentTarget == null);
-          _currentTarget = _worldRoot.routeTap(details.localPosition);
-          _currentTarget?.handleTapDown();
-        },
-        onTapCancel: () {
-          _currentTarget?.handleTapCancel();
-          _currentTarget = null;
-        },
-        onTapUp: (TapUpDetails details) {
-          _currentTarget?.handleTapUp();
-          _currentTarget = null;
-        },
-        child: DynastyProvider(
-          dynastyManager: widget.dynastyManager,
-          child: ZoomProvider(
-            state: this,
-            child: ListenableBuilder(
-              listenable: Listenable.merge(<Listenable?>[widget.rootNode, _controller]),
-              builder: (BuildContext context, Widget? child) {
-                return BoxToWorldAdapter(
-                  key: _worldRootKey,
-                  diameter: widget.rootNode.diameter,
-                  zoom: max(0.0, _zoom.value),
-                  precomputedPositions: _precomputedPositions,
-                  child: widget.rootNode.build(context),
-                );
-              },
+      child: DynastyProvider(
+        dynastyManager: widget.dynastyManager,
+        child: HudLayout(
+          zoom: this,
+          child: GestureDetector(
+            trackpadScrollCausesScale: true,
+            onScaleUpdate: (ScaleUpdateDetails details) {
+              setState(() {
+                final RenderBoxToRenderWorldAdapter box = _worldRoot;
+                setState(() {
+                  _lastScale ??= box.layoutScale;
+                  final double newScale = max(box.minScale, _lastScale! * details.scale);
+                  // TODO: check that this works when you pan AND zoom
+                  _updatePan(_pan.value + details.focalPointDelta / _lastScale!, newScale, zoom: _zoom.value + log(details.scale));
+                  _lastScale = newScale;
+                });
+              });
+            },
+            onTapDown: (TapDownDetails details) {
+              assert(_currentTarget == null);
+              _currentTarget = _worldRoot.routeTap(details.localPosition);
+              _currentTarget?.handleTapDown();
+            },
+            onTapCancel: () {
+              _currentTarget?.handleTapCancel();
+              _currentTarget = null;
+            },
+            onTapUp: (TapUpDetails details) {
+              _currentTarget?.handleTapUp();
+              _currentTarget = null;
+            },
+            child: ZoomProvider(
+              state: this,
+              child: ListenableBuilder(
+                listenable: Listenable.merge(<Listenable?>[widget.rootNode, _controller]),
+                builder: (BuildContext context, Widget? child) {
+                  return BoxToWorldAdapter(
+                    key: _worldRootKey,
+                    diameter: widget.rootNode.diameter,
+                    zoom: max(0.0, _zoom.value),
+                    precomputedPositions: _precomputedPositions,
+                    child: widget.rootNode.build(context),
+                  );
+                },
+              ),
             ),
           ),
         ),
@@ -463,6 +487,12 @@ class RenderBoxToRenderWorldAdapter extends RenderBox with RenderObjectWithChild
     }
   }
 
+  @override
+  void applyPaintTransform(covariant RenderObject child, Matrix4 transform) {
+    // See also RenderWorld.applyPaintTransform in layout.dart and WorldToBox in widgets.dart.
+    transform.translate(_paintOffset.dx, _paintOffset.dy);    
+  }
+  
   @override
   bool hitTestSelf(Offset position) {
     return true;

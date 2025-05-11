@@ -42,12 +42,12 @@ class ProxyFeature extends ContainerFeature {
   }
 
   @override
-  Widget buildRenderer(BuildContext context, Widget? child) {
+  Widget buildRenderer(BuildContext context) {
     return ProxyWidget(
       node: parent,
       diameter: parent.diameter,
       maxDiameter: parent.maxRenderDiameter,
-      child: this.child?.build(context),
+      child: child?.build(context),
     );
   }
 }
@@ -118,13 +118,16 @@ class RenderProxy extends RenderWorldNode with RenderObjectWithChildMixin<Render
     }
   }
 
+  Offset? _childPosition;
+  
   @override
-  WorldGeometry computePaint(PaintingContext context, Offset offset) {
+  double computePaint(PaintingContext context, Offset offset) {
     final double actualDiameter = computePaintDiameter(diameter, maxDiameter);
     if (child != null) {
-      context.paintChild(child!, constraints.paintPositionFor(child!.node, offset, <VoidCallback>[markNeedsPaint]));
+      _childPosition = constraints.paintPositionFor(child!.node, offset, <VoidCallback>[markNeedsPaint]);
+      context.paintChild(child!, _childPosition!);
     }
-    return WorldGeometry(shape: Circle(actualDiameter));
+    return actualDiameter;
   }
 
   @override

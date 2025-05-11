@@ -8,6 +8,8 @@ import 'package:flutter/widgets.dart' hide Gradient;
 import '../assets.dart';
 import '../layout.dart';
 import '../root.dart';
+import '../spacetime.dart';
+import '../stringstream.dart';
 import '../widgets.dart';
 import '../world.dart';
 
@@ -24,14 +26,19 @@ class _HighlightDetails {
   String toString() => '$asset : $offset @ $diameter';
 }
 
-typedef SendCallback = void Function(List<Object> messageParts);
+typedef SendCallback = Future<StreamReader> Function(List<Object> messageParts);
 
 class SystemNode extends WorldNode {
-  SystemNode({ super.parent, required this.id, required this.sendCallback });
+  SystemNode({
+    super.parent,
+    required this.id,
+    required this.sendCallback,
+    required this.spaceTime,
+  });
 
   final int id;
-
   final SendCallback sendCallback;
+  final SpaceTime spaceTime;
 
   String get label => _label;
   String _label = '';
@@ -108,6 +115,7 @@ class SystemNode extends WorldNode {
           labels: labels,
           child: root.build(context),
           onZoomRequest: (WorldNode node, Offset offset, double diameter) {
+            // TODO: this jumps weirdly when it's previously focused on something else
             ZoomProvider.centerNear(context, node, offset, diameter);
           },
         ),
@@ -115,8 +123,8 @@ class SystemNode extends WorldNode {
     );
   }
 
-  void play(List<Object> messageParts) {
-    sendCallback(<Object>['play', id, ...messageParts]);
+  Future<StreamReader> play(List<Object> messageParts) {
+    return sendCallback(<Object>['play', id, ...messageParts]);
   }
   
   static SystemNode of(BuildContext context) {
@@ -296,15 +304,18 @@ class RenderSystem extends RenderWorldNode with RenderObjectWithChildMixin<Rende
 
   final List<_HighlightDetails> _visibleHudElements = <_HighlightDetails>[];
 
+  Offset? _childPosition;
+  
   @override
-  WorldGeometry computePaint(PaintingContext context, Offset offset) {
+  double computePaint(PaintingContext context, Offset offset) {
+    final double visibleDiameter = diameter * constraints.scale;
     if (child != null) {
-      final double visibleDiameter = diameter * constraints.scale;
       assert(visibleDiameter >= WorldGeometry.minSystemRenderDiameter);
       final double fade = ((visibleDiameter - WorldGeometry.minSystemRenderDiameter) / (WorldGeometry.fullyVisibleRenderDiameter - WorldGeometry.minSystemRenderDiameter)).clamp(0.0, 1.0);
       final double renderRadius = radius * constraints.scale;
       context.canvas.drawRect(Rect.fromCircle(center: offset, radius: renderRadius), _blackFadePaint(fade, offset, renderRadius));
-      context.paintChild(child!, constraints.paintPositionFor(child!.node, offset, <VoidCallback>[markNeedsPaint]));
+      _childPosition = constraints.paintPositionFor(child!.node, offset, <VoidCallback>[markNeedsPaint]);
+      context.paintChild(child!, _childPosition!);
     }
     _visibleHudElements.clear();
     if (_labels.isNotEmpty) {
@@ -326,7 +337,7 @@ class RenderSystem extends RenderWorldNode with RenderObjectWithChildMixin<Rende
         }
       }
     }
-    return WorldGeometry(shape: Circle(diameter));
+    return visibleDiameter;
   }
 
   @override

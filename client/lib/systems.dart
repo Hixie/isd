@@ -1,17 +1,21 @@
-import 'dart:typed_data';
 import 'dart:ui' show Offset;
+
+import 'package:flutter/foundation.dart';
 
 import 'abilities/knowledge.dart';
 import 'abilities/message.dart';
+import 'abilities/mining.dart';
+import 'abilities/orepile.dart';
 import 'abilities/planets.dart';
 import 'abilities/population.dart';
+import 'abilities/region.dart';
+import 'abilities/research.dart';
 import 'abilities/rubble.dart';
 import 'abilities/sensors.dart';
 import 'abilities/stars.dart';
 import 'abilities/structure.dart';
 import 'assets.dart';
 import 'binarystream.dart';
-import 'components.dart';
 import 'connection.dart';
 import 'containers/grid.dart';
 import 'containers/messages.dart';
@@ -20,6 +24,7 @@ import 'containers/proxy.dart';
 import 'containers/space.dart';
 import 'containers/surface.dart';
 import 'dynasty.dart';
+import 'materials.dart';
 import 'nodes/galaxy.dart';
 import 'nodes/system.dart';
 import 'spacetime.dart';
@@ -61,8 +66,12 @@ class SystemServer {
   static const int fcMessage = 0x0D;
   static const int fcRubblePile = 0x0E;
   static const int fcProxy = 0x0F;
-  static const int fcAssetClassKnowledge = 0x10;
-  static const int expectedVersion = fcMessage;
+  static const int fcKnowledge = 0x10;
+  static const int fcResearch = 0x11;
+  static const int fcMining = 0x12;
+  static const int fcOrePile = 0x13;
+  static const int fcRegion = 0x14;
+  static const int expectedVersion = fcRegion;
 
   Future<void> _handleLogin() async {
     final StreamReader reader = await _connection.send(<String>['login', token], queue: false);
@@ -82,9 +91,11 @@ class SystemServer {
     return _assets.putIfAbsent(id, () => AssetNode(id: id));
   }
 
-  void _send(List<Object> messageParts) {
-    _connection.send(messageParts);
+  Future<StreamReader> _send(List<Object> messageParts) {
+    return _connection.send(messageParts);
   }
+
+  static const bool _verbose = false;
   
   void _handleUpdate(Uint8List message) {
     final DateTime now = DateTime.timestamp();
@@ -92,10 +103,14 @@ class SystemServer {
     AssetNode? colonyShip;
     while (!reader.done) {
       final int systemID = reader.readInt32();
-      final SystemNode system = _systems.putIfAbsent(systemID, () => SystemNode(id: systemID, sendCallback: _send));
       final int timeOrigin = reader.readInt64();
       final double timeFactor = reader.readDouble();
       final SpaceTime spaceTime = SpaceTime(timeOrigin, timeFactor, now);
+      final SystemNode system = _systems.putIfAbsent(systemID, () => SystemNode(
+        id: systemID,
+        sendCallback: _send,
+        spaceTime: spaceTime,
+      ));
       final int rootAssetID = reader.readInt32();
       assert(rootAssetID > 0);
       system.root = _assets.putIfAbsent(rootAssetID, () => AssetNode(id: rootAssetID, parent: system));
@@ -107,11 +122,15 @@ class SystemServer {
       while ((asset = _readAsset(reader)) != null) {
         asset!;
         final int ownerDynastyID = reader.readInt32();
+        if (_verbose) {
+          debugPrint('parsing asset $asset');
+        }
         asset.ownerDynasty = ownerDynastyID > 0 ? dynastyManager.getDynasty(ownerDynastyID) : null;
         asset.mass = reader.readDouble();
+        asset.massFlowRate = reader.readDouble();
         asset.size = reader.readDouble();
         asset.name = reader.readString();
-        asset.assetClass = reader.readSignedInt32();
+        asset.assetClassID = reader.readSignedInt32();
         asset.icon = reader.readString();
         asset.className = reader.readString();
         asset.description = reader.readString();
@@ -119,13 +138,15 @@ class SystemServer {
         final Set<Type> oldFeatures = asset.featureTypes;
         int featureCode;
         while ((featureCode = reader.readInt32()) != 0) {
+          if (_verbose) {
+            debugPrint('  parsing feature with code $featureCode');
+          }
           switch (featureCode) {
             case fcStar:
               final int starId = reader.readInt32();
-              oldFeatures.remove(asset.setAbility(StarFeature(spaceTime, starId)));
+              oldFeatures.remove(asset.setAbility(StarFeature(starId)));
             case fcPlanet:
-              final int hp = reader.readInt32();
-              oldFeatures.remove(asset.setAbility(PlanetFeature(spaceTime, hp)));
+              oldFeatures.remove(asset.setAbility(PlanetFeature()));
             case fcSpace:
               final Map<AssetNode, SpaceParameters> children = <AssetNode, SpaceParameters>{};
               final AssetNode primaryChild = _readAsset(reader)!;
@@ -215,7 +236,7 @@ class SystemServer {
               final Map<AssetNode, SurfaceParameters> children = <AssetNode, SurfaceParameters>{};
               AssetNode? child;
               while ((child = _readAsset(reader)) != null) {
-                children[child!] = ();
+                children[child!] = (position: Offset(reader.readDouble(), reader.readDouble()));
               }
               oldFeatures.remove(asset.setContainer(SurfaceFeature(children)));
             case fcGrid:
@@ -231,7 +252,7 @@ class SystemServer {
                 final int y = reader.readInt32();
                 children[child!] = (x: x, y: y);
               }
-              oldFeatures.remove(asset.setContainer(GridFeature(spaceTime, cellSize, width, height, children)));
+              oldFeatures.remove(asset.setContainer(GridFeature(cellSize, width, height, children)));
             case fcPopulation:
               final int count = reader.readInt64();
               final double happiness = reader.readDouble();
@@ -250,29 +271,73 @@ class SystemServer {
               final int systemID = reader.readInt32();
               final int timestamp = reader.readInt64();
               final bool isRead = reader.readBool();
-              final String subject = reader.readString();
-              final String from = reader.readString();
               final String body = reader.readString();
-              oldFeatures.remove(asset.setAbility(MessageFeature(systemID, timestamp, isRead, subject, from, body)));
+              final List<String> paragraphs = body.split('\n').toList();
+              assert(paragraphs.length >= 3);
+              final String subject = paragraphs.removeAt(0);
+              const String fromPrefix = 'From: ';
+              assert(paragraphs.first.startsWith(fromPrefix));
+              final String from = paragraphs.removeAt(0).substring(fromPrefix.length);
+              oldFeatures.remove(asset.setAbility(MessageFeature(systemID, timestamp, isRead, subject, from, paragraphs.join('\n'))));
             case fcRubblePile:
               oldFeatures.remove(asset.setAbility(RubblePileFeature()));
             case fcProxy:
               final AssetNode? child = _readAsset(reader);
               oldFeatures.remove(asset.setContainer(ProxyFeature(child)));
-            case fcAssetClassKnowledge:
-              final int assetClass = reader.readSignedInt32();
-              String? icon, className, description;
-              if (assetClass != 0) {
-                icon = reader.readString();
-                className = reader.readString();
-                description = reader.readString();
+            case fcKnowledge:
+              final Map<int, AssetClass> assetClasses = <int, AssetClass>{};
+              final Map<int, Material> materials = <int, Material>{};
+              loop: while (true) {
+                final int kind = reader.readInt8();
+                switch (kind) {
+                  case 0x00: break loop;
+                  case 0x01:
+                    final int id = reader.readSignedInt32();
+                    final String icon = reader.readString();
+                    final String name = reader.readString();
+                    final String description = reader.readString();
+                    assetClasses[id] = AssetClass(id: id, icon: icon, name: name, description: description);
+                  case 0x02:
+                    final int id = reader.readSignedInt32();
+                    final String icon = reader.readString();
+                    final String name = reader.readString();
+                    final String description = reader.readString();
+                    final int flags = reader.readInt64(); // TODO: decode flags
+                    final double massPerUnit = reader.readDouble();
+                    final double density = reader.readDouble();
+                    materials[id] = Material(id: id, icon: icon, name: name, description: description, flags: flags, massPerUnit: massPerUnit, density: density);
+                }
               }
-              oldFeatures.remove(asset.setAbility(AssetClassKnowledgeFeature(
-                assetClass: assetClass,
-                icon: icon,
-                name: className,
-                description: description,
-              )));
+              oldFeatures.remove(asset.setAbility(KnowledgeFeature(assetClasses: assetClasses, materials: materials)));
+              case fcResearch:
+                final String research = reader.readString();
+                oldFeatures.remove(asset.setAbility(ResearchFeature(current: research)));
+              case fcMining:
+                final double rate = reader.readDouble();
+                final MiningMode mode;
+                switch (reader.readInt8()) {
+                  case 0: mode = MiningMode.mining;
+                  case 1: mode = MiningMode.pilesFull;
+                  case 2: mode = MiningMode.regionEmpty;
+                  case 3: mode = MiningMode.noRegion;
+                  case 255: mode = MiningMode.disabled;
+                  default:
+                    throw NetworkError('Client does not support mining mode 0x${featureCode.toRadixString(16).padLeft(2, "0")}, cannot parse server message.');
+                }
+                oldFeatures.remove(asset.setAbility(MiningFeature(rate: rate, mode: mode)));
+              case fcOrePile:
+                final double pileMass = reader.readDouble();
+                final double pileMassFlowRate = reader.readDouble();
+                final double capacity = reader.readDouble();
+                final Set<int> materials = <int>{};
+                int material;
+                while ((material = reader.readInt32()) != 0) {
+                  materials.add(material);
+                }
+                oldFeatures.remove(asset.setAbility(OrePileFeature(pileMass: pileMass, pileMassFlowRate: pileMassFlowRate, capacity: capacity, materials: materials)));
+              case fcRegion:
+                final int flags = reader.readInt8();
+                oldFeatures.remove(asset.setAbility(RegionFeature(minable: (flags & 0x01) > 0)));
             default:
               throw NetworkError('Client does not support feature code 0x${featureCode.toRadixString(16).padLeft(8, "0")}, cannot parse server message.');
           }

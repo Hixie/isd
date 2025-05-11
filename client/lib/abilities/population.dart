@@ -8,4 +8,7 @@ class PopulationFeature extends AbilityFeature {
 
   final int count;
   final double happiness;
+
+  @override
+  RendererType get rendererType => RendererType.none;
 }

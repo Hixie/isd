@@ -48,7 +48,8 @@ class MessageBoardFeature extends ContainerFeature {
   }
 
   @override
-  Widget buildRenderer(BuildContext context, Widget? child) {
+  Widget buildRenderer(BuildContext context) {
+    // TODO: convert this to a RenderBox widget
     return MessageBoardWidget(
       node: parent,
       diameter: parent.diameter,
@@ -89,7 +90,9 @@ class MessageBoardWidget extends MultiChildRenderObjectWidget {
   }
 }
 
-class MessageBoardParentData extends ParentData with ContainerParentDataMixin<RenderWorld> { }
+class MessageBoardParentData extends ParentData with ContainerParentDataMixin<RenderWorld> {
+  Offset? _computedPosition;
+}
 
 class RenderMessageBoard extends RenderWorldWithChildren<MessageBoardParentData> {
   RenderMessageBoard({
@@ -137,15 +140,16 @@ class RenderMessageBoard extends RenderWorldWithChildren<MessageBoardParentData>
   }
 
   @override
-  WorldGeometry computePaint(PaintingContext context, Offset offset) {
+  double computePaint(PaintingContext context, Offset offset) {
     RenderWorld? child = firstChild;
     final double actualDiameter = computePaintDiameter(diameter, maxDiameter);
     while (child != null) {
       final MessageBoardParentData childParentData = child.parentData! as MessageBoardParentData;
-      context.paintChild(child, constraints.paintPositionFor(child.node, offset, <VoidCallback>[markNeedsPaint]));
+      childParentData._computedPosition = constraints.paintPositionFor(child.node, offset, <VoidCallback>[markNeedsPaint]);
+      context.paintChild(child, childParentData._computedPosition!);
       child = childParentData.nextSibling;
     }
-    return WorldGeometry(shape: Circle(actualDiameter));
+    return actualDiameter;
   }
 
   @override

@@ -5,7 +5,7 @@ import '../assets.dart';
 import '../layout.dart';
 import '../world.dart';
 
-typedef SurfaceParameters = ();
+typedef SurfaceParameters = ({ Offset position });
 
 class SurfaceFeature extends ContainerFeature {
   SurfaceFeature(this.children);
@@ -15,9 +15,7 @@ class SurfaceFeature extends ContainerFeature {
 
   @override
   Offset findLocationForChild(AssetNode child, List<VoidCallback> callbacks) {
-    // final SurfaceParameters childData = children[child]!;
-    // TODO: positioned regions
-    return Offset.zero;
+    return children[child]!.position;
   }
 
   @override
@@ -49,7 +47,7 @@ class SurfaceFeature extends ContainerFeature {
   }
 
   @override
-  Widget buildRenderer(BuildContext context, Widget? child) {
+  Widget buildRenderer(BuildContext context) {
     return SurfaceWidget(
       node: parent,
       diameter: parent.diameter,
@@ -90,7 +88,9 @@ class SurfaceWidget extends MultiChildRenderObjectWidget {
   }
 }
 
-class SurfaceParentData extends ParentData with ContainerParentDataMixin<RenderWorld> { }
+class SurfaceParentData extends ParentData with ContainerParentDataMixin<RenderWorld> {
+  Offset? _computedPosition;
+}
 
 class RenderSurface extends RenderWorldWithChildren<SurfaceParentData> {
   RenderSurface({
@@ -137,20 +137,17 @@ class RenderSurface extends RenderWorldWithChildren<SurfaceParentData> {
     }
   }
 
-  Paint get _planetPaint => Paint()
-    ..color = const Color(0xFFFFFFFF);
-
   @override
-  WorldGeometry computePaint(PaintingContext context, Offset offset) {
+  double computePaint(PaintingContext context, Offset offset) {
     RenderWorld? child = firstChild;
     final double actualDiameter = computePaintDiameter(diameter, maxDiameter);
-    context.canvas.drawCircle(offset, actualDiameter / 2.0, _planetPaint); // TODO: pretty planet surfaces
     while (child != null) {
       final SurfaceParentData childParentData = child.parentData! as SurfaceParentData;
-      context.paintChild(child, constraints.paintPositionFor(child.node, offset, <VoidCallback>[markNeedsPaint]));
+      childParentData._computedPosition = constraints.paintPositionFor(child.node, offset, <VoidCallback>[markNeedsPaint]);
+      context.paintChild(child, childParentData._computedPosition!);
       child = childParentData.nextSibling;
     }
-    return WorldGeometry(shape: Circle(actualDiameter));
+    return actualDiameter;
   }
 
   @override

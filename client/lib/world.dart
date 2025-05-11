@@ -2,6 +2,8 @@ import 'package:flutter/widgets.dart';
 
 import 'spacetime.dart';
 
+bool showAPT = false;
+
 abstract class WorldNode extends ChangeNotifier {
   WorldNode({
     WorldNode? parent,

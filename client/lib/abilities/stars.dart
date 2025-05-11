@@ -5,26 +5,29 @@ import 'package:flutter/widgets.dart';
 
 import '../assets.dart';
 import '../layout.dart';
+import '../nodes/system.dart';
 import '../shaders.dart';
 import '../spacetime.dart';
 import '../world.dart';
 
 class StarFeature extends AbilityFeature {
-  StarFeature(this.spaceTime, this.starId);
+  StarFeature(this.starId);
 
   final int starId;
-  final SpaceTime spaceTime;
 
   @override
-  Widget? buildRenderer(BuildContext context, Widget? child) {
+  Widget buildRenderer(BuildContext context) {
     return StarWidget(
       node: parent,
       starId: starId,
       diameter: parent.diameter,
       maxDiameter: parent.maxRenderDiameter,
-      spaceTime: spaceTime,
+      spaceTime: SystemNode.of(context).spaceTime,
     );
   }
+
+  @override
+  RendererType get rendererType => RendererType.world;
 }
 
 class StarWidget extends LeafRenderObjectWidget {
@@ -135,7 +138,7 @@ class RenderStar extends RenderWorldNode {
   final Paint _starPaint = Paint();
 
   @override
-  WorldGeometry computePaint(PaintingContext context, Offset offset) {
+  double computePaint(PaintingContext context, Offset offset) {
     // TODO: starId-based paint
     _starShader ??= shaders.stars(0); // TODO: use actual star category id
     final double time = spaceTime.computeTime(<VoidCallback>[markNeedsPaint]);
@@ -149,7 +152,7 @@ class RenderStar extends RenderWorldNode {
     // (radius is twice the star's radius) so that the star can have solar
     // flares and such.
     context.canvas.drawRect(Rect.fromCircle(center: offset, radius: actualDiameter), _starPaint);
-    return WorldGeometry(shape: Circle(actualDiameter));
+    return actualDiameter;
   }
 
   @override

@@ -1,3 +1,5 @@
+import 'dart:math' show sqrt;
+
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
@@ -31,12 +33,12 @@ class _RenderWorldLayoutBuilder extends RenderWorld
   }
 
   @override
-  WorldGeometry computePaint(PaintingContext context, Offset offset) {
+  double computePaint(PaintingContext context, Offset offset) {
     if (child != null) {
       context.paintChild(child!, offset);
-      return child!.geometry;
+      return child!.paintBounds.width;
     }
-    return const WorldGeometry(shape: Circle(0.0));
+    return 0.0;
   }
 
   @override
@@ -71,8 +73,8 @@ class RenderWorldNull extends RenderWorldNode {
   void computeLayout(WorldConstraints constraints) { }
 
   @override
-  WorldGeometry computePaint(PaintingContext context, Offset offset) {
-    return const WorldGeometry(shape: Circle(0.0));
+  double computePaint(PaintingContext context, Offset offset) {
+    return 0.0;
   }
 
   @override
@@ -106,11 +108,11 @@ class _TickerProviderBuilderState extends State<TickerProviderBuilder> with Tick
 class Sizer extends StatelessWidget {
   const Sizer({
     super.key,
-    this.skipSize = const Size.square(8.0),
+    this.skipSize = const Size.square(4.0),
     this.minSize = const Size.square(224.0),
     this.maxSize = const Size.square(350.0),
     required this.child,
-    this.placeholder = const Placeholder(),
+    this.placeholder = const Placeholder(color: Color(0x7FCCCCCC)),
   });
 
   final Size skipSize;
@@ -138,5 +140,332 @@ class Sizer extends StatelessWidget {
         );
       },
     );
+  }
+}
+
+class WorldBoxGrid extends MultiChildRenderObjectWidget {
+  const WorldBoxGrid({
+    super.key,
+    required this.node,
+    required this.diameter,
+    required this.maxDiameter,
+    super.children,
+  });
+
+  final WorldNode node;
+  final double diameter;
+  final double maxDiameter;
+
+  @override
+  RenderWorldBoxGrid createRenderObject(BuildContext context) {
+    return RenderWorldBoxGrid(
+      node: node,
+      diameter: diameter,
+      maxDiameter: maxDiameter,
+    );
+  }
+
+  @override
+  void updateRenderObject(BuildContext context, RenderWorldBoxGrid renderObject) {
+    renderObject
+      ..node = node
+      ..diameter = diameter
+      ..maxDiameter = maxDiameter;
+  }
+}
+
+class WorldBoxGridParentData extends ContainerBoxParentData<RenderBox> {
+  Offset? _computedPosition;
+}
+
+class RenderWorldBoxGrid extends RenderWorldNode with ContainerRenderObjectMixin<RenderBox, WorldBoxGridParentData>, RenderBoxContainerDefaultsMixin<RenderBox, WorldBoxGridParentData> {
+  RenderWorldBoxGrid({
+    required super.node,
+    required double diameter,
+    required double maxDiameter,
+  }) : _diameter = diameter,
+       _maxDiameter = maxDiameter;
+
+  double get diameter => _diameter;
+  double _diameter;
+  set diameter (double value) {
+    if (value != _diameter) {
+      _diameter = value;
+      markNeedsLayout();
+    }
+  }
+
+  double get maxDiameter => _maxDiameter;
+  double _maxDiameter;
+  set maxDiameter (double value) {
+    if (value != _maxDiameter) {
+      _maxDiameter = value;
+      markNeedsLayout();
+    }
+  }
+
+  @override
+  void setupParentData(RenderObject child) {
+    if (child.parentData is! WorldBoxGridParentData) {
+      child.parentData = WorldBoxGridParentData();
+    }
+  }
+
+  int? _cellCount;
+  double? _actualDiameter;
+  double? _cellSize;
+  
+  @override
+  void computeLayout(WorldConstraints constraints) {
+    final int count = childCount;
+    _cellCount = sqrt(count).ceil();
+    _actualDiameter = computePaintDiameter(diameter, maxDiameter);
+    _cellSize = _actualDiameter! / _cellCount!;
+    //print('drawing grid, count=$count, cellCount=$_cellCount diameter=$diameter, actualDiameter=$_actualDiameter, _cellSize=$_cellSize');
+    final BoxConstraints childConstraints = BoxConstraints.tightFor(width: _cellSize, height: _cellSize);
+    RenderBox? child = firstChild;
+    while (child != null) {
+      final WorldBoxGridParentData childParentData = child.parentData! as WorldBoxGridParentData;
+      child.layout(childConstraints);
+      child = childParentData.nextSibling;
+    }
+  }
+
+  @override
+  double computePaint(PaintingContext context, Offset offset) {
+    RenderBox? child = firstChild;
+    double x = 0;
+    double y = 0;
+    while (child != null) {
+      final WorldBoxGridParentData childParentData = child.parentData! as WorldBoxGridParentData;
+      final Offset childOffset = offset + Offset(x * _cellSize!, y * _cellSize!);
+      childParentData._computedPosition = childOffset.translate(-_cellSize! / 2.0, -_cellSize! / 2.0);
+      if (debugPaintSizeEnabled) {
+        context.canvas.drawRect(childParentData._computedPosition! & Size.square(_cellSize!), Paint()..color=const Color(0xFFFFFF00)..strokeWidth=1..style=PaintingStyle.stroke);
+      }
+      context.paintChild(child, childParentData._computedPosition!);
+      child = childParentData.nextSibling;
+      x += 1;
+      if (x >= _cellCount!) {
+        x = 0;
+        y += 1;
+      }
+    }
+    if (debugPaintSizeEnabled) {
+      context.canvas.drawRect(Rect.fromCircle(center: offset, radius: _actualDiameter! / 2.0), Paint()..color=const Color(0x7FFF00FF)..strokeWidth=2..style=PaintingStyle.stroke);
+    }
+    return _actualDiameter!;
+  }
+
+  @override
+  WorldTapTarget? routeTap(Offset offset) {
+    return null; // TODO: figure out what this should do, if anything
+  }
+            
+  @override
+  bool hitTestChildren(BoxHitTestResult result, { required Offset position }) {
+    return defaultHitTestChildren(result, position: position);
+  }
+}
+
+class WorldStack extends MultiChildRenderObjectWidget {
+  const WorldStack({
+    super.key,
+    required this.node,
+    required this.diameter,
+    required this.maxDiameter,
+    super.children,
+  });
+
+  final WorldNode node;
+  final double diameter;
+  final double maxDiameter;
+
+  @override
+  RenderWorldStack createRenderObject(BuildContext context) {
+    return RenderWorldStack(
+      node: node,
+      diameter: diameter,
+      maxDiameter: maxDiameter,
+    );
+  }
+
+  @override
+  void updateRenderObject(BuildContext context, RenderWorldStack renderObject) {
+    renderObject
+      ..node = node
+      ..diameter = diameter
+      ..maxDiameter = maxDiameter;
+  }
+}
+
+class StackParentData extends ParentData with ContainerParentDataMixin<RenderWorld> { }
+
+class RenderWorldStack extends RenderWorldWithChildren<StackParentData> {
+  RenderWorldStack({
+    required super.node,
+    required double diameter,
+    required double maxDiameter,
+  }) : _diameter = diameter,
+       _maxDiameter = maxDiameter;
+
+  double get diameter => _diameter;
+  double _diameter;
+  set diameter (double value) {
+    if (value != _diameter) {
+      _diameter = value;
+      markNeedsLayout();
+    }
+  }
+
+  double get maxDiameter => _maxDiameter;
+  double _maxDiameter;
+  set maxDiameter (double value) {
+    if (value != _maxDiameter) {
+      _maxDiameter = value;
+      markNeedsLayout();
+    }
+  }
+
+  @override
+  void setupParentData(RenderObject child) {
+    if (child.parentData is! StackParentData) {
+      child.parentData = StackParentData();
+    }
+  }
+
+  @override
+  void computeLayout(WorldConstraints constraints) {
+    RenderWorld? child = firstChild;
+    while (child != null) {
+      final StackParentData childParentData = child.parentData! as StackParentData;
+      child.layout(constraints);
+      child = childParentData.nextSibling;
+    }
+  }
+
+  @override
+  double computePaint(PaintingContext context, Offset offset) {
+    // TODO: apply maxDiameter (ideally by refactoring it so they all do)
+    RenderWorld? child = firstChild;
+    while (child != null) {
+      final StackParentData childParentData = child.parentData! as StackParentData;
+      context.paintChild(child, offset);
+      child = childParentData.nextSibling;
+    }
+    return diameter * constraints.scale;
+  }
+
+  @override
+  WorldTapTarget? routeTap(Offset offset) {
+    RenderWorld? child = lastChild;
+    while (child != null) {
+      final StackParentData childParentData = child.parentData! as StackParentData;
+      final WorldTapTarget? result = child.routeTap(offset);
+      if (result != null)
+        return result;
+      child = childParentData.previousSibling;
+    }
+    return null;
+  }
+}
+
+class WorldToBoxAdapter extends SingleChildRenderObjectWidget {
+  const WorldToBoxAdapter({
+    super.key,
+    required this.node,
+    required this.diameter,
+    required this.maxDiameter,
+    super.child,
+  });
+
+  final WorldNode node;
+  final double diameter;
+  final double maxDiameter;
+
+  @override
+  RenderWorldToBoxAdapter createRenderObject(BuildContext context) {
+    return RenderWorldToBoxAdapter(
+      node: node,
+      diameter: diameter,
+      maxDiameter: maxDiameter,
+    );
+  }
+
+  @override
+  void updateRenderObject(BuildContext context, RenderWorldToBoxAdapter renderObject) {
+    renderObject
+      ..node = node
+      ..diameter = diameter
+      ..maxDiameter = maxDiameter;
+  }
+}
+
+class RenderWorldToBoxAdapter extends RenderWorldNode with RenderObjectWithChildMixin<RenderBox> {
+  RenderWorldToBoxAdapter({
+    required super.node,
+    required double diameter,
+    required double maxDiameter,
+  }) : _diameter = diameter,
+       _maxDiameter = maxDiameter;
+
+  double get diameter => _diameter;
+  double _diameter;
+  set diameter (double value) {
+    if (value != _diameter) {
+      _diameter = value;
+      markNeedsPaint();
+    }
+  }
+
+  double get maxDiameter => _maxDiameter;
+  double _maxDiameter;
+  set maxDiameter (double value) {
+    if (value != _maxDiameter) {
+      _maxDiameter = value;
+      markNeedsPaint();
+    }
+  }
+
+  double _actualDiameter = 0.0;
+  
+  @override
+  void computeLayout(WorldConstraints constraints) {
+    _actualDiameter = computePaintDiameter(diameter, maxDiameter);
+    if (child != null) {
+      child!.layout(BoxConstraints.tight(Size.square(_actualDiameter)));
+    }
+  }
+
+  Offset? _childPosition;
+  
+  @override
+  double computePaint(PaintingContext context, Offset offset) {
+    _childPosition = Offset(offset.dx - _actualDiameter / 2.0, offset.dy - _actualDiameter / 2.0);
+    context.paintChild(child!, _childPosition!);
+    if (debugPaintSizeEnabled) {
+      context.canvas.drawRect(_childPosition! & Size.square(_actualDiameter), Paint()..color=const Color(0x7FFFFF00)..strokeWidth=10..style=PaintingStyle.stroke);
+    }
+    return _actualDiameter;
+  }
+
+  @override
+  void applyPaintTransform(covariant RenderObject child, Matrix4 transform) {
+    // This assumes that 0,0 is the center of the canvas, and that the transform is transforming to that.
+    transform.translate(_childPosition!.dx, _childPosition!.dy);
+  }
+
+  @override
+  bool hitTestChildren(BoxHitTestResult result, { required Offset position }) {
+    return result.addWithPaintOffset(offset: _childPosition, position: position, hitTest: _hitTestChild);
+  }
+
+  bool _hitTestChild(BoxHitTestResult result, Offset offset) {
+    return child!.hitTest(result, position: offset);
+  }
+
+  @override
+  WorldTapTarget? routeTap(Offset offset) {
+    return null; // TODO
   }
 }

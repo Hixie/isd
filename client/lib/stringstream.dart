@@ -33,6 +33,8 @@ class StreamReader {
     throw const FormatException();
   }
 
+  bool get eof => _position == message.length;
+  
   void reset() {
     _position = 0;
   }

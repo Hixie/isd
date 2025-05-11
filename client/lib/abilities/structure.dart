@@ -1,5 +1,5 @@
 import '../assets.dart';
-import '../components.dart';
+import '../materials.dart';
 
 class StructureFeature extends AbilityFeature {
   StructureFeature({
@@ -15,4 +15,7 @@ class StructureFeature extends AbilityFeature {
   final int current;
   final int? min;
   final int? max;
+
+  @override
+  RendererType get rendererType => RendererType.none;
 }
