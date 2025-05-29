@@ -349,7 +349,7 @@ end;
 procedure TMessageFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
 begin
    FSourceSystemID := Journal.ReadCardinal();
-   FTimestamp := TTimeInMilliseconds(Journal.ReadInt64());
+   FTimestamp := TTimeInMilliseconds.FromMilliseconds(Journal.ReadInt64());
    FIsRead := Journal.ReadBoolean();
    FBody := Journal.ReadString();
 end;
@@ -359,7 +359,7 @@ begin
    FSourceSystemID := ASourceSystemID;
    FTimestamp := ATimestamp;
    FBody := ABody;
-   MarkAsDirty([dkSelf]);
+   MarkAsDirty([dkUpdateClients, dkUpdateJournal]);
 end;
 
 function TMessageFeatureNode.HandleCommand(Command: UTF8String; var Message: TMessage): Boolean;
@@ -371,7 +371,7 @@ begin
          Message.Reply();
          Message.CloseOutput();
          FIsRead := True;
-         MarkAsDirty([dkSelf]);
+         MarkAsDirty([dkUpdateClients, dkUpdateJournal]);
       end;
       Result := True;
    end
@@ -383,7 +383,7 @@ begin
          Message.Reply();
          Message.CloseOutput();
          FIsRead := False;
-         MarkAsDirty([dkSelf]);
+         MarkAsDirty([dkUpdateClients, dkUpdateJournal]);
       end;
       Result := True;
    end

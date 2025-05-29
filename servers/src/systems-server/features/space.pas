@@ -5,7 +5,7 @@ unit space;
 interface
 
 uses
-   systems, providers, serverstream, techtree;
+   systems, providers, serverstream, techtree, time;
 
 type
    TSolarSystemFeatureClass = class(TFeatureClass)
@@ -34,6 +34,7 @@ type
       procedure ParentMarkedAsDirty(ParentDirtyKinds, NewDirtyKinds: TDirtyKinds); override;
       procedure AddPolarChildFromJournal(Child: TAssetNode; Distance, Theta, HillDiameter: Double); // meters
       function GetMass(): Double; override;
+      function GetMassFlowRate(): TRate; override;
       function GetSize(): Double; override;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
@@ -195,7 +196,7 @@ begin
    Child.ParentData := nil;
    inherited;
    if (Length(FChildren) = 0) then // TODO: why only when we get to zero?
-      MarkAsDirty([dkSelf, dkAffectsNames]); // TODO: other things (than running out of children entirely) might affect the name too?
+      MarkAsDirty([dkUpdateClients, dkUpdateJournal, dkAffectsNames]); // TODO: other things (than running out of children entirely) might affect the name too?
 end;
 
 procedure TSolarSystemFeatureNode.AddCartesianChild(Child: TAssetNode; X, Y: Double); // meters, first must be at 0,0 // TODO: change that
@@ -247,7 +248,7 @@ end;
 procedure TSolarSystemFeatureNode.ParentMarkedAsDirty(ParentDirtyKinds, NewDirtyKinds: TDirtyKinds);
 begin
    if (dkAffectsNames in NewDirtyKinds) then
-      MarkAsDirty([dkSelf]);
+      MarkAsDirty([dkUpdateClients, dkUpdateJournal]);
    inherited;
 end;
 
@@ -258,6 +259,15 @@ begin
    Result := 0.0;
    for Child in FChildren do
       Result := Result + Child.Mass;
+end;
+
+function TSolarSystemFeatureNode.GetMassFlowRate(): TRate;
+var
+   Child: TAssetNode;
+begin
+   Result := TRate.FromPerMillisecond(0.0);
+   for Child in FChildren do
+      Result := Result + Child.MassFlowRate;
 end;
 
 function TSolarSystemFeatureNode.GetSize(): Double;

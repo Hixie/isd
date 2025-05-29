@@ -18,6 +18,7 @@ type
    TCollectKnownMaterialsMessage = class(TGlobalKnowledgeBusMessage)
    private
       FKnownMaterials: TMaterialHashSet;
+      // TODO: add a separate 64 bit field tracking the ores specifically
       FOwner: TDynasty;
       FCachedSystem: TSystem;
    public
@@ -114,9 +115,10 @@ type
       FKnownAssetClasses: TCachedKnownAssetClassesHashMap;
       FKnownResearches: TCachedKnownResearchesHashMap;
       FSubscriptions: specialize PlasticArray<TCallback, specialize DefaultUnorderedUtils<TCallback>>;
+      procedure FreeCaches();
    protected
       procedure ParentMarkedAsDirty(ParentDirtyKinds, NewDirtyKinds: TDirtyKinds); override;
-      function ManageBusMessage(Message: TBusMessage): Boolean; override;
+      function ManageBusMessage(Message: TBusMessage): TBusMessageResult; override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
    public
@@ -199,6 +201,7 @@ end;
 
 procedure TSubscribableKnowledgeBusMessage.Subscribe(Callback: TCallback);
 begin
+   Assert(Assigned(FBus), 'Never set the bus on ' + ClassName);
    FBus.FSubscriptions.Push(Callback);
 end;
 
@@ -309,8 +312,7 @@ begin
    Result := TKnowledgeBusFeatureNode.Create();
 end;
 
-
-destructor TKnowledgeBusFeatureNode.Destroy();
+procedure TKnowledgeBusFeatureNode.FreeCaches();
 var
    Materials: TMaterialHashSet;
    AssetClasses: TAssetClassHashSet;
@@ -334,6 +336,11 @@ begin
          Researches.Free();
       FreeAndNil(FKnownResearches);
    end;
+end;
+      
+destructor TKnowledgeBusFeatureNode.Destroy();
+begin
+   FreeCaches();
    inherited;
 end;
 
@@ -344,12 +351,7 @@ var
 begin
    if (dkAffectsKnowledge in NewDirtyKinds) then
    begin
-      FreeAndNil(FKnownMaterials);
-      FreeAndNil(FKnownAssetClasses);
-      FreeAndNil(FKnownResearches);
-   end;
-   if (dkAffectsKnowledge in NewDirtyKinds) then
-   begin
+      FreeCaches();
       Subscriptions := FSubscriptions.Distill();
       FSubscriptions.Init(Length(Subscriptions)); // $R-
       for Callback in Subscriptions do
@@ -358,24 +360,13 @@ begin
    inherited;
 end;
 
-function TKnowledgeBusFeatureNode.ManageBusMessage(Message: TBusMessage): Boolean;
-var
-   Handled: Boolean;
+function TKnowledgeBusFeatureNode.ManageBusMessage(Message: TBusMessage): TBusMessageResult;
 begin
    if (Message is TKnowledgeBusMessage) then
    begin
-      Result := False;
-      if (Assigned(Parent.Parent)) then
-      begin
-         Result := Parent.Parent.InjectBusMessage(Message);
-      end;
-      if (not Result) then
-      begin
-         Handled := Parent.HandleBusMessage(Message);
-         Assert((not (Message is TTargetedKnowledgeBusMessage)) or Handled);
-         Assert((not (Message is TGlobalKnowledgeBusMessage)) or not Handled);
-         Result := True;
-      end;
+      Result := DeferOrManageBusMessage(Message);
+      Assert((not (Message is TTargetedKnowledgeBusMessage)) or (Result = mrHandled));
+      Assert((not (Message is TGlobalKnowledgeBusMessage)) or (Result = mrInjected));
    end
    else
       Result := inherited;
@@ -389,7 +380,7 @@ var
    CollectMaterialsMessage: TCollectKnownMaterialsMessage;
    CollectAssetClassesMessage: TCollectKnownAssetClassesMessage;
    CollectResearchesMessage: TCollectKnownResearchesMessage;
-   Injected: Boolean;
+   Injected: TBusMessageResult;
    Dynasty: TDynasty;
 begin
    if (Message is TGetKnownMaterialsMessage) then
@@ -404,7 +395,7 @@ begin
          KnownMaterialsForDynasty := TMaterialHashSet.Create();
          CollectMaterialsMessage := TCollectKnownMaterialsMessage.Create(KnownMaterialsForDynasty, Dynasty, System);
          Injected := InjectBusMessage(CollectMaterialsMessage);
-         Assert(Injected); // we are a bus for this message!
+         Assert(Injected = mrInjected); // we are a bus for this message!
          FKnownMaterials[Dynasty] := KnownMaterialsForDynasty;
          FreeAndNil(CollectMaterialsMessage);
       end;
@@ -424,7 +415,7 @@ begin
          KnownAssetClassesForDynasty := TAssetClassHashSet.Create();
          CollectAssetClassesMessage := TCollectKnownAssetClassesMessage.Create(KnownAssetClassesForDynasty, Dynasty, System);
          Injected := InjectBusMessage(CollectAssetClassesMessage);
-         Assert(Injected); // we are a bus for this message!
+         Assert(Injected = mrInjected); // we are a bus for this message!
          FKnownAssetClasses[Dynasty] := KnownAssetClassesForDynasty;
          FreeAndNil(CollectAssetClassesMessage);
       end;
@@ -444,7 +435,7 @@ begin
          KnownResearchesForDynasty := TResearchHashSet.Create();
          CollectResearchesMessage := TCollectKnownResearchesMessage.Create(KnownResearchesForDynasty, Dynasty, System);
          Injected := InjectBusMessage(CollectResearchesMessage);
-         Assert(Injected); // we are a bus for this message!
+         Assert(Injected = mrInjected); // we are a bus for this message!
          FKnownResearches[Dynasty] := KnownResearchesForDynasty;
          FreeAndNil(CollectResearchesMessage);
       end;
@@ -493,7 +484,7 @@ end;
 procedure TKnowledgeFeatureNode.SetKnowledge(AResearch: TResearch);
 begin
    FResearch := AResearch;
-   MarkAsDirty([dkSelf, dkAffectsKnowledge]);
+   MarkAsDirty([dkUpdateClients, dkUpdateJournal, dkAffectsKnowledge]);
 end;
 
 function TKnowledgeFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;

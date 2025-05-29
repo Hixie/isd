@@ -76,6 +76,7 @@ end;
 function TPopulationFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
 var
    HelpMessage: TNotificationMessage;
+   Injected: TBusMessageResult;
 begin
    if (Message is TCrashReportMessage) then
    begin
@@ -86,17 +87,20 @@ begin
          'WHAT THE HECK WHY DID WE JUST CRASH WHAT IS HAPPENING',
          nil
       );
-      Result := InjectBusMessage(HelpMessage);
-      if (not Result) then
+      Injected := InjectBusMessage(HelpMessage);
+      if (Injected <> mrHandled) then
          Writeln('Discarding message from population center ("', HelpMessage.Body, '")');
+      Result := False; // TCrashReportMessage is handled when you explode yourself due to the crash (notifying someone isn't handling it!)
       FreeAndNil(HelpMessage);
    end
    else
    if (Message is TInitFoodMessage) then
    begin
       (Message as TInitFoodMessage).RequestFoodToEat(Self, FPopulation);
-   end;
-   Result := False;
+      Result := False;
+   end
+   else
+      Result := False;
 end;
 
 procedure TPopulationFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);

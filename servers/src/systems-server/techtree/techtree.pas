@@ -38,9 +38,10 @@ function ReadBuildEnvironment(Tokens: TTokenizer): TBuildEnvironment;
 function ReadAssetClass(Reader: TTechTreeReader): TAssetClass;
 function ReadMaterial(Reader: TTechTreeReader): TMaterial;
 function ReadTopic(Reader: TTechTreeReader): TTopic;
+function ReadNumber(Tokens: TTokenizer; Min, Max: Int64): Int64;
 function ReadLength(Tokens: TTokenizer): Double;
 function ReadMass(Tokens: TTokenizer): Double;
-function ReadNumber(Tokens: TTokenizer; Min, Max: Int64): Int64;
+function ReadMassPerTime(Tokens: TTokenizer): TRate;
 
 implementation
 
@@ -258,7 +259,7 @@ var
          SeenTime := False;
          SeenWeight := False;
          Node := ParseNodeReference();
-         TimeDelta := TMillisecondsDuration(0);
+         TimeDelta := TMillisecondsDuration.FromMilliseconds(0);
          WeightDelta := 0;
          Tokens.ReadColon();
          repeat
@@ -351,7 +352,7 @@ var
       DefaultTime: TMillisecondsDuration;
       DefaultWeight: TWeight;
       Node: TNode;
-      Requirements: TNode.TNodeArray;
+      Requirements: TNode.TNodeArray; // these get back-propagated as "unlocks" when the TResearch or TTopic constructor is called
       Bonuses: TBonus.TArray;
       Rewards: TReward.TArray;
       Components: TComponents;
@@ -386,7 +387,7 @@ var
       Tokens.ReadOpenBrace();
       Components := [];
       SeenStringReward := False;
-      DefaultTime := TMillisecondsDuration(0);
+      DefaultTime := TMillisecondsDuration.FromMilliseconds(0);
       DefaultWeight := 1;
       SetLength(Requirements, 0);
       SetLength(Bonuses, 0);
@@ -684,7 +685,7 @@ var
             'id':
                begin
                   MarkSeen(mcID);
-                  ID := ReadNumber(Tokens, 1, High(TMaterialID)); // $R-
+                  ID := ReadNumber(Tokens, 65, High(TMaterialID)); // $R-
                   if (MaterialIDs.Has(ID)) then
                      Tokens.Error('Material ID %d is already used by "%s"', [ID, MaterialIDs[ID].Name]);
                end;
@@ -885,6 +886,15 @@ begin
       Reader.Tokens.Error('Unknown topic "%s"', [Value]);
 end;
 
+function ReadNumber(Tokens: TTokenizer; Min, Max: Int64): Int64;
+begin
+   Result := Tokens.ReadNumber();
+   if (Result < Min) then
+      Tokens.Error('Invalid value %d; must be greater than or equal to %d', [Result, Min]);
+   if (Result > Max) then
+      Tokens.Error('Invalid value %d; must be less than or equal to %d', [Result, Max]);
+end;
+
 function ReadLength(Tokens: TTokenizer): Double;
 var
    Value: Int64;
@@ -892,9 +902,10 @@ var
 begin
    Value := Tokens.ReadNumber();
    if (Value <= 0) then
-      Tokens.Error('Invalid length "%d"; must be positive', [Value]);
+      Tokens.Error('Invalid length "%d"; must be greater than zero', [Value]);
    Keyword := Tokens.ReadIdentifier();
    case Keyword of
+      'km': Result := Value * 1000.0;
       'm': Result := Value;
       'cm': Result := Value / 100.0;
       'mm': Result := Value / 1000.0;
@@ -910,22 +921,36 @@ var
 begin
    Value := Tokens.ReadNumber();
    if (Value <= 0) then
-      Tokens.Error('Invalid mass "%d"; must be positive', [Value]);
+      Tokens.Error('Invalid mass "%d"; must be greater than zero', [Value]);
    Keyword := Tokens.ReadIdentifier();
    case Keyword of
       'kg': Result := Value;
+      'g': Result := Value / 1000.0;
+      'mg': Result := Value / 1000000.0;
    else
-      Tokens.Error('Expected "kg" unit for length, but got "%s"', [Keyword]);
+      Tokens.Error('Unknown unit for length "%s"', [Keyword]);
    end;
 end;
 
-function ReadNumber(Tokens: TTokenizer; Min, Max: Int64): Int64;
+function ReadMassPerTime(Tokens: TTokenizer): TRate;
+var
+   Keyword: UTF8String;
+   Value: Double;
 begin
-   Result := Tokens.ReadNumber();
-   if (Result < Min) then
-      Tokens.Error('Invalid value %d; must be greater than or equal to %d', [Result, Min]);
-   if (Result > Max) then
-      Tokens.Error('Invalid value %d; must be less than or equal to %d', [Result, Max]);
+   Value := ReadMass(Tokens);
+   if (Value < 0.0) then
+      Tokens.Error('Invalid throughput "%f"; must be positive', [Value]);
+   Tokens.ReadSlash();
+   Keyword := Tokens.ReadIdentifier();
+   case Keyword of
+      'h': Value := Value / (60.0 * 60.0 * 1000.0);
+      'min': Value := Value / (60.0 * 1000.0);
+      's': Value := Value / 1000.0;
+      'ms': ;
+   else
+      Tokens.Error('Unknown unit for time "%s"', [Keyword]);
+   end;
+   Result := TRate.FromPerMillisecond(Value);
 end;
 
 initialization

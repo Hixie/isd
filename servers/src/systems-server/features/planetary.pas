@@ -5,17 +5,24 @@ unit planetary;
 interface
 
 uses
-   systems, serverstream, materials, techtree, tttokenizer;
+   systems, serverstream, materials, techtree, tttokenizer, isdnumbers;
 
 type
-   TPlanetaryCompositionEntry = record
-      Material: TMaterial;
-      Quantity: Double; // TODO: how are we going to handle small changes to such large numbers?
-      constructor Create(AMaterial: TMaterial; AQuantity: Double);
+   TAllocateOresBusMessage = class(TPhysicalConnectionBusMessage)
+   strict private
+      FDepth: Cardinal;
+      FCachedSystem: TSystem;
+      FTargetCount: Cardinal;
+      FTargetQuantity: UInt64;
+   public
+      AssignedOres: TOreQuantities;
+      constructor Create(ADepth: Cardinal; ATargetCount: Cardinal; ATargetQuantity: UInt64; ACachedSystem: TSystem);
+      property Depth: Cardinal read FDepth;
+      property TargetCount: Cardinal read FTargetCount;
+      property TargetQuantity: UInt64 read FTargetQuantity;
+      property CachedSystem: TSystem read FCachedSystem;
    end;
-
-   TPlanetaryComposition = array of TPlanetaryCompositionEntry;
-
+   
    TPlanetaryBodyFeatureClass = class(TFeatureClass)
    strict protected
       function GetFeatureNodeClass(): FeatureNodeReference; override;
@@ -26,24 +33,26 @@ type
 
    TPlanetaryBodyFeatureNode = class(TFeatureNode)
    strict private
-      FComposition: TPlanetaryComposition;
-      FStructuralIntegrity: Cardinal;
+      FComposition: TOreFractions;
+      FMass: Int256; // kg
       FDiameter: Double; // m
       FConsiderForDynastyStart: Boolean;
       FTemperature: Double; // K
       function GetBondAlbedo(): Double;
    protected
+      constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
       function GetMass(): Double; override; // kg
       function GetSize(): Double; override; // m
+      function ManageBusMessage(Message: TBusMessage): TBusMessageResult; override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
    public
-      constructor Create(ADiameter, ATemperature: Double; AComposition: TPlanetaryComposition; AStructuralIntegrity: Cardinal; AConsiderForDynastyStart: Boolean);
+      constructor Create(ADiameter, ATemperature: Double; AComposition: TOreFractions; AMass: Double; AConsiderForDynastyStart: Boolean);
+      destructor Destroy(); override;
       procedure UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem); override;
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
-      procedure SetTemperature(ATemperature: Double); // stores a computed temperature
+      procedure SetTemperature(ATemperature: Double);
       procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); override;
-      property StructuralIntegrity: Cardinal read FStructuralIntegrity;
       property ConsiderForDynastyStart: Boolean read FConsiderForDynastyStart;
       property BondAlbedo: Double read GetBondAlbedo;
       property Temperature: Double read FTemperature; // K
@@ -54,10 +63,13 @@ implementation
 uses
    isdprotocol, sysutils, exceptions, math, rubble;
 
-constructor TPlanetaryCompositionEntry.Create(AMaterial: TMaterial; AQuantity: Double);
+constructor TAllocateOresBusMessage.Create(ADepth: Cardinal; ATargetCount: Cardinal; ATargetQuantity: UInt64; ACachedSystem: TSystem);
 begin
-   Material := AMaterial;
-   Quantity := AQuantity;
+   inherited Create();
+   FDepth := ADepth;
+   FTargetCount := ATargetCount;
+   FTargetQuantity := ATargetQuantity;
+   FCachedSystem := ACachedSystem;
 end;
 
 
@@ -79,23 +91,29 @@ begin
 end;
 
 
-constructor TPlanetaryBodyFeatureNode.Create(ADiameter, ATemperature: Double; AComposition: TPlanetaryComposition; AStructuralIntegrity: Cardinal; AConsiderForDynastyStart: Boolean);
+constructor TPlanetaryBodyFeatureNode.Create(ADiameter, ATemperature: Double; AComposition: TOreFractions; AMass: Double; AConsiderForDynastyStart: Boolean);
 begin
    inherited Create();
    FDiameter := ADiameter;
    FTemperature := ATemperature;
    FComposition := AComposition;
-   FStructuralIntegrity := AStructuralIntegrity;
+   FMass := Int256.FromDouble(AMass);
    FConsiderForDynastyStart := AConsiderForDynastyStart;
 end;
 
-function TPlanetaryBodyFeatureNode.GetMass(): Double; // kg
-var
-   CompositionEntry: TPlanetaryCompositionEntry;
+constructor TPlanetaryBodyFeatureNode.CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem);
 begin
-   Result := 0.0;
-   for CompositionEntry in FComposition do
-      Result := Result + CompositionEntry.Material.MassPerUnit * CompositionEntry.Quantity;
+   inherited;
+end;
+
+destructor TPlanetaryBodyFeatureNode.Destroy();
+begin
+   inherited;
+end;
+
+function TPlanetaryBodyFeatureNode.GetMass(): Double; // kg
+begin
+   Result := FMass.ToDouble();
 end;
 
 function TPlanetaryBodyFeatureNode.GetSize(): Double;
@@ -106,19 +124,21 @@ end;
 function TPlanetaryBodyFeatureNode.GetBondAlbedo(): Double;
 // This function should remain equivalent to the GetBondAlbedo function in protoplanetary.pas
 var
-   Index: Cardinal;
+   Index: TOres;
    Factor, Numerator, Denominator: Double;
    Material: TMaterial;
+   Encyclopedia: TEncyclopediaView;
 begin
+   Encyclopedia := System.Encyclopedia;
    Numerator := 0.0;
    Denominator := 0.0;
    Assert(Length(FComposition) > 0);
    for Index := Low(FComposition) to High(FComposition) do // $R-
    begin
-      Material := FComposition[Index].Material;
-      if (not IsNaN(Material.BondAlbedo)) then
+      Material := Encyclopedia.Materials[Index];
+      if (Assigned(Material) and not IsNaN(Material.BondAlbedo)) then
       begin
-         Factor := FComposition[Index].Quantity * Material.MassPerUnit / Material.Density;
+         Factor := FComposition[Index] / Material.Density;
          Numerator := Numerator + Material.BondAlbedo * Factor;
          Denominator := Denominator + Factor;
       end;
@@ -130,30 +150,129 @@ begin
    Assert(Result <= 1.0);
 end;
 
-function TPlanetaryBodyFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
+function TPlanetaryBodyFeatureNode.ManageBusMessage(Message: TBusMessage): TBusMessageResult;
 var
-   RubbleMessage: TRubbleCollectionMessage;
-   Entry: TPlanetaryCompositionEntry;
+   AllocateResourcesMessage: TAllocateOresBusMessage;
+   OreIndex: TOres;
+   Encyclopedia: TEncyclopediaView;
+   Material: TMaterial;
+   ConsiderOre, IncludeOre: Boolean;
+   TargetCount, RemainingCount, Index, CurrentFraction, MaxFraction: Cardinal;
+   ApproximateMass, CandidateMass, MaxMass: Double;
+   SelectedOres: TOreFilter;
+   CachedSystem: TSystem;
 begin
-   Result := False;
-   if (Message is TRubbleCollectionMessage) then
+   if (Message is TAllocateOresBusMessage) then
    begin
-      RubbleMessage := Message as TRubbleCollectionMessage;
-      RubbleMessage.Grow(Length(FComposition)); // $R-
-      for Entry in FComposition do
+      AllocateResourcesMessage := Message as TAllocateOresBusMessage;
+      CachedSystem := System;
+      Encyclopedia := AllocateResourcesMessage.CachedSystem.Encyclopedia;
+      TargetCount := AllocateResourcesMessage.TargetCount;
+      Assert(TargetCount > 0);
+      SelectedOres.Clear();
+      ApproximateMass := FMass.ToDouble();
+      RemainingCount := 0;
+      for OreIndex in TOres do
       begin
-         if (Entry.Quantity <= High(Int64)) then
+         Material := Encyclopedia.Materials[OreIndex];
+         if ((FComposition[OreIndex].IsNotZero) and
+             (mtSolid in Material.Tags) and
+             ((mtEvenlyDistributed in Material.Tags) or
+              ((mtDepth2 in Material.Tags) and (AllocateResourcesMessage.Depth >= 2)) or
+              ((mtDepth3 in Material.Tags) and (AllocateResourcesMessage.Depth >= 3)) or
+              (Material.Tags * [mtDepth2, mtDepth3] = []))) then
+            Inc(RemainingCount);
+      end;
+      Index := 0;
+      MaxFraction := 0;
+      for OreIndex in TOres do
+      begin
+         if (FComposition[OreIndex].IsNotZero) then
          begin
-            RubbleMessage.AddMaterial(Entry.Material, Round(Entry.Quantity));
+            Material := Encyclopedia.Materials[OreIndex];
+            if (mtSolid in Material.Tags) then
+            begin
+               ConsiderOre := False;
+               if (mtEvenlyDistributed in Material.Tags) then
+               begin
+                  ConsiderOre := True;
+                  IncludeOre := True;
+               end
+               else
+               begin
+                  if (mtDepth2 in Material.Tags) then
+                  begin
+                     ConsiderOre := AllocateResourcesMessage.Depth >= 2;
+                  end
+                  else
+                  if (mtDepth3 in Material.Tags) then
+                  begin
+                     ConsiderOre := AllocateResourcesMessage.Depth >= 3;
+                  end
+                  else
+                  begin
+                     ConsiderOre := True;
+                  end;
+                  IncludeOre := ConsiderOre and AllocateResourcesMessage.CachedSystem.RandomNumberGenerator.GetBoolean(TargetCount / RemainingCount);
+               end;
+               if (IncludeOre) then
+               begin
+                  SelectedOres.Enable(OreIndex);
+                  CurrentFraction := FComposition[OreIndex].AsCardinal;
+                  if (CurrentFraction > MaxFraction) then
+                     MaxFraction := CurrentFraction;
+                  Inc(Index);
+                  Dec(TargetCount);
+                  if (TargetCount = 0) then
+                     break;
+               end;
+               if (ConsiderOre) then
+                  Dec(RemainingCount);
+            end;
+         end;
+      end;
+      Assert((RemainingCount = 0) or (TargetCount = 0));
+      for OreIndex in TOres do
+      begin
+         if (SelectedOres[OreIndex]) then
+         begin
+            Material := CachedSystem.Encyclopedia.Materials[OreIndex];
+            CandidateMass := AllocateResourcesMessage.TargetQuantity * Material.MassPerUnit * FComposition[OreIndex].AsCardinal / MaxFraction;
+            MaxMass := ApproximateMass * FComposition[OreIndex].ToDouble();
+            if (CandidateMass > MaxMass) then
+            begin
+               // finish it off
+               FComposition[OreIndex].ResetToZero();
+               AllocateResourcesMessage.AssignedOres[OreIndex] := Round(MaxMass / Material.MassPerUnit); // $R-
+            end
+            else
+            begin
+               // extract a little
+               FComposition[OreIndex].Subtract(CandidateMass / ApproximateMass);
+               AllocateResourcesMessage.AssignedOres[OreIndex] := RoundUInt64(CandidateMass / Material.MassPerUnit); // $R-
+            end;
+            FMass.Subtract(Int256.FromDouble(Material.MassPerUnit * AllocateResourcesMessage.AssignedOres[OreIndex]));
          end
          else
          begin
-            // now what
-            Assert(False, 'Could not convert plantery body ' + Entry.Material.Name + ' to rubble (quantity too high).');
+            AllocateResourcesMessage.AssignedOres[OreIndex] := 0;
          end;
       end;
-      exit;
+      Fraction32.NormalizeArray(@FComposition[Low(FComposition)], Length(FComposition));
+      MarkAsDirty([dkUpdateClients, dkUpdateJournal]);
+      Result := mrHandled;
+   end
+   else
+      Result := inherited;
+end;
+
+function TPlanetaryBodyFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
+begin
+   if (Message is TRubbleCollectionMessage) then
+   begin
+      Assert(False, 'TPlanetaryBodyFeatureNode should never see TRubbleCollectionMessage');
    end;
+   Result := False;
 end;
 
 procedure TPlanetaryBodyFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
@@ -164,40 +283,49 @@ begin
    if ((dmDetectable * Visibility <> []) and (dmClassKnown in Visibility) and (dmInternals in Visibility)) then
    begin
       Writer.WriteCardinal(fcPlanetaryBody);
-      Writer.WriteCardinal(FStructuralIntegrity);
    end;
 end;
 
 procedure TPlanetaryBodyFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
 var
-   Index: Cardinal;
+   QuadIndex: Int256.TQuadIndex;
+   OreIndex: TOres;
 begin
    Journal.WriteDouble(FDiameter);
+   for QuadIndex in Int256.TQuadIndex do
+      Journal.WriteUInt64(FMass.AsQWords[QuadIndex]);
    Journal.WriteCardinal(Length(FComposition));
    Assert(Length(FComposition) > 0);
-   for Index := Low(FComposition) to High(FComposition) do // $R-
+   for OreIndex := Low(FComposition) to High(FComposition) do // $R-
    begin
-      Journal.WriteMaterialReference(FComposition[Index].Material);
-      Journal.WriteDouble(FComposition[Index].Quantity);
+      Journal.WriteMaterialReference(CachedSystem.Encyclopedia.Materials[OreIndex]);
+      Journal.WriteCardinal(FComposition[OreIndex].AsCardinal);
    end;
-   Journal.WriteCardinal(FStructuralIntegrity);
    Journal.WriteBoolean(FConsiderForDynastyStart);
    Journal.WriteDouble(FTemperature);
 end;
 
 procedure TPlanetaryBodyFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
 var
-   Index: Cardinal;
+   QuadIndex: Int256.TQuadIndex;
+   Index, Count: Cardinal;
+   Material: TMaterial;
 begin
    FDiameter := Journal.ReadDouble();
-   SetLength(FComposition, Journal.ReadCardinal());
-   Assert(Length(FComposition) > 0);
-   for Index := Low(FComposition) to High(FComposition) do // $R-
+   for QuadIndex in Int256.TQuadIndex do
+      FMass.AsQWords[QuadIndex] := Journal.ReadUInt64();
+   Count := Journal.ReadCardinal();
+   Assert(Count <= Length(FComposition));
+   Assert(Count > 0);
+   Assert(SizeOf(DWord) = SizeOf(Fraction32));
+   FillDWord(FComposition, Length(FComposition), 0);
+   for Index := 0 to Count - 1 do // $R-
    begin
-      FComposition[Index].Material := Journal.ReadMaterialReference();
-      FComposition[Index].Quantity := Journal.ReadDouble();
+      Material := Journal.ReadMaterialReference();
+      Assert(Material.ID >= Low(TOres));
+      Assert(Material.ID <= High(TOres));
+      FComposition[Material.ID].AsCardinal := Journal.ReadCardinal();
    end;
-   FStructuralIntegrity := Journal.ReadCardinal();
    FConsiderForDynastyStart := Journal.ReadBoolean();
    FTemperature := Journal.ReadDouble();
 end;
@@ -210,6 +338,7 @@ end;
 
 procedure TPlanetaryBodyFeatureNode.DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean);
 begin
+   Assert(FMass.IsNotZero);
    IsDefinitelyReal := True;
 end;
 

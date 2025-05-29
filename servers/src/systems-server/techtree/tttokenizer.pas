@@ -27,7 +27,7 @@ type
             tkPending,
             tkIdentifier, tkString, tkNumber,
             tkOpenBrace, tkCloseBrace, tkOpenParenthesis, tkCloseParenthesis,
-            tkComma, tkColon, tkSemicolon, tkPercentage, tkAsterisk,
+            tkComma, tkColon, tkSemicolon, tkPercentage, tkAsterisk, tkSlash,
             tkEOF
          );
       var
@@ -60,6 +60,7 @@ type
       procedure ReadSemicolon();
       procedure ReadPercentage();
       procedure ReadAsterisk();
+      procedure ReadSlash();
       function IsIdentifier(): Boolean;
       function IsIdentifier(Keyword: UTF8String): Boolean;
       function IsString(): Boolean;
@@ -509,10 +510,6 @@ begin
                end;
             tmSlash:
                case (Current) of
-                  kEOF:
-                     begin
-                        Error('Unexpected end of file', []);
-                     end;
                   $2A: // U+002A ASTERISK character (*)
                      begin
                         Advance();
@@ -524,7 +521,9 @@ begin
                         Mode := tmLineComment;
                      end;
                else
-                  Error('Unexpected "/"', []);
+                  FCurrentKind := tkSlash;
+                  Mode := tmTop;
+                  // do not advance, we need to reprocess this character
                end;
             tmLineComment:
                case (Current) of
@@ -693,6 +692,13 @@ procedure TTokenizer.ReadAsterisk();
 begin
    EnsureToken();
    ExpectToken(tkAsterisk);
+   FCurrentKind := tkPending;
+end;
+
+procedure TTokenizer.ReadSlash();
+begin
+   EnsureToken();
+   ExpectToken(tkSlash);
    FCurrentKind := tkPending;
 end;
 

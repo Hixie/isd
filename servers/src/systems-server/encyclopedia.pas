@@ -24,6 +24,7 @@ type
          FProtoplanetaryMaterials: TMaterialHashSet;
          FDarkMatter: TMaterial;
       function GetStarClass(Category: TStarCategory): TAssetClass;
+      function CreateRegion(CellSize: Double; Dimension: Cardinal): TAssetNode;
    protected
       function GetAssetClass(ID: Integer): TAssetClass; override;
       function GetMaterial(ID: TMaterialID): TMaterial; override;
@@ -67,10 +68,12 @@ const
 implementation
 
 uses
-   icons, orbit, structure, stellar, name, sensors, exceptions,
-   sysutils, planetary, protoplanetary, plot, surface, grid, time,
-   population, messages, knowledge, math, food, proxy, rubble,
-   floatutils, research;
+   sysutils, math, floatutils, exceptions, isdnumbers, icons,
+   protoplanetary, time,
+   // this must import every feature, so they get registered:
+   orbit, structure, stellar, name, size, sensors, pile, mining,
+   planetary, region, plot, surface, grid, population, messages,
+   knowledge, food, proxy, rubble, research;
 
 function RoundAboveZero(Value: Double): Cardinal;
 begin
@@ -197,8 +200,8 @@ begin
       'Colony Ship', 'Unidentified Flying Object',
       'A ship that people used to escape their dying star.',
       [
-         TSpaceSensorFeatureClass.Create(10 { max steps to orbit }, 10 { steps up from orbit }, 10 { steps down from top}, 0.01 { min size }, [dmVisibleSpectrum, dmClassKnown, dmInternals]),
-         TStructureFeatureClass.Create([TMaterialLineItem.Create('Shell', FDarkMatter, 10000 { mass in units (g): 10kg })], 1 { min functional quantity }, 100.0 { default diameter, m }),
+         TSpaceSensorFeatureClass.Create(10 { max steps to orbit }, 10 { steps up from orbit }, 10 { steps down from top }, 0.01 { min size }, [dmVisibleSpectrum, dmClassKnown, dmInternals]),
+         TStructureFeatureClass.Create([TMaterialLineItem.Create('Shell', FDarkMatter, 10000 { mass in units (g): 10kg })], 1 { min functional quantity }, 500.0 { default diameter, m }),
          TDynastyOriginalColonyShipFeatureClass.Create(),
          TPopulationFeatureClass.Create(),
          TMessageBoardFeatureClass.Create(FMessage),
@@ -219,7 +222,7 @@ begin
       'A cold gravitionally-bound astronomical object. (Cold when compared to a star, at least.)',
       [
          TPlanetaryBodyFeatureClass.Create(),
-         TSurfaceFeatureClass.Create()
+         TSurfaceFeatureClass.Create(1000.0 { cell size }, 3, 9, @CreateRegion)
       ],
       PlanetIcon,
       []
@@ -246,6 +249,7 @@ begin
       'Region',
       'An area of a planetary body.',
       [
+         TRegionFeatureClass.Create(1, 10, High(UInt64)),
          TGenericGridFeatureClass.Create(),
          TKnowledgeBusFeatureClass.Create(),
          TFoodBusFeatureClass.Create()
@@ -359,7 +363,7 @@ end;
 
 function TEncyclopedia.WrapAssetForOrbit(Child: TAssetNode): TAssetNode;
 begin
-   Result := FOrbits.Spawn(nil, [ TOrbitFeatureNode.Create(Child) ]);
+   Result := FOrbits.Spawn(nil { no owner }, [ TOrbitFeatureNode.Create(Child) ]);
 end;
 
 function TEncyclopedia.CreateLoneStar(StarID: TStarID): TAssetNode;
@@ -369,7 +373,7 @@ begin
    Category := CategoryOf(StarID);
    Assert(Assigned(FStars[Category]));
    Result := FStars[Category].Spawn(
-      nil,
+      nil, // no owner
       [
          TStarFeatureNode.Create(StarID),
          TAssetNameFeatureNode.Create(StarNameOf(StarID))
@@ -379,25 +383,12 @@ end;
 
 procedure TEncyclopedia.CondenseProtoplanetaryDisks(Space: TSolarSystemFeatureNode; System: TSystem);
 
-   function CreateRegions(BodyRadius: Double; BodyComposition: TPlanetaryComposition): TAssetNode.TArray;
-   begin
-      // TODO: this should do things based on the body composition, create geology, etc
-      // TODO: only do this on demand
-      SetLength(Result, 1); // {BOGUS Warning: Function result variable of a managed type does not seem to be initialized}
-      Result[0] := FRegion.Spawn(nil, [
-         TGridFeatureNode.Create(bePlanetRegion, 100.0, 5),
-         TKnowledgeBusFeatureNode.Create(),
-         TFoodBusFeatureNode.Create()
-      ]);
-   end;
-
-
    function CreateBodyNode(const Body: TBody): TAssetNode;
    var
       Index, Count: Cardinal;
       TotalVolume, TotalRelativeVolume: Double;
       BodyComposition: TBodyComposition;
-      AssetComposition: TPlanetaryComposition;
+      AssetComposition: TOreFractions;
    begin
       TotalRelativeVolume := 0.0;
       Count := 0;
@@ -411,36 +402,39 @@ procedure TEncyclopedia.CondenseProtoplanetaryDisks(Space: TSolarSystemFeatureNo
       end;
       Assert(Count > 0);
       Assert(TotalRelativeVolume > 0.0);
-      SetLength(AssetComposition, Count);
       TotalVolume := Body.Radius * Body.Radius * Body.Radius * Pi * 4.0 / 3.0; // $R-
       Index := 0;
       Assert(TotalVolume > 0);
+      for Index := Low(AssetComposition) to High(AssetComposition) do
+         AssetComposition[Index].ResetToZero(); // {BOGUS Warning: Local variable "AssetComposition" does not seem to be initialized}
       for BodyComposition in Body.Composition do
       begin
          if (BodyComposition.RelativeVolume > 0) then
          begin
-            AssetComposition[Index].Material := BodyComposition.Material;
+            Assert(BodyComposition.Material.ID >= Low(TOres));
+            Assert(BodyComposition.Material.ID <= High(TOres));
             Assert(BodyComposition.RelativeVolume > 0);
             Assert(BodyComposition.Material.MassPerUnit > 0);
             Assert(BodyComposition.Material.Density > 0);
-            AssetComposition[Index].Quantity := (BodyComposition.RelativeVolume / TotalRelativeVolume) * TotalVolume * BodyComposition.Material.Density / BodyComposition.Material.MassPerUnit;
-            Assert(AssetComposition[Index].Quantity > 0);
-            Inc(Index);
+            Assert(AssetComposition[BodyComposition.Material.ID].IsZero);
+            AssetComposition[BodyComposition.Material.ID] := Fraction32.FromDouble((BodyComposition.RelativeVolume / TotalRelativeVolume) * TotalVolume * BodyComposition.Material.Density / Body.ApproximateMass);
+            // This might end up being zero, if the RelativeVolume is very very low (but non-zero). That's fine, the default is zero anyway.
          end;
       end;
+      Fraction32.NormalizeArray(@AssetComposition[Low(AssetComposition)], Length(AssetComposition));
       Result := FPlanetaryBody.Spawn(
-         nil,
+         nil, // no owner
          [
             TPlanetaryBodyFeatureNode.Create(
-               Body.Radius * 2.0, // diameter
+               Body.Radius * 2.0, // diameter of body
                Body.Temperature,
                AssetComposition,
-               RoundAboveZero(Body.Radius), // hp
+               Body.ApproximateMass,
                Body.Habitable // whether to consider this body when selecting a crash landing point
             ), // $R-
             TSurfaceFeatureNode.Create(
-               Body.Radius * 2.0, // size of surface
-               CreateRegions(Body.Radius, AssetComposition)
+               FPlanetaryBody.Features[1] as TSurfaceFeatureClass,
+               Body.Radius * 2.0 // diameter of surface
             )
          ]
       );
@@ -461,7 +455,7 @@ procedure TEncyclopedia.CondenseProtoplanetaryDisks(Space: TSolarSystemFeatureNo
          Body.Distance,
          Body.Eccentricity,
          System.RandomNumberGenerator.GetDouble(0.0, 2.0 * Pi), // Omega // $R-
-         TTimeInMilliseconds(0), // TimeOrigin // TODO: make this a random point in the body's period
+         TTimeInMilliseconds.FromMilliseconds(0), // TimeOrigin // TODO: make this a random point in the body's period
          Body.Clockwise
       );
       if (Assigned(Body.Moons)) then
@@ -498,6 +492,19 @@ begin
             AddBody(Body, StarOrbitFeature);
       end;
    end;
+end;
+
+function TEncyclopedia.CreateRegion(CellSize: Double; Dimension: Cardinal): TAssetNode;
+begin
+   Result := FRegion.Spawn(
+      nil, // no owner
+      [
+         TRegionFeatureNode.Create(FRegion.Features[0] as TRegionFeatureClass),
+         TGridFeatureNode.Create(bePlanetRegion, CellSize, Dimension),
+         TKnowledgeBusFeatureNode.Create(),
+         TFoodBusFeatureNode.Create()
+      ]
+   );
 end;
 
 procedure TEncyclopedia.FindTemperatureEquilibria(System: TSystem);
@@ -583,7 +590,7 @@ begin
    end
    else
       SetLength(Composition, 0);
-   Result := FCrater.Spawn(nil, [
+   Result := FCrater.Spawn(nil { no owner }, [
       TProxyFeatureNode.Create(NewAsset),
       TRubblePileFeatureNode.Create(Diameter, Composition)
    ]);

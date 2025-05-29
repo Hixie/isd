@@ -64,7 +64,7 @@ There must always be one research with ID 0.
 
 ```
 material {
-  id: 123456;
+  id: 123456; // must be >64
   name: "Material Name" ("Vague Name");
   description: "Description.";
   icon: "iconname";
@@ -87,16 +87,20 @@ class classid {
   build: land; // or spacedock
   feature: TFoodBusFeatureClass;
   feature: TFoodGenerationFeatureClass size 10;
-  feature: TParameterizedGridFeatureClass 3x3, 4m, land; // or spacedock
   feature: TKnowledgeBusFeatureClass;
   feature: TKnowledgeFeatureClass;
   feature: TMessageBoardFeatureClass spawns classid;
   feature: TMessageFeatureClass;
-  feature: TPopulationFeatureClass XXX XXX;
+  feature: TMiningFeatureClass max throughput 1kg/s;
+  feature: TOrePileFeatureClass max mass 1kg;
+  feature: TParameterizedGridFeatureClass 3x3, 4m, land; // or spacedock
+  feature: TPopulationFeatureClass;
   feature: TProxyFeatureClass;
+  feature: TRegionFeatureClass at depth 2, 5 materials of quantity 1000000000000000; // (a thousand trillion units) ("of quantity ..." is optional, defaults to max)
   feature: TResearchFeatureClass provides "topic1", provides "topic2";
-  feature: TSpaceSensorFeatureClass 1 to orbit, up 2 down 3, min size 4, inference, light, class, internals;
+  feature: TSizeFeatureClass 100m;
   feature: TSolarSystemFeatureClass group threshold 1m, gravitational influence 1;
+  feature: TSpaceSensorFeatureClass 1 to orbit, up 2 down 3, min size 4, inference, light, class, internals;
   feature: TStructureFeatureClass size 100m, materials (
     "Component Name 1": "Material Name 1" * 1000,
     "Component Name 2": "Material Name 2" * 1000,
@@ -106,11 +110,11 @@ class classid {
 
 The following features are not supported:
 
- * TGenericGridFeatureClass
  * TAssetNameFeatureClass
+ * TDynastyOriginalColonyShipFeatureClass
+ * TGenericGridFeatureClass (use TParameterizedGridFeatureClass)
  * TOrbitFeatureClass
  * TPlanetaryBodyFeatureClass
- * TDynastyOriginalColonyShipFeatureClass
  * TRubblePileFeatureClass
  * TStarFeatureClass
  * TSurfaceFeatureClass

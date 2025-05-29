@@ -4,6 +4,8 @@ unit research;
 
 interface
 
+// {$DEFINE VERBOSE}
+
 uses
    hashtable, genericutils, basenetwork, systemnetwork, systems, serverstream, systemdynasty, materials, techtree, time;
 
@@ -66,10 +68,13 @@ begin
    repeat
       if (Reader.Tokens.IsComma()) then
          Reader.Tokens.ReadComma();
-      Reader.Tokens.ReadIdentifier('provides');
-      SetLength(FFacilities, Length(FFacilities) + 1);
-      FFacilities[High(FFacilities)] := ReadTopic(Reader);
-      Assert(Length(FFacilities) < 8); // TODO: if we start having a lot of FFacilities, consider using a set instead, or a set/array adaptive hybrid...
+      if (Reader.Tokens.IsIdentifier('provides')) then
+      begin
+         Reader.Tokens.ReadIdentifier('provides');
+         SetLength(FFacilities, Length(FFacilities) + 1);
+         FFacilities[High(FFacilities)] := ReadTopic(Reader);
+         Assert(Length(FFacilities) < 8); // TODO: if we start having a lot of FFacilities, consider using a set instead, or a set/array adaptive hybrid...
+      end;
    until not Reader.Tokens.IsComma();
 end;
 
@@ -131,7 +136,7 @@ end;
 procedure TResearchFeatureNode.ScheduleUpdateResearch();
 begin
    FUpdateResearchScheduled := True;
-   MarkAsDirty([dkSelf, dkNeedsHandleChanges]);
+   MarkAsDirty([dkUpdateClients, dkUpdateJournal, dkNeedsHandleChanges]);
 end;
 
 procedure TResearchFeatureNode.HandleChanges(CachedSystem: TSystem);
@@ -183,7 +188,7 @@ var
 begin
    // Reset state
    FCurrentResearch := nil;
-   FResearchStartTime := TTimeInMilliseconds(0);
+   FResearchStartTime := TTimeInMilliseconds.FromMilliseconds(0);
    FBankedResearch.Empty();
    if (Assigned(FResearchEvent)) then
    begin
@@ -209,7 +214,7 @@ begin
    if (Temp <> TResearch.kNil) then
    begin
       FCurrentResearch := CachedSystem.Encyclopedia.Researches[Temp]; // $R-
-      FResearchStartTime := TTimeInMilliseconds(Journal.ReadInt64());
+      FResearchStartTime := TTimeInMilliseconds.FromMilliseconds(Journal.ReadInt64());
    end;
    Count := Journal.ReadCardinal();
    SetLength(FSpecialties, Count);
@@ -235,7 +240,8 @@ function TResearchFeatureNode.HandleCommand(Command: UTF8String; var Message: TM
    procedure DetermineTopics(Topics, ObsoleteTopics: TTopicHashSet);
    var
       KnowledgeBase: TGetKnownResearchesMessage;
-      Injected, RequirementsMet: Boolean;
+      Injected: TBusMessageResult;
+      RequirementsMet: Boolean;
       Research, Requirement: TResearch;
       Node: TNode;
       Candidate, Topic: TTopic;
@@ -243,7 +249,7 @@ function TResearchFeatureNode.HandleCommand(Command: UTF8String; var Message: TM
       KnowledgeBase := TGetKnownResearchesMessage.Create(Parent.Owner);
       try
          Injected := InjectBusMessage(KnowledgeBase);
-         Assert(Injected);
+         Assert(Injected = mrHandled);
          for Research in KnowledgeBase do
          begin
             for Node in Research.Unlocks do
@@ -420,14 +426,15 @@ var
 var
    KnowledgeBase: TGetKnownResearchesMessage;
    WeightedCandidates: TWeightedResearchHashTable;
-   Injected, RequirementsMet: Boolean;
+   Injected: TBusMessageResult;
+   RequirementsMet: Boolean;
    Research, Candidate: TResearch;
    Node, Requirement: TNode;
    Weight: TWeight;
    TotalWeight, SelectedResearch: Int64;
    Bonus: TBonus;
    Index: Cardinal;
-   Duration: TMillisecondsDuration;
+   Duration, BankedTime: TMillisecondsDuration;
 begin
    while (FSeed < 0) do
       FSeed := System.RandomNumberGenerator.GetUInt32();
@@ -440,17 +447,22 @@ begin
    KnowledgeBase := TGetKnownResearchesMessage.Create(Parent.Owner);
    WeightedCandidates := TWeightedResearchHashTable.Create();
    TotalWeight := 0;
+   {$IFDEF VERBOSE} Writeln('  ', Parent.DebugName, ': Enumerating researches for dynasty ', Parent.Owner.DynastyID, '.'); {$ENDIF}
    try
       Injected := InjectBusMessage(KnowledgeBase);
-      Assert(Injected);
-      KnowledgeBase.Subscribe(@ScheduleUpdateResearch);
+      Assert(Injected = mrHandled);
+      KnowledgeBase.Subscribe(@ScheduleUpdateResearch); // TODO: how do we know this isn't leaking memory by adding infinite callbacks
       for Research in KnowledgeBase do
       begin
+         {$IFDEF VERBOSE} Writeln('   - ', Research.ID, ' is known'); {$ENDIF}
          for Node in Research.Unlocks do
          begin
-            if (Node is TResearch) then
+            if (Node is TResearch) then // we don't care about which topics we unlock here, as we're just making a list of researches that have been unlocked
             begin
                Candidate := Node as TResearch;
+               {$IFDEF VERBOSE} Writeln('     - ', Candidate.ID, ' is unlocked by ', Research.ID); {$ENDIF}
+               {$IFDEF VERBOSE} Writeln('       already known = ', KnowledgeBase.Knows(Candidate)); {$ENDIF}
+               {$IFDEF VERBOSE} Writeln('       weighted = ', WeightedCandidates.Has(Candidate)); {$ENDIF}
                if ((not KnowledgeBase.Knows(Candidate)) and
                    (not WeightedCandidates.Has(Candidate))) then
                begin
@@ -479,6 +491,7 @@ begin
                         Assert(False);
                      end;
                   end;
+                  {$IFDEF VERBOSE} Writeln('       requirements met = ', RequirementsMet); {$ENDIF}
                   if (RequirementsMet) then
                   begin
                      Weight := Candidate.DefaultWeight;
@@ -507,9 +520,12 @@ begin
                         if (RequirementsMet) then
                            Inc(Weight, Bonus.WeightDelta);
                      end;
+                     {$IFDEF VERBOSE} Writeln('       weight = ', Weight); {$ENDIF}
                      if (Weight > 0) then
+                     begin
                         WeightedCandidates[Candidate] := Weight;
-                     Inc(TotalWeight, Weight);
+                        Inc(TotalWeight, Weight);
+                     end;
                   end;
                end;
             end;
@@ -520,7 +536,7 @@ begin
       begin
          Assert(not Assigned(FCurrentResearch));
          Assert(not Assigned(FResearchEvent));
-         Writeln('  No viable research detected for dynasty ', Parent.Owner.DynastyID, '.');
+         {$IFDEF VERBOSE} Writeln('  ', Parent.DebugName, ': No viable research detected for dynasty ', Parent.Owner.DynastyID, '.'); {$ENDIF}
          exit;
       end;   
       
@@ -554,12 +570,12 @@ begin
          {$IFOPT C+}
          if (Index >= Length(Candidates)) then
          begin
-            Writeln('Failed with index = ', Index, ', selected research = ', SelectedResearch);
-            Writeln('Total weight = ', TotalWeight);
-            Writeln('Selected research = ', FSeed mod TotalWeight);
+            Writeln('  ', Parent.DebugName, ': Failed with index = ', Index, ', selected research = ', SelectedResearch);
+            Writeln('  Total weight = ', TotalWeight);
+            Writeln('  Selected research = ', FSeed mod TotalWeight);
             Writeln(Length(Candidates), ' candidates:');
             for Index := Low(Candidates) to High(Candidates) do // $R-
-               Writeln('  #', Index, ': research ', Candidates[Index].ID, ' has weight ', WeightedCandidates[Candidates[Index]]);
+               Writeln('    #', Index, ': research ', Candidates[Index].ID, ' has weight ', WeightedCandidates[Candidates[Index]]);
             Assert(False);
          end;
          {$ENDIF}
@@ -600,32 +616,38 @@ begin
       // TODO: apply modifier based on how structurally sound this asset is
       // TODO: apply modifiers based on how powered this asset is
       // TODO: apply modifiers based on how staffed this asset is
-
+      
       if (FBankedResearch.Has(FCurrentResearch)) then
       begin
+         BankedTime := FBankedResearch[FCurrentResearch];
          Duration := Duration - FBankedResearch[FCurrentResearch];
          FBankedResearch.Remove(FCurrentResearch);
-      end;
+      end
+      else
+         BankedTime := TMillisecondsDuration.FromMilliseconds(0);
 
+      FResearchStartTime := CachedSystem.Now - BankedTime;
+      
       if (Duration.IsNegative) then
-         Duration := TMillisecondsDuration(0);
-
-      FResearchStartTime := CachedSystem.Now;
+         Duration := TMillisecondsDuration.FromMilliseconds(0);
+      Writeln('  ', Parent.DebugName, ': Scheduled research ', FCurrentResearch.ID, '; T-', Duration.ToString());
+      
       FResearchEvent := CachedSystem.ScheduleEvent(Duration, @TriggerResearch, Self);
    finally
       WeightedCandidates.Free();
       KnowledgeBase.Free();
    end;
-   MarkAsDirty([dkSelf]); // save new situation (but don't update research)
+   MarkAsDirty([dkUpdateClients, dkUpdateJournal]); // save new situation (but don't update research)
 end;
 
 procedure TResearchFeatureNode.TriggerResearch(var Data);
 var
    Reward: TReward;
    RewardMessage: TNotificationMessage;
-   Injected: Boolean;
+   Injected: TBusMessageResult;
    Body: UTF8String;
 begin
+   Writeln('  ', Parent.DebugName, ': Triggering research ', FCurrentResearch.ID);
    FResearchEvent := nil;
    Assert(not FBankedResearch.Has(FCurrentResearch));
    Assert(Length(FCurrentResearch.Rewards) > 0);
@@ -640,12 +662,13 @@ begin
    Assert(Body <> '');
    RewardMessage := TNotificationMessage.Create(Parent, Body, FCurrentResearch);
    Injected := InjectBusMessage(RewardMessage);
-   Assert(Injected);
+   if (Injected <> mrHandled) then
+      Writeln('  ', Parent.DebugName, ': Discarding message from research feature ("', RewardMessage.Body, '")');
    FreeAndNil(RewardMessage);
    SetLength(FSpecialties, Length(FSpecialties) + 1);
    FSpecialties[High(FSpecialties)] := FCurrentResearch;
    FCurrentResearch := nil;
-   FResearchStartTime := TTimeInMilliseconds(0);
+   FResearchStartTime := TTimeInMilliseconds.FromMilliseconds(0);
    FSeed := -1;
    ScheduleUpdateResearch();
 end;

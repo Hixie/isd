@@ -5,7 +5,7 @@ unit grid;
 interface
 
 uses
-   systems, serverstream, basenetwork, systemdynasty, techtree, tttokenizer;
+   systems, serverstream, basenetwork, systemdynasty, techtree, tttokenizer, time;
 
 type
    TGenericGridFeatureClass = class(TFeatureClass)
@@ -40,6 +40,7 @@ type
    protected
       procedure DropChild(Child: TAssetNode); override;
       function GetMass(): Double; override;
+      function GetMassFlowRate(): TRate; override;
       function GetSize(): Double; override;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
@@ -214,6 +215,15 @@ begin
       Result := Result + Child.Mass;
 end;
 
+function TGridFeatureNode.GetMassFlowRate(): TRate;
+var
+   Child: TAssetNode;
+begin
+   Result := TRate.FromPerMillisecond(0.0);
+   for Child in FChildren do
+      Result := Result + Child.MassFlowRate;
+end;
+
 function TGridFeatureNode.GetSize(): Double;
 begin
    Result := FCellSize * FDimension;
@@ -235,6 +245,7 @@ var
 begin
    if (Message is TReceiveCrashingAssetMessage) then
    begin
+      Writeln(ClassName, ' handling ', Message.ClassName, ' which has ', Length(TReceiveCrashingAssetMessage(Message).Assets), ' crashing assets');
       CachedSystem := System;
       for Child in TReceiveCrashingAssetMessage(Message).Assets do
       begin
@@ -242,6 +253,7 @@ begin
          Y := CachedSystem.RandomNumberGenerator.GetCardinal(0, Dimension);
          OldChild := GetChild(X, Y, nil);
          Crater := CachedSystem.Encyclopedia.Craterize(CellSize, OldChild, Child);
+         Writeln('  Placed crater ', Crater.DebugName, ' for child ', Child.DebugName, ' at ', X, ',', Y);
          AdoptGridChild(Crater, X, Y);
       end;
       Result := True;
@@ -427,25 +439,29 @@ begin
          exit;
       end;
       KnownAssetClasses := TGetKnownAssetClassesMessage.Create((Message.Connection as TConnection).PlayerDynasty);
-      InjectBusMessage(KnownAssetClasses); // we ignore the result - it doesn't matter if it wasn't handled
-      if (not KnownAssetClasses.Knows(AssetClass)) then
-      begin
-         Message.Error(ieInvalidCommand);
-         exit;
-      end;
-      if (not AssetClass.CanBuild(FBuildEnvironment)) then
-      begin
-         Message.Error(ieInvalidCommand);
-         exit;
-      end;
-      if (Message.CloseInput()) then
-      begin
-         Message.Reply();
-         Asset := AssetClass.Spawn(PlayerDynasty);
-         AdoptGridChild(Asset, X, Y);
-         Assert(not Asset.IsReal());
-         Assert(Asset.Size <= FCellSize, 'Tried to put ' + Asset.DebugName + ' of size ' + FloatToStr(Asset.Size) + 'm in cell size ' + FloatToStr(FCellSize) + 'm');
-         Message.CloseOutput();
+      try
+         InjectBusMessage(KnownAssetClasses); // we ignore the result - it doesn't matter if it wasn't handled
+         if (not KnownAssetClasses.Knows(AssetClass)) then
+         begin
+            Message.Error(ieInvalidCommand);
+            exit;
+         end;
+         if (not AssetClass.CanBuild(FBuildEnvironment)) then
+         begin
+            Message.Error(ieInvalidCommand);
+            exit;
+         end;
+         if (Message.CloseInput()) then
+         begin
+            Message.Reply();
+            Asset := AssetClass.Spawn(PlayerDynasty);
+            AdoptGridChild(Asset, X, Y);
+            Assert(Asset.Mass = 0); // if you put something down, it shouldn't immediately have mass
+            Assert(Asset.Size <= FCellSize, 'Tried to put ' + Asset.DebugName + ' of size ' + FloatToStr(Asset.Size) + 'm in cell size ' + FloatToStr(FCellSize) + 'm');
+            Message.CloseOutput();
+         end;
+      finally
+         KnownAssetClasses.Free();
       end;
    end
    else

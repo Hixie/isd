@@ -23,6 +23,7 @@ type
    TSpaceSensorFeatureNode = class(TFeatureNode, ISensorsProvider)
    private
       FKnownMaterials: TGetKnownMaterialsMessage;
+      procedure SyncKnowledge();
    protected
       FFeatureClass: TSpaceSensorFeatureClass;
       FLastBottom, FLastTop: TAssetNode;
@@ -35,6 +36,7 @@ type
       procedure UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem); override;
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
       function Knows(Material: TMaterial): Boolean;
+      function GetOreKnowledge(): TOreFilter;
    end;
 
 implementation
@@ -198,14 +200,32 @@ begin
    FreeAndNil(FKnownMaterials);
 end;
 
-function TSpaceSensorFeatureNode.Knows(Material: TMaterial): Boolean;
+procedure TSpaceSensorFeatureNode.SyncKnowledge();
 begin
    if (not Assigned(FKnownMaterials)) then
    begin
       FKnownMaterials := TGetKnownMaterialsMessage.Create(Parent.Owner);
       InjectBusMessage(FKnownMaterials); // we ignore the result - it doesn't matter if it wasn't handled
+      // we free the result in Destroy and ApplyVisibility (we keep it around to use it)
    end;
+end;
+
+function TSpaceSensorFeatureNode.Knows(Material: TMaterial): Boolean;
+begin
+   SyncKnowledge();
    Result := FKnownMaterials.Knows(Material);
+end;
+
+function TSpaceSensorFeatureNode.GetOreKnowledge(): TOreFilter;
+var
+   Material: TMaterial;
+begin
+   SyncKnowledge();
+   Result.Clear();
+   for Material in FKnownMaterials do
+   begin
+      Result.EnableMaterialIfOre(Material);
+   end;
 end;
 
 procedure TSpaceSensorFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);

@@ -5,12 +5,14 @@ unit materials;
 interface
 
 uses
-   hashtable, hashset, hashfunctions, genericutils, stringutils, icons;
+   hashtable, hashset, hashfunctions, genericutils, stringutils, icons, isdnumbers, time;
 
 type
    TMaterial = class;
 
-   TMaterialID = LongInt; // signed because negative values are built-in, and positive values are in tech tree
+   TMaterialID = LongInt; // signed because negative values are built-in, and positive values are in tech tree and ores.mrf
+
+   TOres = 1..22; // IDs that are valid in the ores.mrf file (but not the tech tree)
    
    TMaterialHashSet = class(specialize THashSet<TMaterial, TObjectUtils>)
       constructor Create();
@@ -23,7 +25,34 @@ type
    TMaterialNameHashTable = class(specialize THashTable<UTF8String, TMaterial, UTF8StringUtils>)
       constructor Create(ACount: THashTableSizeInt = 8);
    end;
+
+   TMaterialQuantity = record
+      Material: TMaterial;
+      Quantity: UInt64;
+   end;
    
+   TMaterialQuantityHashTable = class(specialize THashTable<TMaterial, UInt64, TObjectUtils>)
+      constructor Create(ACount: THashTableSizeInt = 2);
+   end;
+
+   PMaterialQuantityArray = ^TMaterialQuantityArray;
+   TMaterialQuantityArray = array of TMaterialQuantity;
+
+   PQuantityArray = ^TQuantityArray;
+   TQuantityArray = array of UInt64;
+
+   TOreQuantities = array[TOres] of UInt64;
+   TOreFractions = array[TOres] of Fraction32;
+   TOreRates = array[TOres] of TRate;
+   TOreMasses = array[TOres] of Double;
+   
+   TMaterialAbundanceParameters = record
+      Distance: Double;
+      RelativeVolume: Double;
+   end;
+
+   TMaterialAbundance = array of TMaterialAbundanceParameters;
+
    TUnitKind = (
       ukBulkResource, // UI shows it in kilograms (solids) or liters (fluids)
       ukComponent // UI shows it as number of units
@@ -36,16 +65,12 @@ type
       mtPressurized, // TODO: marks a material that is under high pressure (e.g. core of Jupiter)
       mtSolid, // TODO: indicates the material can be carried on belts and so forth
       mtFluid, // TODO: indicates the material is handled by pipes (if we even implement pipes, which we really should probably not)
-      mtAtmospheric // TODO: indicates that the material would be available in the atmosphere, if any
+      mtAtmospheric, // TODO: indicates that the material would be available in the atmosphere, if any
+      mtEvenlyDistributed, // always available wherever you mine
+      mtDepth2, // only available at secondary mining depths/regions
+      mtDepth3 // only available at tertiary mining depths/regions
    );
    TMaterialTags = set of TMaterialTag;
-   
-   TMaterialAbundanceParameters = record
-      Distance: Double;
-      RelativeVolume: Double;
-   end;
-
-   TMaterialAbundance = array of TMaterialAbundanceParameters;
    
    TMaterial = class sealed
    public
@@ -63,7 +88,7 @@ type
       FAbundance: TMaterialAbundance;
    public
       constructor Create(AID: TMaterialID; AName, AAmbiguousName, ADescription: UTF8String; AIcon: TIcon; AUnitKind: TUnitKind; AMassPerUnit, ADensity, ABondAlbedo: Double; ATags: TMaterialTags; AAbundance: TMaterialAbundance);
-      property ID: TMaterialID read FID;
+      property ID: TMaterialID read FID; // negative numbers for built-in materials, TOres range for ores, positive numbers above TOres for tech tree components. Never zero.
       property AmbiguousName: UTF8String read FAmbiguousName;
       property Name: UTF8String read FName;
       property Description: UTF8String read FDescription;
@@ -76,10 +101,49 @@ type
       property Abundance: TMaterialAbundance read FAbundance;
    end;
 
+   TMaterialEncyclopedia = class
+   protected
+      function GetMaterial(ID: TMaterialID): TMaterial; virtual; abstract;
+   public
+      property Materials[ID: TMaterialID]: TMaterial read GetMaterial;
+   end;
+
+   POreFilter = ^TOreFilter;
+   TOreFilter = record
+   strict private
+      const
+         kAllDisabled = QWord($0000000000000001);
+         kAllEnabled = QWord($FFFFFFFFFFFFFFFF);
+      function GetActive(): Boolean; inline;
+      function GetOres(Index: TOres): Boolean; inline;
+      function GetIsFiltered(): Boolean; inline;
+      function GetEnabledCount(): Cardinal;
+   public
+      procedure Clear(); inline; // sets all flags to disabled
+      procedure EnableAll(); inline; // sets all flags to enabled
+      procedure Disable(Index: TOres); inline;
+      procedure Enable(Index: TOres); inline;
+      procedure EnableMaterialIfOre(Material: TMaterial); inline; // silently ignores non-ores
+      procedure Add(B: TOreFilter); inline;
+      class operator and(A, B: TOreFilter): TOreFilter;
+      class operator or(A, B: TOreFilter): TOreFilter;
+      class operator xor(A, B: TOreFilter): TOreFilter;
+      class operator not(A: TOreFilter): TOreFilter;
+      property Ores[Index: TOres]: Boolean read GetOres; default;
+      property IsFiltered: Boolean read GetIsFiltered; // if false, every bit is true
+      property EnabledCount: Cardinal read GetEnabledCount; // number of bits that are set (from 0 to the number of values in TOres)
+      property Active: Boolean read GetActive; // whether the first bit is set (it is always set, unless the memory is location is actually a pointer)
+   strict private
+      case Integer of
+         0: (FFilterArray: bitpacked array[0..63] of Boolean); // slot 0 is reserved (and must always be set)
+         1: (FFilterQuad: QWord);
+   end;
+   {$IF SIZEOF(TOreFilter) <> SIZEOF(Pointer)} {$FATAL This platform is not yet supported.} {$ENDIF}
+
 const
    ZeroAbundance: TMaterialAbundance = ((Distance: 0.0; RelativeVolume: 0.0));
 
-function LoadMaterialRecords(Filename: RawByteString): TMaterialHashSet;
+function LoadOres(Filename: RawByteString): TMaterialHashSet;
 
 implementation
 
@@ -106,6 +170,12 @@ begin
    inherited Create(@UTF8StringHash32, ACount);
 end;
 
+constructor TMaterialQuantityHashTable.Create(ACount: THashTableSizeInt = 2);
+begin
+   inherited Create(@MaterialHash32, ACount);
+end;
+
+
 constructor TMaterial.Create(AID: TMaterialID; AName, AAmbiguousName, ADescription: UTF8String; AIcon: TIcon; AUnitKind: TUnitKind; AMassPerUnit, ADensity, ABondAlbedo: Double; ATags: TMaterialTags; AAbundance: TMaterialAbundance);
 begin
    inherited Create();
@@ -127,7 +197,90 @@ begin
    FAbundance := AAbundance;
 end;
 
-function LoadMaterialRecords(Filename: RawByteString): TMaterialHashSet;
+
+function TOreFilter.GetActive(): Boolean;
+begin
+   Result := FFilterArray[0];
+end;
+   
+procedure TOreFilter.Clear();
+begin
+   FFilterQuad := kAllDisabled;
+end;
+
+procedure TOreFilter.EnableAll();
+begin
+   FFilterQuad := kAllEnabled;
+end;
+   
+procedure TOreFilter.Disable(Index: TOres);
+begin
+   FFilterArray[Index] := False;
+end;
+
+procedure TOreFilter.Enable(Index: TOres);
+begin
+   FFilterArray[Index] := True;
+end;
+
+procedure TOreFilter.EnableMaterialIfOre(Material: TMaterial);
+begin
+   Assert(Assigned(Material));
+   if ((Material.ID >= Low(TOres)) and (Material.ID <= High(TOres))) then
+      FFilterArray[Material.ID] := True;
+end;
+
+procedure TOreFilter.Add(B: TOreFilter);
+begin
+   FFilterQuad := FFilterQuad or B.FFilterQuad;
+end;
+
+class operator TOreFilter.and(A, B: TOreFilter): TOreFilter;
+begin
+   Result.FFilterQuad := A.FFilterQuad and B.FFilterQuad;
+end;
+   
+class operator TOreFilter.or(A, B: TOreFilter): TOreFilter;
+begin
+   Result.FFilterQuad := A.FFilterQuad or B.FFilterQuad;
+end;
+
+class operator TOreFilter.xor(A, B: TOreFilter): TOreFilter;
+begin
+   Result.FFilterQuad := (A.FFilterQuad xor B.FFilterQuad) or kAllDisabled;
+end;
+
+class operator TOreFilter.not(A: TOreFilter): TOreFilter;
+begin
+   Result.FFilterQuad := (not A.FFilterQuad) or kAllDisabled;
+end;
+   
+function TOreFilter.GetOres(Index: TOres): Boolean;
+begin
+   Assert(Index > 0);
+   Assert(Index < High(FFilterArray));
+   Result := FFilterArray[Index];
+end;
+
+function TOreFilter.GetIsFiltered(): Boolean;
+begin
+   Result := FFilterQuad = kAllEnabled;
+end;
+
+function TOreFilter.GetEnabledCount(): Cardinal;
+var
+   Mask: QWord;
+begin
+   Mask := kAllEnabled;
+   Mask := Mask >> High(TOres);
+   Mask := Mask << High(TOres);
+   Mask := Mask << 1; // Active bit
+   Mask := not Mask;
+   Result := PopCnt(FFilterQuad and Mask); // $R- (no idea why it's defined to return a QWord, when the range is 0..64)
+end;
+   
+
+function LoadOres(Filename: RawByteString): TMaterialHashSet;
 
    function ParseDouble(Value: UTF8String): Double;
    const
@@ -180,9 +333,10 @@ begin
    while (not EOF(F)) do
    begin
       Readln(F, IDLine);
-      MaterialID := ParseInt32(IDLine); // $R-
-      if (MaterialID = 0) then
-         raise EConvertError.Create('Invalid material ID (" + IDLine + ")');
+      Assert(Low(MaterialID) < Low(TOres));
+      MaterialID := ParseInt32(IDLine, Low(MaterialID)); // $R-
+      if ((MaterialID < Low(TOres)) or (MaterialID > High(TOres))) then
+         raise EConvertError.CreateFmt('Invalid material ID ("%s"); must be in range %d..%d', [IDLine, Low(TOres), High(TOres)]);
       Readln(F, MaterialName);
       Readln(F, MaterialAmbiguousName);
       Readln(F, MaterialDescription);
@@ -202,6 +356,9 @@ begin
             'system-unique': Include(MaterialTags, mtSystemUnique);
             'star-fuel': Include(MaterialTags, mtStarFuel);
             'atmospheric': Include(MaterialTags, mtAtmospheric);
+            'evenly-distributed': Include(MaterialTags, mtEvenlyDistributed);
+            'depth2': Include(MaterialTags, mtDepth2);
+            'depth3': Include(MaterialTags, mtDepth3);
          else
             raise EConvertError.Create('Unknown material tag "' + Tag + '"');
          end;
@@ -248,7 +405,7 @@ begin
          MaterialDescription,
          MaterialIcon,
          ukBulkResource,
-         0.001,
+         1000.0, // MassPerUnit for ores is always 1 metric ton
          MaterialDensity,
          MaterialBondAlbedo,
          MaterialTags,

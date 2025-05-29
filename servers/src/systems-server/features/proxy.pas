@@ -5,7 +5,7 @@ unit proxy;
 interface
 
 uses
-   systems, serverstream, techtree;
+   systems, serverstream, techtree, time;
 
 type
    TProxyFeatureClass = class(TFeatureClass)
@@ -23,6 +23,7 @@ type
       procedure AdoptChild(Child: TAssetNode); override;
       procedure DropChild(Child: TAssetNode); override;
       function GetMass(): Double; override;
+      function GetMassFlowRate(): TRate; override;
       function GetSize(): Double; override;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
@@ -62,10 +63,7 @@ begin
    inherited Create();
    try
       if (Assigned(AChild)) then
-      begin
          AdoptChild(AChild);
-         FChild := AChild;
-      end;
    except
       ReportCurrentException();
       raise;
@@ -99,6 +97,16 @@ begin
    end
    else
       Result := 0.0;
+end;
+
+function TProxyFeatureNode.GetMassFlowRate(): TRate;
+begin
+   if (Assigned(FChild)) then
+   begin
+      Result := FChild.MassFlowRate;
+   end
+   else
+      Result := TRate.FromPerMillisecond(0.0);
 end;
 
 function TProxyFeatureNode.GetSize(): Double;

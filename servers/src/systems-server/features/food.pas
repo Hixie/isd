@@ -22,7 +22,7 @@ type
 
 type
    TFoodBusFeatureNode = class;
-   
+
    TInitFoodMessage = class(TPhysicalConnectionBusMessage)
    private
       type
@@ -44,7 +44,6 @@ type
          TDynastyFoodReport = specialize THashTable<TDynasty, PFoodReport, TObjectUtils>;
       var
          FFoodReports: TDynastyFoodReport;
-         FClaimed: Boolean;
       procedure Process();
       function ReportFor(Dynasty: TDynasty): PFoodReport;   
    public
@@ -64,7 +63,7 @@ type
    
    TFoodBusFeatureNode = class(TFeatureNode)
    protected
-      function ManageBusMessage(Message: TBusMessage): Boolean; override;
+      function ManageBusMessage(Message: TBusMessage): TBusMessageResult; override;
       procedure HandleChanges(CachedSystem: TSystem); override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
    public
@@ -249,32 +248,12 @@ begin
    inherited;
 end;
 
-function TFoodBusFeatureNode.ManageBusMessage(Message: TBusMessage): Boolean;
-var
-   FoodMessage: TInitFoodMessage;
+function TFoodBusFeatureNode.ManageBusMessage(Message: TBusMessage): TBusMessageResult;
 begin
    if (Message is TInitFoodMessage) then
    begin
-      FoodMessage := Message as TInitFoodMessage;
-      Result := False;
-      if (FoodMessage.FClaimed) then
-      begin
-         Result := True;
-      end
-      else
-      begin
-         FoodMessage.FClaimed := True;
-         if (Assigned(Parent.Parent)) then
-         begin
-            Result := Parent.Parent.InjectBusMessage(FoodMessage);
-         end;
-         if (not Result) then
-         begin
-            Result := Parent.HandleBusMessage(FoodMessage);
-            Assert(not Result, 'TInitFoodMessage should not be marked as handled');
-            Result := True;
-         end;
-      end;
+      Result := DeferOrManageBusMessage(Message);
+      Assert(Result = mrInjected, 'TInitFoodMessage should not be marked as handled');
    end
    else
       Result := inherited;
@@ -283,11 +262,12 @@ end;
 procedure TFoodBusFeatureNode.HandleChanges(CachedSystem: TSystem);
 var
    InitFoodMessage: TInitFoodMessage;
-   Injected: Boolean;
+   Injected: TBusMessageResult;
 begin
+   // TODO: we should call MarkAsDirty with dkNeedsHandleChanges somewhere, instead of relying on the asset doing that whenever visibility changes
    InitFoodMessage := TInitFoodMessage.Create();
    Injected := InjectBusMessage(InitFoodMessage);
-   Assert(Injected);
+   Assert(Injected = mrInjected);
    InitFoodMessage.Process();
    InitFoodMessage.Free();
    inherited;

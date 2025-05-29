@@ -4,6 +4,9 @@ unit systemnetwork;
 
 interface
 
+// TODO: handle the case of all assets of a dynasty going away
+// (right now we assert when they relogin because we can't find anything to send them)
+
 uses
    configuration, servers, baseunix, authnetwork, serverstream,
    materials, corenetwork, binarystream, basenetwork, systemdynasty,

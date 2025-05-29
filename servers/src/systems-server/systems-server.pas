@@ -19,7 +19,7 @@ var
    Port, ServerIndex, ServerCount: Integer;
    Password: UTF8String;
    Settings: PSettings;
-   MaterialRecords: TMaterialHashSet;
+   OreRecords: TMaterialHashSet;
    TechnologyTree: TTechnologyTree;
    SystemClock: TClock;
    GlobalEncyclopedia: TEncyclopedia;
@@ -58,10 +58,10 @@ begin
          ServerFile := LoadDynastiesServersConfiguration();
          DynastyServerDatabase := TServerDatabase.Create(ServerFile);
          FreeAndNil(ServerFile);
-         MaterialRecords := LoadMaterialRecords(MaterialRecordsFilename);
+         OreRecords := LoadOres(OreRecordsFilename);
          try
-            TechnologyTree := LoadTechnologyTree(TechnologyTreeFilename, MaterialRecords);
-            GlobalEncyclopedia := TEncyclopedia.Create(Settings, MaterialRecords, TechnologyTree);
+            TechnologyTree := LoadTechnologyTree(TechnologyTreeFilename, OreRecords);
+            GlobalEncyclopedia := TEncyclopedia.Create(Settings, OreRecords, TechnologyTree);
          finally
             FreeAndNil(TechnologyTree);
          end;
@@ -70,11 +70,13 @@ begin
          Writeln('Ready');
          Server.Run();
          Writeln('Exiting...');
+         // TODO: have the servers write a last gasp update to their journal so we don't lose time
+         // TODO: have the servers cleanly close their network sockets so that the clients know we're disconnected
       finally
          FreeAndNil(Server);
          FreeAndNil(SystemClock);
          FreeAndNil(DynastyServerDatabase);
-         FreeAndNil(MaterialRecords);
+         FreeAndNil(OreRecords);
          Dispose(Settings);
       end;
    except

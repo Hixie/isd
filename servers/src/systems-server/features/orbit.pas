@@ -52,12 +52,14 @@ type
       procedure DropChild(Child: TAssetNode); override;
       procedure ParentMarkedAsDirty(ParentDirtyKinds, NewDirtyKinds: TDirtyKinds); override;
       function GetMass(): Double; override;
+      function GetMassFlowRate(): TRate; override;
       function GetSize(): Double; override;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
-      function ManageBusMessage(Message: TBusMessage): Boolean; override;
+      function ManageBusMessage(Message: TBusMessage): TBusMessageResult; override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
       procedure CheckVisibilityChanged(VisibilityHelper: TVisibilityHelper); override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
+      procedure HandleChanges(CachedSystem: TSystem); override;
       procedure HandleCrash(var Data);
    public
       constructor Create(APrimaryChild: TAssetNode);
@@ -89,7 +91,7 @@ type
       Omega: Double; // radians
       TimeOrigin: TTimeInMilliseconds;
       Clockwise: Boolean;
-      Dirty: Boolean;
+      Dirty: Boolean; // needs to be journaled and crash-checked
       IsNew: Boolean;
       Index: Cardinal;
       procedure Init();
@@ -121,6 +123,8 @@ function TOrbitData.GetCanHaveOrbitalChildren(Parent: TOrbitFeatureNode; Child: 
 begin
    Assert(Child.Mass > 0.0);
    Assert(Assigned(Parent.PrimaryChild));
+   Assert(Parent.PrimaryChild.MassFlowRate.IsZero);
+   Assert(Child.MassFlowRate.IsZero);
    Result := GetHillDiameter(Parent.PrimaryChild.Mass, Child.Mass) > Child.Size;
 end;
 
@@ -131,9 +135,12 @@ var
    A, M: Double;
 begin
    Assert(Assigned(Parent.PrimaryChild));
+   Assert(Parent.PrimaryChild.MassFlowRate.IsZero);
+   Assert(Child.MassFlowRate.IsZero);
+   // we assume the child's mass is <<< the parent's mass. // TODO: assert this
    A := SemiMajorAxis; // m
    M := Parent.PrimaryChild.Mass; // kg
-   Result := TMillisecondsDuration(1000 * 2.0 * pi * SqRt(A*A*A/(G*M))); // $R-
+   Result := TMillisecondsDuration.FromMilliseconds(1000 * 2.0 * pi * SqRt(A*A*A/(G*M))); // $R-
 end;
 
 
@@ -179,6 +186,7 @@ begin
    try
       Assert(Assigned(APrimaryChild));
       Assert(APrimaryChild.Mass > 0, 'Primary child "' + APrimaryChild.AssetName + '" (class "' + APrimaryChild.AssetClass.Name + '") has zero mass');
+      Assert(APrimaryChild.MassFlowRate.IsZero);
       AdoptChild(APrimaryChild);
       FPrimaryChild := APrimaryChild;
    except
@@ -237,6 +245,7 @@ begin
    Assert(Assigned(FPrimaryChild));
    Assert(ChildPrimaryMass <= Child.Mass); // Child.Mass includes the mass of child's satellites.
    Assert(ChildPrimaryMass < FPrimaryChild.Mass, 'Child=' + Child.DebugName + ' Child.Mass=' + FloatToStr(Child.Mass) + ' ChildPrimaryMass=' + FloatToStr(ChildPrimaryMass) + ' FPrimaryChild.Mass=' + FloatToStr(FPrimaryChild.Mass)); // otherwise it wouldn't be orbiting us, we'd be orbiting it
+   Assert(FPrimaryChild.MassFlowRate.IsZero);
    Result := POrbitData(Child.ParentData)^.GetHillDiameter(FPrimaryChild.Mass, ChildPrimaryMass);
 end;
 
@@ -246,6 +255,7 @@ begin
    // It doesn't apply to bodies that are held together by, like, screws and stuff.
    Assert(ChildMass > 0);
    Assert(Assigned(FPrimaryChild));
+   Assert(FPrimaryChild.MassFlowRate.IsZero);
    Result := ChildRadius * ((2 * FPrimaryChild.Mass / ChildMass) ** (1.0 / 3.0)); // $R-
 end;
 
@@ -273,8 +283,6 @@ begin
 end;
 
 procedure TOrbitFeatureNode.UpdateOrbitingChild(CachedSystem: TSystem; Child: TAssetNode; SemiMajorAxis: Double; Eccentricity: Double; Omega: Double; TimeOrigin: TTimeInMilliseconds; Clockwise: Boolean; Index: Cardinal);
-var
-   Period, CrashTime: TMillisecondsDuration;
 begin
    Assert(Child.Parent = Self);
    Assert(Assigned(Child.ParentData));
@@ -295,22 +303,41 @@ begin
    POrbitData(Child.ParentData)^.Clockwise := Clockwise;
    POrbitData(Child.ParentData)^.Dirty := True;
    POrbitData(Child.ParentData)^.Index := Index;
-   if (SemiMajorAxis * (1 - Eccentricity) <= (FPrimaryChild.Size + Child.Size) / 2) then
+   MarkAsDirty([dkUpdateClients, dkUpdateJournal, dkNeedsHandleChanges]);
+end;
+
+procedure TOrbitFeatureNode.HandleChanges(CachedSystem: TSystem);
+var
+   Child, ChildCopy: TAssetNode;
+   OrbitData: POrbitData;
+   Period, CrashTime: TMillisecondsDuration;
+begin
+   for Child in FChildren do
    begin
-      // SemiMajorAxis * (1 - Eccentricity) is the distance between
-      // the center of the focal point and the center of the body at
-      // the periapsis. If that distance is less than the sum of the
-      // radii of the bodies, they'll definitely collide. We pretend
-      // that happens at the periapsis (even though it will actually
-      // happen earlier, when the body gets to the point that the
-      // separation between the bodies is less than the sum of the
-      // radii). By definition the orbitting body is at periapsis
-      // every period, starting at TimeOrigin, so we ask the system to
-      // compute the next time that we'll be at a whole number of
-      // Periods since the TimeOrigin.
-      Period := POrbitData(Child.ParentData)^.GetPeriod(Self, Child);
-      CrashTime := CachedSystem.TimeUntilNext(TimeOrigin, Period);
-      POrbitData(Child.ParentData)^.CrashEvent := CachedSystem.ScheduleEvent(CrashTime, @HandleCrash, Child);
+      OrbitData := POrbitData(Child.ParentData);
+      if (OrbitData^.Dirty) then
+      begin
+         Assert(not Assigned(OrbitData^.CrashEvent));
+         if (OrbitData^.SemiMajorAxis * (1 - OrbitData^.Eccentricity) <= (FPrimaryChild.Size + Child.Size) / 2) then
+         begin
+            // SemiMajorAxis * (1 - Eccentricity) is the distance between
+            // the center of the focal point and the center of the body at
+            // the periapsis. If that distance is less than the sum of the
+            // radii of the bodies, they'll definitely collide. We pretend
+            // that happens at the periapsis (even though it will actually
+            // happen earlier, when the body gets to the point that the
+            // separation between the bodies is less than the sum of the
+            // radii). By definition the orbitting body is at periapsis
+            // every period, starting at TimeOrigin, so we ask the system to
+            // compute the next time that we'll be at a whole number of
+            // Periods since the TimeOrigin.
+            Period := OrbitData^.GetPeriod(Self, Child);
+            CrashTime := CachedSystem.TimeUntilNext(OrbitData^.TimeOrigin, Period);
+            ChildCopy := Child;
+            OrbitData^.CrashEvent := CachedSystem.ScheduleEvent(CrashTime, @HandleCrash, ChildCopy);
+            Writeln('Scheduling crash for ', Child.DebugName, '; T-', CrashTime.ToString());
+         end;
+      end;
    end;
 end;
 
@@ -320,6 +347,7 @@ var
    ReceiveMessage: TReceiveCrashingAssetMessage;
    CrashReportMessage: TCrashReportMessage;
    CrashReport: PCrashReport;
+   Handled: Boolean;
 begin
    Assert(Assigned(FPrimaryChild));
    Child := TAssetNode(Data);
@@ -333,14 +361,16 @@ begin
    
    CrashReportMessage := TCrashReportMessage.Create(CrashReport);
    try
-      Child.HandleBusMessage(CrashReportMessage);
+      Handled := Child.HandleBusMessage(CrashReportMessage);
+      Writeln('Crash report handled=', Handled, '; found ', Length(CrashReport^.Victims), ' victims');
    finally
       FreeAndNil(CrashReportMessage);
    end;
    
    ReceiveMessage := TReceiveCrashingAssetMessage.Create(CrashReport);
    try
-      FPrimaryChild.HandleBusMessage(ReceiveMessage);
+      Handled := FPrimaryChild.HandleBusMessage(ReceiveMessage);
+      Writeln('Receive crash handled=', Handled);
    finally
       FreeAndNil(ReceiveMessage);
    end;
@@ -349,7 +379,7 @@ begin
    
    if (Child.Parent = Self) then
    begin
-      Assert(Child.Mass = 0.0);
+      Assert(Child.Mass = 0.0, 'unexpectedly, the crashed child has mass ' + FloatToStr(Child.Mass));
       Child.ReportPermanentlyGone();
       DropChild(Child);
       Child.Free();
@@ -357,9 +387,19 @@ begin
 end;
 
 procedure TOrbitFeatureNode.ParentMarkedAsDirty(ParentDirtyKinds, NewDirtyKinds: TDirtyKinds);
+var
+   FurtherNewKinds: TDirtyKinds;
 begin
+   FurtherNewKinds := [];
    if (dkAffectsNames in NewDirtyKinds) then
-      MarkAsDirty([dkSelf]);
+   begin
+      Include(FurtherNewKinds, dkUpdateJournal);
+      Include(FurtherNewKinds, dkUpdateClients);
+   end;
+   if (dkChildren in NewDirtyKinds) then
+      Include(FurtherNewKinds, dkNeedsHandleChanges);
+   if (FurtherNewKinds <> []) then
+      MarkAsDirty(FurtherNewKinds);
    inherited;
 end;
 
@@ -380,10 +420,26 @@ begin
    end;
 end;
 
+function TOrbitFeatureNode.GetMassFlowRate(): TRate;
+var
+   Child: TAssetNode;
+begin
+   Result := TRate.FromPerMillisecond(0.0);
+   if (Assigned(FPrimaryChild)) then
+      Result := Result + FPrimaryChild.MassFlowRate;
+   for Child in FChildren do
+   begin
+      Assert(Assigned(Child));
+      Result := Result + Child.MassFlowRate;
+   end;
+   Assert(Result.IsZero);
+end;
+
 function TOrbitFeatureNode.GetSize(): Double;
 begin
    if (Assigned(FPrimaryChild)) then
    begin
+      Assert(FPrimaryChild.MassFlowRate.IsZero);
       if (Parent.Parent is IHillDiameterProvider) then
       begin
          Result := (Parent.Parent as IHillDiameterProvider).GetHillDiameter(Parent, FPrimaryChild.Mass);
@@ -409,11 +465,11 @@ begin
    end;
 end;
 
-function TOrbitFeatureNode.ManageBusMessage(Message: TBusMessage): Boolean;
+function TOrbitFeatureNode.ManageBusMessage(Message: TBusMessage): TBusMessageResult;
 begin
    if (Message is TPhysicalConnectionBusMessage) then
    begin
-      Result := False;
+      Result := mrRejected;
    end
    else
       Result := inherited;
@@ -574,7 +630,7 @@ procedure TOrbitFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: 
       SemiMajorAxis := Journal.ReadDouble();
       Eccentricity := Journal.ReadDouble();
       Omega := Journal.ReadDouble();
-      TimeOrigin := TTimeInMilliseconds(Journal.ReadInt64());
+      TimeOrigin := TTimeInMilliseconds.FromMilliseconds(Journal.ReadInt64());
       Clockwise := Journal.ReadBoolean();
       AddOrbitingChild(CachedSystem, Child, SemiMajorAxis, Eccentricity, Omega, TimeOrigin, Clockwise);
       Assert(Child.Parent = Self);
@@ -592,7 +648,7 @@ procedure TOrbitFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: 
       SemiMajorAxis := Journal.ReadDouble();
       Eccentricity := Journal.ReadDouble();
       Omega := Journal.ReadDouble();
-      TimeOrigin := TTimeInMilliseconds(Journal.ReadInt64());
+      TimeOrigin := TTimeInMilliseconds.FromMilliseconds(Journal.ReadInt64());
       Clockwise := Journal.ReadBoolean();
       Index := POrbitData(Child.ParentData)^.Index; // it doesn't change
       UpdateOrbitingChild(CachedSystem, Child, SemiMajorAxis, Eccentricity, Omega, TimeOrigin, Clockwise, Index);
