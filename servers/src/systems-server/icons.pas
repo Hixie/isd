@@ -20,7 +20,7 @@ const
    Star8Icon: TIcon = 'star8';
    Star9Icon: TIcon = 'star9';
    Star10Icon: TIcon = 'star10';
-   PlanetIcon: TIcon = 'planet';
+   PlanetIcon: TIcon = 'planet-thin-continents';
    CraterIcon: TIcon = 'crater';
    PlanetRegionIcon: TIcon = 'region';
    PlaceholderIcon: TIcon = 'placeholder';
