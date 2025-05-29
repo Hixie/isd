@@ -17,7 +17,7 @@ type
 
    TBody = record
    private
-      Mass: Double; // cache used during generation, not source of truth
+      Mass: Double; // approximation computed from Composition
       function GetAverageDistance(): Double;
    public
       Distance, Eccentricity: Double;
@@ -27,6 +27,7 @@ type
       Temperature: Double;
       Moons: PBodyArray;
       property AverageOrbitalDistance: Double read GetAverageDistance;
+      property ApproximateMass: Double read Mass;
    end;
 
    TBodyDistanceUtils = record
@@ -405,10 +406,12 @@ begin
                Area := Pi * (Beta * Beta - Alpha * Alpha); // $R-
                LocalProtoplanetaryDiscHeight := ProtoplanetaryDiscHeight + ProtoplanetaryDiscHeightEdgeAdjustment * (PlanetDistance / ProtoplanetaryDiscRadius); // $R-
                Planet.Radius := Randomizer.Perturb((Area * LocalProtoplanetaryDiscHeight * 3.0 / (4.0 * Pi)) ** (1.0 / 3.0), InnerPlanetRadiusPerturbationParameters); // $R-
+               Assert(Planet.Radius > 0);
             end
             else
             begin
                Planet.Radius := Randomizer.Perturb(TypicalOuterPlanetDiameter / 2.0, OuterPlanetRadiusPerturbationParameters);
+               Assert(Planet.Radius > 0);
             end;
             PlanetMass := WeighBody(Planet);
             Planet.Mass := PlanetMass;
@@ -439,6 +442,7 @@ begin
                   end;
                   Moon.Distance := MoonDistance;
                   Moon.Radius := MoonSize;
+                  Assert(Moon.Radius > 0);
                   if (AddMaterialsTo(Moon, Distance, Materials, Randomizer)) then
                   begin
                      Moon.Mass := WeighBody(Moon);
