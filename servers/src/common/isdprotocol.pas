@@ -38,7 +38,10 @@ const
    fcProxy = $0F;
    fcKnowledge = $10;
    fcResearch = $11;
-   fcHighestKnownFeatureCode = fcResearch;
+   fcMining = $12;
+   fcOrePile = $13;
+   fcRegion = $14;
+   fcHighestKnownFeatureCode = fcRegion;
    
 implementation
 

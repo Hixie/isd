@@ -88,6 +88,7 @@ There are currently no notifications defined.
 
 <properties>        ::= <dynasty> ; owner
                         <double>  ; mass
+                        <double>  ; mass flow rate
                         <double>  ; size
                         <string>  ; name
                         <assetclassid> ; zero if class is not known
@@ -147,16 +148,25 @@ server ever sends an update that implies the asset is no longer
 visible (e.g. its old parent is included in the update and does not
 include it in its list of children, and no other asset includes it in
 its list of children), then the ID is considered "released" and may be
-reused for another asset.
+reused for another asset. When this happens, other assets that
+referenced this ID will not send an update, but should be assumed to
+have changed to sending the asset ID zero instead of the previous ID.
 
-Asset ID zero is reserved for indicating the absence of an asset.
+Asset ID zero is reserved for indicating the absence of an asset
+(either because no such asset exists, or because the player cannot see
+the asset in question).
 
 The `<properties>` are the owner dynasty ID (zero for unowned assets),
-the asset's mass in kg, the asset's rough diameter in meters, the
-asset's name (if any; this is often the empty string), the asset's
-class ID, the class' icon name, a class name (brief description of the
-object, e.g. "star", "planet", "ship"), and a longer description of
-the object.
+the asset's mass in kg and mass flow rate in kg/ms, the asset's rough
+diameter in meters, the asset's name (if any; this is often the empty
+string), the asset's class ID, the class' icon name, a class name
+(brief description of the object, e.g. "star", "planet", "ship"), and
+a longer description of the object.
+
+The mass flow rate is the rate of change of mass of the object. For
+example, as a pile of dirt grows, its mass will grow. Rather than
+repeatedly sending data from the server to the client, the server will
+report a non-zero mass flow rate.
 
 Asset class IDs are numbers in the range -2,147,483,648 to
 2,147,483,647, but not zero (i.e. signed 32 bit integers).
@@ -206,17 +216,11 @@ could have multiple `fcSpaceSensor` features with different settings.
 #### `fcPlanetaryBody` (0x07)
 
 ```bnf
-<featuredata>       ::= <hp>
-<hp>                ::= <int32>
+<featuredata>       ::= ; nothing
 ```
 
 The planetary body feature describes a non-stellar celestial feature
 such as a planet, moon, dwarf planet, asteroid, etc.
-
-The `<hp>` number indicates the structural integrity of the body. It
-is reduced when the planet is mined, bombarded, or otherwise
-compromised. At zero, the planet will disintegrate, probably forming a
-new planetary body with no structures on it.
 
 
 #### `fcSpace` (0x02)
@@ -249,6 +253,10 @@ will have an `fcOrbit` feature.
 The first `<assetid>` is the child at the focal point. That asset will
 not have an `fcOrbit` feature. It is extremely likely, though not
 guaranteed, that the other listed assets _will_ have such a feature.
+
+The children of an `fcOrbit` feature should always have a mass flow
+rate of zero. Deviations from this by definition indicate a server bug
+at this time.
 
 The three `<double>` parameters for the `<orbit>` children are the
 semi-major axis (in meters), the eccentricity, and _omega_ (tilt of
@@ -420,6 +428,11 @@ there are multiple sensors, they may each have a trailing
 `fcSpaceSensorStatus`; each status applies to the immediately
 preceding sensor.
 
+(`<nearest-orbit>` and `<top-orbit>` are always visible to the player
+because they are by definition ancestors of the asset with the
+`fcSpaceSensor`, and ancestors of assets are always at least
+inferred. So these IDs are never zero.)
+
 
 ### `fcPlotControl` (0x08)
 
@@ -447,18 +460,15 @@ feature's data, which will be one of the following:
 
 ```bnf
 <featuredata>       ::= <region>* <zero32>
-<region>            ::= <assetid>
+<region>            ::= <assetid> <x> <y>
+<x>                 ::= <double> ; m from center to center
+<y>                 ::= <double> ; m from center to center
 ```
 
-Describes the geographical regions of a planetary body. Currently,
-only one region is supported per planetary body, and no geological
-features are described, but it is expected that this will change in
-due course.
+Describes the geographical regions of a planetary body.
 
 The assets in regions of a planetary surface are expected to have the
-`fcGrid` feature, but this is not guaranteed.
-
-> TODO: provide geology and more than one region.
+`fcRegion` and `fcGrid` features, but this is not guaranteed.
 
 
 ### `fcGrid` (0x0A)
@@ -493,10 +503,12 @@ This feature supports the following commands:
    cell. Returns a list of asset classes that could be built on the
    grid at that location; each entry consisting of the numeric asset
    class ID, a string giving an icon name, a string giving a class
-   name, and a string giving a description.
+   name, and a string giving a description. The order of the list is
+   arbitrary and can change from call to call. It should not be used
+   as the default order in a UI.
 
  * `build`: two numeric fields, x and y, indicating an empty cell,
-   followed by the asset class ID (from the `catalog` command).
+   followed by the asset class ID (from the `get-buildings` command).
    No data is returned.
 
 
@@ -517,8 +529,6 @@ cannot be determined.
 <featuredata>       ::= <message>* <zero32>
 <message>           ::= <assetid>
 ```
-
-> TODO: Positioning information for children?
 
 Children are expected to have `fcMessage` features, though this is not
 guaranteed.
@@ -629,8 +639,10 @@ class id (a _signed_ non-zero 32 bit integer; may be negative), an
 icon, name, and description.
 
 Materials are prefixed by the code 0x02, and consist of a material ID
-(a _signed_ non-zero 32 bit integer; may be negative), an icon, a name, a
-description, and then material-specific properties.
+(a _signed_ non-zero 32 bit integer; may be negative), an icon, a
+name, a description, and then material-specific properties. Material
+IDs in the range 1..64 are ores, which can be found in assets with
+`fcRegion` features and mined using assets using `fcMining` features.
 
 The first property is a 64 bit bit field, whose bits have the
 following meanings:
@@ -650,7 +662,8 @@ transferred and stored.
 
 Quantities of resources (e.g. in fcStructure features) are specified
 in terms of the mass (kg) per unit. For example, if Iron has a mass
-per unit of 0.001, then 1000 Iron is equivalent to 1kg of Iron.
+per unit of 1000.0, then 10 Iron is equivalent to 10 metric tons of
+Iron.
 
 Fluids are never components (So bits 0-2 can also be read as a three
 bit integer with three defined values, 000=solid, 001=fluid,
@@ -684,6 +697,92 @@ asset owner):
  * `set-topic`: One field, a string, which must match a field in
    `get-topics`. Setting one that is obsolete has no effect. The empty
    string is a valid selection (that has no effect).
+
+
+### `fcMining` (0x12)
+
+```bnf
+<featuredata>       ::= <rate> <mode>
+<rate>              ::= <double>
+<mode>              ::= <byte> ; see below
+```
+
+The asset can mine ores (materials) from the nearest ancestor asset
+with an `fcRegion` feature.
+
+The `<rate>` is the number of kilograms per millisecond (kg/ms)
+currently being made available. The `<mode>` is one of:
+
+   0: The feature is mining.
+   1: The feature is enabled, but cannot mine because there are no
+      available piles into which to place the materials, or all such
+      piles are full.
+   2: The feature is enabled, but cannot mine because the `fcRegion`
+      has nothing left to mine.
+   3: The feature is enabled, but is not in a location where mining
+      makes sense (e.g. on a space ship).
+ 254: The feature is configuring itself. Clients should never see
+      this.
+ 255: The feature is disabled.
+
+The materials mined will be evident in assets with an `fcOrePile`
+feature (which will have a non-zero mass flow rate while the materials
+are being mined).
+
+This feature supports the following commands (only allowed from the
+asset owner):
+
+ * `enable`: No fields. Enables the miner. Returns a boolean
+   indicating if anything changed.
+ 
+ * `disable`: No fields. Disables the miner. Returns a boolean
+   indicating if anything changed.
+
+
+### `fcOrePile` (0x13)
+
+```bnf
+<featuredata>       ::= <pilemass> <pilemassflowrate> <capacity> <materials>
+<pilemass>          ::= <double> // kg
+<pilemassflowrate>  ::= <double> // kg/ms
+<capacity>          ::= <double> // kg
+<materials>         ::= [<materialid>]* <zero32>
+```
+
+Piles of ores mined from an asset with an `fcMining` feature.
+Available for use by refineries (which extract resources from ore
+piles and separate them into distinct piles of pure materials for use
+by factories, etc).
+
+The capacity is the maximum mass of the pile. Capacities are
+approximate. It is not unusual for a pile to cap out at slightly more
+or slightly less than the rated capacity.
+
+An empty pile has mass zero. The listed materials are those that are
+recognized.
+
+
+### `fcRegion` (0x14)
+
+```bnf
+<featuredata>       ::= <flags>
+<flags>             ::= <byte> ; 0x01 means it can be mined
+```
+
+The `<flags>` bit field has eight bits interpreted as follows:
+
+   0 (LSB): The region can still be mined.
+   1      : reserved, always zero
+   2      : reserved, always zero
+   3      : reserved, always zero
+   4      : reserved, always zero
+   5      : reserved, always zero
+   6      : reserved, always zero
+   7 (MSB): reserved, always zero
+
+If a region's resources are exhausted, then the first bit is reset.
+This represents the region being on the verge of complete structural
+collapse.
 
 
 # Systems Server Internal Protocol
