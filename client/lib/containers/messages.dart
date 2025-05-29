@@ -1,17 +1,13 @@
-import 'package:flutter/rendering.dart' hide Gradient;
-import 'package:flutter/widgets.dart' hide Gradient;
+import 'package:flutter/material.dart';
 
 import '../assets.dart';
-import '../layout.dart';
-import '../world.dart';
-
-typedef MessageBoardParameters = ();
+import '../widgets.dart';
 
 class MessageBoardFeature extends ContainerFeature {
   MessageBoardFeature(this.children);
 
   // consider this read-only; the entire MessageBoardFeature gets replaced when the child list changes
-  final Map<AssetNode, MessageBoardParameters> children;
+  final List<AssetNode> children;
 
   @override
   Offset findLocationForChild(AssetNode child, List<VoidCallback> callbacks) {
@@ -22,14 +18,14 @@ class MessageBoardFeature extends ContainerFeature {
   @override
   void attach(AssetNode parent) {
     super.attach(parent);
-    for (AssetNode child in children.keys) {
+    for (AssetNode child in children) {
       child.attach(parent);
     }
   }
 
   @override
   void detach() {
-    for (AssetNode child in children.keys) {
+    for (AssetNode child in children) {
       if (child.parent == parent) {
         child.detach();
         // if its parent is not the same as our parent,
@@ -41,127 +37,85 @@ class MessageBoardFeature extends ContainerFeature {
 
   @override
   void walk(WalkCallback callback) {
-    for (AssetNode child in children.keys) {
+    for (AssetNode child in children) {
       assert(child.parent == parent);
       child.walk(callback);
     }
   }
 
   @override
+  RendererType get rendererType => RendererType.box;
+
+  @override
   Widget buildRenderer(BuildContext context) {
-    // TODO: convert this to a RenderBox widget
-    return MessageBoardWidget(
-      node: parent,
-      diameter: parent.diameter,
-      maxDiameter: parent.maxRenderDiameter,
-      children: children.keys.map((AssetNode assetChild) => assetChild.build(context)).toList(),
+    return StateManagerBuilder<MessagesState>(
+      creator: MessagesState.new,
+      disposer: (MessagesState state) => state.dispose(),
+      builder: (BuildContext context, MessagesState state) {
+        if (state.selectedMessage == null) {
+          return ListView.builder(
+            itemCount: children.length,
+            itemBuilder: (BuildContext context, int index) {
+              return MessageBoardMode(
+                showBody: false,
+                onSelect: () {
+                  state.selectedMessage = index;
+                },
+                child: children[index].build(context),
+              );
+            },
+          );
+        }
+        final int index = state.selectedMessage!;
+        return MessageBoardMode(
+          onUp: () {
+            state.selectedMessage = null;
+          },
+          onLeft: index <= 0 ? null : () {
+            state.selectedMessage = index - 1;
+          },
+          onRight: index >= children.length - 1 ? null : () {
+            state.selectedMessage = index + 1;
+          },
+          child: children[index].build(context),
+        );
+      },
     );
   }
 }
 
-class MessageBoardWidget extends MultiChildRenderObjectWidget {
-  const MessageBoardWidget({
+class MessageBoardMode extends InheritedWidget {
+  const MessageBoardMode({
     super.key,
-    required this.node,
-    required this.diameter,
-    required this.maxDiameter,
-    super.children,
+    this.showBody = true,
+    this.onSelect,
+    this.onUp,
+    this.onLeft,
+    this.onRight,
+    required super.child,
   });
 
-  final WorldNode node;
-  final double diameter;
-  final double maxDiameter;
+  final bool showBody;
+  final VoidCallback? onSelect;
+  final VoidCallback? onUp;
+  final VoidCallback? onLeft;
+  final VoidCallback? onRight;
 
-  @override
-  RenderMessageBoard createRenderObject(BuildContext context) {
-    return RenderMessageBoard(
-      node: node,
-      diameter: diameter,
-      maxDiameter: maxDiameter,
-    );
+  static MessageBoardMode of(BuildContext context) {
+    final MessageBoardMode? provider = context.dependOnInheritedWidgetOfExactType<MessageBoardMode>();
+    assert(provider != null, 'No MessageBoardMode found in context');
+    return provider!;
   }
 
   @override
-  void updateRenderObject(BuildContext context, RenderMessageBoard renderObject) {
-    renderObject
-      ..node = node
-      ..diameter = diameter
-      ..maxDiameter = maxDiameter;
-  }
+  bool updateShouldNotify(MessageBoardMode oldWidget) => oldWidget.showBody != showBody;
 }
 
-class MessageBoardParentData extends ParentData with ContainerParentDataMixin<RenderWorld> {
-  Offset? _computedPosition;
-}
-
-class RenderMessageBoard extends RenderWorldWithChildren<MessageBoardParentData> {
-  RenderMessageBoard({
-    required super.node,
-    required double diameter,
-    required double maxDiameter,
-  }) : _diameter = diameter,
-       _maxDiameter = maxDiameter;
-
-  double get diameter => _diameter;
-  double _diameter;
-  set diameter (double value) {
-    if (value != _diameter) {
-      _diameter = value;
-      markNeedsPaint();
-    }
-  }
-
-  double get maxDiameter => _maxDiameter;
-  double _maxDiameter;
-  set maxDiameter (double value) {
-    if (value != _maxDiameter) {
-      _maxDiameter = value;
-      markNeedsPaint();
-    }
-  }
-
-  double get radius => diameter / 2.0;
-
-  @override
-  void setupParentData(RenderObject child) {
-    if (child.parentData is! MessageBoardParentData) {
-      child.parentData = MessageBoardParentData();
-    }
-  }
-
-  @override
-  void computeLayout(WorldConstraints constraints) {
-    RenderWorld? child = firstChild;
-    while (child != null) {
-      final MessageBoardParentData childParentData = child.parentData! as MessageBoardParentData;
-      child.layout(constraints);
-      child = childParentData.nextSibling;
-    }
-  }
-
-  @override
-  double computePaint(PaintingContext context, Offset offset) {
-    RenderWorld? child = firstChild;
-    final double actualDiameter = computePaintDiameter(diameter, maxDiameter);
-    while (child != null) {
-      final MessageBoardParentData childParentData = child.parentData! as MessageBoardParentData;
-      childParentData._computedPosition = constraints.paintPositionFor(child.node, offset, <VoidCallback>[markNeedsPaint]);
-      context.paintChild(child, childParentData._computedPosition!);
-      child = childParentData.nextSibling;
-    }
-    return actualDiameter;
-  }
-
-  @override
-  WorldTapTarget? routeTap(Offset offset) {
-    RenderWorld? child = lastChild;
-    while (child != null) {
-      final MessageBoardParentData childParentData = child.parentData! as MessageBoardParentData;
-      final WorldTapTarget? result = child.routeTap(offset);
-      if (result != null)
-        return result;
-      child = childParentData.previousSibling;
-    }
-    return null;
+class MessagesState extends ChangeNotifier {
+  int? get selectedMessage => _selectedMessage;
+  int? _selectedMessage;
+  set selectedMessage(int? value) {
+    _selectedMessage = value;
+    notifyListeners();
   }
 }

@@ -21,7 +21,7 @@ class PlanetFeature extends AbilityFeature {
   }
 
   @override
-  RendererType get rendererType => RendererType.world;
+  RendererType get rendererType => RendererType.background;
 }
 
 class PlanetWidget extends LeafRenderObjectWidget {

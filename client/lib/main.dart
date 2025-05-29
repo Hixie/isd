@@ -74,6 +74,12 @@ class GameRoot extends StatefulWidget {
 
 class _GameRootState extends State<GameRoot> {
   bool _debug = false;
+
+  @override
+  void reassemble() {
+    super.reassemble();
+    widget.icons.resetCache();
+  }
   
   @override
   Widget build(BuildContext context) {
@@ -186,6 +192,8 @@ class _InterstellarDynastiesState extends State<InterstellarDynasties> {
     );
   }
 
+  // TODO: make it clearer when we are currently disconnected (e.g. show a pulsing "disconnect" icon)
+  
   void _handleError(Object error) {
     // TODO: prettier error messages
     _setMessage(error.toString());

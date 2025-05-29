@@ -54,6 +54,9 @@ class SpaceFeature extends ContainerFeature {
   }
 
   @override
+  RendererType get rendererType => RendererType.background;
+
+  @override
   Widget buildRenderer(BuildContext context) {
     return SpaceWidget(
       node: parent,

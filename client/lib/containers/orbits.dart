@@ -101,6 +101,9 @@ class OrbitFeature extends ContainerFeature {
   }
 
   @override
+  RendererType get rendererType => RendererType.background;
+
+  @override
   Widget buildRenderer(BuildContext context) {
     final List<Widget> childList = <Widget>[
       OrbitChildData(

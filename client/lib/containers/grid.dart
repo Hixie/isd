@@ -68,6 +68,9 @@ class GridFeature extends ContainerFeature {
   }
 
   @override
+  RendererType get rendererType => RendererType.foreground;
+
+  @override
   Widget buildRenderer(BuildContext context) {
     final List<Widget> childList = List<Widget>.generate(width * height, (int index) => DefaultGridCell(
       key: ValueKey<int>(index),
@@ -169,7 +172,6 @@ class _CellBuildButtonState extends State<CellBuildButton> {
   HudHandle? _build;
   
   void _triggerBuild() {
-    showAPT = true;
     _build = HudProvider.add(context, const Size(480.0, 512.0), HudDialog(
        heading: const Text('Build'),
        child: BuildUi(
@@ -179,7 +181,6 @@ class _CellBuildButtonState extends State<CellBuildButton> {
          y: widget.y,
        ),
     ));
-    showAPT = false;
   }
 
   @override

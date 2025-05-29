@@ -107,24 +107,23 @@ class HudHandle {
   }
 
   final _HudLayoutState _state;
-  final BuildContext _targetContext;
+  // ignore: unused_field
+  final BuildContext _targetContext; // draw a line from here to there
   final Widget _widget;
 
   Rect _box;
 
-  // TODO: allow the HUD to be dragged around
-
   static const double minY = 0.0;
   static const double minOverlap = 48.0;
   static const double minX = 0.0;
-  static const double minWidth = 480.0;
+  static const double minWidth = 400.0;
   static const double minHeight = 240.0;
   
   Widget _buildHud(BuildContext context, Size hudSize) {
-    assert(_box.width >= minWidth, 'invalid box: $_box');
-    assert(_box.height >= minHeight, 'invalid box: $_box');
-    assert(_box.left >= minX, 'invalid box: $_box');
-    assert(_box.top >= minY, 'invalid box: $_box');
+    assert(_box.width.round() >= minWidth.round(), 'invalid box: $_box (minWidth=$minWidth)');
+    assert(_box.height.round() >= minHeight.round(), 'invalid box: $_box (minHeight=$minHeight)');
+    assert(_box.left.round() >= minX.round(), 'invalid box: $_box (minX=$minX)');
+    assert(_box.top.round() >= minY.round(), 'invalid box: $_box (minY=$minY)');
     return Positioned(
       top: _box.top.clamp(minY, hudSize.height - minY - minOverlap),
       left: _box.left.clamp(minX, hudSize.width - minX - _box.width),
@@ -153,6 +152,7 @@ class HudHandle {
         max(_box.height + delta.dy, minHeight),
       );
     });
+    print(_box.height);
   }
   
   void cancel() {
@@ -171,10 +171,12 @@ class HudDialog extends StatelessWidget {
     super.key,
     this.heading = const Text(''),
     this.child = const Placeholder(),
+    this.onClose,
   });
 
   final Widget child;
   final Widget heading;
+  final VoidCallback? onClose;
   
   @override
   Widget build(BuildContext context) {
@@ -218,6 +220,8 @@ class HudDialog extends StatelessWidget {
                           icon: const Icon(Icons.close),
                           onPressed: () {
                             HudHandle.of(context).cancel();
+                            if (onClose != null)
+                              onClose!();
                           },
                         ),
                       ],

@@ -1,8 +1,11 @@
+import 'package:flutter/foundation.dart';
+
 import '../assets.dart';
 import '../materials.dart';
 
+@immutable
 class AssetClass {
-  AssetClass({
+  const AssetClass({
     required this.id,
     required this.icon,
     required this.name,
@@ -29,5 +32,7 @@ class KnowledgeFeature extends AbilityFeature {
   final Map<int, Material> materials;
 
   @override
-  RendererType get rendererType => RendererType.none;  
+  RendererType get rendererType => RendererType.none;
+
+  // TODO: display the known asset classes and materials
 }

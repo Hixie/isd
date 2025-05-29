@@ -105,6 +105,51 @@ class _TickerProviderBuilderState extends State<TickerProviderBuilder> with Tick
   }
 }
 
+typedef StateManagerWidgetBuilder<T> = Widget Function(BuildContext context, T value);
+
+class StateManagerBuilder<T extends Listenable> extends StatefulWidget {
+  const StateManagerBuilder({
+    super.key,
+    required this.creator,
+    required this.builder,
+    required this.disposer,
+  });
+
+  final ValueGetter<T> creator;
+  final StateManagerWidgetBuilder<T> builder;
+  final ValueSetter<T> disposer;
+  
+  @override
+  State<StateManagerBuilder<T>> createState() => _StateManagerState<T>();
+}
+
+class _StateManagerState<T extends Listenable> extends State<StateManagerBuilder<T>> {
+  T? _value;
+  
+  @override
+  void initState() {
+    super.initState();
+    _value = widget.creator();
+    _value!.addListener(_update);
+  }
+  
+  @override
+  void dispose() {
+    _value!.removeListener(_update);
+    widget.disposer(_value!);
+    super.dispose();
+  }
+
+  void _update() {
+    setState(() { /* value changed */ });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return widget.builder(context, _value!);
+  }
+}
+
 class Sizer extends StatelessWidget {
   const Sizer({
     super.key,

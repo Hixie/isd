@@ -24,19 +24,37 @@ abstract class Feature {
     assert(_parent != null);
     _parent = null;
   }
+
+  RendererType get rendererType;
+
+  Widget buildRenderer(BuildContext context); // this one is abstract; containers always need to build something
 }
 
 typedef WalkCallback = bool Function(AssetNode node);
 
-enum RendererType { none, box, world }
+enum RendererType {
+  /// do not include this feature in the rendering
+  none,
+
+  /// this feature returns a RenderBox that should fit into the icon / grid
+  box,
+
+  /// this feature returns a RenderWorld that should be in the background
+  background,
+
+  /// this feature returns a RenderWorld that will take care of the asset
+  foreground,
+
+  /// this feature returns a render object that should be the sole renderer
+  exclusive,
+}
 
 abstract class AbilityFeature extends Feature {
   AbilityFeature();
 
-  RendererType get rendererType;
-  
+  @override
   Widget buildRenderer(BuildContext context) {
-    assert(rendererType == RendererType.none);
+    assert(rendererType == RendererType.none, '$runtimeType does not override buildRenderer');
     throw StateError('buildRenderer should not be called if rendererType is RendererType.none');
   }
 }
@@ -51,8 +69,6 @@ abstract class ContainerFeature extends Feature {
   Offset findLocationForChild(AssetNode child, List<VoidCallback> callbacks);
 
   void walk(WalkCallback callback);
-
-  Widget buildRenderer(BuildContext context); // this one is abstract; containers always need to build something
 }
 
 class AssetNode extends WorldNode {
@@ -214,39 +230,50 @@ class AssetNode extends WorldNode {
     // TODO: compute actualDiameter here, and short-circuit if it's too small
     final List<Widget> backgrounds = <Widget>[];
     List<Widget>? boxes;
-    for (AbilityFeature feature in _abilities.values) {
+    bool hasBackground = false;
+    bool hasExclusive = false;
+    for (Feature feature in <Feature>[..._containers.values, ..._abilities.values]) {
       switch (feature.rendererType) {
         case RendererType.none:
           ;
         case RendererType.box:
           boxes ??= <Widget>[];
           boxes.add(feature.buildRenderer(context));
-        case RendererType.world:
+        case RendererType.background:
+          hasBackground = true;
+          backgrounds.insert(0, feature.buildRenderer(context));
+        case RendererType.foreground:
+          backgrounds.add(feature.buildRenderer(context));
+        case RendererType.exclusive:
+          // TODO: replace this with a mechanism where the parent says what kind
+          // of child it wants and the non-confirming children are wrapped (e.g.
+          // a message board that contains a non-message child).
+          hasExclusive = true;
           backgrounds.add(feature.buildRenderer(context));
       }
     }
-    for (ContainerFeature feature in _containers.values) {
-      backgrounds.add(feature.buildRenderer(context));
+    if (hasExclusive) {
+      assert(backgrounds.length == 1);
+      assert(boxes == null);
+      return backgrounds.single;
     }
-    if (backgrounds.isEmpty) {
-      if (parent != null) {
-        addTransientListener(notifyListeners); // TODO: what does this line do
-        assert(parent!.diameter > 0.0, 'parent $parent has zero diameter');
-        backgrounds.add(WorldIcon(
-          node: this,
-          diameter: diameter,
-          maxDiameter: parent!.maxRenderDiameter,
-          icon: icon,
-        ));
-      }
-      backgrounds.add(WorldIcon(
+    if (!hasBackground) {
+      backgrounds.insert(0, WorldIcon(
         node: this,
         diameter: diameter,
-        maxDiameter: maxRenderDiameter,
+        maxDiameter: parent != null ? parent!.maxRenderDiameter : maxRenderDiameter,
         icon: icon,
       ));
-    }
-    if (boxes != null && boxes.isNotEmpty) {
+      if (boxes != null) {
+        backgrounds.add(WorldFields(
+          node: this,
+          icon: icon,
+          maxDiameter: parent!.maxRenderDiameter,
+          diameter: diameter,
+          children: boxes,
+        ));
+      }
+    } else if (boxes != null) {
       backgrounds.add(WorldBoxGrid(
         node: this,
         maxDiameter: parent!.maxRenderDiameter,

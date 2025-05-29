@@ -27,7 +27,7 @@ class StarFeature extends AbilityFeature {
   }
 
   @override
-  RendererType get rendererType => RendererType.world;
+  RendererType get rendererType => RendererType.background;
 }
 
 class StarWidget extends LeafRenderObjectWidget {

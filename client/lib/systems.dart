@@ -103,9 +103,9 @@ class SystemServer {
     AssetNode? colonyShip;
     while (!reader.done) {
       final int systemID = reader.readInt32();
-      final int timeOrigin = reader.readInt64();
+      final int currentTime = reader.readInt64();
       final double timeFactor = reader.readDouble();
-      final SpaceTime spaceTime = SpaceTime(timeOrigin, timeFactor, now);
+      final SpaceTime spaceTime = SpaceTime(currentTime, timeFactor, now);
       final SystemNode system = _systems.putIfAbsent(systemID, () => SystemNode(
         id: systemID,
         sendCallback: _send,
@@ -261,10 +261,10 @@ class SystemServer {
                 happiness: happiness,
               )));
             case fcMessageBoard:
-              final Map<AssetNode, MessageBoardParameters> children = <AssetNode, MessageBoardParameters>{};
+              final List<AssetNode> children = <AssetNode>[];
               AssetNode? child;
               while ((child = _readAsset(reader)) != null) {
-                children[child!] = ();
+                children.insert(0, child!);
               }
               oldFeatures.remove(asset.setContainer(MessageBoardFeature(children)));
             case fcMessage:
@@ -334,7 +334,14 @@ class SystemServer {
                 while ((material = reader.readInt32()) != 0) {
                   materials.add(material);
                 }
-                oldFeatures.remove(asset.setAbility(OrePileFeature(pileMass: pileMass, pileMassFlowRate: pileMassFlowRate, capacity: capacity, materials: materials)));
+                oldFeatures.remove(asset.setAbility(OrePileFeature(
+                  pileMass: pileMass,
+                  pileMassFlowRate: pileMassFlowRate,
+                  timeOrigin: currentTime,
+                  spaceTime: spaceTime,
+                  capacity: capacity,
+                  materials: materials,
+                )));
               case fcRegion:
                 final int flags = reader.readInt8();
                 oldFeatures.remove(asset.setAbility(RegionFeature(minable: (flags & 0x01) > 0)));

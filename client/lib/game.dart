@@ -21,6 +21,9 @@ typedef ErrorHandler = void Function(Object error);
 class HandledError implements Exception {
   const HandledError(this.error);
   final Object error;
+
+  @override
+  String toString() => '$error';
 }
 
 Future<void> _ignore(Object? value) => Future<void>.value();

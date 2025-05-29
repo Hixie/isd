@@ -5,7 +5,7 @@ import 'package:flutter/scheduler.dart';
 class SpaceTime {
   const SpaceTime(this._anchorTime, this._timeFactor, this._origin);
 
-  final int _anchorTime;
+  final int _anchorTime; // ms from server
   final double _timeFactor;
   final DateTime _origin;
 

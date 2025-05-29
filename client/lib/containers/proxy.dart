@@ -42,6 +42,9 @@ class ProxyFeature extends ContainerFeature {
   }
 
   @override
+  RendererType get rendererType => RendererType.foreground;
+
+  @override
   Widget buildRenderer(BuildContext context) {
     return ProxyWidget(
       node: parent,
@@ -124,6 +127,9 @@ class RenderProxy extends RenderWorldNode with RenderObjectWithChildMixin<Render
   double computePaint(PaintingContext context, Offset offset) {
     final double actualDiameter = computePaintDiameter(diameter, maxDiameter);
     if (child != null) {
+      // TODO: position the child based on the icon's fields
+      // one of the modes should be to center the child's bottom
+      // (use this to make crater look better)
       _childPosition = constraints.paintPositionFor(child!.node, offset, <VoidCallback>[markNeedsPaint]);
       context.paintChild(child!, _childPosition!);
     }

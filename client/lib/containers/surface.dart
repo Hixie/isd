@@ -47,6 +47,9 @@ class SurfaceFeature extends ContainerFeature {
   }
 
   @override
+  RendererType get rendererType => RendererType.foreground;
+
+  @override
   Widget buildRenderer(BuildContext context) {
     return SurfaceWidget(
       node: parent,
