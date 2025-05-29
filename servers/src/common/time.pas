@@ -8,7 +8,7 @@ type
    TMillisecondsDuration = record // solar system milliseconds duration; supports Infinity and -Infinity
    private
       Value: Int64;
-      function GetZero(): Boolean; inline;
+      function GetIsZero(): Boolean; inline;
       function GetNegative(): Boolean; inline;
       function GetInfinite(): Boolean; inline;
       class function GetNegInfinity(): TMillisecondsDuration; inline; static;
@@ -19,7 +19,7 @@ type
       function ToString(): UTF8String;
       function ToSIUnits(): Double; // returns the value in seconds
       function Scale(Factor: Double): TMillisecondsDuration;
-      property IsZero: Boolean read GetZero;
+      property IsZero: Boolean read GetIsZero;
       property IsNegative: Boolean read GetNegative;
       property IsInfinite: Boolean read GetInfinite;
       property AsInt64: Int64 read Value; // for storage, restore with FromMilliseconds(Int64)
@@ -64,10 +64,12 @@ type
    TRate = record
    private
       Value: Double;
+      function GetIsZero(): Boolean; inline;
    public
       constructor FromPerSecond(A: Double);
       constructor FromPerMillisecond(A: Double);
       function ToString(NumeratorUnit: UTF8String = ''): UTF8String;
+      property IsZero: Boolean read GetIsZero;
       property AsDouble: Double read Value; // for storage, restore with FromMilliseconds(Double)
    end;
 
@@ -159,7 +161,7 @@ begin
    Value := A;
 end;
 
-function TMillisecondsDuration.GetZero(): Boolean;
+function TMillisecondsDuration.GetIsZero(): Boolean;
 begin
    Result := Value = 0;
 end;
@@ -520,6 +522,11 @@ end;
 constructor TRate.FromPerMillisecond(A: Double);
 begin
    Value := A;
+end;
+
+function TRate.GetIsZero(): Boolean;
+begin
+   Result := Value = 0.0;
 end;
 
 function TRate.ToString(NumeratorUnit: UTF8String = ''): UTF8String;
