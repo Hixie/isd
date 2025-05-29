@@ -724,7 +724,7 @@ begin
             Assert(NextTime >= 0);
             if (NextTime > High(cint)) then
                NextTime := High(cint);
-            FClock.Unlatch();
+            FClock.UnlatchUntil(FNextEvent^.FTime);
             Select(NextTime); // $R-
          end;
          if (Assigned(FNextEvent) and EventIsDueBefore(FNextEvent, FClock.Now())) then
