@@ -1,9 +1,14 @@
 # Protocol
 
 WebSocket text frames whose format is null-terminated fields of UTF-8.
+Each field is a text string (e.g. integers are represented using ASCII
+digits).
 
-The first field is the command, the second is a 32 bit number called
-the conversation ID.
+The first field is an integer called the conversation ID (in the range
+of a 32 bit unsigned integer). The second field is a text string
+specifying the command (e.g. `new`, `login`, etc). Subsequent fields
+depend on the specified command, as described in the subsections
+below.
 
 The server responds in the same format. Replies always start with a
 field that says `reply`, then the conversation ID, then either a `T`
@@ -114,9 +119,16 @@ The file with code 1 consists of little-endian 32 bit integers:
 
  * Integer 0: the number of star categories, N.
  * Integer 1..N: the number of stars in each category, M0, M1, M2, etc.
- * Integer N+1..N+M0: the stars in category 0.
- * Integer N+M0+1..N+M0+M1: the stars in category 1.
+ * Integer N+1..N+M0*2: the stars in category 0.
+ * Integer N+M0*2+1..N+M0*2+M1*2: the stars in category 1.
  * etc.
+
+Each star is represented as two integers giving the X and Y
+coordinates of the star, scaled so that the top left coordinate of the
+galaxy is 0,0 and the bottom right coordinate of the galaxy is
+4294967295,4294967295 (2^32-1).
+
+Categories always have at least one star.
 
 The categories of astronomical objects (with their color and diameters
 in meters) are:
