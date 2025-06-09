@@ -219,7 +219,7 @@ function TGridFeatureNode.GetMassFlowRate(): TRate;
 var
    Child: TAssetNode;
 begin
-   Result := TRate.FromPerMillisecond(0.0);
+   Result := TRate.Zero;
    for Child in FChildren do
       Result := Result + Child.MassFlowRate;
 end;

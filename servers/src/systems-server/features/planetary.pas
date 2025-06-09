@@ -157,7 +157,8 @@ var
    Encyclopedia: TEncyclopediaView;
    Material: TMaterial;
    ConsiderOre, IncludeOre: Boolean;
-   TargetCount, RemainingCount, Index, CurrentFraction, MaxFraction: Cardinal;
+   TargetCount, RemainingCount, Index: Cardinal;
+   CurrentFraction, IncludedFraction: Fraction32;
    ApproximateMass, CandidateMass, MaxMass: Double;
    SelectedOres: TOreFilter;
    CachedSystem: TSystem;
@@ -184,7 +185,7 @@ begin
             Inc(RemainingCount);
       end;
       Index := 0;
-      MaxFraction := 0;
+      IncludedFraction := Fraction32.Zero;
       for OreIndex in TOres do
       begin
          if (FComposition[OreIndex].IsNotZero) then
@@ -218,9 +219,8 @@ begin
                if (IncludeOre) then
                begin
                   SelectedOres.Enable(OreIndex);
-                  CurrentFraction := FComposition[OreIndex].AsCardinal;
-                  if (CurrentFraction > MaxFraction) then
-                     MaxFraction := CurrentFraction;
+                  CurrentFraction := FComposition[OreIndex];
+                  IncludedFraction := IncludedFraction + CurrentFraction;
                   Inc(Index);
                   Dec(TargetCount);
                   if (TargetCount = 0) then
@@ -232,13 +232,14 @@ begin
          end;
       end;
       Assert((RemainingCount = 0) or (TargetCount = 0));
+      Writeln('ALLOCATING ORES FROM ', Parent.DebugName);
       for OreIndex in TOres do
       begin
          if (SelectedOres[OreIndex]) then
          begin
             Material := CachedSystem.Encyclopedia.Materials[OreIndex];
-            CandidateMass := AllocateResourcesMessage.TargetQuantity * Material.MassPerUnit * FComposition[OreIndex].AsCardinal / MaxFraction;
-            MaxMass := ApproximateMass * FComposition[OreIndex].ToDouble();
+            CandidateMass := (FComposition[OreIndex] / IncludedFraction) * (AllocateResourcesMessage.TargetQuantity * Material.MassPerUnit);
+            MaxMass := FComposition[OreIndex] * ApproximateMass; // the amount of material that's left
             if (CandidateMass > MaxMass) then
             begin
                // finish it off
@@ -257,8 +258,9 @@ begin
          begin
             AllocateResourcesMessage.AssignedOres[OreIndex] := 0;
          end;
+         Writeln('  Ore #', OreIndex, ': ', AllocateResourcesMessage.AssignedOres[OreIndex]);
       end;
-      Fraction32.NormalizeArray(@FComposition[Low(FComposition)], Length(FComposition));
+      Fraction32.NormalizeArray(@FComposition[Low(FComposition)], Length(FComposition)); // renormalize our composition
       MarkAsDirty([dkUpdateClients, dkUpdateJournal]);
       Result := mrHandled;
    end

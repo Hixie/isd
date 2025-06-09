@@ -41,7 +41,8 @@ const
    fcMining = $12;
    fcOrePile = $13;
    fcRegion = $14;
-   fcHighestKnownFeatureCode = fcRegion;
+   fcRefining = $15;
+   fcHighestKnownFeatureCode = fcRefining;
    
 implementation
 

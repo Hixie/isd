@@ -1,6 +1,6 @@
 {$MODE OBJFPC} { -*- delphi -*- }
 {$INCLUDE settings.inc}
-unit mining;
+unit refining;
 
 interface
 
@@ -9,8 +9,9 @@ uses
    messageport, region, time;
 
 type
-   TMiningFeatureClass = class(TFeatureClass)
+   TRefiningFeatureClass = class(TFeatureClass)
    private
+      FOre: TOres;
       FBandwidth: TRate; // kg per second
    strict protected
       function GetFeatureNodeClass(): FeatureNodeReference; override;
@@ -19,21 +20,25 @@ type
       function InitFeatureNode(): TFeatureNode; override;
    end;
 
-   TMiningFeatureNode = class(TFeatureNode, IMiner)
+   TRefiningFeatureNode = class(TFeatureNode, IRefinery)
    strict private
-      FFeatureClass: TMiningFeatureClass;
+      FFeatureClass: TRefiningFeatureClass;
       FStatus: TRegionClientFields;
-   private // IMiner
-      function GetMinerMaxRate(): TRate; // kg per second
-      function GetMinerCurrentRate(): TRate; // kg per second
-      procedure StartMiner(Region: TRegionFeatureNode; Rate: TRate; SourceLimiting, TargetLimiting: Boolean);
-      procedure StopMiner();
+      FOreKnowledge: TKnowledgeSummary;
+   private // IRefinery
+      function GetRefineryOre(): TOres;
+      function GetRefineryMaxRate(): TRate; // kg per second
+      function GetRefineryCurrentRate(): TRate; // kg per second
+      procedure StartRefinery(Region: TRegionFeatureNode; Rate: TRate; SourceLimiting, TargetLimiting: Boolean); // kg per second
+      procedure StopRefinery();
    protected
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
       procedure HandleChanges(CachedSystem: TSystem); override;
+      procedure ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynastyHashSet; CachedSystem: TSystem); override;
+      procedure HandleVisibility(const DynastyIndex: Cardinal; var Visibility: TVisibility; const Sensors: ISensorsProvider; const VisibilityHelper: TVisibilityHelper); override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
    public
-      constructor Create(AFeatureClass: TMiningFeatureClass);
+      constructor Create(AFeatureClass: TRefiningFeatureClass);
       destructor Destroy(); override;
       procedure UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem); override;
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
@@ -47,55 +52,68 @@ implementation
 uses
    exceptions, sysutils, isdprotocol, knowledge, messages, typedump;
 
-constructor TMiningFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
+constructor TRefiningFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
+var
+   Material: TMaterial;
 begin
    inherited Create();
+   Reader.Tokens.ReadIdentifier('for');
+   Material := ReadMaterial(Reader);
+   if ((Material.ID < Low(TOres)) or (Material.ID > High(TOres))) then
+      Reader.Tokens.Error('Material "%s" is not an ore', [Material.Name]);
+   FOre := Material.ID; // $R-
+   Reader.Tokens.ReadComma();
    Reader.Tokens.ReadIdentifier('max');
    Reader.Tokens.ReadIdentifier('throughput');
    FBandwidth := ReadMassPerTime(Reader.Tokens);
 end;
 
-function TMiningFeatureClass.GetFeatureNodeClass(): FeatureNodeReference;
+function TRefiningFeatureClass.GetFeatureNodeClass(): FeatureNodeReference;
 begin
-   Result := TMiningFeatureNode;
+   Result := TRefiningFeatureNode;
 end;
 
-function TMiningFeatureClass.InitFeatureNode(): TFeatureNode;
+function TRefiningFeatureClass.InitFeatureNode(): TFeatureNode;
 begin
-   Result := TMiningFeatureNode.Create(Self);
+   Result := TRefiningFeatureNode.Create(Self);
 end;
 
 
-constructor TMiningFeatureNode.Create(AFeatureClass: TMiningFeatureClass);
+constructor TRefiningFeatureNode.Create(AFeatureClass: TRefiningFeatureClass);
 begin
    inherited Create();
    FFeatureClass := AFeatureClass;
    FStatus.Enabled := True;
 end;
 
-constructor TMiningFeatureNode.CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem);
+constructor TRefiningFeatureNode.CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem);
 begin
    inherited CreateFromJournal(Journal, AFeatureClass, ASystem);
    Assert(Assigned(AFeatureClass));
-   FFeatureClass := AFeatureClass as TMiningFeatureClass;
+   FFeatureClass := AFeatureClass as TRefiningFeatureClass;
 end;
 
-destructor TMiningFeatureNode.Destroy();
+destructor TRefiningFeatureNode.Destroy();
 begin
    inherited;
 end;
 
-function TMiningFeatureNode.GetMinerMaxRate(): TRate; // kg per second
+function TRefiningFeatureNode.GetRefineryOre(): TOres;
+begin
+   Result := FFeatureClass.FOre;
+end;
+
+function TRefiningFeatureNode.GetRefineryMaxRate(): TRate; // kg per second
 begin
    Result := FFeatureClass.FBandwidth;
 end;
 
-function TMiningFeatureNode.GetMinerCurrentRate(): TRate; // kg per second
+function TRefiningFeatureNode.GetRefineryCurrentRate(): TRate; // kg per second
 begin
    Result := FStatus.Rate;
 end;
 
-procedure TMiningFeatureNode.StartMiner(Region: TRegionFeatureNode; Rate: TRate; SourceLimiting, TargetLimiting: Boolean); // kg per second
+procedure TRefiningFeatureNode.StartRefinery(Region: TRegionFeatureNode; Rate: TRate; SourceLimiting, TargetLimiting: Boolean); // kg per second
 begin
    Assert(FStatus.Enabled);
    FStatus.Region := Region;
@@ -104,12 +122,10 @@ begin
    FStatus.TargetLimiting := TargetLimiting;
    FStatus.Mode := rcActive;
    MarkAsDirty([dkUpdateClients, dkUpdateJournal]);
-   Writeln('StartMiner(', Region.Parent.DebugName, ', ', Rate.ToString('kg'), ', ', SourceLimiting, ', ', TargetLimiting, ')');
 end;
 
-procedure TMiningFeatureNode.StopMiner();
+procedure TRefiningFeatureNode.StopRefinery();
 begin
-   Writeln('StopMiner(', FStatus.Region.Parent.DebugName, ')');
    FStatus.Region := nil;
    FStatus.Rate := TRate.Zero;
    FStatus.SourceLimiting := False;
@@ -118,14 +134,14 @@ begin
    MarkAsDirty([dkUpdateClients, dkUpdateJournal, dkNeedsHandleChanges]);
 end;
 
-procedure TMiningFeatureNode.HandleChanges(CachedSystem: TSystem);
+procedure TRefiningFeatureNode.HandleChanges(CachedSystem: TSystem);
 var
-   Message: TRegisterMinerBusMessage;
+   Message: TRegisterRefineryBusMessage;
 begin
    // If a region stops us, they will probably restart us before we get here.
    if ((FStatus.Enabled) and (FStatus.Mode = rcIdle)) then
    begin
-      Message := TRegisterMinerBusMessage.Create(Self);
+      Message := TRegisterRefineryBusMessage.Create(Self);
       if (InjectBusMessage(Message) = mrHandled) then
       begin
          FStatus.Mode := rcPending;
@@ -139,7 +155,7 @@ begin
    inherited;
 end;
 
-procedure TMiningFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
+procedure TRefiningFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
 var
    Visibility: TVisibility;
    Flags: Byte;
@@ -147,7 +163,15 @@ begin
    Visibility := Parent.ReadVisibilityFor(DynastyIndex, CachedSystem);
    if ((dmDetectable * Visibility <> []) and (dmClassKnown in Visibility)) then
    begin
-      Writer.WriteCardinal(fcMining);
+      Writer.WriteCardinal(fcRefining);
+      if (FOreKnowledge.GetEntry(DynastyIndex)) then
+      begin
+         Writer.WriteCardinal(FFeatureClass.FOre);
+      end
+      else
+      begin
+         Writer.WriteCardinal(0);
+      end;
       Writer.WriteDouble(FFeatureClass.FBandwidth.AsDouble);
       Flags := $00;
       if (FStatus.Enabled) then
@@ -165,17 +189,27 @@ begin
    end;
 end;
 
-procedure TMiningFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
+procedure TRefiningFeatureNode.ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynastyHashSet; CachedSystem: TSystem);
+begin
+   FOreKnowledge.Init(NewDynasties.Count);
+end;
+
+procedure TRefiningFeatureNode.HandleVisibility(const DynastyIndex: Cardinal; var Visibility: TVisibility; const Sensors: ISensorsProvider; const VisibilityHelper: TVisibilityHelper);
+begin
+   FOreKnowledge.SetEntry(DynastyIndex, Sensors.GetOreKnowledge()[FFeatureClass.FOre]);
+end;
+
+procedure TRefiningFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
 begin
    Journal.WriteBoolean(FStatus.Enabled);
 end;
 
-procedure TMiningFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
+procedure TRefiningFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
 begin
    FStatus.Enabled := Journal.ReadBoolean();
 end;
 
-function TMiningFeatureNode.HandleCommand(Command: UTF8String; var Message: TMessage): Boolean;
+function TRefiningFeatureNode.HandleCommand(Command: UTF8String; var Message: TMessage): Boolean;
 begin
    if (Command = 'enable') then
    begin
@@ -203,7 +237,7 @@ begin
          if (FStatus.Mode in [rcPending, rcActive]) then
          begin
             Assert(Assigned(FStatus.Region));
-            FStatus.Region.RemoveMiner(Self);
+            FStatus.Region.RemoveRefinery(Self);
             FStatus.Region := nil;
          end;
          Assert(not Assigned(FStatus.Region));
@@ -220,5 +254,5 @@ begin
 end;
 
 initialization
-   RegisterFeatureClass(TMiningFeatureClass);
+   RegisterFeatureClass(TRefiningFeatureClass);
 end.

@@ -60,6 +60,7 @@ type
          FNumerator: Cardinal;
       function GetIsZero(): Boolean; inline;
       function GetIsNotZero(): Boolean; inline;
+      class function GetZero(): Fraction32; inline; static;
    public
       constructor FromDouble(Value: Double);
       constructor FromCardinal(Value: Cardinal);
@@ -67,15 +68,18 @@ type
       procedure Add(Value: Double);
       procedure Subtract(Value: Double);
       function ToDouble(): Double;
-      class operator * (Multiplicand: Fraction32; Multiplier: Double): Double;
-      class operator * (Multiplicand: Fraction32; Multiplier: Int64): Double;
-      class operator / (Dividend: Fraction32; Divisor: Double): Double;
+      class operator + (A: Fraction32; B: Fraction32): Fraction32; inline;
+      class operator * (Multiplicand: Fraction32; Multiplier: Double): Double; inline;
+      class operator * (Multiplicand: Fraction32; Multiplier: Int64): Double; inline;
+      class operator / (Dividend: Fraction32; Divisor: Double): Double; inline;
+      class operator / (Dividend: Fraction32; Divisor: Fraction32): Fraction32; inline;
       property IsZero: Boolean read GetIsZero;
       property IsNotZero: Boolean read GetIsNotZero;
       property AsCardinal: Cardinal read FNumerator write FNumerator; // for storage or aggregate math
       class procedure NormalizeArray(Target: PFraction32; Count: SizeInt); static;
       class procedure InitArray(Target: PFraction32; Count: SizeInt; Value: Cardinal = 0); static;
       class function ChooseFrom(Target: PFraction32; Count: SizeInt; RandomSource: TRandomNumberGenerator): SizeInt; static;
+      class property Zero: Fraction32 read GetZero;
    end;
 
    ENumberError = class(Exception)
@@ -481,9 +485,49 @@ begin
    Result := FNumerator > 0;
 end;
 
+class function Fraction32.GetZero(): Fraction32;
+begin
+   Result.FNumerator := 0;
+end;
+
 procedure Fraction32.ResetToZero();
 begin
    FNumerator := 0;
+end;
+
+class function Fraction32GetZero(): Fraction32;
+begin
+   Result.FNumerator := 0;
+end;
+
+class operator Fraction32.+ (A: Fraction32; B: Fraction32): Fraction32;
+begin
+   Assert(A.FDenominator = B.FDenominator);
+   Assert(High(Result.FNumerator) - A.FNumerator >= B.FNumerator);
+   Result.FNumerator := A.FNumerator + B.FNumerator; // $R-
+end;
+
+class operator Fraction32.* (Multiplicand: Fraction32; Multiplier: Double): Double;
+begin
+   Result := (Multiplicand.FNumerator / Multiplicand.FDenominator) * Multiplier;
+end;
+
+class operator Fraction32.* (Multiplicand: Fraction32; Multiplier: Int64): Double;
+begin
+   Result := (Multiplicand.FNumerator / Multiplicand.FDenominator) * Multiplier;
+end;
+
+class operator Fraction32./ (Dividend: Fraction32; Divisor: Double): Double;
+begin
+   Result := (Dividend.FNumerator / Dividend.FDenominator) / Divisor;
+end;
+
+class operator Fraction32./ (Dividend: Fraction32; Divisor: Fraction32): Fraction32;
+begin
+   Assert(Dividend.FDenominator = FDenominator);
+   Assert(Divisor.FDenominator = FDenominator);
+   Assert(Dividend.FNumerator <= Divisor.FNumerator);
+   Result.FNumerator := Round(FDenominator * Dividend.FNumerator / Divisor.FNumerator); // $R-
 end;
 
 
@@ -518,21 +562,6 @@ end;
 function Fraction32.ToDouble(): Double;
 begin
    Result := FNumerator / FDenominator;
-end;
-
-class operator Fraction32.* (Multiplicand: Fraction32; Multiplier: Double): Double;
-begin
-   Result := (Multiplicand.FNumerator / Multiplicand.FDenominator) * Multiplier;
-end;
-
-class operator Fraction32.* (Multiplicand: Fraction32; Multiplier: Int64): Double;
-begin
-   Result := (Multiplicand.FNumerator / Multiplicand.FDenominator) * Multiplier;
-end;
-
-class operator Fraction32./ (Dividend: Fraction32; Divisor: Double): Double;
-begin
-   Result := (Dividend.FNumerator / Dividend.FDenominator) / Divisor;
 end;
 
 class procedure Fraction32.NormalizeArray(Target: PFraction32; Count: SizeInt);

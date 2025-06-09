@@ -424,12 +424,16 @@ function TOrbitFeatureNode.GetMassFlowRate(): TRate;
 var
    Child: TAssetNode;
 begin
-   Result := TRate.FromPerMillisecond(0.0);
+   Result := TRate.Zero;
    if (Assigned(FPrimaryChild)) then
+   begin
+      Assert(FPrimaryChild.MassFlowRate.IsZero, 'unexpected mass flow rate from ' + FPrimaryChild.DebugName + ' ' + FPrimaryChild.MassFlowRate.ToString('kg') + '(' + FloatToStr(FPrimaryChild.MassFlowRate.AsDouble) + ')');
       Result := Result + FPrimaryChild.MassFlowRate;
+   end;
    for Child in FChildren do
    begin
       Assert(Assigned(Child));
+      Assert(Child.MassFlowRate.IsZero, 'unexpected mass flow rate from ' + Child.DebugName + ' ' + Child.MassFlowRate.ToString('kg'));
       Result := Result + Child.MassFlowRate;
    end;
    Assert(Result.IsZero);

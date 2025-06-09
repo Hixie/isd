@@ -12,18 +12,26 @@ uses
 type
    TRegionFeatureNode = class;
 
-   TMinerBlockage = (mbNone, mbPilesFull, mbMinesEmpty, mbNoRegion, mbPending = 254, mbDisabled = 255);
-   
+   TRegionClientMode = (rcIdle, rcPending, rcActive, rcNoRegion);
+   TRegionClientFields = packed record
+      Region: TRegionFeatureNode; // 8 bytes
+      Rate: TRate; // 8 bytes
+      Enabled: Boolean;
+      SourceLimiting, TargetLimiting: Boolean;
+      Mode: TRegionClientMode;
+   end;
+   {$IF SIZEOF(TRegionClientMode) > 3*8} {$FATAL} {$ENDIF}
+      
    IMiner = interface ['IMiner']
-      function GetMinerRate(): TRate; // kg per second
-      procedure StartMiner(Region: TRegionFeatureNode);
-      procedure StartMinerBlocked(Region: TRegionFeatureNode; Blockage: TMinerBlockage); // called when we would call StartMiner but there's some problem (must mbPilesFull or mbMinesEmpty)
+      function GetMinerMaxRate(): TRate; // kg per second
+      function GetMinerCurrentRate(): TRate; // kg per second
+      procedure StartMiner(Region: TRegionFeatureNode; Rate: TRate; SourceLimiting, TargetLimiting: Boolean);
       procedure StopMiner();
    end;
    TRegisterMinerBusMessage = specialize TRegisterProviderBusMessage<TPhysicalConnectionBusMessage, IMiner>;
    TMinerHashSet = specialize TProviderSet<IMiner>;
 
-   IOrePile = interface ['IPile']
+   IOrePile = interface ['IOrePile']
       function GetOrePileCapacity(): Double; // kg
       procedure StartOrePile(Region: TRegionFeatureNode);
       procedure StopOrePile();
@@ -35,12 +43,20 @@ type
       function GetRefineryOre(): TOres;
       function GetRefineryMaxRate(): TRate; // kg per second
       function GetRefineryCurrentRate(): TRate; // kg per second
-      procedure StartRefinery(Region: TRegionFeatureNode; Rate: TRate); // kg per second
-      procedure SyncRefinery(Quantity: UInt64);
+      procedure StartRefinery(Region: TRegionFeatureNode; Rate: TRate; SourceLimiting, TargetLimiting: Boolean); // kg per second
       procedure StopRefinery();
    end;
    TRegisterRefineryBusMessage = specialize TRegisterProviderBusMessage<TPhysicalConnectionBusMessage, IRefinery>;
    TRefineryHashSet = specialize TProviderSet<IRefinery>;
+
+   IMaterialPile = interface ['IMaterialPile']
+      function GetMaterialPileMaterial(): TMaterial;
+      function GetMaterialPileCapacity(): UInt64; // quantity
+      procedure StartMaterialPile(Region: TRegionFeatureNode);
+      procedure StopMaterialPile();
+   end;
+   TRegisterMaterialPileBusMessage = specialize TRegisterProviderBusMessage<TPhysicalConnectionBusMessage, IMaterialPile>;
+   TMaterialPileHashSet = specialize TProviderSet<IMaterialPile>;
 
    TRegionFeatureClass = class(TFeatureClass)
    strict private
@@ -66,6 +82,7 @@ type
       // Ground truth:
       FGroundComposition: TOreQuantities;
       FOrePileComposition: TOreQuantities;
+      FMaterialPileComposition: TMaterialQuantityHashTable;
       FAnchorTime: TTimeInMilliseconds; // set to Low(FAnchorTime) or Now when transfers are currently synced
       FAllocatedOres: Boolean; // TODO: find a way to make this bit cost 32 times less than it does now
       // Runtime admin variables:
@@ -73,12 +90,15 @@ type
       FMiners: TMinerHashSet;
       FOrePiles: TOrePileHashSet;
       FRefineries: TRefineryHashSet;
+      FMaterialPiles: TMaterialPileHashSet;
       FNextEvent: TSystemEvent; // set only when mass is moving
       FActive: Boolean; // set to true when transfers are set up, set to false when transfers need to be set up
       function GetTotalOrePileCapacity(): Double; // kg total for all piles
       function GetTotalOrePileMass(): Double; // kg total for all piles
       function GetTotalOrePileMassFlowRate(): TRate; // kg/s (total for all piles; total miner rate minus total refinery rate)
-      function GetMinMassTransfer(CachedSystem: TSystem): Double; // kg mass that would need to be transferred to move at least one unit of quantity
+      function GetMinOreMassTransfer(CachedSystem: TSystem): Double; // kg mass that would need to be transferred to move at least one unit of quantity
+      procedure IncMaterialPile(Material: TMaterial; Delta: UInt64);
+      function GetMaterialPileComposition(Material: TMaterial): UInt64;
    protected
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
       function GetMass(): Double; override;
@@ -181,6 +201,8 @@ begin
    FMiners.Free();
    FOrePiles.Free();
    FRefineries.Free();
+   FMaterialPiles.Free();
+   FMaterialPileComposition.Free();
    inherited;
 end;
 
@@ -196,7 +218,8 @@ begin
    Assert(Length(FGroundComposition) > 0);
    for Ore := Low(FGroundComposition) to High(FGroundComposition) do // $R-
       Result := Result + Encyclopedia.Materials[Ore].MassPerUnit * FGroundComposition[Ore];
-   // The ore pile composition contributes to GetOrePileMass below.
+   // The ore pile composition (see GetOrePileMass) and the material
+   // pile composition are exposed on the various pile assets.
    if (Assigned(FNextEvent)) then
       Result := Result + (CachedSystem.Now - FAnchorTime) * MassFlowRate;
 end;
@@ -205,13 +228,15 @@ function TRegionFeatureNode.GetMassFlowRate(): TRate;
 var
    Miner: IMiner;
 begin
-   Result := TRate.FromPerMillisecond(0.0);
+   Result := TRate.Zero;
    if (Assigned(FMiners) and Assigned(FNextEvent)) then
    begin
       for Miner in FMiners do
-         Result := Result - Miner.GetMinerRate();
+      begin
+         Result := Result - Miner.GetMinerCurrentRate();
+      end;
    end;
-   // Refineries affect GetOrePileMassFlowRate below.
+   // Refineries affect the flow rates of the pile assets (see e.g. GetOrePileMassFlowRate below).
 end;
 
 function TRegionFeatureNode.GetTotalOrePileCapacity(): Double; // kg total for all piles
@@ -254,11 +279,11 @@ var
    Miner: IMiner;
    Refinery: IRefinery;
 begin
-   Result := TRate.FromPerMillisecond(0.0);
+   Result := TRate.Zero;
    if (Assigned(FMiners) and Assigned(FNextEvent)) then
    begin
       for Miner in FMiners do
-         Result := Result + Miner.GetMinerRate();
+         Result := Result + Miner.GetMinerCurrentRate();
    end;
    if (Assigned(FRefineries)) then
    begin
@@ -277,33 +302,68 @@ end;
 
 function TRegionFeatureNode.GetOrePileMassFlowRate(Pile: IOrePile): TRate; // kg/s
 var
-   PileRatio: Double;
+   RPileRatio: Double;
 begin
-   PileRatio := Pile.GetOrePileCapacity() / GetTotalOrePileCapacity();
-   Result := GetTotalOrePileMassFlowRate() * PileRatio;
+   // We do it in this weird order to reduce the incidence of floating point error creep.
+   // It's weird but fractions are bad, and doing it this way avoids fractions.
+   // (I say this is a weird order because to me the intuitive way to do this is to get
+   // the PileRation, Pile.GetOrePileCapacity() / GetTotalOrePileCapacity(), and then
+   // multiply the GetTotalOrePileMassFlowRate() by that number.)
+   RPileRatio := GetTotalOrePileCapacity() / Pile.GetOrePileCapacity();
+   Result := GetTotalOrePileMassFlowRate() / RPileRatio;
 end;
 
-function TRegionFeatureNode.GetMinMassTransfer(CachedSystem: TSystem): Double;
+function TRegionFeatureNode.GetMinOreMassTransfer(CachedSystem: TSystem): Double;
 var
    Ore: TOres;
-   TotalComposition, Quantity: UInt64;
-   TransferMassPerUnit: Double;
+   Quantity: UInt64;
+   TransferMassPerUnit, Min: Double;
    Encyclopedia: TEncyclopediaView;
 begin
    Encyclopedia := CachedSystem.Encyclopedia;
-   TotalComposition := 0;
-   for Ore in TOres do
-      Inc(TotalComposition, FGroundComposition[Ore]);
+   Min := Encyclopedia.MinMassPerOreUnit;
    {$PUSH} {$IEEEERRORS-} Result := Infinity; {$POP}
    for Ore in TOres do
    begin
       Quantity := FGroundComposition[Ore];
       if (Quantity > 0) then
       begin
-         TransferMassPerUnit := Encyclopedia.Materials[Ore].MassPerUnit / Ceil(Quantity / TotalComposition);
+         TransferMassPerUnit := Encyclopedia.Materials[Ore].MassPerUnit;
          if (TransferMassPerUnit < Result) then
             Result := TransferMassPerUnit;
+         if (Result <= Min) then
+         begin
+            exit;
+         end;
       end;
+   end;
+end;
+
+procedure TRegionFeatureNode.IncMaterialPile(Material: TMaterial; Delta: UInt64);
+begin
+   Assert(Assigned(Material));
+   Assert(Delta <> 0);
+   if (not Assigned(FMaterialPileComposition)) then
+   begin
+      FMaterialPileComposition := TMaterialQuantityHashTable.Create(1);
+   end;
+   FMaterialPileComposition.Inc(Material, Delta);
+end;
+
+function TRegionFeatureNode.GetMaterialPileComposition(Material: TMaterial): UInt64;
+begin
+   if (not Assigned(FMaterialPileComposition)) then
+   begin
+      Result := 0;
+   end
+   else
+   if (not FMaterialPileComposition.Has(Material)) then
+   begin
+      Result := 0;
+   end
+   else
+   begin
+      Result := FMaterialPileComposition[Material];
    end;
 end;
 
@@ -321,6 +381,7 @@ var
    MinerMessage: TRegisterMinerBusMessage;
    OrePileMessage: TRegisterOrePileBusMessage;
    RefineryMessage: TRegisterRefineryBusMessage;
+   MaterialPileMessage: TRegisterMaterialPileBusMessage;
 begin
    if (Message is TRegisterMinerBusMessage) then
    begin
@@ -364,6 +425,20 @@ begin
       Writeln('  ', Parent.DebugName, ': Registered a new refinery, now ', FRefineries.Count, ' refineries');
    end
    else
+   if (Message is TRegisterMaterialPileBusMessage) then
+   begin
+      if (FActive) then
+         Stop();
+      MaterialPileMessage := Message as TRegisterMaterialPileBusMessage;
+      if (not Assigned(FMaterialPiles)) then
+         FMaterialPiles := TMaterialPileHashSet.Create();
+      Assert(not FMaterialPiles.Has(MaterialPileMessage.Provider));
+      FMaterialPiles.Add(MaterialPileMessage.Provider);
+      MarkAsDirty([dkUpdateClients, dkUpdateJournal, dkNeedsHandleChanges]);
+      Result := mrHandled;
+      Writeln('  ', Parent.DebugName, ': Registered a new material pile, now ', FMaterialPiles.Count, ' material piles');
+   end
+   else
       Result := mrDeferred;
 end;
 
@@ -372,17 +447,18 @@ var
    Miner: IMiner;
    Refinery: IRefinery;
    Rate: TRate;
-   TransferMass, ApproximateTransferQuantity: Double;
+   TotalCompositionMass, TotalTransferMass, ApproximateTransferQuantity, ActualTransfer: Double;
    {$IFDEF DEBUG}
-   CurrentOrePileMass, OrePileRecordedMass, OrePileCapacity, ActualTransfer: Double;
+   CurrentOrePileMass, OrePileRecordedMass, OrePileCapacity: Double;
    OrePile: IOrePile;
+   FlowRate: TRate;
    {$ENDIF}
    SyncDuration: TMillisecondsDuration;
    Ore: TOres;
    Material: TMaterial;
    CachedSystem: TSystem;
    Encyclopedia: TEncyclopediaView;
-   Quantity, TotalComposition: UInt64;
+   Quantity: UInt64;
    TransferQuantity: UInt64;
    Distribution: TOreFractions;
 begin
@@ -396,6 +472,7 @@ begin
    {$IFDEF DEBUG}
    if (Assigned(FOrePiles)) then
    begin
+      FlowRate := GetTotalOrePileMassFlowRate();
       CurrentOrePileMass := GetTotalOrePileMass();
       OrePileRecordedMass := 0.0;
       if (Length(FOrePileComposition) > 0) then
@@ -408,55 +485,65 @@ begin
       begin
          OrePileCapacity := OrePileCapacity + OrePile.GetOrePileCapacity();
       end;
-      Writeln('    we started with ', OrePileCapacity:0:1, 'kg pile capacity and ', CurrentOrePileMass:0:1, 'kg in ', FOrePiles.Count, ' ore piles (of which ', OrePileRecordedMass:0:1, 'kg is recorded)');
-      Assert(CurrentOrePileMass < OrePileCapacity, 'already over capacity');
+      Writeln('    we started with ', OrePileCapacity:0:1, 'kg ore pile capacity and ', CurrentOrePileMass:0:1, 'kg in ', FOrePiles.Count, ' ore piles (of which ', OrePileRecordedMass:0:1, 'kg is recorded)');
+      Assert(CurrentOrePileMass <= OrePileCapacity, 'already over capacity');
+      Writeln('    we get to that by multiplying the total ore pile mass flow rate, ', FlowRate.ToString('kg'), ', by the elapsed time, ', SyncDuration.ToString());
    end;
    {$ENDIF}
 
    if (Assigned(FMiners)) then
    begin
-      TotalComposition := 0;
-      for Ore in TOres do
-      begin
-         Inc(TotalComposition, FGroundComposition[Ore]);
-      end;
-      TransferMass := 0.0;
+      TotalCompositionMass := 0.0;
+      Assert(Length(FGroundComposition) > 0);
+      for Ore := Low(FGroundComposition) to High(FGroundComposition) do // $R-
+         TotalCompositionMass := TotalCompositionMass + Encyclopedia.Materials[Ore].MassPerUnit * FGroundComposition[Ore];
+      TotalTransferMass := 0.0;
       for Miner in FMiners do
       begin
-         Rate := Miner.GetMinerRate();
-         TransferMass := TransferMass + SyncDuration * Rate;
-         Writeln('    transfer mass for this miner (rate ', Rate.ToString('kg'), ') is ', (SyncDuration * Rate):0:1, 'kg; TotalComposition is ', TotalComposition:0);
+         Rate := Miner.GetMinerCurrentRate();
+         TotalTransferMass := TotalTransferMass + SyncDuration * Rate;
+         Writeln('    transfer mass for this miner (rate ', Rate.ToString('kg'), ') is ', (SyncDuration * Rate):0:1, 'kg; TotalCompositionMass is ', TotalCompositionMass:0:1);
       end;
-      Writeln('    total ideal mass transfer: ', TransferMass:0:1, 'kg');
+      Writeln('    total ideal mass transfer: ', TotalTransferMass:0:1, 'kg');
       ActualTransfer := 0.0;
       for Ore in TOres do
       begin
          Quantity := FGroundComposition[Ore];
          if (Quantity > 0) then
          begin
-            Assert(TransferMass >= 0);
+            Assert(TotalTransferMass >= 0);
             Assert(Encyclopedia.Materials[Ore].MassPerUnit > 0);
-            Assert(TransferMass * Encyclopedia.Materials[Ore].MassPerUnit < High(TransferQuantity));
-            ApproximateTransferQuantity := (Quantity / TotalComposition) * (TransferMass / Encyclopedia.Materials[Ore].MassPerUnit); 
+            Assert(TotalTransferMass * Encyclopedia.Materials[Ore].MassPerUnit < High(TransferQuantity));
+            // The actual transferred quantity is:
+            //   ThisOreMass := Quantity * Encyclopedia.Materials[Ore].MassPerUnit;
+            //   ThisTransferMass := ThisOreMass * (TotalTransferMass / TotalCompositionMass);
+            //   ApproximateTransferQuantity := ThisTransferMass / Encyclopedia.Materials[Ore].MassPerUnit;
+            // which simplifies to:
+            ApproximateTransferQuantity := Quantity * (TotalTransferMass / TotalCompositionMass);
             TransferQuantity := TruncUInt64(ApproximateTransferQuantity);
             Assert(TransferQuantity <= Quantity, 'region composition underflow');
             Dec(FGroundComposition[Ore], TransferQuantity);
-            Assert(High(FOrePileComposition[Ore]) - Quantity >= TransferQuantity);
-            Writeln('      moving ', TransferQuantity, ' units of ore ', Ore, ', ', Encyclopedia.Materials[Ore].Name, ' (', Encyclopedia.Materials[Ore].MassPerUnit:0:1, 'kg/unit) into piles (out of ', Quantity, ' units of that ore remaining) (should be approximately ', ApproximateTransferQuantity:0:1, ')');
+            Assert(High(FOrePileComposition[Ore]) - FOrePileComposition[Ore] >= TransferQuantity);
+            Writeln('      moving ', TransferQuantity, ' units of ore ', Ore, ', ', Encyclopedia.Materials[Ore].Name, ' (', Encyclopedia.Materials[Ore].MassPerUnit:0:1, 'kg/unit) into piles (out of ', Quantity, ' units of that ore remaining, ', HexStr(Quantity, 16), ') (should be approximately ', ApproximateTransferQuantity:0:1, ') - high-quantity=', HexStr(High(FOrePileComposition[Ore]) - Quantity, 16), ' [', High(FOrePileComposition[Ore]) - Quantity >= TransferQuantity, ']');
             ActualTransfer := ActualTransfer + TransferQuantity * Encyclopedia.Materials[Ore].MassPerUnit;
             Inc(FOrePileComposition[Ore], TransferQuantity);
          end;
       end;
-      if (ActualTransfer < TransferMass) then
+      if (ActualTransfer < TotalTransferMass) then
       begin
+         Writeln('      final cleanup:');
          Fraction32.InitArray(@Distribution[Low(TOres)], Length(Distribution));
          for Ore in TOres do
-            Distribution[Ore] := Fraction32.FromDouble(FGroundComposition[Ore] / TotalComposition);
+         begin
+            Writeln('        Ore ', Ore, ' has ', FGroundComposition[Ore], ' units in ground, out of total ', TotalCompositionMass:0:1, 'kg (', Encyclopedia.Materials[Ore].MassPerUnit:0:1, 'kg/unit)');
+            Distribution[Ore] := Fraction32.FromDouble(FGroundComposition[Ore] * Encyclopedia.Materials[Ore].MassPerUnit / TotalCompositionMass);
+         end;
          Fraction32.NormalizeArray(@Distribution[Low(TOres)], Length(Distribution));
-         Ore := TOres(Fraction32.ChooseFrom(@Distribution[Low(TOres)], Length(Distribution), CachedSystem.RandomNumberGenerator));
+         Ore := TOres(Fraction32.ChooseFrom(@Distribution[Low(TOres)], Length(Distribution), CachedSystem.RandomNumberGenerator)) + Low(TOres);
+         Writeln('        selected ore ', Ore, ' with quantity ', FGroundComposition[Ore]);
          Quantity := FGroundComposition[Ore];
          Assert(Quantity > 0);
-         TransferQuantity := RoundUInt64((TransferMass - ActualTransfer) / Encyclopedia.Materials[Ore].MassPerUnit);
+         TransferQuantity := RoundUInt64((TotalTransferMass - ActualTransfer) / Encyclopedia.Materials[Ore].MassPerUnit);
          Dec(FGroundComposition[Ore], TransferQuantity);
          Writeln('      moving ', TransferQuantity, ' units of ore ', Ore, ', ', Encyclopedia.Materials[Ore].Name, ' (', Encyclopedia.Materials[Ore].MassPerUnit:0:1, 'kg/unit) into piles (final cleanup move with randomly-selected ore)');
          ActualTransfer := ActualTransfer + TransferQuantity * Encyclopedia.Materials[Ore].MassPerUnit;
@@ -469,17 +556,23 @@ begin
       for Refinery in FRefineries do
       begin
          Rate := Refinery.GetRefineryCurrentRate();
-         TransferMass := SyncDuration * Rate;
-         Material := Encyclopedia.Materials[Refinery.GetRefineryOre()];
-         Assert(Material.ID >= Low(TOres));
-         Assert(Material.ID <= High(TOres));
-         Assert(TransferMass >= 0);
-         Assert(Material.MassPerUnit > 0);
-         Assert(TransferMass * Material.MassPerUnit < High(TransferQuantity));
-         TransferQuantity := RoundUInt64(TransferMass / Material.MassPerUnit);
-         Assert(TransferQuantity <= FOrePileComposition[Ore]); // TODO: this doesn't seem guaranteed
-         Dec(FOrePileComposition[Ore], TransferQuantity);
-         Refinery.SyncRefinery(TransferQuantity);
+         if (Rate.IsNotZero) then
+         begin
+            TotalTransferMass := SyncDuration * Rate;
+            Material := Encyclopedia.Materials[Refinery.GetRefineryOre()];
+            Assert(Material.ID >= Low(TOres));
+            Assert(Material.ID <= High(TOres));
+            Assert(TotalTransferMass >= 0);
+            Assert(Material.MassPerUnit > 0);
+            Assert(TotalTransferMass * Material.MassPerUnit < High(TransferQuantity));
+            TransferQuantity := RoundUInt64(TotalTransferMass / Material.MassPerUnit);
+            if (TransferQuantity > 0) then
+            begin
+               Assert(TransferQuantity <= FOrePileComposition[Ore]); // because otherwise we'd have stopped earlier, in principle
+               Dec(FOrePileComposition[Ore], TransferQuantity);
+               IncMaterialPile(Material, TransferQuantity);
+            end;
+         end;
       end;
    end;
    FAnchorTime := CachedSystem.Now;
@@ -494,8 +587,8 @@ begin
       begin
          OrePileCapacity := OrePileCapacity + OrePile.GetOrePileCapacity();
       end;
-      Writeln('    we ended with ', OrePileCapacity:0:1, 'kg pile capacity and ', CurrentOrePileMass:0:1, 'kg in ', FOrePiles.Count, ' ore piles');
-      Assert(CurrentOrePileMass < OrePileCapacity, 'now over capacity');
+      Writeln('    we ended with ', OrePileCapacity:0:1, 'kg ore pile capacity and ', CurrentOrePileMass:0:1, 'kg in ', FOrePiles.Count, ' ore piles');
+      Assert(CurrentOrePileMass <= OrePileCapacity, 'now over capacity');
    end;
    {$ENDIF}
 end;
@@ -551,6 +644,7 @@ procedure TRegionFeatureNode.HandleChanges(CachedSystem: TSystem);
    var
       Message: TAllocateOresBusMessage;
    begin
+      Assert(not FAllocatedOres);
       Message := TAllocateOresBusMessage.Create(FFeatureClass.Depth, FFeatureClass.TargetCount, FFeatureClass.TargetQuantity, CachedSystem);
       if (InjectBusMessage(Message) = mrHandled) then
          FGroundComposition := Message.AssignedOres;
@@ -561,15 +655,22 @@ procedure TRegionFeatureNode.HandleChanges(CachedSystem: TSystem);
 var
    OrePileCapacity, RemainingOrePileCapacity: Double;
    CurrentGroundMass, CurrentOrePileMass, MinMassTransfer: Double;
-   TotalMinerRate, TotalRefineryRate: TRate;
-   TimeUntilGroundEmpty, TimeUntilOrePilesFull, TimeUntilAnyOrePileEmpty, TimeUntilThisOrePileEmpty, TimeUntilNextEvent: TMillisecondsDuration;
+   Rate, TotalMinerMaxRate, TotalRefineryRate, RefiningRate, MaterialFactoryRate: TRate;
+   TimeUntilGroundEmpty, TimeUntilOrePilesFull, TimeUntilAnyOrePileEmpty, TimeUntilThisOrePileEmpty,
+   TimeUntilAnyMaterialPileFull, TimeUntilThisMaterialPileFull, TimeUntilAnyMaterialPileEmpty, TimeUntilNextEvent: TMillisecondsDuration;
    Ore: TOres;
+   Material: TMaterial;
    OreMiningRates, OreRefiningRates: TOreRates;
+   MaterialCapacities: TMaterialQuantityHashTable;
+   MaterialFactoryRates: TMaterialRateHashTable;
    Encyclopedia: TEncyclopediaView;
    Ratio: Double;
    Miner: IMiner;
    OrePile: IOrePile;
    Refinery: IRefinery;
+   Pile: IMaterialPile;
+   MaterialPileFull, OrePileEmpty: Boolean;
+   SourceLimiting, TargetLimiting: Boolean;
 begin
    inherited;
    if (not FAllocatedOres) then
@@ -578,125 +679,264 @@ begin
    if (not FActive) then
    begin
       Encyclopedia := CachedSystem.Encyclopedia;
+      CurrentGroundMass := Mass;
       CurrentOrePileMass := GetTotalOrePileMass();
+      MaterialCapacities := nil;
+      MaterialFactoryRates := nil;
+      Writeln('    CurrentGroundMass = ', CurrentGroundMass:0:1, ' kg');
+
+      // COMPUTE MAX RATES AND CAPACITIES
+      // Total mining rate
+      TotalMinerMaxRate := TRate.Zero;
+      if (Assigned(FMiners)) then
+      begin
+         for Miner in FMiners do
+            TotalMinerMaxRate := TotalMinerMaxRate + Miner.GetMinerMaxRate();
+         Writeln('    ', FMiners.Count, ' miners, total mining rate ', TotalMinerMaxRate.ToString('kg'));
+      end;
+      // Per-ore mining rates
+      for Ore in TOres do
+      begin
+         if (CurrentGroundMass > 0) then
+         begin
+            OreMiningRates[Ore] := TotalMinerMaxRate * (FGroundComposition[Ore] * Encyclopedia.Materials[Ore].MassPerUnit / CurrentGroundMass);
+         end
+         else
+         begin
+            OreMiningRates[Ore] := TRate.Zero;
+         end;
+         OreRefiningRates[Ore] := TRate.Zero;
+      end;
+      // Ore pile capacities
       OrePileCapacity := 0.0;
       if (Assigned(FOrePiles)) then
       begin
-         Writeln('    we have ', FOrePiles.Count, ' ore piles');
+         Writeln('    ', FOrePiles.Count, ' ore piles');
          for OrePile in FOrePiles do
          begin
             OrePileCapacity := OrePileCapacity + OrePile.GetOrePileCapacity();
             OrePile.StartOrePile(Self);
          end;
+         if (OrePileCapacity > 0) then
+            Writeln('    Ore piles are at ', CurrentOrePileMass:0:1, ' kg of ', OrePileCapacity:0:1, ' kg (', (100 * CurrentOrePileMass/OrePileCapacity):0:1, '%)')
       end;
-      TotalMinerRate := TRate.FromPerMillisecond(0.0);
-      if (Assigned(FMiners)) then
-      begin
-         Writeln('    we have ', FMiners.Count, ' miners');
-         for Miner in FMiners do
-            TotalMinerRate := TotalMinerRate + Miner.GetMinerRate();
-      end;
-      CurrentGroundMass := Mass;
-      Writeln('    we have ', CurrentGroundMass:0:1, ' kg of mass');
-      for Ore in TOres do
-      begin
-         if (CurrentGroundMass > 0) then
+      {$IFOPT C+}
+         for Ore in TOres do
          begin
-            OreMiningRates[Ore] := TotalMinerRate * (FGroundComposition[Ore] * Encyclopedia.Materials[Ore].MassPerUnit / CurrentGroundMass);
-         end
-         else
-         begin
-            OreMiningRates[Ore] := TRate.FromPerMillisecond(0.0);
+            Assert(OrePileCapacity / Encyclopedia.Materials[Ore].MassPerUnit < Double(High(FOrePileComposition[Ore])), 'Ore pile capacity exceeds maximum individual max ore quantity for ' + Encyclopedia.Materials[Ore].Name);
          end;
-         OreRefiningRates[Ore] := TRate.FromPerMillisecond(0.0);
-         Assert(OrePileCapacity / Encyclopedia.Materials[Ore].MassPerUnit < Double(High(FOrePileComposition[Ore])), 'Pile capacity exceeds maximum individual max ore quantity for ' + Encyclopedia.Materials[Ore].Name);
-      end;
+      {$ENDIF}
+      // Refinery rates
       if (Assigned(FRefineries)) then
       begin
-         Writeln('    we have ', FRefineries.Count, ' refineries');
+         Writeln('    ', FRefineries.Count, ' refineries');
          for Refinery in FRefineries do
          begin
             Ore := Refinery.GetRefineryOre();
-            OreRefiningRates[Ore] := OreRefiningRates[Ore] - Refinery.GetRefineryMaxRate();
+            Rate := Refinery.GetRefineryMaxRate();
+            OreRefiningRates[Ore] := OreRefiningRates[Ore] + Rate;
          end;
       end;
-      TimeUntilAnyOrePileEmpty := TMillisecondsDuration.Infinity;
-      TotalRefineryRate := TRate.FromPerMillisecond(0.0);
       for Ore in TOres do
       begin
-         if (OreMiningRates[Ore] < OreRefiningRates[Ore]) then
+         Writeln('    ', Encyclopedia.Materials[Ore].Name:20, ' mining at ', OreMiningRates[Ore].ToString('kg'), ', refining at ', OreRefiningRates[Ore].ToString('kg'));
+      end;
+      // Material pile capacity
+      if (Assigned(FMaterialPiles)) then
+      begin
+         Writeln('    ', FMaterialPiles.Count, ' material piles');
+         MaterialCapacities := TMaterialQuantityHashTable.Create(FMaterialPiles.Count);
+         for Pile in FMaterialPiles do
          begin
-            // eventually we're going to run out. did we already?
-            if (FOrePileComposition[Ore] > 0) then
+            MaterialCapacities.Inc(Pile.GetMaterialPileMaterial(), Pile.GetMaterialPileCapacity());
+            Pile.StartMaterialPile(Self);
+         end;
+      end;
+      if (Assigned(MaterialCapacities)) then
+      begin
+         for Material in MaterialCapacities do
+            Writeln('    MaterialCapacities[', Material.Name, '] = ', MaterialCapacities[Material], ' units, ', MaterialCapacities[Material] * Material.MassPerUnit, ' kg');
+      end;
+      // Factories and consumers
+      // TODO: factories, consumers
+      // if (Assigned(FFactories) or Assigned(FConsumers)) then
+      // begin
+      //    MaterialFactoryRates := TMaterialRateHashTable.Create(FFactories.Count);
+      // end;
+      // TODO: factories need to affect MaterialFactoryRates
+      // TODO: consumers need to affect MaterialFactoryRates (e.g. structure feature)
+
+      // COMPUTE ACTUAL RATES
+
+      // Consumers and factories
+      // TODO: Turn on consumers and factories that can operate
+      // without running out of source materials or storage for
+      // output, and turn off those that cannot.
+      TimeUntilAnyMaterialPileEmpty := TMillisecondsDuration.Infinity;
+
+      // Refineries
+      TimeUntilAnyOrePileEmpty := TMillisecondsDuration.Infinity;
+      TimeUntilAnyMaterialPileFull := TMillisecondsDuration.Infinity;
+      TotalRefineryRate := TRate.Zero;
+      for Ore in TOres do
+      begin
+         Material := Encyclopedia.Materials[Ore];
+         RefiningRate := OreRefiningRates[Ore];
+         if (RefiningRate.IsZero) then
+            continue; // no refineries for this ore, skip the whole exercise
+         if (Assigned(MaterialFactoryRates)) then
+         begin
+            MaterialFactoryRate := MaterialFactoryRates[Material];
+         end
+         else
+         begin
+            MaterialFactoryRate := TRate.Zero;
+         end;
+         OrePileEmpty := (OreMiningRates[Ore] < RefiningRate) and (FOrePileComposition[Ore] = 0.0);
+         if (Assigned(MaterialCapacities) and Assigned(FMaterialPileComposition)) then
+         begin
+            MaterialPileFull := (MaterialFactoryRate < RefiningRate) and (FMaterialPileComposition[Material] >= MaterialCapacities[Material]);
+         end
+         else
+         begin
+            MaterialPileFull := True;
+         end;
+         SourceLimiting := False;
+         TargetLimiting := False;
+         if (OrePileEmpty) then
+         begin
+            SourceLimiting := True;
+            if (MaterialPileFull) then
             begin
-               // if we're above zero quantity, then figure out when we'll run out, and enable refineries at full rate
-               TimeUntilThisOrePileEmpty := FOrePileComposition[Ore] * Encyclopedia.Materials[Ore].MassPerUnit / (OreRefiningRates[Ore] - OreMiningRates[Ore]);
-               if (TimeUntilThisOrePileEmpty < TimeUntilAnyOrePileEmpty) then
-                  TimeUntilAnyOrePileEmpty := TimeUntilThisOrePileEmpty;
-               for Refinery in FRefineries do
+               TargetLimiting := True;
+               if (OreMiningRates[Ore] < MaterialFactoryRate) then
                begin
-                  if (Refinery.GetRefineryOre() = Ore) then
-                  begin
-                     Refinery.StartRefinery(Self, Refinery.GetRefineryMaxRate());
-                  end;
+                  Ratio := OreMiningRates[Ore] / RefiningRate;
+               end
+               else
+               begin
+                  Ratio := MaterialFactoryRate / RefiningRate;
                end;
+               TimeUntilThisMaterialPileFull := TMillisecondsDuration.Infinity;
+            end
+            else 
+            begin
+               Ratio := OreMiningRates[Ore] / RefiningRate;
+               if (RefiningRate > MaterialFactoryRate) then
+               begin
+                  TimeUntilThisMaterialPileFull := (MaterialCapacities[Material] - GetMaterialPileComposition(Material)) / (RefiningRate * Ratio - MaterialFactoryRate);
+                  Assert(TimeUntilThisMaterialPileFull.IsPositive);
+               end
+               else
+               begin
+                  TimeUntilThisMaterialPileFull := TMillisecondsDuration.Infinity;
+               end;
+            end;
+            TimeUntilThisOrePileEmpty := TMillisecondsDuration.Infinity;
+         end
+         else
+         begin
+            if (MaterialPileFull) then
+            begin
+               TargetLimiting := True;
+               Ratio := MaterialFactoryRate / RefiningRate;
+               TimeUntilThisMaterialPileFull := TMillisecondsDuration.Infinity;
             end
             else
             begin
-               // if we're at zero quantity, then set the refineries to a sustainable rate
-               Ratio := OreMiningRates[Ore] / OreRefiningRates[Ore];
-               for Refinery in FRefineries do
-               begin
-                  if (Refinery.GetRefineryOre() = Ore) then
-                  begin
-                     Refinery.StartRefinery(Self, Refinery.GetRefineryMaxRate() * Ratio);
-                  end;
-               end;
-               OreRefiningRates[Ore] := OreRefiningRates[Ore] * Ratio;
+               Ratio := 1.0;
+               TimeUntilThisMaterialPileFull := (MaterialCapacities[Material] - GetMaterialPileComposition(Material)) / (RefiningRate * Ratio - MaterialFactoryRate);
+               Assert(TimeUntilThisMaterialPileFull.IsPositive);
             end;
+            if (OreMiningRates[Ore] < RefiningRate * Ratio) then
+            begin
+               TimeUntilThisOrePileEmpty := FOrePileComposition[Ore] * Encyclopedia.Materials[Ore].MassPerUnit / (RefiningRate * Ratio - OreMiningRates[Ore]);
+               Assert(TimeUntilThisOrePileEmpty.IsPositive);
+            end
+            else
+               TimeUntilThisOrePileEmpty := TMillisecondsDuration.Infinity;
+         end;
+         for Refinery in FRefineries do
+         begin
+            if (Refinery.GetRefineryOre() = Ore) then
+            begin
+               Refinery.StartRefinery(Self, Refinery.GetRefineryMaxRate() * Ratio, SourceLimiting, TargetLimiting);
+            end;
+         end;
+         OreRefiningRates[Ore] := RefiningRate * Ratio;
+         Assert(TimeUntilThisOrePileEmpty.IsNotZero);
+         if (TimeUntilThisOrePileEmpty < TimeUntilAnyOrePileEmpty) then
+         begin
+            TimeUntilAnyOrePileEmpty := TimeUntilThisOrePileEmpty;
+            Assert(TimeUntilAnyOrePileEmpty.IsPositive);
+         end;
+         Assert(TimeUntilThisMaterialPileFull.IsNotZero);
+         if (TimeUntilThisMaterialPileFull < TimeUntilAnyMaterialPileFull) then
+         begin
+            TimeUntilAnyMaterialPileFull := TimeUntilThisMaterialPileFull;
+            Assert(TimeUntilAnyMaterialPileFull.IsPositive);
          end;
          TotalRefineryRate := TotalRefineryRate + OreRefiningRates[Ore];
       end;
-      Writeln('    we have ', OrePileCapacity:0:1, 'kg pile capacity and ', CurrentOrePileMass:0:1, 'kg in piles');
+
+      // Miners
       RemainingOrePileCapacity := OrePileCapacity - CurrentOrePileMass;
-      MinMassTransfer := GetMinMassTransfer(CachedSystem);
+      MinMassTransfer := GetMinOreMassTransfer(CachedSystem);
+      Writeln('    Remaining ore pile capacity: ', RemainingOrePileCapacity:0:1, ' kg, min mass transfer: ', MinMassTransfer:0:1, ' kg.');
       TimeUntilOrePilesFull := TMillisecondsDuration.Infinity;
       TimeUntilGroundEmpty := TMillisecondsDuration.Infinity;
       if (CurrentGroundMass > 0) then
       begin
          if (RemainingOrePileCapacity >= MinMassTransfer) then
          begin
-            Writeln('    should still be able to move ', MinMassTransfer:0:1, 'kg');
-            if (TotalMinerRate > TotalRefineryRate) then
-               TimeUntilOrePilesFull := TMillisecondsDuration(RemainingOrePileCapacity / (TotalMinerRate - TotalRefineryRate));
-            if (TotalMinerRate > TRate.FromPerMillisecond(0)) then
-               TimeUntilGroundEmpty := TMillisecondsDuration(CurrentGroundMass / TotalMinerRate);
+            if (TotalMinerMaxRate > TotalRefineryRate) then
+            begin
+               TimeUntilOrePilesFull := RemainingOrePileCapacity / (TotalMinerMaxRate - TotalRefineryRate);
+               Writeln('    TimeUntilOrePilesFull:');
+               Writeln('      RemainingOrePileCapacity = ', RemainingOrePileCapacity:0:9);
+               Writeln('      TotalMinerMaxRate = ', TotalMinerMaxRate.AsDouble:0:9);
+               Writeln('      TotalRefineryRate = ', TotalRefineryRate.AsDouble:0:9);
+               Assert(TimeUntilOrePilesFull.IsPositive);
+            end;
+            if (TotalMinerMaxRate > TRate.Zero) then
+            begin
+               TimeUntilGroundEmpty := CurrentGroundMass / TotalMinerMaxRate;
+               Assert(TimeUntilGroundEmpty.IsPositive);
+            end;
             // ready to go, start the miners!
             if (Assigned(FMiners)) then
             begin
                for Miner in FMiners do
-                  Miner.StartMiner(Self);
+                  Miner.StartMiner(Self, Miner.GetMinerMaxRate(), False, False);
+            end;
+         end
+         else
+         if (TotalRefineryRate > TRate.Zero) then
+         begin
+            // piles are full, but we are refining, so there is room being made
+            if (Assigned(FMiners)) then
+            begin
+               for Miner in FMiners do
+                  Miner.StartMiner(Self, TotalRefineryRate * (Miner.GetMinerMaxRate() / TotalMinerMaxRate), False, True);
             end;
          end
          else
          begin
-            Writeln('    cannot move any more, min transfer is ', MinMassTransfer:0:1, 'kg');
             // piles are full, stop the miners
             if (Assigned(FMiners)) then
             begin
                for Miner in FMiners do
-                  Miner.StartMinerBlocked(Self, mbPilesFull);
+                  Miner.StartMiner(Self, TRate.Zero, False, True);
             end;
          end;
       end
       else
       begin
-         Writeln('    ground is empty');
          // ground is empty, stop the miners
          if (Assigned(FMiners)) then
          begin
             for Miner in FMiners do
-               Miner.StartMinerBlocked(Self, mbMinesEmpty);
+               Miner.StartMiner(Self, TRate.Zero, True, False);
          end;
       end;
       TimeUntilNextEvent := TimeUntilGroundEmpty;
@@ -704,9 +944,13 @@ begin
          TimeUntilNextEvent := TimeUntilOrePilesFull;
       if (TimeUntilNextEvent > TimeUntilAnyOrePileEmpty) then
          TimeUntilNextEvent := TimeUntilAnyOrePileEmpty;
+      if (TimeUntilNextEvent > TimeUntilAnyMaterialPileFull) then
+         TimeUntilNextEvent := TimeUntilAnyMaterialPileFull;
+      if (TimeUntilNextEvent > TimeUntilAnyMaterialPileEmpty) then
+         TimeUntilNextEvent := TimeUntilAnyMaterialPileEmpty;
       if (not TimeUntilNextEvent.IsInfinite) then
       begin
-         Assert(not TimeUntilNextEvent.IsZero);
+         Assert(TimeUntilNextEvent.IsPositive);
          Assert(not Assigned(FNextEvent));
          {$IFDEF VERBOSE}
          if (TimeUntilNextEvent = TimeUntilGroundEmpty) then
@@ -715,6 +959,10 @@ begin
             Writeln('    Scheduling event for when ore piles will be full: T-', TimeUntilNextEvent.ToString());
          if (TimeUntilNextEvent = TimeUntilAnyOrePileEmpty) then
             Writeln('    Scheduling event for when an ore pile will be empty: T-', TimeUntilNextEvent.ToString());
+         if (TimeUntilNextEvent = TimeUntilAnyMaterialPileFull) then
+            Writeln('    Scheduling event for when material piles will be full: T-', TimeUntilNextEvent.ToString());
+         if (TimeUntilNextEvent = TimeUntilAnyMaterialPileEmpty) then
+            Writeln('    Scheduling event for when an material pile will be empty: T-', TimeUntilNextEvent.ToString());
          {$ENDIF}
          FNextEvent := CachedSystem.ScheduleEvent(TimeUntilNextEvent, @ReconsiderEverything, Self);
          if (FAnchorTime.IsInfinite) then
@@ -726,8 +974,16 @@ begin
          begin
             Writeln('    Anchoring time at ', FAnchorTime.ToString(), ' (', (FAnchorTime - CachedSystem.Now).ToString(), ' ago)');
          end;
+         Writeln('    Next sync should be at ', (FAnchorTime + TimeUntilNextEvent).ToString());
+      end
+      else
+      begin
+         Writeln('    Situation is static, not scheduling an event.');
+         Assert(FAnchorTime.IsInfinite);
       end;
       FActive := True;
+      FreeAndNil(MaterialFactoryRates);
+      FreeAndNil(MaterialCapacities);
    end;
 end;
 
@@ -831,6 +1087,7 @@ end;
 procedure TRegionFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
 var
    Ore: TOres;
+   Material: TMaterial;
 begin
    Journal.WriteBoolean(FAllocatedOres);
    Assert(Length(FGroundComposition) > 0);
@@ -853,12 +1110,21 @@ begin
       end;
    end;
    Journal.WriteCardinal(0);
+   if (Assigned(FMaterialPileComposition)) then
+   begin
+      for Material in FMaterialPileComposition do
+      begin
+         Journal.WriteMaterialReference(Material);
+         Journal.WriteUInt64(FMaterialPileComposition[Material]);
+      end;
+   end;
+   Journal.WriteCardinal(0);
    Journal.WriteInt64(FAnchorTime.AsInt64);
 end;
 
 procedure TRegionFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
 
-   procedure ReadMaterials(var Composition: TOreQuantities);
+   procedure ReadOres(var Composition: TOreQuantities);
    var
       Material: TMaterial;
       OreID: TOres;
@@ -876,11 +1142,27 @@ procedure TRegionFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem:
          end;
       until not Assigned(Material);
    end;
+
+   procedure ReadMaterials(var Materials: TMaterialQuantityHashTable);
+   var
+      Material: TMaterial;
+   begin
+      repeat
+         Material := Journal.ReadMaterialReference();
+         if (Assigned(Material)) then
+         begin
+            if (not Assigned(Materials)) then
+               Materials := TMaterialQuantityHashTable.Create();
+            Materials[Material] := Journal.ReadUInt64();
+         end;
+      until not Assigned(Material);
+   end;
    
 begin
    FAllocatedOres := Journal.ReadBoolean();
-   ReadMaterials(FGroundComposition);
-   ReadMaterials(FOrePileComposition);
+   ReadOres(FGroundComposition);
+   ReadOres(FOrePileComposition);
+   ReadMaterials(FMaterialPileComposition);
    FAnchorTime := TTimeInMilliseconds.FromMilliseconds(Journal.ReadInt64());
 end;
 

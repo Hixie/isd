@@ -23,6 +23,7 @@ type
          FPlanetaryBody, FRegion: TAssetClass;
          FProtoplanetaryMaterials: TMaterialHashSet;
          FDarkMatter: TMaterial;
+         FMinMassPerOreUnit: Double; // cached value based on ores in materials passed to constructor
       function GetStarClass(Category: TStarCategory): TAssetClass;
       function CreateRegion(CellSize: Double; Dimension: Cardinal): TAssetNode;
    protected
@@ -30,9 +31,10 @@ type
       function GetMaterial(ID: TMaterialID): TMaterial; override;
       function GetResearch(ID: TResearchID): TResearch; override;
       function GetTopic(Name: UTF8String): TTopic; override;
+      function GetMinMassPerOreUnit(): Double; override;
       procedure RegisterAssetClass(AssetClass: TAssetClass);
    public
-      constructor Create(Settings: PSettings; AMaterials: TMaterialHashSet; TechTree: TTechnologyTree);
+      constructor Create(Settings: PSettings; AMaterials: TMaterialHashSet; TechTree: TTechnologyTree); // AMaterials must contain all TOres
       destructor Destroy(); override;
       procedure RegisterMaterials(AMaterials: TMaterialHashSet);
       procedure ProcessTechTree(TechTree: TTechnologyTree);
@@ -47,6 +49,7 @@ type
       property RegionClass: TAssetClass read FRegion;
       property MessageClass: TAssetClass read FMessage;
       property RockPileClass: TAssetClass read FRockPile;
+      property MinMassPerOreUnit: Double read FMinMassPerOreUnit;
    end;
 
 const
@@ -71,9 +74,9 @@ uses
    sysutils, math, floatutils, exceptions, isdnumbers, icons,
    protoplanetary, time,
    // this must import every feature, so they get registered:
-   orbit, structure, stellar, name, size, sensors, pile, mining,
+   orbit, structure, stellar, name, size, sensors, orepile, mining,
    planetary, region, plot, surface, grid, population, messages,
-   knowledge, food, proxy, rubble, research;
+   knowledge, food, proxy, rubble, research, refining;
 
 function RoundAboveZero(Value: Double): Cardinal;
 begin
@@ -93,11 +96,19 @@ constructor TEncyclopedia.Create(Settings: PSettings; AMaterials: TMaterialHashS
    
 var
    AssetClass: TAssetClass;
+   Ore: TOres;
 begin
    inherited Create();
    FMaterials := TMaterialIDHashTable.Create();
    FProtoplanetaryMaterials := AMaterials;
    RegisterMaterials(FProtoplanetaryMaterials);
+   {$PUSH} {$IEEEERRORS OFF} FMinMassPerOreUnit := Infinity; {$POP}
+   for Ore in TOres do
+   begin
+      Assert(FMaterials.Has(Ore));
+      if (FMaterials[Ore].MassPerUnit < FMinMassPerOreUnit) then
+         FMinMassPerOreUnit := FMaterials[Ore].MassPerUnit;
+   end;
    FAssetClasses := TAssetClassIDHashTable.Create();
    FResearches := TResearchIDHashTable.Create();
    FTopics := TTopicHashTable.Create();
@@ -346,6 +357,11 @@ end;
 function TEncyclopedia.GetTopic(Name: UTF8String): TTopic;
 begin
    Result := FTopics[Name];
+end;
+
+function TEncyclopedia.GetMinMassPerOreUnit(): Double;
+begin
+   Result := FMinMassPerOreUnit;
 end;
 
 procedure TEncyclopedia.RegisterAssetClass(AssetClass: TAssetClass);

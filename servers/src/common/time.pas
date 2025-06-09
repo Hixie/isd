@@ -9,8 +9,10 @@ type
    private
       Value: Int64;
       function GetIsZero(): Boolean; inline;
-      function GetNegative(): Boolean; inline;
-      function GetInfinite(): Boolean; inline;
+      function GetIsNotZero(): Boolean; inline;
+      function GetIsNegative(): Boolean; inline;
+      function GetIsPositive(): Boolean; inline;
+      function GetIsInfinite(): Boolean; inline;
       class function GetNegInfinity(): TMillisecondsDuration; inline; static;
       class function GetInfinity(): TMillisecondsDuration; inline; static;
    public
@@ -19,9 +21,11 @@ type
       function ToString(): UTF8String;
       function ToSIUnits(): Double; // returns the value in seconds
       function Scale(Factor: Double): TMillisecondsDuration;
-      property IsZero: Boolean read GetIsZero;
-      property IsNegative: Boolean read GetNegative;
-      property IsInfinite: Boolean read GetInfinite;
+      property IsZero: Boolean read GetIsZero; // = 0
+      property IsNotZero: Boolean read GetIsNotZero; // <> 0
+      property IsNegative: Boolean read GetIsNegative; // < 0 
+      property IsPositive: Boolean read GetIsPositive; // > 0
+      property IsInfinite: Boolean read GetIsInfinite;
       property AsInt64: Int64 read Value; // for storage, restore with FromMilliseconds(Int64)
       class property NegInfinity: TMillisecondsDuration read GetNegInfinity;
       class property Infinity: TMillisecondsDuration read GetInfinity;
@@ -32,13 +36,13 @@ type
       Value: Int64;
       class function GetNegInfinity(): TTimeInMilliseconds; inline; static;
       class function GetInfinity(): TTimeInMilliseconds; inline; static;
-      function GetInfinite(): Boolean; inline;
+      function GetIsInfinite(): Boolean; inline;
    public
       constructor FromMilliseconds(A: Double); overload;
       constructor FromMilliseconds(A: Int64); overload;
       function ToString(): UTF8String;
       property AsInt64: Int64 read Value; // for storage, restore with FromMilliseconds(Int64)
-      property IsInfinite: Boolean read GetInfinite;
+      property IsInfinite: Boolean read GetIsInfinite;
       class property NegInfinity: TTimeInMilliseconds read GetNegInfinity;
       class property Infinity: TTimeInMilliseconds read GetInfinity;
    end;
@@ -65,16 +69,24 @@ type
    private
       Value: Double;
       function GetIsZero(): Boolean; inline;
+      function GetIsNotZero(): Boolean; inline;
+      function GetIsPositive(): Boolean; inline;
+      class function GetZero(): TRate; inline; static;
    public
       constructor FromPerSecond(A: Double);
       constructor FromPerMillisecond(A: Double);
       function ToString(NumeratorUnit: UTF8String = ''): UTF8String;
       property IsZero: Boolean read GetIsZero;
+      property IsNotZero: Boolean read GetIsNotZero;
+      property IsPositive: Boolean read GetIsPositive; // >0
       property AsDouble: Double read Value; // for storage, restore with FromMilliseconds(Double)
+      class property Zero: TRate read GetZero;
    end;
+   function Min(A: TRate; B: TRate): TRate; overload;
 
 operator + (A: TMillisecondsDuration; B: TMillisecondsDuration): TMillisecondsDuration; inline;
 operator - (A: TMillisecondsDuration; B: TMillisecondsDuration): TMillisecondsDuration; inline;
+operator - (A: TMillisecondsDuration): TMillisecondsDuration; inline;
 operator mod (A: TMillisecondsDuration; B: TMillisecondsDuration): TMillisecondsDuration; inline;
 operator * (A: TMillisecondsDuration; B: TRate): Double; inline;
 operator = (A: TMillisecondsDuration; B: TMillisecondsDuration): Boolean; inline;
@@ -99,9 +111,11 @@ operator * (A: TWallMillisecondsDuration; B: TTimeFactor): TMillisecondsDuration
 
 operator + (A: TRate; B: TRate): TRate; inline;
 operator - (A: TRate; B: TRate): TRate; inline;
+operator - (A: TRate): TRate; inline;
 operator * (A: TRate; B: Double): TRate; inline;
 operator / (A: Double; B: TRate): TMillisecondsDuration; inline;
 operator / (A: TRate; B: TRate): Double; inline;
+operator / (A: TRate; B: Double): TRate; inline;
 operator = (A: TRate; B: TRate): Boolean; inline;
 operator < (A: TRate; B: TRate): Boolean; inline;
 operator <= (A: TRate; B: TRate): Boolean; inline;
@@ -136,6 +150,7 @@ const FloatFormat: TFormatSettings = (
    TwoDigitYearCenturyWindow: 50
 );
 
+
 // inline functions should be first
 
 constructor TMillisecondsDuration.FromMilliseconds(A: Double);
@@ -153,12 +168,16 @@ begin
    else
    begin
       Value := Round(A);
+      Assert(Value <> Low(Value) + 1); // won't happen, because Double can't represent this value
    end;
 end;
 
 constructor TMillisecondsDuration.FromMilliseconds(A: Int64);
 begin
-   Value := A;
+   if (A = Low(Value) + 1) then
+      Value := Low(Value)
+   else
+      Value := A;
 end;
 
 function TMillisecondsDuration.GetIsZero(): Boolean;
@@ -166,12 +185,22 @@ begin
    Result := Value = 0;
 end;
 
-function TMillisecondsDuration.GetNegative(): Boolean;
+function TMillisecondsDuration.GetIsNotZero(): Boolean;
+begin
+   Result := Value <> 0;
+end;
+
+function TMillisecondsDuration.GetIsNegative(): Boolean;
 begin
    Result := Value < 0;
 end;
 
-function TMillisecondsDuration.GetInfinite(): Boolean;
+function TMillisecondsDuration.GetIsPositive(): Boolean;
+begin
+   Result := Value > 0;
+end;
+
+function TMillisecondsDuration.GetIsInfinite(): Boolean;
 begin
    Result := (Value = High(Value)) or (Value = Low(Value));
 end;
@@ -198,6 +227,16 @@ begin
    if (Value = High(Value)) then
    begin
       Result := '∞';
+   end
+   else
+   if (Value < 0) then
+   begin
+      Result := '-' + (-Self).ToString();
+   end
+   else
+   if (Value = 0) then
+   begin
+      Result := '0';
    end
    else
    if (Value < 10000) then
@@ -313,27 +352,95 @@ begin
    else
    begin
       Result.Value := Round(Temp);
+      Assert(Result.Value <> Low(Result.Value) + 1); // see constructor
    end;
 end;
 
 operator + (A: TMillisecondsDuration; B: TMillisecondsDuration): TMillisecondsDuration;
 begin
-   Result.Value := A.Value + B.Value;
+   if (A.IsInfinite) then
+   begin
+      Result := A;
+   end
+   else
+   if (B.IsInfinite) then
+   begin
+      Result := B;
+   end
+   else
+   begin
+      Result.Value := A.Value + B.Value;
+      {$IFOPT Q+}
+      if ((Result.Value <= Low(Result.Value) + 1) or
+          (Result.Value >= High(Result.Value))) then
+         raise EIntOverflow.Create('Overflow');
+      {$ENDIF}
+   end;
 end;
 
 operator - (A: TMillisecondsDuration; B: TMillisecondsDuration): TMillisecondsDuration;
 begin
-   Result.Value := A.Value - B.Value;
+   if (A.IsInfinite) then
+   begin
+      Result := A;
+   end
+   else
+   if (B.IsInfinite) then
+   begin
+      Result := B;
+   end
+   else
+   begin
+      Result.Value := A.Value - B.Value;
+      {$IFOPT Q+}
+      if ((Result.Value <= Low(Result.Value) + 1) or
+          (Result.Value >= High(Result.Value))) then
+         raise EIntOverflow.Create('Overflow');
+      {$ENDIF}
+   end;
+end;
+
+operator - (A: TMillisecondsDuration): TMillisecondsDuration;
+begin
+   if (A.Value = Low(A.Value)) then
+   begin
+      Result.Value := High(Result.Value);
+   end
+   else
+   if (A.Value = High(A.Value)) then
+   begin
+      Result.Value := Low(Result.Value);
+   end
+   else
+   begin
+      Assert(A.Value <> Low(A.Value) + 1);
+      Result.Value := -A.Value;
+   end;
 end;
 
 operator mod (A: TMillisecondsDuration; B: TMillisecondsDuration): TMillisecondsDuration;
 begin
+   {$IFOPT Q+}
+   if (A.IsInfinite or B.IsInfinite) then
+      raise EIntOverflow.Create('Overflow');
+   {$ENDIF}
    Result.Value := A.Value mod B.Value;
 end;
 
 operator * (A: TMillisecondsDuration; B: TRate): Double;
 begin
-   Result := A.Value * B.Value;
+   if (A.IsInfinite) then
+   begin
+      {$PUSH}
+      {$IEEEERRORS OFF}
+      if (A.Value > 0) then
+         Result := Infinity
+      else
+         Result := NegInfinity;
+      {$POP}
+   end
+   else
+      Result := A.Value * B.Value;
 end;
 
 operator = (A: TMillisecondsDuration; B: TMillisecondsDuration): Boolean;
@@ -402,7 +509,7 @@ begin
    end;
 end;
 
-function TTimeInMilliseconds.GetInfinite(): Boolean;
+function TTimeInMilliseconds.GetIsInfinite(): Boolean;
 begin
    Result := (Value = High(Value)) or (Value = Low(Value));
 end;
@@ -529,9 +636,38 @@ begin
    Result := Value = 0.0;
 end;
 
+function TRate.GetIsNotZero(): Boolean;
+begin
+   Result := Value <> 0.0;
+end;
+
+function TRate.GetIsPositive(): Boolean;
+begin
+   Result := Value > 0.0;
+end;
+
 function TRate.ToString(NumeratorUnit: UTF8String = ''): UTF8String;
 begin
-   Result := FloatToStrF(Value * 1000.0, ffFixed, 0, 1, FloatFormat) + NumeratorUnit + '/s';
+   if (Value = 0.0) then
+   begin
+      Result := 'nil';
+   end
+   else
+   begin
+      if (Value < 0.1 / (60.0 * 60.0 * 1000.0)) then
+      begin
+         Result := FloatToStrF(Value * 60.0 * 60.0 * 1000.0, ffFixed, 0, 5, FloatFormat) + NumeratorUnit + '/h';
+      end
+      else
+      begin
+         Result := FloatToStrF(Value * 60.0 * 60.0 * 1000.0, ffFixed, 0, 1, FloatFormat) + NumeratorUnit + '/h';
+      end;
+   end;
+end;
+
+class function TRate.GetZero(): TRate;
+begin
+   Result.Value := 0.0;
 end;
 
 operator + (A: TRate; B: TRate): TRate;
@@ -544,6 +680,11 @@ begin
    Result.Value := A.Value - B.Value;
 end;
 
+operator - (A: TRate): TRate;
+begin
+   Result.Value := -A.Value;
+end;
+
 operator * (A: TRate; B: Double): TRate;
 begin
    Result.Value := A.Value * B;
@@ -551,12 +692,17 @@ end;
 
 operator / (A: Double; B: TRate): TMillisecondsDuration;
 begin
-   Result := TMillisecondsDuration.FromMilliseconds(A / B.Value); // TODO: should this use div?
+   Result := TMillisecondsDuration.FromMilliseconds(A / B.Value);
 end;
 
 operator / (A: TRate; B: TRate): Double;
 begin
    Result := A.Value / B.Value;
+end;
+
+operator / (A: TRate; B: Double): TRate;
+begin
+   Result.Value := A.Value / B;
 end;
 
 operator = (A: TRate; B: TRate): Boolean;
@@ -582,6 +728,18 @@ end;
 operator >= (A: TRate; B: TRate): Boolean;
 begin
    Result := A.Value >= B.Value;
+end;
+
+function Min(A: TRate; B: TRate): TRate;
+begin
+   if (A < B) then
+   begin
+      Result := A;
+   end
+   else
+   begin
+      Result := B;
+   end;
 end;
 
 end.

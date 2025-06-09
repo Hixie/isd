@@ -184,8 +184,12 @@ type
       {$FATAL TDynastyNotesPackage size error.}
    {$ENDIF}
 
-   // used for tracking which dynasties know about materials
-   // TODO: currently this is using 64 bits per material if there's 1-63 dynasties. we should be using one bit per material in that world.
+   // Used for tracking which dynasties know about materials.
+   // TODO: This data structure is a per-dynasty boolean. So when
+   // there is one instance of this per material, we end up using 64
+   // bits per material even if there's only one dynasty (or any
+   // number of dynasties 1-63); we should be using one bit per
+   // material in that world.         
    // TODO: consider the naming scheme in pile.pas
    PKnowledgeSummary = ^TKnowledgeSummary;
    TKnowledgeSummary = packed record
@@ -591,11 +595,13 @@ type
       function GetAssetClass(ID: TAssetClassID): TAssetClass; virtual; abstract;
       function GetResearch(ID: TResearchID): TResearch; virtual; abstract;
       function GetTopic(Name: UTF8String): TTopic; virtual; abstract;
+      function GetMinMassPerOreUnit(): Double; virtual; abstract;
    public
       function Craterize(Diameter: Double; OldAsset, NewAsset: TAssetNode): TAssetNode; virtual; abstract;
       property AssetClasses[ID: TAssetClassID]: TAssetClass read GetAssetClass;
       property Researches[ID: TResearchID]: TResearch read GetResearch;
       property Topics[Name: UTF8String]: TTopic read GetTopic;
+      property MinMassPerOreUnit: Double read GetMinMassPerOreUnit;
    end;
    
    TAssetNode = class
@@ -683,6 +689,7 @@ type
       FScheduledEvents: TSystemEventSet;
       FNextEvent: TSystemEvent;
       FNextEventHandle: PEvent;
+      FCurrentEventTime: TTimeInMilliseconds;
       FDynastyDatabase: TDynastyDatabase;
       FEncyclopedia: TEncyclopediaView;
       FConfigurationDirectory: UTF8String;
@@ -1365,7 +1372,7 @@ end;
 
 function TFeatureNode.GetMassFlowRate(): TRate; // kg/s
 begin
-   Result := TRate.FromPerMillisecond(0.0);
+   Result := TRate.Zero;
 end;
 
 function TFeatureNode.GetSize(): Double; // m
@@ -1765,7 +1772,7 @@ function TAssetNode.GetMassFlowRate(): TRate; // kg/s
 var
    Feature: TFeatureNode;
 begin
-   Result := TRate.FromPerMillisecond(0.0);
+   Result := TRate.Zero;
    for Feature in FFeatures do
       Result := Result + Feature.MassFlowRate;
 end;
@@ -2283,6 +2290,7 @@ begin
    FDynastyDatabase := ADynastyDatabase;
    FDynastyIndices := TDynastyIndexHashTable.Create();
    FScheduledEvents := TSystemEventSet.Create(@SystemEventHash32);
+   FCurrentEventTime := TTimeInMilliseconds.Infinity;
    FEncyclopedia := AEncyclopedia;
    FRoot := TRootAssetNode.Create(ARootClass, Self, ARootClass.SpawnFeatureNodes());
    Exclude(FRoot.FDirty, dkNew);
@@ -2721,7 +2729,7 @@ var
 begin
    if (not Dirty) then
       exit;
-   Writeln('== ReportChanges ==');
+   Writeln('== ReportChanges for system ', FSystemID, ' ==');
    Assert((dkAffectsVisibility in FChanges) or not (dkAffectsDynastyCount in FChanges)); // dkAffectsDynastyCount requires dkAffectsVisibility
    if (dkAffectsVisibility in FChanges) then
       RecomputeVisibility();
@@ -2760,7 +2768,9 @@ begin
    FScheduledEvents.Remove(Event);
    FNextEvent := nil;
    FNextEventHandle := nil;
+   FCurrentEventTime := Event.FTime;
    Event.FCallback(Event.FData); // (could call ScheduleEvent and thus set FNextEvent)
+   FCurrentEventTime := TTimeInMilliseconds.Infinity;
    FreeAndNil(Event);
    if (not Assigned(FNextEvent)) then
    begin
@@ -2869,7 +2879,16 @@ end;
 
 function TSystem.GetNow(): TTimeInMilliseconds;
 begin
-   Result := TTimeInMilliseconds.FromMilliseconds(0) + TWallMillisecondsDuration.FromMilliseconds(MillisecondsBetween(FServer.Clock.Now(), FTimeOrigin)) * FTimeFactor;
+   if (FCurrentEventTime.IsInfinite) then
+   begin
+      Result := TTimeInMilliseconds.FromMilliseconds(0) + TWallMillisecondsDuration.FromMilliseconds(MillisecondsBetween(FServer.Clock.Now(), FTimeOrigin)) * FTimeFactor;
+   end
+   else
+   begin
+      // We do this because otherwise FTimeFactor introduces an error into the current time and we
+      // end up running events at slightly the wrong time, which can affect computations.
+      Result := FCurrentEventTime;
+   end;
 end;
 
 function TSystem.FindCommandTarget(Dynasty: TDynasty; AssetID: TAssetID): TAssetNode;

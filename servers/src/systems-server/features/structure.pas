@@ -44,7 +44,7 @@ type
       FFeatureClass: TStructureFeatureClass;
       FMaterialsQuantity: Cardinal; // 0.0 .. TStructureFeatureClass.TotalQuantity
       FStructuralIntegrity: Cardinal; // 0.0 .. FMaterialsQuantity
-      FDynastyKnowledge: array of TKnowledgeSummary; // for each item in the bill of materials, which dynasties know about it here
+      FDynastyKnowledge: array of TKnowledgeSummary; // for each item in the bill of materials, which dynasties know about it here // TODO: this is expensive when there are not many dynasties (8 bytes per material, even if there's only 1 dynasty).
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
       function GetMass(): Double; override; // kg
       function GetSize(): Double; override; // m

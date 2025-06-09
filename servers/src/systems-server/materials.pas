@@ -33,8 +33,16 @@ type
    
    TMaterialQuantityHashTable = class(specialize THashTable<TMaterial, UInt64, TObjectUtils>)
       constructor Create(ACount: THashTableSizeInt = 2);
+      procedure Inc(Material: TMaterial; Delta: UInt64);
+      procedure Inc(Material: TMaterial; Delta: Int64);
    end;
-
+   
+   TMaterialRateHashTable = class(specialize THashTable<TMaterial, TRate, TObjectUtils>)
+      constructor Create(ACount: THashTableSizeInt = 2);
+      procedure Inc(Material: TMaterial; Delta: TRate);
+      procedure RemoveZeroes(); // removes entries whose rate is zero
+   end;
+   
    PMaterialQuantityArray = ^TMaterialQuantityArray;
    TMaterialQuantityArray = array of TMaterialQuantity;
 
@@ -170,9 +178,105 @@ begin
    inherited Create(@UTF8StringHash32, ACount);
 end;
 
+
 constructor TMaterialQuantityHashTable.Create(ACount: THashTableSizeInt = 2);
 begin
    inherited Create(@MaterialHash32, ACount);
+end;
+
+procedure TMaterialQuantityHashTable.Inc(Material: TMaterial; Delta: UInt64);
+var
+   Value: UInt64;
+begin
+   Assert(Delta <> 0);
+   if (Has(Material)) then
+   begin
+      if (Delta > High(UInt64) - Self[Material]) then
+      begin
+         raise EOverflow.Create('Overflowed TMaterialQuantityHashTable value');
+      end;
+      Value := Self[Material] + Delta; // $R-
+   end
+   else
+   begin
+      Value := Delta; // $R-
+   end;
+   Self[Material] := Value;
+end; 
+
+procedure TMaterialQuantityHashTable.Inc(Material: TMaterial; Delta: Int64);
+var
+   Value: UInt64;
+begin
+   Assert(Delta <> 0);
+   if (Has(Material)) then
+   begin
+      Assert((Delta > 0) or (Self[Material] + Delta >= 0));
+      if (Delta > High(UInt64) - Self[Material]) then
+      begin
+         raise EOverflow.Create('Overflowed TMaterialQuantityHashTable value');
+      end;
+      Value := Self[Material] + Delta; // $R-
+   end
+   else
+   begin
+      Assert(Delta > 0);
+      Value := Delta; // $R-
+   end;
+   Self[Material] := Value;
+end; 
+
+      
+constructor TMaterialRateHashTable.Create(ACount: THashTableSizeInt = 2);
+begin
+   inherited Create(@MaterialHash32, ACount);
+end;
+
+procedure TMaterialRateHashTable.Inc(Material: TMaterial; Delta: TRate);
+var
+   Value: TRate;
+begin
+   if (Has(Material)) then
+   begin
+      Value := Self[Material] + Delta;
+   end
+   else
+   begin
+      Value := Delta;
+   end;
+   Self[Material] := Value;
+end;
+
+procedure TMaterialRateHashTable.RemoveZeroes();
+var
+   Index: Cardinal;
+   Entry: PHashTableEntry;
+   LastEntry: PPHashTableEntry;
+   NextEntry: PHashTableEntry;
+begin
+   if (Length(FTable) > 0) then
+   begin
+      for Index := Low(FTable) to High(FTable) do // $R-
+      begin
+         LastEntry := @FTable[Index];
+         Entry := LastEntry^;
+         while (Assigned(Entry)) do
+         begin
+            NextEntry := Entry^.Next;
+            if (Entry^.Value.IsZero) then
+            begin
+               LastEntry^ := Entry^.Next;
+               Dispose(Entry);
+               Dec(FCount);
+            end
+            else
+            begin
+               LastEntry := @Entry^.Next;
+            end;
+            Entry := NextEntry;
+         end;
+      end;
+   end;
 end;
 
 

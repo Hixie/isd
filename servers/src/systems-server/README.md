@@ -702,28 +702,51 @@ asset owner):
 ### `fcMining` (0x12)
 
 ```bnf
-<featuredata>       ::= <rate> <mode>
-<rate>              ::= <double>
-<mode>              ::= <byte> ; see below
+<featuredata>       ::= <maxrate> <flags> <currentrate>
+<maxrate>           ::= <double> // kg/ms
+<flags>             ::= <byte> ; see below
+<currentrate>       ::= <double> // kg/ms
 ```
 
 The asset can mine ores (materials) from the nearest ancestor asset
-with an `fcRegion` feature.
+with an `fcRegion` feature (the source). The ores are put into assets
+with an `fcOrePile` feature that are descendants of the same
+`fcRegion` (the targets).
 
-The `<rate>` is the number of kilograms per millisecond (kg/ms)
-currently being made available. The `<mode>` is one of:
+The `<flags>` bit field has eight bits interpreted as follows:
 
-   0: The feature is mining.
-   1: The feature is enabled, but cannot mine because there are no
-      available piles into which to place the materials, or all such
-      piles are full.
-   2: The feature is enabled, but cannot mine because the `fcRegion`
-      has nothing left to mine.
-   3: The feature is enabled, but is not in a location where mining
-      makes sense (e.g. on a space ship).
- 254: The feature is configuring itself. Clients should never see
-      this.
- 255: The feature is disabled.
+   0 (LSB): The mining feature is enabled.
+   1      : The mining feature is active.
+   2      : The mining is being rate-limited by the source.
+   3      : The mining is being rate-limited by the targets.
+   4      : reserved, always zero
+   5      : reserved, always zero
+   6      : reserved, always zero
+   7 (MSB): reserved, always zero
+
+The `<maxrate>` is the maximum rate of mining for this feature. The
+`<currentrate>` is the current rate of mining. This is affected by
+the availability of resources (see `fcRegion`) and capacity in piles
+(see `fcOrePile`).
+
+A mining feature is _active_ if it is in a region (`fcRegion`) and
+enabled.
+
+Bit 1 of the `<flags>` is never set if bit 0 of the `<flags>` is not
+set. The `<currentrate>` is always zero, and bits 2 and 3 are always
+set, if bit 1 of the `<flags>` is not set. If bit 2 of `<flags>` is
+set, then the `<currentrate>` will be zero. If bit 3 of `<flags>` is
+set, then `<currentrate>` will be less than `<maxrate>` (but not
+necessarily zero).
+
+Bit 1 of the `<flags>` being set does not mean that the
+`<currentrate>` is non-zero; if either of bits 2 and 3 are set, then
+it's possible for the `<currentrate>` to be zero even though the
+mining feature is active.
+
+Currently, only one of bits 2 and 3 can be set. Once a region runs out
+of minable materials, the targets are no longer considered to be a
+limiting factor, even if the ore piles are full.
 
 The materials mined will be evident in assets with an `fcOrePile`
 feature (which will have a non-zero mass flow rate while the materials
@@ -783,6 +806,62 @@ The `<flags>` bit field has eight bits interpreted as follows:
 If a region's resources are exhausted, then the first bit is reset.
 This represents the region being on the verge of complete structural
 collapse.
+
+
+### `fcRefining` (0x15)
+
+```bnf
+<featuredata>       ::= <ore> <maxrate> <flags> <currentrate>
+<ore>               ::= <materialid> | <zero32>
+<maxrate>           ::= <double> // kg/ms
+<flags>             ::= <byte> ; see below
+<currentrate>       ::= <double> // kg/ms
+```
+
+Moves a specific ore (`<ore>`) from the nearest ancestor `fcRegion`'s
+`fcOrePile`s (the sources) to appropriate `fcMaterialPile`s in that
+same region (the targets).
+
+The `<ore>` will be zero if it is not known.
+
+The `<flags>` bit field has eight bits interpreted as follows:
+
+   0 (LSB): The refining feature is enabled.
+   1      : The refining feature is active.
+   2      : The refining is being rate-limited by the sources.
+   3      : The refining is being rate-limited by the targets.
+   4      : reserved, always zero
+   5      : reserved, always zero
+   6      : reserved, always zero
+   7 (MSB): reserved, always zero
+
+The `<maxrate>` is the maximum rate of refining for this feature. The
+`<currentrate>` is the current rate of refining. This is affected by
+the availability of resources (see `fcMining`, `fcOrePile`) and
+capacity of the target piles (see `fcMaterialPile`).
+
+A refining feature is _active_ if it is in a region (`fcRegion`) and
+enabled.
+
+Bit 1 of the `<flags>` is never set if bit 0 of the `<flags>` is not
+set. The `<currentrate>` is always zero, and bits 2 and 3 are always
+set, if bit 1 of the `<flags>` is not set. If either bits 2 or 3 of
+`<flags>` are set, then `<currentrate>` will be less than `<maxrate>`
+(possibly zero, but not necessarily so).
+
+Bit 1 of the `<flags>` being set does not mean that the
+`<currentrate>` is non-zero; if either of bits 2 and 3 are set, then
+it's possible for the `<currentrate>` to be zero even though the
+refining feature is active.
+
+This feature supports the following commands (only allowed from the
+asset owner):
+
+ * `enable`: No fields. Enables refining. Returns a boolean indicating
+   if anything changed.
+ 
+ * `disable`: No fields. Disables refining. Returns a boolean
+   indicating if anything changed.
 
 
 # Systems Server Internal Protocol

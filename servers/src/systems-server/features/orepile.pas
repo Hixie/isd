@@ -1,6 +1,6 @@
 {$MODE OBJFPC} { -*- delphi -*- }
 {$INCLUDE settings.inc}
-unit pile;
+unit orepile;
 
 interface
 
@@ -44,7 +44,7 @@ type
       FFeatureClass: TOrePileFeatureClass;
       FDynastyKnowledge: TOreMaterialKnowledgePackage; // per dynasty bits for each ore
       FRegion: TRegionFeatureNode;
-   private // IPile
+   private // IOrePile
       function GetOrePileCapacity(): Double; // kg
       procedure StartOrePile(Region: TRegionFeatureNode);
       procedure StopOrePile();
@@ -316,7 +316,7 @@ begin
    end
    else
    begin
-      Result := TRate.FromPerMillisecond(0.0);
+      Result := TRate.Zero;
    end;
 end;
 

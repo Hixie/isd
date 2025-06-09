@@ -106,7 +106,7 @@ begin
       Result := FChild.MassFlowRate;
    end
    else
-      Result := TRate.FromPerMillisecond(0.0);
+      Result := TRate.Zero;
 end;
 
 function TProxyFeatureNode.GetSize(): Double;
