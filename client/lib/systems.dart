@@ -3,11 +3,14 @@ import 'dart:ui' show Offset;
 import 'package:flutter/foundation.dart';
 
 import 'abilities/knowledge.dart';
+import 'abilities/materialpile.dart';
+import 'abilities/materialstack.dart';
 import 'abilities/message.dart';
 import 'abilities/mining.dart';
 import 'abilities/orepile.dart';
 import 'abilities/planets.dart';
 import 'abilities/population.dart';
+import 'abilities/refining.dart';
 import 'abilities/region.dart';
 import 'abilities/research.dart';
 import 'abilities/rubble.dart';
@@ -71,7 +74,10 @@ class SystemServer {
   static const int fcMining = 0x12;
   static const int fcOrePile = 0x13;
   static const int fcRegion = 0x14;
-  static const int expectedVersion = fcRegion;
+  static const int fcRefining = 0x15;
+  static const int fcMaterialPile = 0x16;
+  static const int fcMaterialStack = 0x17;
+  static const int expectedVersion = fcMaterialStack;
 
   Future<void> _handleLogin() async {
     final StreamReader reader = await _connection.send(<String>['login', token], queue: false);
@@ -136,6 +142,7 @@ class SystemServer {
         asset.description = reader.readString();
         assert(asset.size > 0, 'asset reported with zero size! name=${asset.name} className=${asset.className}');
         final Set<Type> oldFeatures = asset.featureTypes;
+        int lastFeatureCode = 0x00;
         int featureCode;
         while ((featureCode = reader.readInt32()) != 0) {
           if (_verbose) {
@@ -313,18 +320,17 @@ class SystemServer {
                 final String research = reader.readString();
                 oldFeatures.remove(asset.setAbility(ResearchFeature(current: research)));
               case fcMining:
-                final double rate = reader.readDouble();
-                final MiningMode mode;
-                switch (reader.readInt8()) {
-                  case 0: mode = MiningMode.mining;
-                  case 1: mode = MiningMode.pilesFull;
-                  case 2: mode = MiningMode.regionEmpty;
-                  case 3: mode = MiningMode.noRegion;
-                  case 255: mode = MiningMode.disabled;
-                  default:
-                    throw NetworkError('Client does not support mining mode 0x${featureCode.toRadixString(16).padLeft(2, "0")}, cannot parse server message.');
-                }
-                oldFeatures.remove(asset.setAbility(MiningFeature(rate: rate, mode: mode)));
+                final double maxRate = reader.readDouble();
+                final int flags = reader.readInt8();
+                final double currentRate = reader.readDouble();
+                oldFeatures.remove(asset.setAbility(MiningFeature(
+                  currentRate: currentRate,
+                  maxRate: maxRate,
+                  enabled: flags & 0x01 > 0,
+                  active: flags & 0x02 > 0,
+                  sourceLimiting: flags & 0x04 > 0,
+                  targetLimiting: flags & 0x08 > 0,
+                )));
               case fcOrePile:
                 final double pileMass = reader.readDouble();
                 final double pileMassFlowRate = reader.readDouble();
@@ -345,9 +351,57 @@ class SystemServer {
               case fcRegion:
                 final int flags = reader.readInt8();
                 oldFeatures.remove(asset.setAbility(RegionFeature(minable: (flags & 0x01) > 0)));
+              case fcRefining:
+                final int material = reader.readInt32();
+                final double maxRate = reader.readDouble();
+                final int flags = reader.readInt8();
+                final double currentRate = reader.readDouble();
+                oldFeatures.remove(asset.setAbility(RefiningFeature(
+                  material: material,
+                  currentRate: currentRate,
+                  maxRate: maxRate,
+                  enabled: flags & 0x01 > 0,
+                  active: flags & 0x02 > 0,
+                  sourceLimiting: flags & 0x04 > 0,
+                  targetLimiting: flags & 0x08 > 0,
+                )));
+              case fcMaterialPile:
+                final double pileMass = reader.readDouble();
+                final double pileMassFlowRate = reader.readDouble();
+                final double capacity = reader.readDouble();
+                final String name = reader.readString();
+                final int material = reader.readInt32();
+                oldFeatures.remove(asset.setAbility(MaterialPileFeature(
+                  pileMass: pileMass,
+                  pileMassFlowRate: pileMassFlowRate,
+                  timeOrigin: currentTime,
+                  spaceTime: spaceTime,
+                  capacity: capacity,
+                  materialName: name,
+                  material: material,
+                )));
+              case fcMaterialStack:
+                final int pileQuantity = reader.readInt64();
+                final double pileQuantityFlowRate = reader.readDouble();
+                final int capacity = reader.readInt64();
+                final String name = reader.readString();
+                final int material = reader.readInt32();
+                oldFeatures.remove(asset.setAbility(MaterialStackFeature(
+                  pileQuantity: pileQuantity,
+                  pileQuantityFlowRate: pileQuantityFlowRate,
+                  timeOrigin: currentTime,
+                  spaceTime: spaceTime,
+                  capacity: capacity,
+                  materialName: name,
+                  material: material,
+                )));
             default:
-              throw NetworkError('Client does not support feature code 0x${featureCode.toRadixString(16).padLeft(8, "0")}, cannot parse server message.');
+              throw NetworkError(
+                'Client does not support feature code 0x${featureCode.toRadixString(16).padLeft(8, "0")}, '
+                'cannot parse server message (last feature code 0x${lastFeatureCode.toRadixString(16).padLeft(2, "0")}).'
+              );
           }
+          lastFeatureCode = featureCode;
         }
         asset.removeFeatures(oldFeatures);
       }

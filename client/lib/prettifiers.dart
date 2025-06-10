@@ -2,6 +2,19 @@ import 'dart:math';
 
 // ignore_for_file: prefer_interpolation_to_compose_strings
 
+String prettyQuantity(double quantity, { String zero = 'empty' }) {
+  if (quantity < 1) {
+    return zero;
+  }
+  if (quantity < 1000000) {
+    return quantity.round().toString();
+  }
+  if (quantity < 1000000000) {
+    return (quantity / 1000000).toStringAsFixed(2) + ' million';
+  }
+  return (quantity / 1000000000).toStringAsFixed(2) + ' billion';
+}
+
 String prettyMass(double mass) {
   if (mass < 0.001) {
     return (mass * 1000000).toStringAsFixed(1) + ' mg';

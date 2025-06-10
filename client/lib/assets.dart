@@ -246,7 +246,7 @@ class AssetNode extends WorldNode {
           backgrounds.add(feature.buildRenderer(context));
         case RendererType.exclusive:
           // TODO: replace this with a mechanism where the parent says what kind
-          // of child it wants and the non-confirming children are wrapped (e.g.
+          // of child it wants and the non-conforming children are wrapped (e.g.
           // a message board that contains a non-message child).
           hasExclusive = true;
           backgrounds.add(feature.buildRenderer(context));

@@ -3,8 +3,9 @@ import 'package:flutter/material.dart';
 import '../assets.dart';
 import '../nodes/system.dart';
 
-class MiningFeature extends AbilityFeature {
-  MiningFeature({
+class RefiningFeature extends AbilityFeature {
+  RefiningFeature({
+    required this.material,
     required this.currentRate,
     required this.maxRate,
     required this.enabled,
@@ -13,6 +14,7 @@ class MiningFeature extends AbilityFeature {
     required this.targetLimiting,
   });
 
+  final int material;
   final double currentRate;
   final double maxRate;
   final bool enabled;
@@ -37,24 +39,27 @@ class MiningFeature extends AbilityFeature {
       builder: (BuildContext context, StateSetter setState) {
         final Widget status;
         if (updating) {
-          status = enabled ? const Text('Disabling mining...') : 
-                             const Text('Enabling mining...');
+          status = enabled ? const Text('Disabling refining...') : 
+                             const Text('Enabling refining...');
         } else if (!enabled) {
-          status = const Text('Mining disabled.');
+          status = const Text('Refining disabled.');
         } else if (!active) {
-          status = const Text('No region to mine.');
+          status = const Text('Nothing to refine.');
         } else if (sourceLimiting) {
-          assert(currentRate == 0.0);
-          status = const Text('Region no longer has anything to mine.');
+          if (currentRate > 0.0) {
+            status = Text('Shortage of ore to refine. Refining throttled to ${currentRate * 1000.0 * 60.0 * 6.00} kg/h (${100.0 * currentRate / maxRate}%)'); // TODO: use prettifier
+          } else {
+            status = const Text('Shortage of ore to refine.\nAdd more holes to restart refining.');
+          }
         } else if (targetLimiting) {
           if (currentRate > 0.0) {
-            status = Text('Capacity full.\nRefining waste is being returned to the ground.');
+            status = Text('Capacity full. Refining throttled to ${currentRate * 1000.0 * 60.0 * 6.00} kg/h (${100.0 * currentRate / maxRate}%)'); // TODO: use prettifier
           } else {
-            status = const Text('Capacity full.\nAdd more piles to restart mining.');
+            status = const Text('Capacity full.\nAdd more piles to restart refining.');
           }
         } else {
           assert(currentRate == maxRate);
-          status = Text('Mining at ${currentRate * 1000.0 * 60.0 * 60.0} kg/h'); // convert from kg/ms to kg/h // TODO: use prettifier
+          status = Text('Refining at ${currentRate * 1000.0 * 60.0 * 60.0} kg/h'); // convert from kg/ms to kg/h // TODO: use prettifier
         }
         return Align(
           alignment: Alignment.topCenter,
