@@ -1,7 +1,8 @@
 import 'dart:math' show max, min, pi;
 
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart' hide Gradient;
+
+import 'widgets.dart';
 
 class HudLayout extends StatefulWidget {
   const HudLayout({
@@ -184,13 +185,7 @@ class HudDialog extends StatelessWidget {
       elevation: 24.0,
       shadowColor: const Color(0xFF000000),
       clipBehavior: Clip.antiAlias,
-      child: Listener(
-        behavior: HitTestBehavior.opaque,
-        onPointerSignal: (PointerSignalEvent event) {
-          GestureBinding.instance.pointerSignalResolver.register(event, (PointerSignalEvent event) {
-            // eat the signal so it doesn't zoom something behind us
-          });
-        },
+      child: NoZoom(
         child: Stack(
           children: <Widget>[
             Column(

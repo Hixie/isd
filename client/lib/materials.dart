@@ -1,3 +1,7 @@
+import 'package:flutter/widgets.dart';
+
+import 'icons.dart';
+
 class Material {
   Material({
     required this.id,
@@ -16,6 +20,10 @@ class Material {
   final int flags; // TODO: use an enum or something
   final double massPerUnit;
   final double density;
+
+  Widget build(BuildContext context) {
+    return IconsManager.icon(context, icon, '$name\n$description');
+  }
 }
 
 class StructuralComponent {

@@ -1,5 +1,6 @@
 import 'dart:math' show sqrt;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
@@ -150,7 +151,9 @@ class _StateManagerState<T extends Listenable> extends State<StateManagerBuilder
   }
 }
 
+@Deprecated('Unused')
 class Sizer extends StatelessWidget {
+  @Deprecated('Unused')
   const Sizer({
     super.key,
     this.skipSize = const Size.square(4.0),
@@ -512,5 +515,27 @@ class RenderWorldToBoxAdapter extends RenderWorldNode with RenderObjectWithChild
   @override
   WorldTapTarget? routeTap(Offset offset) {
     return null; // TODO
+  }
+}
+
+class NoZoom extends StatelessWidget {
+  const NoZoom({
+    super.key,
+    required this.child,
+  });
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Listener(
+      behavior: HitTestBehavior.opaque,
+      onPointerSignal: (PointerSignalEvent event) {
+        GestureBinding.instance.pointerSignalResolver.register(event, (PointerSignalEvent event) {
+          // eat the signal so it doesn't zoom something behind us
+        });
+      },
+      child: child,
+    );
   }
 }

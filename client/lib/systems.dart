@@ -58,8 +58,8 @@ class SystemServer {
   static const int fcSpace = 0x02;
   static const int fcOrbit = 0x03;
   static const int fcStructure = 0x04;
-  static const int fcSpaceSensors = 0x05;
-  static const int fcSpaceSensorsStatus = 0x06;
+  static const int fcSpaceSensor = 0x05;
+  static const int fcSpaceSensorStatus = 0x06;
   static const int fcPlanet = 0x07;
   static const int fcPlotControl = 0x08;
   static const int fcSurface = 0x09;
@@ -77,7 +77,9 @@ class SystemServer {
   static const int fcRefining = 0x15;
   static const int fcMaterialPile = 0x16;
   static const int fcMaterialStack = 0x17;
-  static const int expectedVersion = fcMaterialStack;
+  static const int fcGridSensor = 0x18;
+  static const int fcGridSensorStatus = 0x19;
+  static const int expectedVersion = fcGridSensorStatus;
 
   Future<void> _handleLogin() async {
     final StreamReader reader = await _connection.send(<String>['login', token], queue: false);
@@ -140,7 +142,6 @@ class SystemServer {
         asset.icon = reader.readString();
         asset.className = reader.readString();
         asset.description = reader.readString();
-        assert(asset.size > 0, 'asset reported with zero size! name=${asset.name} className=${asset.className}');
         final Set<Type> oldFeatures = asset.featureTypes;
         int lastFeatureCode = 0x00;
         int featureCode;
@@ -206,7 +207,7 @@ class SystemServer {
                 min: structuralIntegrityMin == 0 ? null : structuralIntegrityMin,
                 max: structuralIntegrityMax == 0 ? null : structuralIntegrityMax,
               )));
-            case fcSpaceSensors:
+            case fcSpaceSensor:
               final int reach = reader.readInt32();
               final int up = reader.readInt32();
               final int down = reader.readInt32();
@@ -215,7 +216,7 @@ class SystemServer {
               AssetNode? top;
               int? count;
               reader.saveCheckpoint();
-              if (!reader.done && reader.readInt32() == fcSpaceSensorsStatus) {
+              if (!reader.done && reader.readInt32() == fcSpaceSensorStatus) {
                 nearestOrbit = _readAsset(reader);
                 top = _readAsset(reader);
                 count = reader.readInt32();
@@ -223,7 +224,7 @@ class SystemServer {
               } else {
                 reader.restoreCheckpoint();
               }
-              oldFeatures.remove(asset.setAbility(SpaceSensorsFeature(
+              oldFeatures.remove(asset.setAbility(SpaceSensorFeature(
                 reach: reach,
                 up: up,
                 down: down,
@@ -271,6 +272,8 @@ class SystemServer {
               final List<AssetNode> children = <AssetNode>[];
               AssetNode? child;
               while ((child = _readAsset(reader)) != null) {
+                // TODO: flip the order, the flip the order in the UI
+                // so that adding children doesn't change the selected one
                 children.insert(0, child!);
               }
               oldFeatures.remove(asset.setContainer(MessageBoardFeature(children)));
@@ -395,6 +398,21 @@ class SystemServer {
                   materialName: name,
                   material: material,
                 )));
+            case fcGridSensor:
+              AssetNode? grid;
+              int? count;
+              reader.saveCheckpoint();
+              if (!reader.done && reader.readInt32() == fcGridSensorStatus) {
+                grid = _readAsset(reader);
+                count = reader.readInt32();
+                reader.discardCheckpoint();
+              } else {
+                reader.restoreCheckpoint();
+              }
+              oldFeatures.remove(asset.setAbility(GridSensorFeature(
+                grid: grid,
+                detectedCount: count,
+              )));
             default:
               throw NetworkError(
                 'Client does not support feature code 0x${featureCode.toRadixString(16).padLeft(8, "0")}, '

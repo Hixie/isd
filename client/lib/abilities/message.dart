@@ -4,7 +4,7 @@ import '../assets.dart';
 import '../containers/messages.dart';
 import '../nodes/system.dart';
 
-class MessageFeature extends AbilityFeature {
+class MessageFeature extends AbilityFeature with ChangeNotifier {
   MessageFeature(this.systemID, this.timestamp, this.isRead, this.subject, this.from, this.body);
   
   final int systemID;
@@ -15,7 +15,7 @@ class MessageFeature extends AbilityFeature {
   final String body;
 
   @override
-  RendererType get rendererType => RendererType.exclusive;
+  RendererType get rendererType => RendererType.box;
 
   // TODO: we shouldn't replace the entire node, losing state, when the server updates us
   // because that way, we lose the "ambiguous" boolean state.
@@ -26,96 +26,57 @@ class MessageFeature extends AbilityFeature {
   // TODO: have a button to pop-out a message
 
   // TODO: automatically pop-out a message when it comes in?
+
+  bool _ambiguous = false;
   
   @override
   Widget buildRenderer(BuildContext context) {
-    bool ambiguous = false;
-    final MessageBoardMode mode = MessageBoardMode.of(context);
-    if (mode.showBody) {
-      return StatefulBuilder(
-        builder: (BuildContext context, StateSetter setState) {
-          return Column(
-            children: <Widget>[
-              AppBar(
-                leading: IconButton(
-                  icon: const Icon(Icons.arrow_upward),
-                  tooltip: 'Go to message list',
-                  onPressed: mode.onUp,
-                ),
-                title: Row(
-                  children: <Widget>[
-                    IconButton(
-                      icon: ambiguous ? const Icon(Icons.pending) : isRead ? const Icon(Icons.mark_email_unread) : const Icon(Icons.mark_email_read),
-                      tooltip: isRead ? 'Mark as unread' : 'Mark as read',
-                      onPressed: ambiguous ? null : () {
-                        if (!ambiguous) {
-                          setState(() { ambiguous = true; });
-                          SystemNode.of(context).play(<Object>[parent.id, isRead ? 'mark-unread' : 'mark-read']);
-                        }
-                      },
-                    ),
-                  ],
-                ),
-                actions: <Widget>[
-                  IconButton(
-                    icon: const Icon(Icons.arrow_back),
-                    tooltip: 'Go to previous message',
-                    onPressed: mode.onLeft,
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.arrow_forward),
-                    tooltip: 'Go to next message',
-                    onPressed: mode.onRight,
-                  ),
-                ],
-              ),
-              Expanded(
-                child: Card(
-                  child: ListView(
-                    children: <Widget>[
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(8.0, 4.0, 8.0, 0.0),
-                        child: Text(
-                          'Subject: $subject',
-                          style: isRead ? null : const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(8.0, 0.0, 8.0, 0.0),
-                        child: Text('From: $from'),
-                      ),
-                      const Divider(),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(8.0, 0.0, 8.0, 0.0),
-                        child: Text(body),
-                      ),
-                      const Divider(),
-                      CheckboxListTile(
-                        title: const Text('Message is read'),
-                        value: ambiguous ? null : isRead,
-                        tristate: ambiguous,
-                        onChanged: (bool? value) {
-                          if (!ambiguous) {
-                            setState(() { ambiguous = true; });
-                            SystemNode.of(context).play(<Object>[parent.id, isRead ? 'mark-unread' : 'mark-read']);
-                          }
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          );
-        },
+    final MessageBoardMode? mode = MessageBoardMode.of(context);
+    if (mode?.showBody == true) {
+      mode!;
+      return ListBody(
+        children: <Widget>[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8.0, 4.0, 8.0, 0.0),
+            child: Text(
+              'Subject: $subject',
+              style: isRead ? null : const TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8.0, 0.0, 8.0, 0.0),
+            child: Text('From: $from'),
+          ),
+          const Divider(),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8.0, 0.0, 8.0, 0.0),
+            child: Text(body),
+          ),
+          const Divider(),
+          ListenableBuilder(
+            listenable: this,
+            builder: (BuildContext context, Widget? child) {
+              return CheckboxListTile(
+                title: const Text('Message is read'),
+                value: _ambiguous ? null : isRead,
+                tristate: _ambiguous,
+                onChanged: (bool? value) {
+                  if (!_ambiguous) {
+                    _ambiguous = true;
+                    notifyListeners();
+                    SystemNode.of(context).play(<Object>[parent.id, isRead ? 'mark-unread' : 'mark-read']);
+                  }
+                },
+              );
+            },
+          ),
+        ],
       );
     }
     return Card(
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: () {
-          mode.onSelect!();
-        },
+        onTap: mode?.onSelect,
         child: Padding(
           padding: const EdgeInsets.all(8.0),
           child: Builder(
@@ -132,6 +93,30 @@ class MessageFeature extends AbilityFeature {
           ),
         ),
       ),
+    );
+  }
+
+  @override
+  Widget? buildHeader(BuildContext context) {
+    return Row(
+      children: <Widget>[
+        ListenableBuilder(
+          listenable: this,
+          builder: (BuildContext context, Widget? child) {
+            return IconButton(
+              icon: _ambiguous ? const Icon(Icons.pending) : isRead ? const Icon(Icons.mark_email_unread) : const Icon(Icons.mark_email_read),
+              tooltip: isRead ? 'Mark as unread' : 'Mark as read',
+              onPressed: _ambiguous ? null : () {
+                if (!_ambiguous) {
+                  _ambiguous = true;
+                  notifyListeners();
+                  SystemNode.of(context).play(<Object>[parent.id, isRead ? 'mark-unread' : 'mark-read']);
+                }
+              },
+            );
+          },
+        ),
+      ],
     );
   }
 }

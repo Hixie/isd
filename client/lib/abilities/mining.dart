@@ -48,7 +48,7 @@ class MiningFeature extends AbilityFeature {
           status = const Text('Region no longer has anything to mine.');
         } else if (targetLimiting) {
           if (currentRate > 0.0) {
-            status = Text('Capacity full.\nRefining waste is being returned to the ground.');
+            status = const Text('Capacity full.\nRefining waste is being returned to the ground.');
           } else {
             status = const Text('Capacity full.\nAdd more piles to restart mining.');
           }

@@ -44,9 +44,6 @@ enum RendererType {
 
   /// this feature returns a RenderWorld that will take care of the asset
   foreground,
-
-  /// this feature returns a render object that should be the sole renderer
-  exclusive,
 }
 
 abstract class AbilityFeature extends Feature {
@@ -56,6 +53,10 @@ abstract class AbilityFeature extends Feature {
   Widget buildRenderer(BuildContext context) {
     assert(rendererType == RendererType.none, '$runtimeType does not override buildRenderer');
     throw StateError('buildRenderer should not be called if rendererType is RendererType.none');
+  }
+
+  Widget? buildHeader(BuildContext context) {
+    return null;
   }
 }
 
@@ -120,6 +121,8 @@ class AssetNode extends WorldNode {
       notifyListeners();
     }
   }
+
+  bool get isVirtual => mass == 0.0 && massFlowRate == 0.0 && size == 0.0;
 
   String get name => _name ?? '';
   String? _name;
@@ -226,12 +229,11 @@ class AssetNode extends WorldNode {
   }
 
   @override
-  Widget buildRenderer(BuildContext context, Widget? nil) {
+  Widget buildRenderer(BuildContext context, [ Widget? nil ]) {
     // TODO: compute actualDiameter here, and short-circuit if it's too small
     final List<Widget> backgrounds = <Widget>[];
     List<Widget>? boxes;
     bool hasBackground = false;
-    bool hasExclusive = false;
     for (Feature feature in <Feature>[..._containers.values, ..._abilities.values]) {
       switch (feature.rendererType) {
         case RendererType.none:
@@ -244,17 +246,24 @@ class AssetNode extends WorldNode {
           backgrounds.insert(0, feature.buildRenderer(context));
         case RendererType.foreground:
           backgrounds.add(feature.buildRenderer(context));
-        case RendererType.exclusive:
-          // TODO: replace this with a mechanism where the parent says what kind
-          // of child it wants and the non-conforming children are wrapped (e.g.
-          // a message board that contains a non-message child).
-          hasExclusive = true;
-          backgrounds.add(feature.buildRenderer(context));
       }
     }
-    if (hasExclusive) {
-      assert(backgrounds.length == 1);
-      assert(boxes == null);
+    if (isVirtual) {
+      if (boxes != null) {
+        if (boxes.length > 1) {
+          backgrounds.add(ListBody(children: boxes));
+        } else if (boxes.length == 1) {
+          backgrounds.add(boxes.single);
+        }
+      }
+      if (backgrounds.length > 1) {
+        return Stack(
+          children: backgrounds,
+        );
+      }
+      if (backgrounds.isEmpty) {
+        backgrounds.add(const Placeholder());
+      }
       return backgrounds.single;
     }
     if (!hasBackground) {
@@ -291,6 +300,15 @@ class AssetNode extends WorldNode {
       diameter: diameter,
       children: backgrounds,
     );
+  }
+
+  Widget? buildHeader(BuildContext context) {
+    for (AbilityFeature feature in _abilities.values) {
+      final Widget? result = feature.buildHeader(context);
+      if (result != null)
+        return result;
+    }
+    return null;
   }
 
   @override

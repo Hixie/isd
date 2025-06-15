@@ -1,8 +1,8 @@
 import 'dart:ui' show Codec, ImmutableBuffer;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:flutter/widgets.dart';
 
 import 'http/http.dart' as http;
 import 'layout.dart';
@@ -155,12 +155,45 @@ class IconsManager {
       _pendingLoads.remove(icon);
     });
   }
+
+  static Widget icon(BuildContext context, String icon, String tooltip) {
+    final IconsManager icons = IconsManagerProvider.of(context);
+    return SizedBox(
+      width: 64.0,
+      height: 64.0,
+      child: Tooltip(
+        message: tooltip,
+        child: DecoratedBox(
+          decoration: ShapeDecoration(
+            gradient: const RadialGradient(
+              center: Alignment(0.0, 0.6),
+              colors: <Color>[
+                Color(0xFFFFFFFF),
+                Color(0xFFFFFFDD),
+              ],
+            ),
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.all(Radius.circular(12.0)),
+              side: BorderSide(),
+            ),
+            shadows: kElevationToShadow[2],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Image(
+              image: IconImageProvider(icon, icons),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 @immutable
 class IconImageProvider extends ImageProvider<IconImageProvider> {
   const IconImageProvider(this.name, this.icons);
-
+  
   final String name;
   final IconsManager icons;
 

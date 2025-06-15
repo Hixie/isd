@@ -1,7 +1,10 @@
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart' hide Material;
 
 import '../assets.dart';
+import '../containers/messages.dart';
+import '../icons.dart';
 import '../materials.dart';
+import '../widgets.dart';
 
 @immutable
 class AssetClass {
@@ -20,6 +23,10 @@ class AssetClass {
   static int alphabeticalSort(AssetClass a, AssetClass b) {
     return a.name.compareTo(b.name);
   }
+
+  Widget build(BuildContext context) {
+    return IconsManager.icon(context, icon, '$name\n$description');
+  }
 }
 
 class KnowledgeFeature extends AbilityFeature {
@@ -32,7 +39,45 @@ class KnowledgeFeature extends AbilityFeature {
   final Map<int, Material> materials;
 
   @override
-  RendererType get rendererType => RendererType.none;
+  RendererType get rendererType => RendererType.box;
+
+  @override
+  Widget buildRenderer(BuildContext context) {
+    if (assetClasses.isNotEmpty || materials.isNotEmpty) {
+      final MessageBoardMode? mode = MessageBoardMode.of(context);
+      if (mode?.showBody != false) {
+        Widget result = Wrap(
+          spacing: 12.0,
+          runSpacing: 12.0,
+          alignment: WrapAlignment.spaceEvenly,
+          children: <Widget>[
+            // TODO: make this clickable (show a HUD with more information)
+            for (AssetClass assetClass in assetClasses.values)
+              assetClass.build(context),
+            for (Material material in materials.values)
+              material.build(context),
+          ],
+        );
+        if (mode == null) {
+          result = NoZoom(
+            child: Card(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(12.0),
+                child: result,
+              ),
+            ),
+          );
+        } else {
+          result = Padding(
+            padding: const EdgeInsets.all(12.0),
+            child: result,
+          );
+        }
+        return result;
+      }
+    }
+    return const SizedBox.shrink();
+  }
 
   // TODO: display the known asset classes and materials
 }
