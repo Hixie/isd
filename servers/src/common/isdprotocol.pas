@@ -42,7 +42,11 @@ const
    fcOrePile = $13;
    fcRegion = $14;
    fcRefining = $15;
-   fcHighestKnownFeatureCode = fcRefining;
+   fcMaterialPile = $16;
+   fcMaterialStack = $17;
+   fcGridSensor = $18;
+   fcGridSensorStatus = $19;
+   fcHighestKnownFeatureCode = fcGridSensorStatus;
    
 implementation
 

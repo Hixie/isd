@@ -50,7 +50,8 @@ type
       function GetSize(): Double; override; // m
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
       procedure ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynastyHashSet; CachedSystem: TSystem); override;
-      procedure HandleVisibility(const DynastyIndex: Cardinal; var Visibility: TVisibility; const Sensors: ISensorsProvider; const VisibilityHelper: TVisibilityHelper); override;
+      procedure ResetVisibility(CachedSystem: TSystem); override;
+      procedure HandleKnowledge(const DynastyIndex: Cardinal; const VisibilityHelper: TVisibilityHelper; const Sensors: ISensorsProvider); override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
    public
       constructor Create(AFeatureClass: TStructureFeatureClass; AMaterialsQuantity: Cardinal; AStructuralIntegrity: Cardinal);
@@ -270,7 +271,20 @@ begin
    end;
 end;
 
-procedure TStructureFeatureNode.HandleVisibility(const DynastyIndex: Cardinal; var Visibility: TVisibility; const Sensors: ISensorsProvider; const VisibilityHelper: TVisibilityHelper);
+procedure TStructureFeatureNode.ResetVisibility(CachedSystem: TSystem);
+var
+   Index: Cardinal;
+begin
+   if (FFeatureClass.BillOfMaterialsLength > 0) then
+   begin
+      for Index := 0 to FFeatureClass.BillOfMaterialsLength - 1 do // $R-
+      begin
+         FDynastyKnowledge[Index].Reset();
+      end;
+   end;
+end;
+
+procedure TStructureFeatureNode.HandleKnowledge(const DynastyIndex: Cardinal; const VisibilityHelper: TVisibilityHelper; const Sensors: ISensorsProvider);
 var
    Index: Cardinal;
 begin

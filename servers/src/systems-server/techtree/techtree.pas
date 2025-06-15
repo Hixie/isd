@@ -42,6 +42,7 @@ function ReadNumber(Tokens: TTokenizer; Min, Max: Int64): Int64;
 function ReadLength(Tokens: TTokenizer): Double;
 function ReadMass(Tokens: TTokenizer): Double;
 function ReadMassPerTime(Tokens: TTokenizer): TRate;
+function ReadQuantity(Tokens: TTokenizer; Material: TMaterial): Int64;
 
 implementation
 
@@ -400,7 +401,8 @@ var
                begin
                   MarkSeen(rcID);
                   Tokens.ReadColon();
-                  ID := ReadNumber(Tokens, Low(TResearchID), High(TResearchID)); // $R-
+                  Assert(Low(TResearchID) <= 0);
+                  ID := ReadNumber(Tokens, 0, High(TResearchID)); // $R-
                   if (ID = 0) then
                   begin
                      if (not Tokens.IsOpenParenthesis()) then
@@ -928,7 +930,7 @@ begin
       'g': Result := Value / 1000.0;
       'mg': Result := Value / 1000000.0;
    else
-      Tokens.Error('Unknown unit for length "%s"', [Keyword]);
+      Tokens.Error('Unknown unit for mass "%s"', [Keyword]);
    end;
 end;
 
@@ -951,6 +953,25 @@ begin
       Tokens.Error('Unknown unit for time "%s"', [Keyword]);
    end;
    Result := TRate.FromPerMillisecond(Value);
+end;
+
+function ReadQuantity(Tokens: TTokenizer; Material: TMaterial): Int64;
+var
+   Value: Int64;
+   Keyword: UTF8String;
+begin
+   Value := Tokens.ReadNumber();
+   if (Value <= 0) then
+      Tokens.Error('Invalid quantity "%d"; must be greater than zero', [Value]);
+   Keyword := Tokens.ReadIdentifier();
+   case Keyword of
+      'kg': Result := Round(Value / Material.MassPerUnit);
+      'g': Result := Round(Value / (1000.0 * Material.MassPerUnit));
+      'mg': Result := Round(Value / (1000000.0 * Material.MassPerUnit));
+      'units': Result := Round(Value / (1000000.0 * Material.MassPerUnit));
+   else
+      Tokens.Error('Unknown unit for quantity "%s"', [Keyword]);
+   end;
 end;
 
 initialization

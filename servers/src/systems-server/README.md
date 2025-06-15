@@ -108,7 +108,7 @@ There are currently no notifications defined.
 
 <string>            ::= <int32> [ <int32> <byte>* ] ; see below
 
-<time>              ::= 64 bit integer ; milliseconds
+<time>              ::= 64 bit signed integer ; milliseconds
 
 <byte>              ::= 8 bits
 
@@ -118,7 +118,7 @@ There are currently no notifications defined.
 
 <int32>             ::= 32 bit unsigned integer
 
-<int64>             ::= 64 bit unsigned integer
+<signedint64>       ::= 64 bit signed integer
 
 <zero8>             ::= 8 bit zero
 
@@ -141,6 +141,10 @@ The `<assetid>` in the `<systemupdate>` is the system's root asset
 (usually an asset with the `fcSpace` feature, that contains positioned
 orbits (assets with an `fcOrbit` feature) that themselves have stars
 (assets with the `fcStar` feature) as their primary asset).
+
+The root asset must have one of the following features:
+
+ * `fcSpace`.
 
 Asset IDs (`<assetid>`) are system-specific and dynasty-specific. They
 remain stable so long as the asset is visible to the dynasty. If the
@@ -168,6 +172,17 @@ example, as a pile of dirt grows, its mass will grow. Rather than
 repeatedly sending data from the server to the client, the server will
 report a non-zero mass flow rate.
 
+Some assets are considered _physical_, and some are considered
+_virtual_. Physical assets will have a non-zero mass, mass flow rate,
+or size. Virtual assets will have a zero value for all three. Physical
+assets represent objects in the game world, while virtual assets
+represent data, e.g. messages in a message board.
+
+The root asset will always be a physical asset. All descendants of
+virtual assets will be virtual. Unless otherwise specified, the
+children of physical assets are physical. It is an error if the server
+sends a virtual asset where a physical asset is expected.
+
 Asset class IDs are numbers in the range -2,147,483,648 to
 2,147,483,647, but not zero (i.e. signed 32 bit integers).
 
@@ -187,6 +202,57 @@ first time a particular string is encountered, it is serialized as a
 32 bit integer identifier, then the string's length, then that many
 bytes giving the string data. The second time, only the identifier is
 specified. String identifiers are scoped to the connection.
+
+
+### Icons
+
+An image file can be obtained for a given `icon` value by fetching a
+file whose name is the icon with a `.png` extension, from
+<https://interstellar-dynasties.space/icons/>. For example, if the
+icon is "space ship", then the image is available at
+<https://interstellar-dynasties.space/icons/space%20ship.png>.
+
+The images have an `ISD-Fields` header whose value matches the
+following grammar:
+
+```bnf
+<isdfields>         ::= <size> (WS? ";" WS? <fields>)*
+<size>              ::= <width> WS <height>
+<fields>            ::= <x> WS <y> WS <width> WS <height> WS <uiwidth>
+<x>                 ::= <integer>
+<y>                 ::= <integer>
+<width>             ::= <integer>
+<height>            ::= <integer>
+<uiwidth>           ::= <integer>
+<integer>           ::= <one or more "0" to "9">
+WS                  ::= <one or more spaces or tabs>
+```
+
+The `<size>` gives a nominal width and height by which the `<fields>`
+are to be interpreted.
+
+The `<fields>` give the x, y, width, and height of rectangles in the
+image, relative to the image being the given size. The `<uiwidth>`
+specifies the number of logical pixels that the UI should assign to
+the width of the field.
+
+For example, if an image that is actually 1000x1000 physical pixels
+has an ISD-Fields field that says:
+
+```http
+ISD-Fields: 100 100; 0 0 10 10 100; 20 90 60 10 100
+```
+
+...then the image has a square field at its top left that is 10% of
+the width and height of the image, into which UI should be placed so
+that it is scaled to have 100 logical pixels of width (and height);
+and a rectangular field centered at the bottom of the image whose
+width is 60% of the image, whose height is 10% of the image, and into
+which UI with a width of 100 logical pixels (and a height of about 16
+logical pixels) can be placed.
+
+Each feature can have one UI element. UI elements should be placed
+into fields in the same order as the features are sent by the server.
 
 
 ### Features
@@ -367,7 +433,7 @@ the asset class is not known.
 
 The description of the material in this list (`<materialname>`) can be
 ignored if the material is known, as the material data (found in an
-fcKnowledge feature) will have a more detailed description.
+`fcKnowledge` feature) will have a more detailed description.
 
 The list of material line items is terminated by a zero (instead of
 the 0xFFFFFFFF marker).
@@ -515,7 +581,7 @@ This feature supports the following commands:
 ### `fcPopulation` (0x0B)
 
 ```bnf
-<featuredata>       ::= <int64> <double>
+<featuredata>       ::= <signedint64> <double>
 ```
 
 The integer is the number of people at this population center. The
@@ -526,12 +592,18 @@ cannot be determined.
 ### `fcMessageBoard` (0x0C)
 
 ```bnf
-<featuredata>       ::= <message>* <zero32>
-<message>           ::= <assetid>
+<featuredata>       ::= <messages>* <zero32>
+<messages>          ::= <assetid>
 ```
 
-Children are expected to have `fcMessage` features, though this is not
-guaranteed.
+Child assets of a `fcMessageBoard` (the `<messages>`) must be virtual
+and must only have features from the following list:
+
+ * `fcMessage`
+ * `fcKnowledge`
+
+It is an error if the server sends a physical asset, or an asset with
+any other feature, as a child of an `fcMessageBoard`.
 
 
 ### `fcMessage` (0x0D)
@@ -627,7 +699,7 @@ proxy feature.
                         <string>  ; icon
                         <string>  ; material name
                         <string>  ; description
-                        <int64>   ; flags, see below
+                        <signedint64> ; flags, see below
                         <double>  ; mass (kg) per unit
                         <double>  ; mass (kg) per cubic meter (density)
 ```
@@ -746,7 +818,11 @@ mining feature is active.
 
 Currently, only one of bits 2 and 3 can be set. Once a region runs out
 of minable materials, the targets are no longer considered to be a
-limiting factor, even if the ore piles are full.
+limiting factor, even if the ore piles are full. When the miner is
+labeled as rate-limited by the targets, the actual useful mining rate
+is determined by the consumers (refineries, `fcRefining`) but the
+given rate is the maximum rate; excess mining product that could not
+be refined is returned to the ground (where it may be mined again).
 
 The materials mined will be evident in assets with an `fcOrePile`
 feature (which will have a non-zero mass flow rate while the materials
@@ -862,6 +938,73 @@ asset owner):
  
  * `disable`: No fields. Disables refining. Returns a boolean
    indicating if anything changed.
+
+
+### `fcMaterialPile` (0x16)
+
+```bnf
+<featuredata>       ::= <mass> <massflowrate> <capacity> <material>
+<mass>              ::= <double> // kg
+<massflowrate>      ::= <double> // kg/ms
+<capacity>          ::= <double> // kg
+<material>          ::= <materialname> ( <materialid> | <zero32> )
+```
+
+Piles of sorted bulk materials, generated by refineries (`fcRefining`) or
+factories, used by factories and to build structures (`fcStructure`).
+
+The `<flowrate>` gives the mass per millisecond being added (or
+removed, if negative) from the pile.
+
+
+### `fcMaterialStack` (0x17)
+
+```bnf
+<featuredata>       ::= <quantity> <flowrate> <capacity> <material>
+<quantity>          ::= <signedint64>
+<flowrate>          ::= <double>
+<capacity>          ::= <signedint64>
+<material>          ::= <materialname> ( <materialid> | <zero32> )
+```
+
+Piles of sorted non-bulk materials, generated by refineries
+(`fcRefining`) or factories, used by factories and to build structures
+(`fcStructure`).
+
+The `<flowrate>` gives a number of items per millisecond being added
+(or removed, if negative) from the pile.
+
+
+### `fcGridSensor` (0x18)
+
+```bnf
+<featuredata>       ::= [<feature>]
+```
+
+Grid sensors work by walking down the tree from the nearest `fcGrid`
+ancestor of the sensor. Sensors can detect any asset, regardless of
+size, unless it is cloaked in some way. (It represents the ability for
+populations to examine the world.)
+
+The trailing `<feature>`, if present, is a `fcGridSensorStatus`
+feature, documented next.
+
+
+### `fcGridSensorStatus` (0x19)
+
+```bnf
+<featuredata>       ::= <grid> <count>
+<grid>              ::= <assetid> | <zero32>
+<count>             ::= <int32> ; number of detected assets
+```
+
+Reports the grid being scanned, and the total number of detected
+nodes. The `<grid>` may be zero if no grid ancestor was found.
+
+This feature, if present, always follows a `fcGridSensor` feature. If
+there are multiple sensors, they may each have a trailing
+`fcGridSensorStatus`; each status applies to the immediately
+preceding sensor.
 
 
 # Systems Server Internal Protocol

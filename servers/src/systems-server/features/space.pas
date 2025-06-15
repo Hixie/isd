@@ -38,7 +38,7 @@ type
       function GetSize(): Double; override;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
-      procedure ApplyVisibility(VisibilityHelper: TVisibilityHelper); override;
+      procedure ApplyVisibility(const VisibilityHelper: TVisibilityHelper); override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
    public
       constructor Create(AFeatureClass: TSolarSystemFeatureClass);
@@ -301,7 +301,7 @@ begin
    Result := False;
 end;
 
-procedure TSolarSystemFeatureNode.ApplyVisibility(VisibilityHelper: TVisibilityHelper);
+procedure TSolarSystemFeatureNode.ApplyVisibility(const VisibilityHelper: TVisibilityHelper);
 begin
    Assert(Assigned(Parent));
    VisibilityHelper.AddBroadVisibility([dmVisibleSpectrum, dmClassKnown], Parent);

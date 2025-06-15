@@ -35,7 +35,8 @@ type
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
       procedure HandleChanges(CachedSystem: TSystem); override;
       procedure ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynastyHashSet; CachedSystem: TSystem); override;
-      procedure HandleVisibility(const DynastyIndex: Cardinal; var Visibility: TVisibility; const Sensors: ISensorsProvider; const VisibilityHelper: TVisibilityHelper); override;
+      procedure ResetVisibility(CachedSystem: TSystem); override;
+      procedure HandleKnowledge(const DynastyIndex: Cardinal; const VisibilityHelper: TVisibilityHelper; const Sensors: ISensorsProvider); override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
    public
       constructor Create(AFeatureClass: TRefiningFeatureClass);
@@ -122,10 +123,12 @@ begin
    FStatus.TargetLimiting := TargetLimiting;
    FStatus.Mode := rcActive;
    MarkAsDirty([dkUpdateClients, dkUpdateJournal]);
+   Writeln('StartRefinery(', FStatus.Region.Parent.DebugName, ', ', Rate.ToString('kg'), ', ', SourceLimiting, ', ', TargetLimiting, ')');
 end;
 
 procedure TRefiningFeatureNode.StopRefinery();
 begin
+   Writeln('StopRefinery(', FStatus.Region.Parent.DebugName, ')');
    FStatus.Region := nil;
    FStatus.Rate := TRate.Zero;
    FStatus.SourceLimiting := False;
@@ -194,9 +197,14 @@ begin
    FOreKnowledge.Init(NewDynasties.Count);
 end;
 
-procedure TRefiningFeatureNode.HandleVisibility(const DynastyIndex: Cardinal; var Visibility: TVisibility; const Sensors: ISensorsProvider; const VisibilityHelper: TVisibilityHelper);
+procedure TRefiningFeatureNode.ResetVisibility(CachedSystem: TSystem);
 begin
-   FOreKnowledge.SetEntry(DynastyIndex, Sensors.GetOreKnowledge()[FFeatureClass.FOre]);
+   FOreKnowledge.Reset();
+end;
+
+procedure TRefiningFeatureNode.HandleKnowledge(const DynastyIndex: Cardinal; const VisibilityHelper: TVisibilityHelper; const Sensors: ISensorsProvider);
+begin
+   FOreKnowledge.SetEntry(DynastyIndex, Sensors.Knows(System.Encyclopedia.Materials[FFeatureClass.FOre]));
 end;
 
 procedure TRefiningFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);

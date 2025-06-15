@@ -283,22 +283,27 @@ end;
 
 procedure TSurfaceFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
 var
+   Visibility: TVisibility;
    Child: TAssetNode;
    ChildData: PSurfaceData;
 begin
-   Writer.WriteCardinal(fcSurface);
-   for Child in FChildren do
+   Visibility := Parent.ReadVisibilityFor(DynastyIndex, CachedSystem);
+   if (Visibility <> []) then
    begin
-      Assert(Assigned(Child));
-      if (Child.IsVisibleFor(DynastyIndex, CachedSystem)) then
+      Writer.WriteCardinal(fcSurface);
+      for Child in FChildren do
       begin
-         ChildData := Child.ParentData;
-         Writer.WriteCardinal(Child.ID(CachedSystem, DynastyIndex));
-         Writer.WriteDouble(ChildData^.X * FFeatureClass.FCellSize);
-         Writer.WriteDouble(ChildData^.Y * FFeatureClass.FCellSize);
+         Assert(Assigned(Child));
+         if (Child.IsVisibleFor(DynastyIndex, CachedSystem)) then
+         begin
+            ChildData := Child.ParentData;
+            Writer.WriteCardinal(Child.ID(CachedSystem, DynastyIndex));
+            Writer.WriteDouble(ChildData^.X * FFeatureClass.FCellSize);
+            Writer.WriteDouble(ChildData^.Y * FFeatureClass.FCellSize);
+         end;
       end;
+      Writer.WriteCardinal(0);
    end;
-   Writer.WriteCardinal(0);
 end;
 
 procedure TSurfaceFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);

@@ -158,19 +158,19 @@ begin
    for Research in FBankedResearch do
    begin
       Assert(Research <> FCurrentResearch);
-      Journal.WriteCardinal(Research.ID);
+      Journal.WriteInt32(Research.ID);
       Journal.WriteInt64(FBankedResearch[Research].AsInt64);
    end;
    if (Assigned(FCurrentResearch)) then
    begin
-      Journal.WriteCardinal(FCurrentResearch.ID);
+      Journal.WriteInt32(FCurrentResearch.ID);
       Journal.WriteInt64(FResearchStartTime.AsInt64);
    end
    else
-      Journal.WriteCardinal(TResearch.kNil);
+      Journal.WriteInt32(TResearch.kNil);
    Journal.WriteCardinal(Length(FSpecialties));
    for Research in FSpecialties do
-      Journal.WriteCardinal(Research.ID);
+      Journal.WriteInt32(Research.ID);
    if (Assigned(FTopic)) then
       Journal.WriteString(FTopic.Value)
    else
@@ -179,7 +179,7 @@ end;
 
 procedure TResearchFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
 var
-   Count, Index, Temp: Cardinal;
+   Count, Index: Cardinal;
    ResearchID: TResearchID;
    Research: TResearch;
    DurationAsInt64: Int64;
@@ -203,17 +203,17 @@ begin
    begin
       for Index := 0 to Count - 1 do // $R-
       begin
-         ResearchID := Journal.ReadCardinal(); // $R-
+         ResearchID := Journal.ReadInt32(); // $R-
          Research := CachedSystem.Encyclopedia.Researches[ResearchID];
          DurationAsInt64 := Journal.ReadInt64();
          Duration := TMillisecondsDuration(DurationAsInt64);
          FBankedResearch[Research] := Duration;
       end;
    end;
-   Temp := Journal.ReadCardinal();
-   if (Temp <> TResearch.kNil) then
+   ResearchID := Journal.ReadInt32();
+   if (ResearchID <> TResearch.kNil) then
    begin
-      FCurrentResearch := CachedSystem.Encyclopedia.Researches[Temp]; // $R-
+      FCurrentResearch := CachedSystem.Encyclopedia.Researches[ResearchID]; // $R-
       FResearchStartTime := TTimeInMilliseconds.FromMilliseconds(Journal.ReadInt64());
    end;
    Count := Journal.ReadCardinal();
@@ -222,7 +222,7 @@ begin
    begin
       for Index := 0 to Count - 1 do // $R-
       begin
-         ResearchID := Journal.ReadCardinal(); // $R-
+         ResearchID := Journal.ReadInt32(); // $R-
          FSpecialties[Index] := CachedSystem.Encyclopedia.Researches[ResearchID];
       end;
    end;
@@ -360,8 +360,11 @@ begin
       if (Message.CloseInput()) then
       begin
          Message.Reply();
-         FTopic := Topic;
-         ScheduleUpdateResearch();
+         if (FTopic <> Topic) then
+         begin
+            FTopic := Topic;
+            ScheduleUpdateResearch();
+         end;
          Message.CloseOutput();
       end;
       Result := True;

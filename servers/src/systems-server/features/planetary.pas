@@ -282,7 +282,7 @@ var
    Visibility: TVisibility;
 begin
    Visibility := Parent.ReadVisibilityFor(DynastyIndex, CachedSystem);
-   if ((dmDetectable * Visibility <> []) and (dmClassKnown in Visibility) and (dmInternals in Visibility)) then
+   if ((dmDetectable * Visibility <> []) and (dmClassKnown in Visibility)) then
    begin
       Writer.WriteCardinal(fcPlanetaryBody);
    end;

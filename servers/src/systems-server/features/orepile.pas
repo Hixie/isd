@@ -18,6 +18,7 @@ type
    public
       procedure Init(DynastyCount: Cardinal); // TODO: use an arena somehow
       procedure Done();
+      procedure Reset();
       procedure ResetKnowledge(DynastyIndex: Cardinal);
       procedure AddKnowledge(DynastyIndex: Cardinal; Value: TOreFilter);
       property Materials[DynastyIndex: Cardinal]: TOreFilter read GetKnowledge; default;
@@ -55,7 +56,8 @@ type
       procedure HandleChanges(CachedSystem: TSystem); override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
       procedure ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynastyHashSet; CachedSystem: TSystem); override;
-      procedure HandleVisibility(const DynastyIndex: Cardinal; var Visibility: TVisibility; const Sensors: ISensorsProvider; const VisibilityHelper: TVisibilityHelper); override;
+      procedure ResetVisibility(CachedSystem: TSystem); override;
+      procedure HandleKnowledge(const DynastyIndex: Cardinal; const VisibilityHelper: TVisibilityHelper; const Sensors: ISensorsProvider); override;
    public
       constructor Create(AFeatureClass: TOrePileFeatureClass);
       destructor Destroy(); override;
@@ -119,6 +121,18 @@ procedure TOreMaterialKnowledgePackage.Done();
 begin
    if (IsPointer and Assigned(FArrayData)) then
       FreeMem(FArrayData);
+end;
+
+procedure TOreMaterialKnowledgePackage.Reset();
+begin
+   if (IsPointer) then
+   begin
+      TOreFilter.ClearArray(FArrayData, MemSize(FArrayData) div SizeOf(TOreFilter)); // $R-
+   end
+   else
+   begin
+      FSingleData.Clear();
+   end;
 end;
 
 {$IFOPT C+}
@@ -351,7 +365,12 @@ begin
    FDynastyKnowledge.Init(NewDynasties.Count);
 end;
 
-procedure TOrePileFeatureNode.HandleVisibility(const DynastyIndex: Cardinal; var Visibility: TVisibility; const Sensors: ISensorsProvider; const VisibilityHelper: TVisibilityHelper);
+procedure TOrePileFeatureNode.ResetVisibility(CachedSystem: TSystem);
+begin
+   FDynastyKnowledge.Reset();
+end;
+
+procedure TOrePileFeatureNode.HandleKnowledge(const DynastyIndex: Cardinal; const VisibilityHelper: TVisibilityHelper; const Sensors: ISensorsProvider);
 begin
    {$IFOPT C+} Assert(DynastyIndex < FDynastyKnowledge.Length); {$ENDIF}
    FDynastyKnowledge.AddKnowledge(DynastyIndex, Sensors.GetOreKnowledge());

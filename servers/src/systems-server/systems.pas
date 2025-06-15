@@ -26,10 +26,10 @@ uses
 // then the system calls TSystem.RecomputeVisibility. If the dynasties
 // present changed, this renumbers all the dynasties, and calls
 // TAssetNode.ResetDynastyNotes on every asset in the system with the
-// old and new dynasties. Otherwise, it just calls
-// TAssetNode.ResetVisibility on every asset. Then, it calls
-// TAssetNode.ApplyVisibility for each asset, and finally it calls
-// TAssetNode.CheckVisibilityChanged on each asset in tree order.
+// old and new dynasties. Otherwise, it calls
+// TAssetNode.ResetVisibility, TAssetNode.ApplyVisibility
+// TAssetNode.CheckVisibilityChanged, and TAssetNode.ApplyKnowledge on
+// each asset, walking the tree for each one in turn.
 //
 // TAssetNode.ResetDynastyNotes calls TFeatureNode.ResetDynastyNotes
 // on every feature in the system, copies the IDs over from the old
@@ -44,7 +44,7 @@ uses
 // appropriately, then calls TFeatureNode.ApplyVisibility on each
 // feature in the system. This is the mechanism to "see" things.
 //
-// TAssetNode.HandleVisibility is called by features during
+// TAssetNode.HandleVisibility is called by sensor features during
 // ApplyVisibility to inform assets that they have been detected. The
 // asset calls TFeatureNode.HandleVisibility for each feature, which
 // gives the features a chance to cloak themselves or track their own
@@ -72,6 +72,15 @@ uses
 // TFeatureNode.CheckVisibilityChanged on all its features, then
 // checks if the visibility changed since the last update, and calls
 // MarkAsDirty as appropriate.
+//
+// TAssetNode.ApplyKnowledge calls TFeatureNode.ApplyKnowledge on each
+// feature in the system. This is the mechanism to determine what is
+// known (materials and asset classes).
+//
+// TAssetNode.HandleKnowledge is called by sensor features during
+// ApplyKnowledge to inform assets that they have been access to a
+// databank. A link to an ISensorsProvider is passed along. The
+// API exposed in this way must not be cached.
 //
 // Some features do special things with visibility:
 //
@@ -110,7 +119,7 @@ type
 const
    dmNil = [];
    dmDetectable = [dmVisibleSpectrum]; // need one of these to get any data beyond what you can infer
-   dmOwnership = [dmInference, dmVisibleSpectrum, dmInternals];
+   dmOwnership = [dmInference, dmVisibleSpectrum, dmInternals]; // anything you own is visible
    
 type
    TAssetClass = class;
@@ -198,6 +207,7 @@ type
    public
       procedure Init(DynastyCount: Cardinal);
       procedure Done();
+      procedure Reset();
       procedure SetEntry(DynastyIndex: Cardinal; Value: Boolean);
       function GetEntry(DynastyIndex: Cardinal): Boolean;
       const
@@ -373,14 +383,14 @@ type
    end;
    {$IF SizeOf(TBonus) <> 24} {$FATAL TBonus has an unexpected size} {$ENDIF}
 
-   TResearchID = 0 .. High(Integer); // Integer range means we can use A-B to compare IDs, and use $FFFFFFFF as a sentinel.
+   TResearchID = Integer; // Negative values are internal. Positive values are from the tech tree. Integer range means we can use A-B to compare IDs, and use $FFFFFFFF as a sentinel.
    
    TResearch = class(TNode)
    public
       type
          TArray = array of TResearch;
       const
-         kNil = $FFFFFFFF;
+         kNil = Low(TResearchID);
    strict private
       FID: TResearchID;
       FDefaultTime: TMillisecondsDuration;
@@ -406,7 +416,7 @@ type
       constructor Create();
    end;
 
-   TResearchIDHashTable = class(specialize THashTable<TResearchID, TResearch, CardinalUtils>)
+   TResearchIDHashTable = class(specialize THashTable<TResearchID, TResearch, IntegerUtils>)
       constructor Create();
    end;
 
@@ -441,6 +451,8 @@ type
       constructor Create();
    end;
 
+   // TODO: add materials and asset classes as possible TNodes, so that things/topics can unlock when you build partiular things or mine particular materials.
+   
    TTechTreeReader = record
    strict private
       FTokenizer: TTokenizer;
@@ -496,11 +508,12 @@ const
    
 type
    ISensorsProvider = interface ['ISensorsProvider']
-      // Returns whether the material is known by the target's owner
-      // according to the knowledge bus at the target.
+      // Returns whether the material or asset class is known by the
+      // target's owner according to the knowledge bus at the target.
       //
       // This should only be called on the object in the stack frame
       // in which the object was provided.
+      function Knows(AssetClass: TAssetClass): Boolean;
       function Knows(Material: TMaterial): Boolean;
       function GetOreKnowledge(): TOreFilter;
       property OreKnowledge: TOreFilter read GetOreKnowledge;
@@ -533,9 +546,11 @@ type
       function HandleBusMessage(Message: TBusMessage): Boolean; virtual; // (send message down the tree) returns true if feature handled the message or should stop propagation
       procedure ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynastyHashSet; CachedSystem: TSystem); virtual;
       procedure ResetVisibility(CachedSystem: TSystem); virtual;
-      procedure ApplyVisibility(VisibilityHelper: TVisibilityHelper); virtual;
-      procedure HandleVisibility(const DynastyIndex: Cardinal; var Visibility: TVisibility; const Sensors: ISensorsProvider; const VisibilityHelper: TVisibilityHelper); virtual;
+      procedure ApplyVisibility(const VisibilityHelper: TVisibilityHelper); virtual;
+      procedure HandleVisibility(const DynastyIndex: Cardinal; var Visibility: TVisibility; const VisibilityHelper: TVisibilityHelper); virtual;
       procedure CheckVisibilityChanged(VisibilityHelper: TVisibilityHelper); virtual;
+      procedure ApplyKnowledge(const VisibilityHelper: TVisibilityHelper); virtual;
+      procedure HandleKnowledge(const DynastyIndex: Cardinal; const VisibilityHelper: TVisibilityHelper; const Sensors: ISensorsProvider); virtual;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); virtual;
       procedure HandleChanges(CachedSystem: TSystem); virtual;
       property System: TSystem read GetSystem;
@@ -643,9 +658,11 @@ type
       function HandleBusMessage(Message: TBusMessage): Boolean; // called by a bus (ManageBusMessage) to send a message down the tree; returs true if message was handled
       procedure ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynastyHashSet; CachedSystem: TSystem);
       procedure ResetVisibility(CachedSystem: TSystem);
-      procedure ApplyVisibility(VisibilityHelper: TVisibilityHelper);
-      procedure HandleVisibility(const DynastyIndex: Cardinal; var Visibility: TVisibility; const Sensors: ISensorsProvider; const VisibilityHelper: TVisibilityHelper);
+      procedure ApplyVisibility(const VisibilityHelper: TVisibilityHelper);
+      procedure HandleVisibility(const DynastyIndex: Cardinal; var Visibility: TVisibility; const VisibilityHelper: TVisibilityHelper);
       procedure CheckVisibilityChanged(VisibilityHelper: TVisibilityHelper);
+      procedure ApplyKnowledge(const VisibilityHelper: TVisibilityHelper);
+      procedure HandleKnowledge(const DynastyIndex: Cardinal; const VisibilityHelper: TVisibilityHelper; const Sensors: ISensorsProvider);
       function ReadVisibilityFor(DynastyIndex: Cardinal; CachedSystem: TSystem): TVisibility; inline;
       function IsVisibleFor(DynastyIndex: Cardinal; CachedSystem: TSystem): Boolean; inline;
       procedure HandleChanges(CachedSystem: TSystem);
@@ -846,8 +863,11 @@ end;
 constructor TReward.CreateForMessage(var Message: UTF8String);
 begin
    Assert((PtrUInt(Message) and TypeMask) = $00);
-   {$IFOPT C+} AssertStringIsReffed(Message, 1); {$ENDIF}
-   IncRefCount(Message);
+   if (not IsStringConstant(Message)) then
+   begin
+      {$IFOPT C+} AssertStringIsReffed(Message, 1); {$ENDIF}
+      IncRefCount(Message);
+   end;
    FData := PtrUInt(Message) or PtrUInt(rkMessage);
 end;
 
@@ -871,8 +891,11 @@ begin
       rkMessage:
          begin
             Value := GetMessage();
-            DecRefCount(Value);
-            {$IFOPT C+} AssertStringIsReffed(Message, 0); {$ENDIF}
+            if (not IsStringConstant(Message)) then
+            begin
+               DecRefCount(Value);
+               {$IFOPT C+} AssertStringIsReffed(Message, 0); {$ENDIF}
+            end;
          end;
       rkAssetClass,
       rkMaterial: ; // these are references, we don't own them
@@ -984,7 +1007,7 @@ end;
 
 function ResearchIDHash32(const Key: TResearchID): DWord;
 begin
-   Result := Integer32Hash32(Key);
+   Result := LongintHash32(Key);
 end;
 
 constructor TResearchHashSet.Create();
@@ -1430,15 +1453,23 @@ procedure TFeatureNode.ResetVisibility(CachedSystem: TSystem);
 begin
 end;
 
-procedure TFeatureNode.ApplyVisibility(VisibilityHelper: TVisibilityHelper);
+procedure TFeatureNode.ApplyVisibility(const VisibilityHelper: TVisibilityHelper);
 begin
 end;
 
-procedure TFeatureNode.HandleVisibility(const DynastyIndex: Cardinal; var Visibility: TVisibility; const Sensors: ISensorsProvider; const VisibilityHelper: TVisibilityHelper);
+procedure TFeatureNode.HandleVisibility(const DynastyIndex: Cardinal; var Visibility: TVisibility; const VisibilityHelper: TVisibilityHelper);
 begin
 end;
 
 procedure TFeatureNode.CheckVisibilityChanged(VisibilityHelper: TVisibilityHelper);
+begin
+end;
+
+procedure TFeatureNode.ApplyKnowledge(const VisibilityHelper: TVisibilityHelper);
+begin
+end;
+
+procedure TFeatureNode.HandleKnowledge(const DynastyIndex: Cardinal; const VisibilityHelper: TVisibilityHelper; const Sensors: ISensorsProvider);
 begin
 end;
 
@@ -1789,7 +1820,6 @@ begin
       if (Candidate > Result) then
          Result := Candidate;
    end;
-   Assert(Result > 0.0, 'Asset "' + AssetName + '" of class "' + FAssetClass.Name + '" has zero size.');
 end;
 
 function TAssetNode.GetDensity(): Double;
@@ -1961,7 +1991,7 @@ begin
       Feature.ResetVisibility(CachedSystem);
 end;
 
-procedure TAssetNode.ApplyVisibility(VisibilityHelper: TVisibilityHelper);
+procedure TAssetNode.ApplyVisibility(const VisibilityHelper: TVisibilityHelper);
 var
    Feature: TFeatureNode;
 begin
@@ -1971,13 +2001,13 @@ begin
       Feature.ApplyVisibility(VisibilityHelper);
 end;
 
-procedure TAssetNode.HandleVisibility(const DynastyIndex: Cardinal; var Visibility: TVisibility; const Sensors: ISensorsProvider; const VisibilityHelper: TVisibilityHelper);
+procedure TAssetNode.HandleVisibility(const DynastyIndex: Cardinal; var Visibility: TVisibility; const VisibilityHelper: TVisibilityHelper);
 var
    Feature: TFeatureNode;
 begin
    Assert((not Assigned(Owner)) or (VisibilityHelper.GetDynastyIndex(Owner) = DynastyIndex) or IsReal());
    for Feature in FFeatures do
-      Feature.HandleVisibility(DynastyIndex, Visibility, Sensors, VisibilityHelper);
+      Feature.HandleVisibility(DynastyIndex, Visibility, VisibilityHelper);
    if (Visibility <> []) then
       VisibilityHelper.AddSpecificVisibilityByIndex(DynastyIndex, Visibility, Self);
 end;
@@ -2036,6 +2066,24 @@ begin
    end;
 end;
 
+procedure TAssetNode.ApplyKnowledge(const VisibilityHelper: TVisibilityHelper);
+var
+   Feature: TFeatureNode;
+begin
+   for Feature in FFeatures do
+      Feature.ApplyKnowledge(VisibilityHelper);
+end;
+
+procedure TAssetNode.HandleKnowledge(const DynastyIndex: Cardinal; const VisibilityHelper: TVisibilityHelper; const Sensors: ISensorsProvider);
+var
+   Feature: TFeatureNode;
+begin
+   if (Sensors.Knows(FAssetClass)) then
+      VisibilityHelper.AddSpecificVisibilityByIndex(DynastyIndex, [dmClassKnown], Self);
+   for Feature in FFeatures do
+      Feature.HandleKnowledge(DynastyIndex, VisibilityHelper, Sensors);
+end;
+
 function TAssetNode.ReadVisibilityFor(DynastyIndex: Cardinal; CachedSystem: TSystem): TVisibility;
 begin
    if (CachedSystem.IsLongVisibilityMode) then
@@ -2079,7 +2127,7 @@ begin
       Assert(Mass >= 0.0);
       Writer.WriteDouble(Mass);
       Writer.WriteDouble(MassFlowRate.AsDouble);
-      Assert(Size > 0.0);
+      Assert(Size >= 0.0);
       Writer.WriteDouble(Size);
       Writer.WriteStringReference(AssetName);
       FAssetClass.SerializeFor(Self, DynastyIndex, Writer, CachedSystem);
@@ -2166,7 +2214,7 @@ begin
    begin
       Result := FDynastyNotes.AsShortDynasties[DynastyIndex].AssetID;
    end;
-   Assert(AllowZero or (Result > 0));
+   Assert(AllowZero or (Result > 0), 'Was forced to report a zero asset ID despite zero not being allowed in this context');
 end;
 
 procedure TAssetNode.SetParent(AParent: TFeatureNode);
@@ -2670,7 +2718,7 @@ var
       Result := True;
    end;
 
-   function UpdateVisibility(Asset: TAssetNode): Boolean;
+   function ApplyVisibility(Asset: TAssetNode): Boolean;
    begin
       Asset.ApplyVisibility(VisibilityHelper);
       Result := True;
@@ -2679,6 +2727,12 @@ var
    function CheckVisibility(Asset: TAssetNode): Boolean;
    begin
       Asset.CheckVisibilityChanged(VisibilityHelper);
+      Result := True;
+   end;
+
+   function ApplyKnowledge(Asset: TAssetNode): Boolean;
+   begin
+      Asset.ApplyKnowledge(VisibilityHelper);
       Result := True;
    end;
    
@@ -2692,8 +2746,9 @@ begin
       FRoot.Walk(@ResetVisibility, nil);
    end;
    VisibilityHelper.Init(Self);
-   FRoot.Walk(@UpdateVisibility, nil);
+   FRoot.Walk(@ApplyVisibility, nil);
    FRoot.Walk(@CheckVisibility, nil);
+   FRoot.Walk(@ApplyKnowledge, nil);
 end;
 
 procedure TSystem.ReportChanges();
@@ -2729,7 +2784,7 @@ var
 begin
    if (not Dirty) then
       exit;
-   Writeln('== ReportChanges for system ', FSystemID, ' ==');
+   Writeln('== ReportChanges for system ', FSystemID, ' (', HexStr(FSystemID, 6), ') ==');
    Assert((dkAffectsVisibility in FChanges) or not (dkAffectsDynastyCount in FChanges)); // dkAffectsDynastyCount requires dkAffectsVisibility
    if (dkAffectsVisibility in FChanges) then
       RecomputeVisibility();
@@ -2965,6 +3020,12 @@ begin
 end;
 
 
+function TKnowledgeSummary.IsLongMode(): Boolean;
+begin
+   Assert(Assigned(AsRawPointer));
+   Result := not AsShortDynasties[-1];
+end;
+
 procedure TKnowledgeSummary.Init(DynastyCount: Cardinal);
 var
    RequiredSize: Cardinal;
@@ -2984,27 +3045,37 @@ begin
    end
    else
    begin
-      if (IsLongMode) then
+      if (Assigned(AsRawPointer) and IsLongMode) then
          FreeMem(AsRawPointer);
       AsShortDynasties[-1] := True;
       Assert(not IsLongMode);
    end;
+   Reset();
 end;
    
 procedure TKnowledgeSummary.Done();
 begin
-   if (IsLongMode) then
+   if (Assigned(AsRawPointer) and IsLongMode) then
       FreeMem(AsRawPointer);
    AsRawPointer := nil;
 end;
 
-function TKnowledgeSummary.IsLongMode(): Boolean;
+procedure TKnowledgeSummary.Reset();
 begin
-   Result := not AsShortDynasties[-1];
+   Assert(Assigned(AsRawPointer));
+   if (IsLongMode) then
+   begin
+      FillByte(AsRawPointer^, MemSize(AsRawPointer), $00); // $R-
+   end
+   else
+   begin
+      AsRawPointer := Pointer($01); // zero all bits except the LSB, which is used to mark that we're in short mode
+   end;
 end;
 
 procedure TKnowledgeSummary.SetEntry(DynastyIndex: Cardinal; Value: Boolean);
 begin
+   Assert(Assigned(AsRawPointer));
    if (IsLongMode()) then
    begin
       AsLongDynasties^[DynastyIndex] := Value;
@@ -3017,6 +3088,7 @@ end;
 
 function TKnowledgeSummary.GetEntry(DynastyIndex: Cardinal): Boolean;
 begin
+   Assert(Assigned(AsRawPointer));
    if (IsLongMode()) then
    begin
       Result := AsLongDynasties^[DynastyIndex];

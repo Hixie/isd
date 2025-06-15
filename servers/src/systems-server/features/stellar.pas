@@ -24,7 +24,7 @@ type
    protected
       function GetMass(): Double; override;
       function GetSize(): Double; override;
-      procedure ApplyVisibility(VisibilityHelper: TVisibilityHelper); override;
+      procedure ApplyVisibility(const VisibilityHelper: TVisibilityHelper); override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
       function GetAssetName(): UTF8String;
    public
@@ -134,7 +134,7 @@ begin
    // Result := Result * Modifier(0.9, 1.1, StarID, TemperatureSalt);
 end;
 
-procedure TStarFeatureNode.ApplyVisibility(VisibilityHelper: TVisibilityHelper);
+procedure TStarFeatureNode.ApplyVisibility(const VisibilityHelper: TVisibilityHelper);
 begin
    Assert(Assigned(Parent));
    VisibilityHelper.AddBroadVisibility([dmVisibleSpectrum], Parent);

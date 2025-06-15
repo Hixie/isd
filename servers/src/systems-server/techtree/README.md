@@ -89,6 +89,7 @@ class classid {
   feature: TFoodGenerationFeatureClass size 10;
   feature: TKnowledgeBusFeatureClass;
   feature: TKnowledgeFeatureClass;
+  feature: TMaterialPile for "Iron", capacity 10kg; // or 10 units
   feature: TMessageBoardFeatureClass spawns classid;
   feature: TMessageFeatureClass;
   feature: TMiningFeatureClass max throughput 1kg/s;
@@ -96,7 +97,7 @@ class classid {
   feature: TParameterizedGridFeatureClass 3x3, 4m, land; // or spacedock
   feature: TPopulationFeatureClass;
   feature: TProxyFeatureClass;
-  feature: TRefiningFeatureClass for iron, max throughput 1kg/s;
+  feature: TRefiningFeatureClass for "Iron", max throughput 1kg/s;
   feature: TRegionFeatureClass at depth 2, 5 materials of quantity 1000000000000000; // (a thousand trillion units) ("of quantity ..." is optional, defaults to max)
   feature: TResearchFeatureClass provides "topic1", provides "topic2";
   feature: TSizeFeatureClass 100m;

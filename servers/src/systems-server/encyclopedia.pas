@@ -16,7 +16,8 @@ type
          FResearches: TResearchIDHashTable;
          FTopics: TTopicHashTable;
          FSpace, FOrbits: TAssetClass;
-         FPlaceholderShip, FRockPile: TAssetClass;
+         FPlaceholderShip: TAssetClass;
+         FPlaceholderShipInstructionManual: TResearch;
          FCrater: TAssetClass;
          FMessage: TAssetClass;
          FStars: array[TStarCategory] of TAssetClass;
@@ -40,6 +41,7 @@ type
       procedure ProcessTechTree(TechTree: TTechnologyTree);
       property SpaceClass: TAssetClass read FSpace;
       property PlaceholderShip: TAssetClass read FPlaceholderShip;
+      property PlaceholderShipInstructionManual: TResearch read FPlaceholderShipInstructionManual;
       property StarClass[Category: TStarCategory]: TAssetClass read GetStarClass;
       function WrapAssetForOrbit(Child: TAssetNode): TAssetNode;
       function CreateLoneStar(StarID: TStarID): TAssetNode;
@@ -48,7 +50,6 @@ type
       function Craterize(Diameter: Double; OldAsset, NewAsset: TAssetNode): TAssetNode; override;
       property RegionClass: TAssetClass read FRegion;
       property MessageClass: TAssetClass read FMessage;
-      property RockPileClass: TAssetClass read FRockPile;
       property MinMassPerOreUnit: Double read FMinMassPerOreUnit;
    end;
 
@@ -59,7 +60,6 @@ const
    idPlaceholderShip = -3;
    idMessage = -4;
    idCrater = -5;
-   idRockPile = -6;
    idStars = -100; // -100..-199
    idPlanetaryBody = -200;
    idRegion = -201;
@@ -68,16 +68,33 @@ const
    // built-in materials
    idDarkMatter = -1;
 
+const
+   // built-in research
+   idPlaceholderShipInstructionManualResearch = -1;
+
 implementation
 
 uses
    sysutils, math, floatutils, exceptions, isdnumbers, icons,
    protoplanetary, time,
    // this must import every feature, so they get registered:
-   orbit, structure, stellar, name, size, sensors, orepile, mining,
-   planetary, region, plot, surface, grid, population, messages,
-   knowledge, food, proxy, rubble, research, refining;
+   food, grid, gridsensor, knowledge, materialpile, messages, mining,
+   name, orbit, orepile, planetary, plot, population, proxy, refining,
+   region, research, rubble, size, spacesensor, stellar, structure,
+   surface;
 
+var
+   InstructionManualText: UTF8String =
+      'Congratulations on your purchase of a Interstellar Dynasty Colony Ship.'#10 +
+      'This ship will take you and your party of up to 1000 colonists to your new world, ' +
+      'thus saving you from our planet''s impending doom.'#10 +
+      'While your Interstellar Dynasty Colony Ship is largely automated and ' +
+      'requires only minimal maintenance, in this manual you will find basic ' +
+      'instructions for the operation of your colony ship and various elementary ' +
+      'procedures that you may find useful upon arrival at your new home.'#10 +
+      'From all of us here at Interstellar Dynasties, we wish you a pleasant ' +
+      'settlement and a wonderful new life!';
+   
 function RoundAboveZero(Value: Double): Cardinal;
 begin
    Assert(Value < High(Result));
@@ -192,39 +209,6 @@ begin
       ZeroAbundance // abundances
    );
    FMaterials.Add(FDarkMatter.ID, FDarkMatter);
-   
-   FMessage := TAssetClass.Create(
-      idMessage,
-      'Message', 'Some sort of text',
-      'A notification.',
-      [
-         TMessageFeatureClass.Create(),
-         TKnowledgeFeatureClass.Create()
-      ],
-      MessageIcon,
-      []
-   );
-   RegisterAssetClass(FMessage);
-   
-   FPlaceholderShip := TAssetClass.Create(
-      idPlaceholderShip,                                   
-      'Colony Ship', 'Unidentified Flying Object',
-      'A ship that people used to escape their dying star.',
-      [
-         TSpaceSensorFeatureClass.Create(10 { max steps to orbit }, 10 { steps up from orbit }, 10 { steps down from top }, 0.01 { min size }, [dmVisibleSpectrum, dmClassKnown, dmInternals]),
-         TStructureFeatureClass.Create([TMaterialLineItem.Create('Shell', FDarkMatter, 10000 { mass in units (g): 10kg })], 1 { min functional quantity }, 500.0 { default diameter, m }),
-         TDynastyOriginalColonyShipFeatureClass.Create(),
-         TPopulationFeatureClass.Create(),
-         TMessageBoardFeatureClass.Create(FMessage),
-         TKnowledgeBusFeatureClass.Create(),
-         TFoodBusFeatureClass.Create(),
-         TFoodGenerationFeatureClass.Create(100),
-         TResearchFeatureClass.Create()
-      ],
-      ColonyShipIcon,
-      [beSpaceDock]
-   );
-   RegisterAssetClass(FPlaceholderShip);
 
    FPlanetaryBody := TAssetClass.Create(
       idPlanetaryBody,
@@ -269,19 +253,58 @@ begin
       []
    );
    RegisterAssetClass(FRegion);
-
-   FRockPile := TAssetClass.Create(
-      idRockPile,
-      'Cairn',
-      'Pile of rocks',
-      'A carefully stacked pile of rocks.',
+   
+   FMessage := TAssetClass.Create(
+      idMessage,
+      'Message', 'Some sort of text',
+      'A notification.',
       [
-         TStructureFeatureClass.Create([TMaterialLineItem.Create('Rocks', FMaterials[20], 1000)], 300, 1)
+         TMessageFeatureClass.Create(),
+         TKnowledgeFeatureClass.Create()
       ],
-      CairnIcon,
-      [bePlanetRegion]
+      MessageIcon,
+      []
    );
-   RegisterAssetClass(FRockPile);
+   RegisterAssetClass(FMessage);
+   
+   FPlaceholderShip := TAssetClass.Create(
+      idPlaceholderShip,                                   
+      'Colony Ship', 'Unidentified Flying Object',
+      'A ship that people used to escape their dying star.',
+      [
+         TSpaceSensorFeatureClass.Create(10 { max steps to orbit }, 3 { steps up from orbit }, 2 { steps down from top }, 2e5 { min size (meters) }, [dmVisibleSpectrum]),
+         TGridSensorFeatureClass.Create([dmVisibleSpectrum]),
+         TStructureFeatureClass.Create([TMaterialLineItem.Create('Shell', FDarkMatter, 10000 { mass in units (g): 10kg })], 1 { min functional quantity }, 500.0 { default diameter, m }),
+         TDynastyOriginalColonyShipFeatureClass.Create(),
+         TPopulationFeatureClass.Create(),
+         TMessageBoardFeatureClass.Create(FMessage),
+         TKnowledgeBusFeatureClass.Create(),
+         TFoodBusFeatureClass.Create(),
+         TFoodGenerationFeatureClass.Create(100),
+         TResearchFeatureClass.Create(),
+         TKnowledgeFeatureClass.Create() // the instruction manual, ziptied to the ship
+      ],
+      ColonyShipIcon,
+      [beSpaceDock]
+   );
+   RegisterAssetClass(FPlaceholderShip);
+
+   FPlaceholderShipInstructionManual := TResearch.Create(
+      idPlaceholderShipInstructionManualResearch,
+      TMillisecondsDuration.Zero,
+      0,
+      [],
+      [],
+      [
+         TReward.CreateForMessage(InstructionManualText),
+         TReward.CreateForAssetClass(FPlaceholderShip),
+         TReward.CreateForAssetClass(FMessage),
+         TReward.CreateForAssetClass(FPlanetaryBody),
+         TReward.CreateForAssetClass(FRegion),
+         TReward.CreateForAssetClass(FCrater)
+      ]
+   );
+   FResearches[FPlaceholderShipInstructionManual.ID] := FPlaceholderShipInstructionManual;
 end;
 
 destructor TEncyclopedia.Destroy();

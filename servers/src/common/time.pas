@@ -15,6 +15,7 @@ type
       function GetIsInfinite(): Boolean; inline;
       class function GetNegInfinity(): TMillisecondsDuration; inline; static;
       class function GetInfinity(): TMillisecondsDuration; inline; static;
+      class function GetZero(): TMillisecondsDuration; inline; static;
    public
       constructor FromMilliseconds(A: Double); overload;
       constructor FromMilliseconds(A: Int64); overload;
@@ -29,6 +30,7 @@ type
       property AsInt64: Int64 read Value; // for storage, restore with FromMilliseconds(Int64)
       class property NegInfinity: TMillisecondsDuration read GetNegInfinity;
       class property Infinity: TMillisecondsDuration read GetInfinity;
+      class property Zero: TMillisecondsDuration read GetZero;
    end;
 
    TTimeInMilliseconds = record // solar system absolute time (in milliseconds); supports Infinity and -Infinity
@@ -64,7 +66,7 @@ type
       property AsDouble: Double read Value; // for storage, restore with FromFactor(Double)
       function ToString(): UTF8String;
    end;
-
+   
    TRate = record
    private
       Value: Double;
@@ -125,7 +127,7 @@ operator >= (A: TRate; B: TRate): Boolean; inline;
 implementation
 
 uses
-   dateutils, math, sysutils;
+   dateutils, math, sysutils, exceptions;
 
 const FloatFormat: TFormatSettings = (
    CurrencyFormat: 1;
@@ -213,6 +215,11 @@ end;
 class function TMillisecondsDuration.GetInfinity(): TMillisecondsDuration;
 begin
    Result := TMillisecondsDuration.FromMilliseconds(High(Int64));
+end;
+
+class function TMillisecondsDuration.GetZero(): TMillisecondsDuration;
+begin
+   Result := TMillisecondsDuration.FromMilliseconds(0);
 end;
 
 function TMillisecondsDuration.ToString(): UTF8String;

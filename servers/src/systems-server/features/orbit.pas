@@ -57,7 +57,9 @@ type
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
       function ManageBusMessage(Message: TBusMessage): TBusMessageResult; override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
+      procedure HandleVisibility(const DynastyIndex: Cardinal; var Visibility: TVisibility; const VisibilityHelper: TVisibilityHelper); override;
       procedure CheckVisibilityChanged(VisibilityHelper: TVisibilityHelper); override;
+      procedure HandleKnowledge(const DynastyIndex: Cardinal; const VisibilityHelper: TVisibilityHelper; const Sensors: ISensorsProvider); override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
       procedure HandleChanges(CachedSystem: TSystem); override;
       procedure HandleCrash(var Data);
@@ -427,7 +429,7 @@ begin
    Result := TRate.Zero;
    if (Assigned(FPrimaryChild)) then
    begin
-      Assert(FPrimaryChild.MassFlowRate.IsZero, 'unexpected mass flow rate from ' + FPrimaryChild.DebugName + ' ' + FPrimaryChild.MassFlowRate.ToString('kg') + '(' + FloatToStr(FPrimaryChild.MassFlowRate.AsDouble) + ')');
+      Assert(FPrimaryChild.MassFlowRate.IsZero, 'unexpected mass flow rate from ' + FPrimaryChild.DebugName + ' ' + FPrimaryChild.MassFlowRate.ToString('kg') + ' (' + FloatToStr(FPrimaryChild.MassFlowRate.AsDouble) + ')');
       Result := Result + FPrimaryChild.MassFlowRate;
    end;
    for Child in FChildren do
@@ -443,7 +445,7 @@ function TOrbitFeatureNode.GetSize(): Double;
 begin
    if (Assigned(FPrimaryChild)) then
    begin
-      Assert(FPrimaryChild.MassFlowRate.IsZero);
+      Assert(FPrimaryChild.MassFlowRate.IsZero, 'non-zero mass flow rate for ' + FPrimaryChild.DebugName + ': ' + FloatToStr(FPrimaryChild.MassFlowRate.AsDouble));
       if (Parent.Parent is IHillDiameterProvider) then
       begin
          Result := (Parent.Parent as IHillDiameterProvider).GetHillDiameter(Parent, FPrimaryChild.Mass);
@@ -521,6 +523,11 @@ begin
    Result := False;
 end;
 
+procedure TOrbitFeatureNode.HandleVisibility(const DynastyIndex: Cardinal; var Visibility: TVisibility; const VisibilityHelper: TVisibilityHelper);
+begin
+   FPrimaryChild.HandleVisibility(DynastyIndex, Visibility, VisibilityHelper);
+end;
+
 procedure TOrbitFeatureNode.CheckVisibilityChanged(VisibilityHelper: TVisibilityHelper);
 var
    Visible: Boolean;
@@ -531,7 +538,8 @@ begin
    begin
       for DynastyIndex := 0 to VisibilityHelper.System.DynastyCount - 1 do // $R-
       begin
-         Visible := FPrimaryChild.IsVisibleFor(DynastyIndex, VisibilityHelper.System);
+         Visible := Parent.IsVisibleFor(DynastyIndex, VisibilityHelper.System)
+                 or FPrimaryChild.IsVisibleFor(DynastyIndex, VisibilityHelper.System);
          if (not Visible) then
          begin
             for Child in FChildren do
@@ -543,12 +551,16 @@ begin
          end;
          if (Visible) then
          begin
-            Assert(dmInference in Parent.ReadVisibilityFor(DynastyIndex, VisibilityHelper.System));
             VisibilityHelper.AddSpecificVisibilityByIndex(DynastyIndex, Parent.ReadVisibilityFor(DynastyIndex, VisibilityHelper.System), FPrimaryChild);
             VisibilityHelper.AddSpecificVisibilityByIndex(DynastyIndex, [dmClassKnown] + FPrimaryChild.ReadVisibilityFor(DynastyIndex, VisibilityHelper.System), Parent);
          end;
       end;
    end;
+end;
+
+procedure TOrbitFeatureNode.HandleKnowledge(const DynastyIndex: Cardinal; const VisibilityHelper: TVisibilityHelper; const Sensors: ISensorsProvider);
+begin
+   FPrimaryChild.HandleKnowledge(DynastyIndex, VisibilityHelper, Sensors);
 end;
 
 function TOrbitFeatureNode.GetOrbitName(): UTF8String;
@@ -565,25 +577,30 @@ end;
 procedure TOrbitFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
 var
    Child: TAssetNode;
+   Visibility: TVisibility;
 begin
-   Assert(Assigned(FPrimaryChild));
-   Writer.WriteCardinal(fcOrbit);
-   Assert(FPrimaryChild.IsVisibleFor(DynastyIndex, CachedSystem));
-   Writer.WriteCardinal(FPrimaryChild.ID(CachedSystem, DynastyIndex));
-   for Child in FChildren do
+   Visibility := Parent.ReadVisibilityFor(DynastyIndex, CachedSystem);
+   if (Visibility <> []) then
    begin
-      Assert(Assigned(Child));
-      if (Child.IsVisibleFor(DynastyIndex, CachedSystem)) then
+      Assert(Assigned(FPrimaryChild));
+      Writer.WriteCardinal(fcOrbit);
+      Assert(FPrimaryChild.IsVisibleFor(DynastyIndex, CachedSystem), 'Unexpected inconsistency in visibility between orbit and primary child');
+      Writer.WriteCardinal(FPrimaryChild.ID(CachedSystem, DynastyIndex));
+      for Child in FChildren do
       begin
-         Writer.WriteCardinal(Child.ID(CachedSystem, DynastyIndex));
-         Writer.WriteDouble(POrbitData(Child.ParentData)^.SemiMajorAxis);
-         Writer.WriteDouble(POrbitData(Child.ParentData)^.Eccentricity);
-         Writer.WriteDouble(POrbitData(Child.ParentData)^.Omega);
-         Writer.WriteInt64(POrbitData(Child.ParentData)^.TimeOrigin.AsInt64);
-         Writer.WriteBoolean(POrbitData(Child.ParentData)^.Clockwise);
+         Assert(Assigned(Child));
+         if (Child.IsVisibleFor(DynastyIndex, CachedSystem)) then
+         begin
+            Writer.WriteCardinal(Child.ID(CachedSystem, DynastyIndex));
+            Writer.WriteDouble(POrbitData(Child.ParentData)^.SemiMajorAxis);
+            Writer.WriteDouble(POrbitData(Child.ParentData)^.Eccentricity);
+            Writer.WriteDouble(POrbitData(Child.ParentData)^.Omega);
+            Writer.WriteInt64(POrbitData(Child.ParentData)^.TimeOrigin.AsInt64);
+            Writer.WriteBoolean(POrbitData(Child.ParentData)^.Clockwise);
+         end;
       end;
+      Writer.WriteCardinal(0);
    end;
-   Writer.WriteCardinal(0);
 end;
 
 procedure TOrbitFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);

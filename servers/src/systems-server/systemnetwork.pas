@@ -100,7 +100,7 @@ implementation
 
 uses
    sysutils, hashfunctions, isdprotocol, passwords, exceptions, space,
-   orbit, sensors, structure, errors, plot, planetary, math, time,
+   orbit, spacesensor, gridsensor, structure, errors, plot, planetary, math, time,
    population, messages, knowledge, isderrors, food, research;
 
 constructor TSystemHashTable.Create();
@@ -256,14 +256,16 @@ begin
          FServer.Encyclopedia.WrapAssetForOrbit(FServer.Encyclopedia.PlaceholderShip.Spawn(
             Dynasty, [
                TSpaceSensorFeatureNode.Create(FServer.Encyclopedia.PlaceholderShip.Features[0] as TSpaceSensorFeatureClass),
-               TStructureFeatureNode.Create(FServer.Encyclopedia.PlaceholderShip.Features[1] as TStructureFeatureClass, 10000 { materials quantity }, 10000 { hp }),
+               TGridSensorFeatureNode.Create(FServer.Encyclopedia.PlaceholderShip.Features[1] as TGridSensorFeatureClass),
+               TStructureFeatureNode.Create(FServer.Encyclopedia.PlaceholderShip.Features[2] as TStructureFeatureClass, 10000 { materials quantity }, 10000 { hp }),
                TDynastyOriginalColonyShipFeatureNode.Create(Dynasty),
                TPopulationFeatureNode.CreatePopulated(2000, 1.0),
-               TMessageBoardFeatureNode.Create(FServer.Encyclopedia.PlaceholderShip.Features[4] as TMessageBoardFeatureClass),
+               TMessageBoardFeatureNode.Create(FServer.Encyclopedia.PlaceholderShip.Features[5] as TMessageBoardFeatureClass),
                TKnowledgeBusFeatureNode.Create(),
                TFoodBusFeatureNode.Create(),
-               TFoodGenerationFeatureNode.Create(FServer.Encyclopedia.PlaceholderShip.Features[7] as TFoodGenerationFeatureClass),
-               TResearchFeatureNode.Create(FServer.Encyclopedia.PlaceholderShip.Features[8] as TResearchFeatureClass)
+               TFoodGenerationFeatureNode.Create(FServer.Encyclopedia.PlaceholderShip.Features[8] as TFoodGenerationFeatureClass),
+               TResearchFeatureNode.Create(FServer.Encyclopedia.PlaceholderShip.Features[9] as TResearchFeatureClass),
+               TKnowledgeFeatureNode.Create(FServer.Encyclopedia.PlaceholderShipInstructionManual)
             ]
          )),
          A,

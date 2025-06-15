@@ -94,6 +94,8 @@ type
       FBondAlbedo: Double;
       FTags: TMaterialTags;
       FAbundance: TMaterialAbundance;
+   private
+      function GetIsOre(): Boolean; inline;
    public
       constructor Create(AID: TMaterialID; AName, AAmbiguousName, ADescription: UTF8String; AIcon: TIcon; AUnitKind: TUnitKind; AMassPerUnit, ADensity, ABondAlbedo: Double; ATags: TMaterialTags; AAbundance: TMaterialAbundance);
       property ID: TMaterialID read FID; // negative numbers for built-in materials, TOres range for ores, positive numbers above TOres for tech tree components. Never zero.
@@ -107,6 +109,7 @@ type
       property BondAlbedo: Double read FBondAlbedo;
       property Tags: TMaterialTags read FTags;
       property Abundance: TMaterialAbundance read FAbundance;
+      property IsOre: Boolean read GetIsOre;
    end;
 
    TMaterialEncyclopedia = class
@@ -128,6 +131,7 @@ type
       function GetEnabledCount(): Cardinal;
    public
       procedure Clear(); inline; // sets all flags to disabled
+      class procedure ClearArray(Target: POreFilter; Count: Cardinal); inline; static; // calls Clear on Count TOreFilters starting at Target^
       procedure EnableAll(); inline; // sets all flags to enabled
       procedure Disable(Index: TOres); inline;
       procedure Enable(Index: TOres); inline;
@@ -301,6 +305,11 @@ begin
    FAbundance := AAbundance;
 end;
 
+function TMaterial.GetIsOre(): Boolean;
+begin
+   Result := (FID >= Low(TOres)) and (FID <= High(TOres));
+end;
+
 
 function TOreFilter.GetActive(): Boolean;
 begin
@@ -310,6 +319,12 @@ end;
 procedure TOreFilter.Clear();
 begin
    FFilterQuad := kAllDisabled;
+end;
+
+class procedure TOreFilter.ClearArray(Target: POreFilter; Count: Cardinal);
+begin
+   Assert(SizeOf(TOreFilter) = SIzeOf(QWord)); // otherwise we need a different function than FillQWord
+   FillQWord(Target^, Count, kAllDisabled);
 end;
 
 procedure TOreFilter.EnableAll();

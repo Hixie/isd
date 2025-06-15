@@ -67,7 +67,6 @@ type
       FIsRead: Boolean;
       FBody: UTF8String;
    protected
-      function GetSize(): Double; override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
    public
       constructor Create();
@@ -220,14 +219,22 @@ end;
 procedure TMessageBoardFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
 var
    Child: TAssetNode;
+   Visibility: TVisibility;
 begin
-   Writer.WriteCardinal(fcMessageBoard);
-   for Child in FChildren do
+   Visibility := Parent.ReadVisibilityFor(DynastyIndex, CachedSystem);
+   if ((dmDetectable * Visibility <> []) and (dmClassKnown in Visibility)) then
    begin
-      if (Child.IsVisibleFor(DynastyIndex, CachedSystem)) then
-         Writer.WriteCardinal(Child.ID(CachedSystem, DynastyIndex));
+      Writer.WriteCardinal(fcMessageBoard);
+      if (dmInternals in Visibility) then
+      begin
+         for Child in FChildren do
+         begin
+            if (Child.IsVisibleFor(DynastyIndex, CachedSystem)) then
+               Writer.WriteCardinal(Child.ID(CachedSystem, DynastyIndex));
+         end;
+      end;
+      Writer.WriteCardinal(0);
    end;
-   Writer.WriteCardinal(0);
 end;
 
 procedure TMessageBoardFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
@@ -322,20 +329,19 @@ begin
    FBody := ABody;
 end;
 
-function TMessageFeatureNode.GetSize(): Double;
-begin
-   // TODO: i don't know what the right answer is but it's not this
-   // Result := 1.0e-8;
-   Result := 50.0;
-end;
-
 procedure TMessageFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
+var
+   Visibility: TVisibility;
 begin
-   Writer.WriteCardinal(fcMessage);
-   Writer.WriteCardinal(FSourceSystemID);
-   Writer.WriteInt64(FTimestamp.AsInt64);
-   Writer.WriteBoolean(FIsRead); // if we add more flags, they should go into this byte
-   Writer.WriteStringReference(FBody);
+   Visibility := Parent.ReadVisibilityFor(DynastyIndex, CachedSystem);
+   if ((dmDetectable * Visibility <> []) and (dmClassKnown in Visibility)) then
+   begin
+      Writer.WriteCardinal(fcMessage);
+      Writer.WriteCardinal(FSourceSystemID);
+      Writer.WriteInt64(FTimestamp.AsInt64);
+      Writer.WriteBoolean(FIsRead); // if we add more flags, they should go into this byte
+      Writer.WriteStringReference(FBody);
+   end;
 end;
 
 procedure TMessageFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);

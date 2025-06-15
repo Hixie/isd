@@ -8,7 +8,9 @@ uses
    systems, serverstream, basenetwork, systemdynasty, techtree, tttokenizer, time;
 
 type
-   TGenericGridFeatureClass = class(TFeatureClass)
+   TGridFeatureClass = class abstract (TFeatureClass) end;
+   
+   TGenericGridFeatureClass = class(TGridFeatureClass)
    strict protected
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
@@ -16,7 +18,7 @@ type
       function InitFeatureNode(): TFeatureNode; override;
    end;
    
-   TParameterizedGridFeatureClass = class(TFeatureClass)
+   TParameterizedGridFeatureClass = class(TGridFeatureClass)
    strict private
       FBuildEnvironment: TBuildEnvironment;
       FCellSize: Double;
@@ -270,23 +272,28 @@ end;
 
 procedure TGridFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
 var
+   Visibility: TVisibility;
    Child: TAssetNode;
 begin
    // You always know the size of a grid because if anything is inferred inside it, we need the size to place it.
-   Writer.WriteCardinal(fcGrid);
-   Writer.WriteDouble(FCellSize);
-   Writer.WriteCardinal(FDimension);
-   Writer.WriteCardinal(FDimension);
-   for Child in FChildren do
+   Visibility := Parent.ReadVisibilityFor(DynastyIndex, CachedSystem);
+   if (Visibility <> []) then
    begin
-      if (Child.IsVisibleFor(DynastyIndex, CachedSystem)) then
+      Writer.WriteCardinal(fcGrid);
+      Writer.WriteDouble(FCellSize);
+      Writer.WriteCardinal(FDimension);
+      Writer.WriteCardinal(FDimension);
+      for Child in FChildren do
       begin
-         Writer.WriteCardinal(Child.ID(CachedSystem, DynastyIndex));
-         Writer.WriteCardinal(PGridData(Child.ParentData)^.X);
-         Writer.WriteCardinal(PGridData(Child.ParentData)^.Y);
+         if (Child.IsVisibleFor(DynastyIndex, CachedSystem)) then
+         begin
+            Writer.WriteCardinal(Child.ID(CachedSystem, DynastyIndex));
+            Writer.WriteCardinal(PGridData(Child.ParentData)^.X);
+            Writer.WriteCardinal(PGridData(Child.ParentData)^.Y);
+         end;
       end;
+      Writer.WriteCardinal(0);
    end;
-   Writer.WriteCardinal(0);
 end;
 
 procedure TGridFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
@@ -400,6 +407,7 @@ begin
       if (Message.CloseInput()) then
       begin
          Message.Reply();
+         // TODO: limit this to knowledge bases that we can see
          KnownAssetClasses := TGetKnownAssetClassesMessage.Create(PlayerDynasty);
          InjectBusMessage(KnownAssetClasses); // we ignore the result - it doesn't matter if it wasn't handled
          for AssetClass in KnownAssetClasses do

@@ -164,6 +164,7 @@ end;
 
 procedure TCollectKnownMaterialsMessage.AddKnownMaterial(Material: TMaterial);
 begin
+   Writeln('collecting material knowledge: ', Material.Name);
    FKnownMaterials.Add(Material);
 end;
 
@@ -178,7 +179,8 @@ end;
 
 procedure TCollectKnownAssetClassesMessage.AddKnownAssetClass(AssetClass: TAssetClass);
 begin
-   FKnownAssetClasses.Add(AssetClass);
+   if (not FKnownAssetClasses.Has(AssetClass)) then
+      FKnownAssetClasses.Add(AssetClass);
 end;
 
 
@@ -397,6 +399,7 @@ begin
          Injected := InjectBusMessage(CollectMaterialsMessage);
          Assert(Injected = mrInjected); // we are a bus for this message!
          FKnownMaterials[Dynasty] := KnownMaterialsForDynasty;
+         Writeln(Parent.DebugName, ' handled ', Message.ClassName, ' and found ', KnownMaterialsForDynasty.Count, ' materials');
          FreeAndNil(CollectMaterialsMessage);
       end;
       (Message as TGetKnownMaterialsMessage).SetKnownMaterials(Self, FKnownMaterials[Dynasty]);
@@ -417,6 +420,7 @@ begin
          Injected := InjectBusMessage(CollectAssetClassesMessage);
          Assert(Injected = mrInjected); // we are a bus for this message!
          FKnownAssetClasses[Dynasty] := KnownAssetClassesForDynasty;
+         Writeln(Parent.DebugName, ' handled ', Message.ClassName, ' and found ', KnownAssetClassesForDynasty.Count, ' asset classes');
          FreeAndNil(CollectAssetClassesMessage);
       end;
       (Message as TGetKnownAssetClassesMessage).SetKnownAssetClasses(Self, FKnownAssetClasses[Dynasty]);
@@ -488,18 +492,28 @@ begin
 end;
 
 function TKnowledgeFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
+
+   function CanSeeKnowledge(Target: TDynasty): Boolean;
+   var     
+      Visibility: TVisibility;
+      CachedSystem: TSystem;
+   begin
+      if (not Assigned(FResearch)) then
+      begin
+         Result := False;
+         exit;
+      end;
+      CachedSystem := System;
+      Visibility := Parent.ReadVisibilityFor(CachedSystem.DynastyIndex[Target], CachedSystem);
+      Result := dmInternals in Visibility;
+   end;
+
 var
    Reward: TReward;
-
-   function IsVisible(Dynasty: TDynasty; CachedSystem: TSystem): Boolean;
-   begin
-      Result := [dmClassKnown, dmVisibleSpectrum, dmInternals] <= Parent.ReadVisibilityFor(CachedSystem.DynastyIndex[Dynasty], CachedSystem);
-   end;
-   
 begin
    if (Message is TCollectKnownMaterialsMessage) then
    begin
-      if (Assigned(FResearch) and IsVisible((Message as TCollectKnownMaterialsMessage).Owner, (Message as TCollectKnownMaterialsMessage).CachedSystem)) then
+      if (CanSeeKnowledge((Message as TCollectKnownMaterialsMessage).Owner)) then
       begin
          for Reward in FResearch.Rewards do
          begin
@@ -511,7 +525,7 @@ begin
    else
    if (Message is TCollectKnownAssetClassesMessage) then
    begin
-      if (Assigned(FResearch) and IsVisible((Message as TCollectKnownAssetClassesMessage).Owner, (Message as TCollectKnownAssetClassesMessage).CachedSystem)) then
+      if (CanSeeKnowledge((Message as TCollectKnownAssetClassesMessage).Owner)) then
       begin
          for Reward in FResearch.Rewards do
          begin
@@ -523,7 +537,7 @@ begin
    else
    if (Message is TCollectKnownResearchesMessage) then
    begin
-      if (Assigned(FResearch) and IsVisible((Message as TCollectKnownResearchesMessage).Owner, (Message as TCollectKnownResearchesMessage).CachedSystem)) then
+      if (CanSeeKnowledge((Message as TCollectKnownResearchesMessage).Owner)) then
       begin
          (Message as TCollectKnownResearchesMessage).AddKnownResearch(FResearch);
       end;
@@ -585,19 +599,19 @@ procedure TKnowledgeFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSys
 begin
    if (Assigned(FResearch)) then
    begin
-      Journal.WriteCardinal(FResearch.ID);
+      Journal.WriteInt32(FResearch.ID);
    end
    else
    begin
-      Journal.WriteCardinal(TResearch.kNil);
+      Journal.WriteInt32(TResearch.kNil);
    end;
 end;
    
 procedure TKnowledgeFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
 var
-   ID: Cardinal;
+   ID: TResearchID;
 begin
-   ID := Journal.ReadCardinal();
+   ID := Journal.ReadInt32();
    if (ID <> TResearch.kNil) then
    begin
       Assert(ID >= Low(TResearchID));
