@@ -51,9 +51,9 @@ end;
 
 constructor TGridSensorFeatureNode.CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem);
 begin
-   inherited CreateFromJournal(Journal, AFeatureClass, ASystem);
    Assert(Assigned(AFeatureClass));
    FFeatureClass := AFeatureClass as TGridSensorFeatureClass;
+   inherited CreateFromJournal(Journal, AFeatureClass, ASystem);
 end;
 
 procedure TGridSensorFeatureNode.ApplyVisibility(const VisibilityHelper: TVisibilityHelper);
@@ -133,6 +133,7 @@ begin
       OwnerIndex := VisibilityHelper.GetDynastyIndex(Parent.Owner);
       FGrid.Walk(@SenseDown, nil);
    end;
+   Writeln('Freeing FKnownMaterials and FKnownAssetClasses for ', DebugName);
    FreeAndNil(FKnownMaterials);
    FreeAndNil(FKnownAssetClasses);
 end;

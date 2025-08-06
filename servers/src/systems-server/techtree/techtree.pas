@@ -43,6 +43,7 @@ function ReadLength(Tokens: TTokenizer): Double;
 function ReadMass(Tokens: TTokenizer): Double;
 function ReadMassPerTime(Tokens: TTokenizer): TRate;
 function ReadQuantity(Tokens: TTokenizer; Material: TMaterial): Int64;
+function ReadKeywordPerTime(Tokens: TTokenizer; Keyword: UTF8String; Min, Max: Int64): TRate;
 
 implementation
 
@@ -433,21 +434,21 @@ var
                begin
                   Include(Components, rcRequires);
                   Node := ParseNodeReference();
-                  SetLength(Requirements, Length(Requirements) + 1); // XXX potentially expensive allocation and copy
+                  SetLength(Requirements, Length(Requirements) + 1); // TODO: potentially expensive allocation and copy
                   Requirements[High(Requirements)] := Node;
                   Tokens.ReadSemicolon();
                end;
             'with':
                begin
                   Include(Components, rcWith);
-                  SetLength(Bonuses, Length(Bonuses) + 1); // XXX potentially expensive allocation and copy
+                  SetLength(Bonuses, Length(Bonuses) + 1); // TODO: potentially expensive allocation and copy
                   ParseBonus(Bonuses[High(Bonuses)], Components, DefaultTime, DefaultWeight, False);
                   Tokens.ReadSemicolon();
                end;
             'without':
                begin
                   Include(Components, rcWith);
-                  SetLength(Bonuses, Length(Bonuses) + 1); // XXX potentially expensive allocation and copy
+                  SetLength(Bonuses, Length(Bonuses) + 1); // TODO: potentially expensive allocation and copy
                   ParseBonus(Bonuses[High(Bonuses)], Components, DefaultTime, DefaultWeight, True);
                   Tokens.ReadSemicolon();
                end;
@@ -934,27 +935,6 @@ begin
    end;
 end;
 
-function ReadMassPerTime(Tokens: TTokenizer): TRate;
-var
-   Keyword: UTF8String;
-   Value: Double;
-begin
-   Value := ReadMass(Tokens);
-   if (Value < 0.0) then
-      Tokens.Error('Invalid throughput "%f"; must be positive', [Value]);
-   Tokens.ReadSlash();
-   Keyword := Tokens.ReadIdentifier();
-   case Keyword of
-      'h': Value := Value / (60.0 * 60.0 * 1000.0);
-      'min': Value := Value / (60.0 * 1000.0);
-      's': Value := Value / 1000.0;
-      'ms': ;
-   else
-      Tokens.Error('Unknown unit for time "%s"', [Keyword]);
-   end;
-   Result := TRate.FromPerMillisecond(Value);
-end;
-
 function ReadQuantity(Tokens: TTokenizer; Material: TMaterial): Int64;
 var
    Value: Int64;
@@ -972,6 +952,42 @@ begin
    else
       Tokens.Error('Unknown unit for quantity "%s"', [Keyword]);
    end;
+end;
+
+function ConvertValueToRate(Tokens: TTokenizer; Value: Double): TRate;
+var
+   Keyword: UTF8String;
+begin
+   Tokens.ReadSlash();
+   Keyword := Tokens.ReadIdentifier();
+   case Keyword of
+      'h': Value := Value / (60.0 * 60.0 * 1000.0);
+      'min': Value := Value / (60.0 * 1000.0);
+      's': Value := Value / 1000.0;
+      'ms': ;
+   else
+      Tokens.Error('Unknown unit for time "%s"', [Keyword]);
+   end;
+   Result := TRate.FromPerMillisecond(Value);
+end;
+
+function ReadMassPerTime(Tokens: TTokenizer): TRate;
+var
+   Value: Double;
+begin
+   Value := ReadMass(Tokens);
+   if (Value < 0.0) then
+      Tokens.Error('Invalid throughput "%f"; must be positive', [Value]);
+   Result := ConvertValueToRate(Tokens, Value);
+end;
+
+function ReadKeywordPerTime(Tokens: TTokenizer; Keyword: UTF8String; Min, Max: Int64): TRate;
+var
+   Value: Double;
+begin
+   Value := ReadNumber(Tokens, Min, Max);
+   Tokens.ReadIdentifier(Keyword);
+   Result := ConvertValueToRate(Tokens, Value);
 end;
 
 initialization

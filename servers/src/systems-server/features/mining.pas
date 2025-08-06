@@ -4,6 +4,8 @@ unit mining;
 
 interface
 
+// TODO: refactor to avoid code duplication with refining.pas
+
 uses
    basenetwork, systems, serverstream, materials, techtree,
    messageport, region, time;
@@ -27,6 +29,7 @@ type
       function GetMinerMaxRate(): TRate; // kg per second
       function GetMinerCurrentRate(): TRate; // kg per second
       procedure StartMiner(Region: TRegionFeatureNode; Rate: TRate; SourceLimiting, TargetLimiting: Boolean);
+      procedure PauseMiner();
       procedure StopMiner();
    protected
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
@@ -45,7 +48,7 @@ type
 implementation
 
 uses
-   exceptions, sysutils, isdprotocol, knowledge, messages, typedump;
+   exceptions, sysutils, systemnetwork, systemdynasty, isderrors, isdprotocol, knowledge, messages, typedump;
 
 constructor TMiningFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
 begin
@@ -75,9 +78,9 @@ end;
 
 constructor TMiningFeatureNode.CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem);
 begin
-   inherited CreateFromJournal(Journal, AFeatureClass, ASystem);
    Assert(Assigned(AFeatureClass));
    FFeatureClass := AFeatureClass as TMiningFeatureClass;
+   inherited CreateFromJournal(Journal, AFeatureClass, ASystem);
 end;
 
 destructor TMiningFeatureNode.Destroy();
@@ -97,14 +100,27 @@ end;
 
 procedure TMiningFeatureNode.StartMiner(Region: TRegionFeatureNode; Rate: TRate; SourceLimiting, TargetLimiting: Boolean); // kg per second
 begin
+   Assert(Assigned(Region));
+   Writeln('StartMiner(', Region.Parent.DebugName, ', ', Rate.ToString('kg'), ', ', SourceLimiting, ', ', TargetLimiting, ')');
+   Writeln('  FStatus.Region = ', HexStr(FStatus.Region));
+   Writeln('  FStatus.Mode = ', specialize EnumToString<TRegionClientMode>(FStatus.Mode));
    Assert(FStatus.Enabled);
+   if ((FStatus.Region <> Region) or
+       (FStatus.Rate <> Rate) or
+       (FStatus.SourceLimiting <> SourceLimiting) or
+       (FStatus.TargetLimiting <> TargetLimiting)) then
+      MarkAsDirty([dkUpdateClients]);
    FStatus.Region := Region;
    FStatus.Rate := Rate;
    FStatus.SourceLimiting := SourceLimiting;
    FStatus.TargetLimiting := TargetLimiting;
    FStatus.Mode := rcActive;
-   MarkAsDirty([dkUpdateClients, dkUpdateJournal]);
-   Writeln('StartMiner(', Region.Parent.DebugName, ', ', Rate.ToString('kg'), ', ', SourceLimiting, ', ', TargetLimiting, ')');
+end;
+
+procedure TMiningFeatureNode.PauseMiner();
+begin
+   Writeln('PauseMiner(', FStatus.Region.Parent.DebugName, ')');
+   FStatus.Mode := rcPending;
 end;
 
 procedure TMiningFeatureNode.StopMiner();
@@ -115,23 +131,24 @@ begin
    FStatus.SourceLimiting := False;
    FStatus.TargetLimiting := False;
    FStatus.Mode := rcIdle;
-   MarkAsDirty([dkUpdateClients, dkUpdateJournal, dkNeedsHandleChanges]);
+   MarkAsDirty([dkUpdateClients, dkNeedsHandleChanges]);
 end;
 
 procedure TMiningFeatureNode.HandleChanges(CachedSystem: TSystem);
 var
    Message: TRegisterMinerBusMessage;
 begin
-   // If a region stops us, they will probably restart us before we get here.
    if ((FStatus.Enabled) and (FStatus.Mode = rcIdle)) then
    begin
       Message := TRegisterMinerBusMessage.Create(Self);
       if (InjectBusMessage(Message) = mrHandled) then
       begin
+         Assert(FStatus.Mode = rcIdle);
          FStatus.Mode := rcPending;
       end
       else
       begin
+         Assert(FStatus.Mode = rcIdle);
          FStatus.Mode := rcNoRegion;
       end;
       FreeAndNil(Message);
@@ -176,10 +193,18 @@ begin
 end;
 
 function TMiningFeatureNode.HandleCommand(Command: UTF8String; var Message: TMessage): Boolean;
+var
+   PlayerDynasty: TDynasty;
 begin
    if (Command = 'enable') then
    begin
       Result := True;
+      PlayerDynasty := (Message.Connection as TConnection).PlayerDynasty;
+      if (PlayerDynasty <> Parent.Owner) then
+      begin
+         Message.Error(ieInvalidCommand);
+         exit;
+      end;
       Message.Reply();
       if (FStatus.Enabled) then
       begin
@@ -187,6 +212,7 @@ begin
       end
       else
       begin
+         Assert(FStatus.Mode = rcIdle);
          Message.Output.WriteBoolean(True);
          FStatus.Enabled := True;
          MarkAsDirty([dkUpdateClients, dkUpdateJournal, dkNeedsHandleChanges]);
@@ -197,17 +223,23 @@ begin
    if (Command = 'disable') then
    begin
       Result := True;
+      PlayerDynasty := (Message.Connection as TConnection).PlayerDynasty;
+      if (PlayerDynasty <> Parent.Owner) then
+      begin
+         Message.Error(ieInvalidCommand);
+         exit;
+      end;
       Message.Reply();
       if (FStatus.Enabled) then
       begin
+         Message.Output.WriteBoolean(True);
          if (FStatus.Mode in [rcPending, rcActive]) then
          begin
             Assert(Assigned(FStatus.Region));
             FStatus.Region.RemoveMiner(Self);
-            FStatus.Region := nil;
          end;
+         FStatus.Disable();
          Assert(not Assigned(FStatus.Region));
-         Message.Output.WriteBoolean(True);
          FStatus.Enabled := False;
          MarkAsDirty([dkUpdateClients, dkUpdateJournal, dkNeedsHandleChanges]);
       end

@@ -82,9 +82,9 @@ end;
 
 constructor TSpaceSensorFeatureNode.CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem);
 begin
-   inherited CreateFromJournal(Journal, AFeatureClass, ASystem);
    Assert(Assigned(AFeatureClass));
    FFeatureClass := AFeatureClass as TSpaceSensorFeatureClass;
+   inherited CreateFromJournal(Journal, AFeatureClass, ASystem);
 end;
 
 procedure TSpaceSensorFeatureNode.ApplyVisibility(const VisibilityHelper: TVisibilityHelper);

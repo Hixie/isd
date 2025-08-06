@@ -36,9 +36,10 @@ type
    TTimeInMilliseconds = record // solar system absolute time (in milliseconds); supports Infinity and -Infinity
    private
       Value: Int64;
+      function GetIsInfinite(): Boolean; inline;
       class function GetNegInfinity(): TTimeInMilliseconds; inline; static;
       class function GetInfinity(): TTimeInMilliseconds; inline; static;
-      function GetIsInfinite(): Boolean; inline;
+      {$IFOPT C+} class function GetZero(): TTimeInMilliseconds; inline; static; {$ENDIF}
    public
       constructor FromMilliseconds(A: Double); overload;
       constructor FromMilliseconds(A: Int64); overload;
@@ -47,6 +48,7 @@ type
       property IsInfinite: Boolean read GetIsInfinite;
       class property NegInfinity: TTimeInMilliseconds read GetNegInfinity;
       class property Infinity: TTimeInMilliseconds read GetInfinity;
+      {$IFOPT C+} class property Zero: TTimeInMilliseconds read GetZero; {$ENDIF} // there's really no need to specifically have the zero value in normal operation
    end;
 
    TWallMillisecondsDuration = record // wall-clock time duration in milliseconds (must be finite)
@@ -71,18 +73,26 @@ type
    private
       Value: Double;
       function GetIsZero(): Boolean; inline;
+      {$IFOPT C+} function GetIsNearZero(): Boolean; inline; {$ENDIF}
       function GetIsNotZero(): Boolean; inline;
       function GetIsPositive(): Boolean; inline;
+      function GetIsFinite(): Boolean; inline;
+      function GetIsInfinite(): Boolean; inline;
+      class function GetInfinity(): TRate; inline; static;
       class function GetZero(): TRate; inline; static;
    public
       constructor FromPerSecond(A: Double);
       constructor FromPerMillisecond(A: Double);
       function ToString(NumeratorUnit: UTF8String = ''): UTF8String;
       property IsZero: Boolean read GetIsZero;
+      {$IFOPT C+} property IsNearZero: Boolean read GetIsNearZero; {$ENDIF}
       property IsNotZero: Boolean read GetIsNotZero;
       property IsPositive: Boolean read GetIsPositive; // >0
+      property IsFinite: Boolean read GetIsFinite;
+      property IsInfinite: Boolean read GetIsInfinite;
       property AsDouble: Double read Value; // for storage, restore with FromMilliseconds(Double)
       class property Zero: TRate read GetZero;
+      class property Infinity: TRate read GetInfinity;
    end;
    function Min(A: TRate; B: TRate): TRate; overload;
 
@@ -531,6 +541,13 @@ begin
    Result := TTimeInMilliseconds.FromMilliseconds(High(Int64));
 end;
 
+{$IFOPT C+}
+class function TTimeInMilliseconds.GetZero(): TTimeInMilliseconds;
+begin
+   Result := TTimeInMilliseconds.FromMilliseconds(0);
+end;
+{$ENDIF}
+
 operator - (A: TTimeInMilliseconds; B: TTimeInMilliseconds): TMillisecondsDuration;
 begin
    Assert(not A.IsInfinite);
@@ -643,6 +660,13 @@ begin
    Result := Value = 0.0;
 end;
 
+{$IFOPT C+}
+function TRate.GetIsNearZero(): Boolean;
+begin
+   Result := Abs(Value) < 0.00000001; // TODO: this is completely arbitrary
+end;
+{$ENDIF}
+
 function TRate.GetIsNotZero(): Boolean;
 begin
    Result := Value <> 0.0;
@@ -651,6 +675,16 @@ end;
 function TRate.GetIsPositive(): Boolean;
 begin
    Result := Value > 0.0;
+end;
+
+function TRate.GetIsFinite(): Boolean;
+begin
+   Result := not math.IsInfinite(Value);
+end;
+
+function TRate.GetIsInfinite(): Boolean;
+begin
+   Result := math.IsInfinite(Value);
 end;
 
 function TRate.ToString(NumeratorUnit: UTF8String = ''): UTF8String;
@@ -670,6 +704,14 @@ begin
          Result := FloatToStrF(Value * 60.0 * 60.0 * 1000.0, ffFixed, 0, 1, FloatFormat) + NumeratorUnit + '/h';
       end;
    end;
+end;
+
+class function TRate.GetInfinity(): TRate;
+begin
+   {$PUSH}
+   {$IEEEERRORS OFF}
+   Result.Value := math.Infinity;
+   {$POP}
 end;
 
 class function TRate.GetZero(): TRate;

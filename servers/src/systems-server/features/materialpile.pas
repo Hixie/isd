@@ -29,6 +29,7 @@ type
       function GetMaterialPileMaterial(): TMaterial;
       function GetMaterialPileCapacity(): UInt64; // quantity
       procedure StartMaterialPile(Region: TRegionFeatureNode);
+      procedure PauseMaterialPile();
       procedure StopMaterialPile();
    protected
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
@@ -82,9 +83,9 @@ end;
 
 constructor TMaterialPileFeatureNode.CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem);
 begin
-   inherited CreateFromJournal(Journal, AFeatureClass, ASystem);
    Assert(Assigned(AFeatureClass));
    FFeatureClass := AFeatureClass as TMaterialPileFeatureClass;
+   inherited CreateFromJournal(Journal, AFeatureClass, ASystem);
 end;
 
 destructor TMaterialPileFeatureNode.Destroy();
@@ -106,18 +107,25 @@ end;
 
 procedure TMaterialPileFeatureNode.StartMaterialPile(Region: TRegionFeatureNode);
 begin
-   Writeln('StartMaterialPile(', Region.Parent.DebugName, ')');
-   Assert(not Assigned(FRegion));
+   Writeln(DebugName, ' StartMaterialPile(', Region.Parent.DebugName, ')');
+   Assert((not Assigned(FRegion)) or (FRegion = Region));
    FRegion := Region;
-   MarkAsDirty([dkUpdateClients, dkUpdateJournal]);
+   MarkAsDirty([dkUpdateClients]);
+end;
+
+procedure TMaterialPileFeatureNode.PauseMaterialPile();
+begin
+   Writeln(DebugName, ' PauseMaterialPile(', FRegion.Parent.DebugName, ')');
+   Assert(Assigned(FRegion));
+   MarkAsDirty([dkUpdateClients]);
 end;
 
 procedure TMaterialPileFeatureNode.StopMaterialPile();
 begin
-   Writeln('StopMaterialPile(', FRegion.Parent.DebugName, ')');
+   Writeln(DebugName, ' StopMaterialPile(', FRegion.Parent.DebugName, ')');
    Assert(Assigned(FRegion));
    FRegion := nil;
-   MarkAsDirty([dkUpdateClients, dkUpdateJournal, dkNeedsHandleChanges]);
+   MarkAsDirty([dkUpdateClients, dkNeedsHandleChanges]);
 end;
 
 procedure TMaterialPileFeatureNode.HandleChanges(CachedSystem: TSystem);
@@ -143,7 +151,7 @@ begin
    begin
       Result := 0.0;
    end;
-   Assert(Result >= 0.0);
+   Assert(Result >= -0.0000001);
 end;
 
 function TMaterialPileFeatureNode.GetMassFlowRate(): TRate;
@@ -176,8 +184,8 @@ begin
             end
             else
             begin
-               Writer.WriteInt64(0);
-               Writer.WriteInt64(0);
+               Writer.WriteDouble(0);
+               Writer.WriteDouble(0);
             end;
             Writer.WriteDouble(FFeatureClass.FMaxQuantity * FFeatureClass.FMaterial.MassPerUnit);
          end;
@@ -186,13 +194,13 @@ begin
             Writer.WriteCardinal(fcMaterialStack);
             if (Assigned(FRegion)) then
             begin
-               Writer.WriteInt64(FRegion.GetMaterialPileQuantity(Self));
+               Writer.WriteUInt64(FRegion.GetMaterialPileQuantity(Self));
                Writer.WriteDouble(FRegion.GetMaterialPileQuantityFlowRate(Self).AsDouble);
             end
             else
             begin
-               Writer.WriteInt64(0);
-               Writer.WriteInt64(0);
+               Writer.WriteUInt64(0);
+               Writer.WriteDouble(0);
             end;
             Writer.WriteInt64(FFeatureClass.FMaxQuantity);
          end;

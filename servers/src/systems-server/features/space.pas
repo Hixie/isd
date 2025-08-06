@@ -123,9 +123,9 @@ end;
 
 constructor TSolarSystemFeatureNode.CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem);
 begin
-   inherited CreateFromJournal(Journal, AFeatureClass, ASystem);
    Assert(Assigned(AFeatureClass));
    FFeatureClass := AFeatureClass as TSolarSystemFeatureClass;
+   inherited CreateFromJournal(Journal, AFeatureClass, ASystem);
 end;
 
 destructor TSolarSystemFeatureNode.Destroy();

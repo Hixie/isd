@@ -100,17 +100,17 @@ end;
 
 constructor TResearchFeatureNode.CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem);
 begin
-   FBankedResearch := TResearchTimeHashTable.Create();
-   inherited CreateFromJournal(Journal, AFeatureClass, ASystem);
    Assert(Assigned(AFeatureClass));
    FFeatureClass := AFeatureClass as TResearchFeatureClass;
+   FBankedResearch := TResearchTimeHashTable.Create();
+   inherited CreateFromJournal(Journal, AFeatureClass, ASystem);
 end;
 
 destructor TResearchFeatureNode.Destroy();
 begin
    FBankedResearch.Free();
    if (Assigned(FResearchEvent)) then
-      FResearchEvent.Cancel();
+      CancelEvent(FResearchEvent);
    inherited;
 end;
 
@@ -191,10 +191,7 @@ begin
    FResearchStartTime := TTimeInMilliseconds.FromMilliseconds(0);
    FBankedResearch.Empty();
    if (Assigned(FResearchEvent)) then
-   begin
-      FResearchEvent.Cancel();
-      FResearchEvent := nil;
-   end;
+      CancelEvent(FResearchEvent);
    FUpdateResearchScheduled := True; // in case the tech tree changed or something
    // Read journal
    FSeed := Journal.ReadInt64();
@@ -443,8 +440,7 @@ begin
       FSeed := System.RandomNumberGenerator.GetUInt32();
    if (Assigned(FResearchEvent)) then
    begin
-      FResearchEvent.Cancel();
-      FResearchEvent := nil;
+      CancelEvent(FResearchEvent);
    end;
    BankResearch(CachedSystem);
    KnowledgeBase := TGetKnownResearchesMessage.Create(Parent.Owner);

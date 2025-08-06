@@ -10,8 +10,8 @@ uses
 type
    TRubbleCompositionEntry = record
       Material: TMaterial;
-      Quantity: Int64;
-      constructor Create(AMaterial: TMaterial; AQuantity: Int64);
+      Quantity: UInt64;
+      constructor Create(AMaterial: TMaterial; AQuantity: UInt64);
    end;
 
    TRubbleComposition = array of TRubbleCompositionEntry;
@@ -23,7 +23,7 @@ type
       function GetComposition(): TRubbleComposition;
    public
       procedure Grow(Count: Cardinal);
-      procedure AddMaterial(Material: TMaterial; Quantity: Int64);
+      procedure AddMaterial(Material: TMaterial; Quantity: UInt64);
       property Composition: TRubbleComposition read GetComposition;
    end;
 
@@ -55,9 +55,9 @@ type
 implementation
 
 uses
-   isdprotocol, sysutils, exceptions;
+   isdprotocol, sysutils, exceptions, knowledge;
 
-constructor TRubbleCompositionEntry.Create(AMaterial: TMaterial; AQuantity: Int64);
+constructor TRubbleCompositionEntry.Create(AMaterial: TMaterial; AQuantity: UInt64);
 begin
    Material := AMaterial;
    Quantity := AQuantity;
@@ -72,7 +72,7 @@ begin
    end;
 end;
 
-procedure TRubbleCollectionMessage.AddMaterial(Material: TMaterial; Quantity: Int64);
+procedure TRubbleCollectionMessage.AddMaterial(Material: TMaterial; Quantity: UInt64);
 begin
    Assert(Length(FResult) > FCount);
    FResult[FCount].Create(Material, Quantity);
@@ -142,9 +142,31 @@ begin
 end;
 
 procedure TRubblePileFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
+var
+   KnownMaterials: TGetKnownMaterialsMessage;
+   Other: UInt64;
+   Index: Cardinal;
 begin
    Writer.WriteCardinal(fcRubblePile);
-   // TODO: contents?
+   Other := 0;
+   if (Length(FComposition) > 0) then
+   begin
+      KnownMaterials := TGetKnownMaterialsMessage.Create(CachedSystem.DynastyByIndex[DynastyIndex]);
+      InjectBusMessage(KnownMaterials); // we ignore the result - it doesn't matter if it wasn't handled
+      for Index := Low(FComposition) to High(FComposition) do // $R-
+      begin
+         if (KnownMaterials.Knows(FComposition[Index].Material)) then
+         begin
+            Writer.WriteInt32(FComposition[Index].Material.ID);
+            Writer.WriteUInt64(FComposition[Index].Quantity);
+         end
+         else
+            Inc(Other, FComposition[Index].Quantity);
+      end;
+      FreeAndNil(KnownMaterials);
+   end;
+   Writer.WriteCardinal(0);
+   Writer.WriteUInt64(Other);
 end;
 
 procedure TRubblePileFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
@@ -157,7 +179,7 @@ begin
       for Index := Low(FComposition) to High(FComposition) do // $R-
       begin
          Journal.WriteMaterialReference(FComposition[Index].Material);
-         Journal.WriteInt64(FComposition[Index].Quantity);
+         Journal.WriteUInt64(FComposition[Index].Quantity);
       end;
 end;
 
@@ -170,7 +192,7 @@ begin
    if (Length(FComposition) > 0) then
       for Index := Low(FComposition) to High(FComposition) do // $R-
       begin
-         FComposition[Index].Create(Journal.ReadMaterialReference(), Journal.ReadInt64());
+         FComposition[Index].Create(Journal.ReadMaterialReference(), Journal.ReadUInt64());
       end;
 end;
 

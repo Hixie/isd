@@ -5,7 +5,7 @@ unit materials;
 interface
 
 uses
-   hashtable, hashset, hashfunctions, genericutils, stringutils, icons, isdnumbers, time;
+   hashtable, hashfunctions, hashsettight, genericutils, stringutils, icons, isdnumbers, time;
 
 type
    TMaterial = class;
@@ -14,9 +14,7 @@ type
 
    TOres = 1..22; // IDs that are valid in the ores.mrf file (but not the tech tree)
    
-   TMaterialHashSet = class(specialize THashSet<TMaterial, TObjectUtils>)
-      constructor Create();
-   end;
+   TMaterialHashSet = specialize TObjectSet<TMaterial>;
 
    TMaterialIDHashTable = class(specialize THashTable<TMaterialID, TMaterial, LongIntUtils>)
       constructor Create(ACount: THashTableSizeInt = 8);
@@ -29,12 +27,16 @@ type
    TMaterialQuantity = record
       Material: TMaterial;
       Quantity: UInt64;
+      procedure Dec(Delta: UInt64);
    end;
    
    TMaterialQuantityHashTable = class(specialize THashTable<TMaterial, UInt64, TObjectUtils>)
       constructor Create(ACount: THashTableSizeInt = 2);
-      procedure Inc(Material: TMaterial; Delta: UInt64);
-      procedure Inc(Material: TMaterial; Delta: Int64);
+      procedure Inc(Material: TMaterial; Delta: UInt64); inline;
+      procedure Inc(Material: TMaterial; Delta: Int64); inline;
+      procedure Dec(Material: TMaterial; Delta: UInt64); inline;
+      procedure Dec(Material: TMaterial; Delta: Int64); inline;
+      function ClampedDec(Material: TMaterial; Delta: UInt64): UInt64; inline; // returns how much was actually transferred
    end;
    
    TMaterialRateHashTable = class(specialize THashTable<TMaterial, TRate, TObjectUtils>)
@@ -167,11 +169,6 @@ begin
    Result := PtrUIntHash32(PtrUInt(Key));
 end;
 
-constructor TMaterialHashSet.Create();
-begin
-   inherited Create(@MaterialHash32);
-end;
-
 constructor TMaterialIDHashTable.Create(ACount: THashTableSizeInt = 8);
 begin
    inherited Create(@LongIntHash32, ACount);
@@ -183,6 +180,17 @@ begin
 end;
 
 
+procedure TMaterialQuantity.Dec(Delta: UInt64);
+begin
+   Assert(Assigned(Material));
+   Assert(Delta > 0);
+   Assert(Delta <= Quantity);
+   Quantity := Quantity - Delta; // $R-
+   if (Quantity = 0) then
+      Material := nil;
+end;
+
+      
 constructor TMaterialQuantityHashTable.Create(ACount: THashTableSizeInt = 2);
 begin
    inherited Create(@MaterialHash32, ACount);
@@ -216,7 +224,7 @@ begin
    if (Has(Material)) then
    begin
       Assert((Delta > 0) or (Self[Material] + Delta >= 0));
-      if (Delta > High(UInt64) - Self[Material]) then
+      if ((Delta > 0) and (UInt64(Delta) > High(UInt64) - Self[Material])) then
       begin
          raise EOverflow.Create('Overflowed TMaterialQuantityHashTable value');
       end;
@@ -229,6 +237,38 @@ begin
    end;
    Self[Material] := Value;
 end; 
+
+procedure TMaterialQuantityHashTable.Dec(Material: TMaterial; Delta: UInt64);
+begin
+   Assert(Delta <> 0);
+   Assert(Delta > 0);
+   Assert(Has(Material));
+   Assert(Delta <= Self[Material]);
+   Self[Material] := Self[Material] - Delta; // $R-
+end; 
+
+procedure TMaterialQuantityHashTable.Dec(Material: TMaterial; Delta: Int64);
+begin
+   Inc(Material, -Delta);
+end; 
+
+function TMaterialQuantityHashTable.ClampedDec(Material: TMaterial; Delta: UInt64): UInt64;
+begin
+   // Return how much the value was actually changed.
+   Assert(Delta <> 0);
+   Assert(Delta > 0);
+   Assert(Has(Material));
+   if (Delta <= Self[Material]) then
+   begin
+      Result := Delta;
+      Dec(Material, Delta);
+   end
+   else
+   begin
+      Result := Self[Material];
+      Self[Material] := 0;
+   end;
+end;
 
       
 constructor TMaterialRateHashTable.Create(ACount: THashTableSizeInt = 2);

@@ -3,19 +3,23 @@
 ## Public commands
 
 Commands are sent from the client to the server in the form of
-WebSocket text frames whose format is null-terminated fields of UTF-8.
+WebSocket text frames whose format is null-terminated fields of UTF-8,
+as described in the README.md in the parent directory.
 
 The first field is the command, the second is a 32 bit number called
-the conversation ID.
+the conversation ID (sent as a uint64 field).
 
 The server responds in the same format. Replies always start with a
-field that says `reply`, then the conversation ID, then either a `T`
-if the command was successful, followed by some extra data as
-described below, or an `F` indicating failure, followed by an error
-code from the list in `../common/isderrors.pas`.
+field that says `reply`, then the conversation ID (uint64), then
+either a `T` if the command was successful, followed by some extra
+data as described below, or an `F` indicating failure, followed by an
+error code from the list in `../common/isderrors.pas`.
 
 Replies are not guaranteed to be sent back in the order that messages
 were received (hence the conversation ID field).
+
+In the command descriptions below, all fields are strings unless
+otherwise specified.
 
 
 ### `login`
@@ -26,9 +30,9 @@ Fields:
 
 Response:
 
- * A number that is the user's globally unique dynasty ID.
- * Count of system servers
- * URL for each system server
+ * A number that is the user's globally unique dynasty ID (uint64).
+ * Count of system servers (uint64).
+ * URL for each system server.
 
 
 ### `get-star-name`
@@ -37,7 +41,7 @@ Does not require being logged in.
 
 Fields:
 
- * a star ID (see "Canonical systems" file format in login server docs)
+ * a star ID (see "Canonical systems" file format in login server docs).
 
 Server returns the following fields:
 
@@ -56,8 +60,8 @@ from the client.
 
 The server may occasionally send a message whose payload is:
 
- * Count of system servers
- * URL for each system server
+ * Count of system servers (uint64).
+ * URL for each system server.
 
 This is similar to the response to a `login` command.
 

@@ -5,9 +5,9 @@ unit systems;
 interface
 
 uses
-   systemdynasty, configuration, hashtable, hashset, genericutils,
+   systemdynasty, configuration, hashtable, genericutils,
    icons, serverstream, stringstream, random, materials, basenetwork,
-   time, tttokenizer, stringutils;
+   time, tttokenizer, stringutils, hashsettight, rtlutils;
 
 // VISIBILITY
 //
@@ -133,9 +133,7 @@ type
       constructor Create();
    end;
 
-   TDynastyHashSet = class(specialize THashSet<TDynasty, TObjectUtils>)
-      constructor Create();
-   end;
+   TDynastyHashSet = specialize TObjectSet<TDynasty>;
 
    TAssetClassIDHashTable = class(specialize THashTable<TAssetClassID, TAssetClass, IntegerUtils>)
       constructor Create();
@@ -145,9 +143,7 @@ type
       constructor Create();
    end;
 
-   TAssetClassHashSet = class(specialize THashSet<TAssetClass, TObjectUtils>)
-      constructor Create();
-   end;
+   TAssetClassHashSet = specialize TObjectSet<TAssetClass>;
 
    TAssetNodeHashTable = class(specialize THashTable<PtrUInt, TAssetNode, PtrUIntUtils>)
       constructor Create();
@@ -292,7 +288,7 @@ type
       mrHandled // the message got injected and handled
    );
    
-   TBusMessage = class abstract end;
+   TBusMessage = class abstract(TDebugObject) end;
    TPhysicalConnectionBusMessage = class abstract(TBusMessage) end;
    TAssetManagementBusMessage = class abstract(TBusMessage) end;
 
@@ -348,7 +344,7 @@ type
    end;
    {$IF SizeOf(TReward) <> 8} {$FATAL TReward has an unexpected size} {$ENDIF}
 
-   TNode = class
+   TNode = class(TDebugObject)
    public
       type
          TNodeArray = array of TNode;
@@ -412,9 +408,7 @@ type
       function ToString(): UTF8String; override;
    end;
 
-   TResearchHashSet = class(specialize THashSet<TResearch, TObjectUtils>)
-      constructor Create();
-   end;
+   TResearchHashSet = specialize TObjectSet<TResearch>;
 
    TResearchIDHashTable = class(specialize THashTable<TResearchID, TResearch, IntegerUtils>)
       constructor Create();
@@ -447,9 +441,7 @@ type
       constructor Create();
    end;
 
-   TTopicHashSet = class(specialize THashSet<TTopic, TObjectUtils>)
-      constructor Create();
-   end;
+   TTopicHashSet = specialize TObjectSet<TTopic>;
 
    // TODO: add materials and asset classes as possible TNodes, so that things/topics can unlock when you build partiular things or mine particular materials.
    
@@ -470,7 +462,7 @@ type
       property Tokens: TTokenizer read FTokenizer;
    end;
    
-   TFeatureClass = class abstract
+   TFeatureClass = class abstract (TDebugObject)
    public
       type
          TArray = array of TFeatureClass;
@@ -490,8 +482,8 @@ type
       dkDescendantUpdateClients, // one or more of the descendants has dkUpdateClients set
       dkUpdateJournal, // this asset node is dirty and we need to update the journal // TODO: audit uses of this now that it has a specific meaning
       dkDescendantUpdateJournal, // one or more of the descendants has dkUpdateJournal set
-      dkChildren, // specifically this asset's node's children changed in some way (became visible, were added/removed, etc)
-      dkNewParent, // this asset's Parent changed
+      dkChildren, // this asset's node's children changed in some way (were added, moved, or removed)
+      dkDescendants, // one or more of the descendants has dkChildren set
       dkVisibilityDidChange, // one or more dynasties changed whether they can see this node (handled by CheckVisibilityChanged)
       dkAffectsVisibility, // system needs to redo a visibility scan
       dkAffectsDynastyCount, // system needs to redo a dynasty census (requires dkAffectsVisibility)
@@ -503,7 +495,7 @@ type
    // ** When dkNeedsHandleChanges is removed, dkDescendantNeedsHandleChanges is set.
 
 const
-   dkAll = [Low(TDirtyKind) .. High(TDirtyKind)];
+   dkAll = [Low(TDirtyKind) .. High(TDirtyKind)]; // the initial setting on creation
    dkAffectsTreeStructure = [dkAffectsVisibility, dkAffectsNames, dkAffectsKnowledge, dkVisibilityDidChange, dkUpdateClients, dkUpdateJournal, dkChildren]; // set on old/new parents when child's parent changes
    
 type
@@ -519,7 +511,7 @@ type
       property OreKnowledge: TOreFilter read GetOreKnowledge;
    end;
    
-   TFeatureNode = class abstract
+   TFeatureNode = class abstract (TDebugObject)
    public
       type
          TArray = array of TFeatureNode;
@@ -529,6 +521,7 @@ type
       procedure SetParent(Asset: TAssetNode); inline;
       function GetParent(): TAssetNode; inline;
       function GetSystem(): TSystem; inline;
+      function GetDebugName(): UTF8String;
    protected
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); virtual;
       procedure AdoptChild(Child: TAssetNode); virtual;
@@ -565,12 +558,13 @@ type
       property Size: Double read GetSize; // m
       property FeatureName: UTF8String read GetFeatureName;
       property Parent: TAssetNode read FParent;
+      property DebugName: UTF8String read GetDebugName;
    end;
 
    TBuildEnvironment = (bePlanetRegion, beSpaceDock);
    TBuildEnvironments = set of TBuildEnvironment;
    
-   TAssetClass = class
+   TAssetClass = class(TDebugObject)
    public
       type
          TArray = array of TAssetClass;
@@ -619,7 +613,7 @@ type
       property MinMassPerOreUnit: Double read GetMinMassPerOreUnit;
    end;
    
-   TAssetNode = class
+   TAssetNode = class(TDebugObject)
    public
       type
          TArray = array of TAssetNode;
@@ -627,7 +621,7 @@ type
       FParent: TFeatureNode;
    strict protected
       FAssetClass: TAssetClass;
-      FOwner: TDynasty;
+      FOwner: TDynasty; // TODO: if this changes value, some features are going to get very confused (e.g. the builder bus)
       FFeatures: TFeatureNode.TArray;
    protected
       FDirty: TDirtyKinds;
@@ -687,19 +681,23 @@ type
    end;
    
    // pointers to these objects are not valid after the event has run or been canceled
-   TSystemEvent = class
+   TSystemEvent = class(TDebugObject)
    private
       FTime: TTimeInMilliseconds;
       FCallback: TEventCallback;
       FData: Pointer;
       FSystem: TSystem;
+      {$PUSH}
+      {$WARN 3019 OFF} // (it wants the destructor to be public for some reason)
+      destructor Cancel();
+      {$POP}
    public
       constructor Create(ATime: TTimeInMilliseconds; ACallback: TEventCallback; AData: Pointer; ASystem: TSystem);
-      destructor Cancel();
    end;
 
-   TSystemEventSet = specialize THashSet<TSystemEvent, PointerUtils>;
-
+   TSystemEventSet = specialize TTightHashSet<TSystemEvent, TTightHashUtilsPtr>; // TODO: consider using regular THashSet instead, as we do a lot of removes from this set
+   // TSystemEventSet = specialize THashSet<TSystemEvent, PointerUtils>;
+   
    TSystem = class sealed
    strict private
       FServer: TBaseServer;
@@ -708,6 +706,7 @@ type
       FNextEventHandle: PEvent;
       FCurrentEventTime: TTimeInMilliseconds;
       FDynastyDatabase: TDynastyDatabase;
+      FDynasties: array of TDynasty; // in index order
       FEncyclopedia: TEncyclopediaView;
       FConfigurationDirectory: UTF8String;
       FSystemID: Cardinal;
@@ -734,6 +733,7 @@ type
       function GetNow(): TTimeInMilliseconds; inline;
       function GetDynastyCount(): Cardinal; inline;
       function GetDynastyIndex(Dynasty: TDynasty): Cardinal; inline;
+      function GetDynastyByIndex(Index: Cardinal): TDynasty; inline;
    private
       FDynastyIndices: TDynastyIndexHashTable; // for index into visibility tables; used by TVisibilityHelper
       FDynastyMaxAssetIDs: array of TAssetID; // used by TVisibilityHelper
@@ -763,6 +763,7 @@ type
       property DynastyDatabase: TDynastyDatabase read FDynastyDatabase;
       property DynastyCount: Cardinal read GetDynastyCount;
       property DynastyIndex[Dynasty: TDynasty]: Cardinal read GetDynastyIndex;
+      property DynastyByIndex[Index: Cardinal]: TDynasty read GetDynastyByIndex;
       property Encyclopedia: TEncyclopediaView read FEncyclopedia; // used by TJournalReader/TJournalWriter
       property Journal: TJournalWriter read FJournalWriter;
       property Now: TTimeInMilliseconds read GetNow;
@@ -771,21 +772,27 @@ type
 
 function ResearchIDHash32(const Key: TResearchID): DWord;
 function ResearchHash32(const Key: TResearch): DWord;
-   
+
+procedure CancelEvent(var Event: TSystemEvent);
+
 implementation
 
 uses
-   sysutils, rtlutils, dateutils,
+   sysutils, dateutils,
    exceptions, typedump,
    hashfunctions,
-   math,
+   math, {$IFDEF DEBUG} debug, {$ENDIF}
    isdprotocol, providers;
 
 function UpdateDirtyKindsForAncestor(DirtyKinds: TDirtyKinds): TDirtyKinds;
 begin
    Result := DirtyKinds;
    Exclude(Result, dkNew);
-   Exclude(Result, dkChildren);
+   if (dkChildren in Result) then
+   begin
+      Exclude(Result, dkChildren);
+      Exclude(Result, dkDescendants);
+   end;
    if (dkNeedsHandleChanges in Result) then
    begin
       Exclude(Result, dkNeedsHandleChanges);
@@ -829,11 +836,6 @@ begin
    inherited Create(@DynastyHash32);
 end;
 
-constructor TDynastyHashSet.Create();
-begin
-   inherited Create(@DynastyHash32);
-end;
-
 constructor TAssetClassIDHashTable.Create();
 begin
    inherited Create(@LongIntHash32);
@@ -842,11 +844,6 @@ end;
 constructor TAssetClassIdentifierHashTable.Create();
 begin
    inherited Create(@UTF8StringHash32);
-end;
-
-constructor TAssetClassHashSet.Create();
-begin
-   inherited Create(@AssetClassHash32);
 end;
 
 constructor TAssetNodeHashTable.Create();
@@ -1010,11 +1007,6 @@ begin
    Result := LongintHash32(Key);
 end;
 
-constructor TResearchHashSet.Create();
-begin
-   inherited Create(@ResearchHash32);
-end;
-
 constructor TResearchIDHashTable.Create();
 begin
    inherited Create(@ResearchIDHash32);
@@ -1043,22 +1035,12 @@ begin
 end;
 
 
-function TopicHash32(const Key: TTopic): DWord;
-begin
-   Result := ObjectHash32(Key);
-end;
-
 
 constructor TTopicHashTable.Create();
 begin
    inherited Create(@UTF8StringHash32);
 end;
 
-
-constructor TTopicHashSet.Create();
-begin
-   inherited Create(@TopicHash32);
-end;
 
 
 constructor TTechTreeReader.Create(ATokenizer: TTokenizer; AAssetClasses: TAssetClassIdentifierHashTable; AMaterialNames: TMaterialNameHashTable; ATopics: TTopicHashTable);
@@ -1498,6 +1480,18 @@ procedure TFeatureNode.DescribeExistentiality(var IsDefinitelyReal, IsDefinitely
 begin
 end;
 
+function TFeatureNode.GetDebugName(): UTF8String;
+begin
+   if (Assigned(Parent)) then
+   begin
+      Result := Parent.DebugName + '-<' + ClassName + ' @ ' + HexStr(Self) + '>';
+   end
+   else
+   begin
+      Result := '<nil>-<' + ClassName + ' @ ' + HexStr(Self) + '>';
+   end;    
+end;
+
 destructor TFeatureNode.Destroy();
 begin
    inherited;
@@ -1556,6 +1550,7 @@ function TAssetClass.SpawnFeatureNodesFromJournal(Journal: TJournalReader; Cache
 var
    Index, FallbackIndex: Cardinal;
    Value: Cardinal;
+   {$IFDEF DEBUG} HeapInfo: THeapInfo; {$ENDIF}
 begin
    SetLength(Result, Length(FFeatures)); {BOGUS Warning: Function result variable of a managed type does not seem to be initialized}
    if (Length(Result) > 0) then
@@ -1565,7 +1560,9 @@ begin
          case (Journal.ReadCardinal()) of
             jcStartOfFeature:
                begin
+                  {$IFDEF DEBUG} HeapInfo := SetHeapInfoTruncated(FFeatures[Index].FeatureNodeClass.ClassName); {$ENDIF}
                   Result[Index] := FFeatures[Index].FeatureNodeClass.CreateFromJournal(Journal, FFeatures[Index], CachedSystem);
+                  {$IFDEF DEBUG} SetHeapInfo(HeapInfo); {$ENDIF}
                   if (Journal.ReadCardinal() <> jcEndOfFeature) then
                   begin
                      raise EJournalError.Create('missing end of feature marker (0x' + HexStr(jcEndOfFeature, 8) + ') when reading ' + FFeatures[Index].ClassName);
@@ -1746,12 +1743,12 @@ var
    OldFeatures: TFeatureNode.TArray;
    Feature: TFeatureNode;
 begin
-   if (Assigned(Parent)) then
-      Parent.DropChild(Self);
    OldFeatures := FFeatures;
    SetLength(FFeatures, 0);
    for Feature in OldFeatures do
       Feature.Free();
+   if (Assigned(Parent)) then
+      Parent.DropChild(Self);
    inherited;
 end;
 
@@ -1801,11 +1798,42 @@ end;
 
 function TAssetNode.GetMassFlowRate(): TRate; // kg/s
 var
+   Rate: TRate;
    Feature: TFeatureNode;
+   {$IFOPT C+}
+   DebugFeatures: array of UTF8String;
+   Line: UTF8String;
+   {$ENDIF}
 begin
    Result := TRate.Zero;
+   {$IFOPT C+} DebugFeatures := []; {$ENDIF}
    for Feature in FFeatures do
-      Result := Result + Feature.MassFlowRate;
+   begin
+      Rate := Feature.MassFlowRate;
+      Result := Result + Rate;
+      {$IFOPT C+}
+      if (Rate.IsNotZero) then
+      begin
+         SetLength(DebugFeatures, Length(DebugFeatures) + 1);
+         DebugFeatures[High(DebugFeatures)] := Feature.ClassName + ': ' + Rate.ToString('kg');
+      end;
+      {$ENDIF}
+   end;
+   {$IFOPT C+}
+   if (Length(DebugFeatures) > 1) then
+   begin
+      Writeln('! ', DebugName, ' has mass flow rate ', Result.ToString('kg'), ' coming from:');
+      for Line in DebugFeatures do
+      begin
+         Writeln('!    ', Line);
+      end;
+   end
+   else
+   if (Length(DebugFeatures) > 0) then
+   begin
+      Writeln('! ', DebugName, ' has mass flow rate ', Result.ToString('kg'), ' coming from ', DebugFeatures[0]);
+   end;
+   {$ENDIF}
 end;
 
 function TAssetNode.GetSize(): Double; // m
@@ -2124,7 +2152,7 @@ begin
       begin
          Writer.WriteCardinal(0);
       end;
-      Assert(Mass >= 0.0);
+      Assert(Mass >= -0.000001);
       Writer.WriteDouble(Mass);
       Writer.WriteDouble(MassFlowRate.AsDouble);
       Assert(Size >= 0.0);
@@ -2237,6 +2265,7 @@ end;
 
 function TAssetNode.GetSystem(): TSystem;
 begin
+   Assert(Assigned(Parent), 'Missing parent on ' + ClassName);
    Result := Parent.System;
 end;
 
@@ -2276,7 +2305,7 @@ begin
       if (IsDefinitelyGhost) then
       begin
          Assert((not HaveAnswer) or not Result, 'This asset is having an existential crisis: ' + DebugName); {BOGUS Warning: Function result variable does not seem to be initialized}
-         Assert(Mass = 0);
+         Assert(Mass = 0, 'Why did this ghost take on weight?? ' + DebugName);
          Result := False;
          HaveAnswer := True;
       end;
@@ -2337,7 +2366,7 @@ begin
    FServer := AServer;
    FDynastyDatabase := ADynastyDatabase;
    FDynastyIndices := TDynastyIndexHashTable.Create();
-   FScheduledEvents := TSystemEventSet.Create(@SystemEventHash32);
+   FScheduledEvents := TSystemEventSet.Create();
    FCurrentEventTime := TTimeInMilliseconds.Infinity;
    FEncyclopedia := AEncyclopedia;
    FRoot := TRootAssetNode.Create(ARootClass, Self, ARootClass.SpawnFeatureNodes());
@@ -2358,7 +2387,7 @@ begin
    FDynastyIndices.Free();
    UnwindDynastyNotesArenas(FDynastyNotesBuffer);
    FRandomNumberGenerator.Free();
-   inherited Destroy();
+   inherited;
 end;
 
 procedure TSystem.ApplyJournal(FileName: UTF8String);
@@ -2619,6 +2648,12 @@ begin
    Result := FDynastyIndices.Items[Dynasty];
 end;
 
+function TSystem.GetDynastyByIndex(Index: Cardinal): TDynasty;
+begin
+   Assert(Index < Length(FDynasties));
+   Result := FDynasties[Index];
+end;
+
 procedure TSystem.UnwindDynastyNotesArenas(Arena: Pointer);
 begin
    if (Assigned(Arena)) then
@@ -2697,9 +2732,11 @@ begin
    if (Assigned(OldBuffer)) then
       UnwindDynastyNotesArenas(OldBuffer);
    FDynastyIndices.Empty();
+   SetLength(FDynasties, Dynasties.Count);
    Index := 0;
    for Dynasty in Dynasties do
    begin
+      FDynasties[Index] := Dynasty;
       FDynastyIndices[Dynasty] := Index;
       Inc(Index);
    end;
@@ -2776,6 +2813,7 @@ var
    begin
       if (dkNeedsHandleChanges in Asset.Dirty) then
       begin
+         Writeln('Handling changes for ', Asset.DebugName);
          Exclude(Asset.FDirty, dkNeedsHandleChanges);
          Asset.HandleChanges(Self);
       end;
@@ -2798,7 +2836,7 @@ begin
       RecordUpdate();
    // TODO: tell the clients if anything stopped being visible? or is that implied?
    // TODO: tell the clients if _everything_ stopped being visible
-   for Dynasty in FDynastyIndices do
+   for Dynasty in FDynasties do
    begin
       Dynasty.ForEachConnection(@ReportChange);
    end;
@@ -2815,24 +2853,21 @@ procedure TSystem.RunEvent(var Data);
 var
    Event: TSystemEvent;
 begin
+   Writeln('System ', SystemID, ' running event...');
    Event := TSystemEvent(Data);
    Assert(Assigned(Event));
    Assert(FScheduledEvents.Has(Event));
    Assert(FNextEvent = Event);
    Assert(Assigned(FNextEventHandle));
    FScheduledEvents.Remove(Event);
-   FNextEvent := nil;
+   FNextEvent := SelectNextEvent();
    FNextEventHandle := nil;
    FCurrentEventTime := Event.FTime;
    Event.FCallback(Event.FData); // (could call ScheduleEvent and thus set FNextEvent)
    FCurrentEventTime := TTimeInMilliseconds.Infinity;
    FreeAndNil(Event);
-   if (not Assigned(FNextEvent)) then
-   begin
-      FNextEvent := SelectNextEvent();
-      if (Assigned(FNextEvent)) then
-         ScheduleNextEvent();
-   end;
+   if (Assigned(FNextEvent) and not Assigned(FNextEventHandle)) then
+      ScheduleNextEvent();
    Assert(Assigned(FNextEvent) = Assigned(FNextEventHandle));
    Assert(Assigned(FNextEvent) = FScheduledEvents.IsNotEmpty);
 end;
@@ -2843,6 +2878,7 @@ var
    SystemTarget: TTimeInMilliseconds;
    RealDelta: TWallMillisecondsDuration;
 begin
+   Writeln('System ', SystemID, ' scheduling next event (', HexStr(FNextEvent), ')');
    Assert(Assigned(FNextEvent));
    Assert(not Assigned(FNextEventHandle));
    SystemNow := Now;
@@ -2855,6 +2891,7 @@ end;
 
 procedure TSystem.RescheduleNextEvent();
 begin
+   Writeln('System ', SystemID, ' rescheduling next event (', HexStr(FNextEvent), ')');
    Assert(Assigned(FNextEvent) = Assigned(FNextEventHandle));
    Assert(Assigned(FNextEvent) = FScheduledEvents.IsNotEmpty);
    if (Assigned(FNextEvent)) then
@@ -2880,40 +2917,52 @@ begin
             Result := Event;
       end;
    end;
+   Writeln('  Selecting event for ', SystemID, ': ', HexStr(Result));
 end;   
 
 function TSystem.ScheduleEvent(TimeDelta: TMillisecondsDuration; Callback: TEventCallback; var Data): TSystemEvent;
 begin
-   Assert(Assigned(FNextEvent) = Assigned(FNextEventHandle));
+   Writeln('TSystem.ScheduleEvent for system ', SystemID, ' with ', FScheduledEvents.Count, ' scheduled events; current next event is ', HexStr(FNextEvent));
+   // Assigned(FNextEvent) and Assigned(FNextEventHandle) might not be in sync here, if we're handling an event and it schedules its own event
    Assert(Assigned(FNextEvent) = FScheduledEvents.IsNotEmpty);
+   Writeln('  - calling TSystemEvent.Create');
    Result := TSystemEvent.Create(
       Now + TimeDelta,
       Callback,
       Pointer(Data),
       Self
    );
+   Writeln('  - calling FScheduledEvents.Add');
    FScheduledEvents.Add(Result);
+   Writeln('  - FScheduledEvents now has ', FScheduledEvents.Count, ' events');
    if ((not Assigned(FNextEvent)) or (Result.FTime <= FNextEvent.FTime)) then
    begin
-      if (Assigned(FNextEvent)) then
+      if (Assigned(FNextEventHandle)) then
+      begin
+         Writeln('  - calling FServer.CancelEvent(', HexStr(FNextEventHandle), ')');
          FServer.CancelEvent(FNextEventHandle);
+      end;
       Assert(not Assigned(FNextEventHandle));
       FNextEvent := Result;
+      Writeln('  Scheduling event ', HexStr(FNextEvent), '...');
       ScheduleNextEvent();
    end;
-   Assert(Assigned(FNextEvent) = Assigned(FNextEventHandle));
    Assert(Assigned(FNextEvent) = FScheduledEvents.IsNotEmpty);
 end;
 
 procedure TSystem.CancelEvent(Event: TSystemEvent);
 begin
+   Writeln('System ', SystemID, ' canceling event ', HexStr(Event), ' (next event is currently ', HexStr(FNextEvent), ')');
    Assert(Assigned(Event));
    Assert(FScheduledEvents.Has(Event));
    FScheduledEvents.Remove(Event);
    if (Event = FNextEvent) then
    begin
-      Assert(Assigned(FNextEventHandle));
-      FServer.CancelEvent(FNextEventHandle);
+      if (Assigned(FNextEventHandle)) then
+      begin
+         // FNextEventHandle might be nil if we're already handling an event
+         FServer.CancelEvent(FNextEventHandle);
+      end;
       Assert(not Assigned(FNextEventHandle));
       if (FScheduledEvents.IsNotEmpty) then
       begin
@@ -2937,12 +2986,14 @@ begin
    if (FCurrentEventTime.IsInfinite) then
    begin
       Result := TTimeInMilliseconds.FromMilliseconds(0) + TWallMillisecondsDuration.FromMilliseconds(MillisecondsBetween(FServer.Clock.Now(), FTimeOrigin)) * FTimeFactor;
+      Writeln('NOW AT ', SystemID, ' IS ', Result.ToString(), ' NATURALLY');
    end
    else
    begin
       // We do this because otherwise FTimeFactor introduces an error into the current time and we
       // end up running events at slightly the wrong time, which can affect computations.
       Result := FCurrentEventTime;
+      Writeln('NOW AT ', SystemID, ' IS PINNED TO ', Result.ToString());
    end;
 end;
 
@@ -2953,6 +3004,7 @@ var
    
    function Search(Asset: TAssetNode): Boolean;
    begin
+      // TODO: change this to be that you can send the message so long as you can see it (not necessarily own it)
       if (((not Assigned(Asset.Owner)) or (Asset.Owner = Dynasty)) and (Asset.ID(Self, CachedDynastyIndex, True {AllowZero}) = AssetID)) then
       begin
          FoundAsset := Asset;
@@ -2975,11 +3027,13 @@ end;
 
 constructor TSystemEvent.Create(ATime: TTimeInMilliseconds; ACallback: TEventCallback; AData: Pointer; ASystem: TSystem);
 begin
+   Writeln('TSystemEvent.Create for ', HexStr(Self), ' started');
    inherited Create();
    FTime := ATime;
    FCallback := ACallback;
    FData := AData;
    FSystem := ASystem;
+   Writeln('TSystemEvent.Create for ', HexStr(Self), ' finished');
 end;
 
 destructor TSystemEvent.Cancel();
@@ -3200,6 +3254,14 @@ end;
 function TRootAssetNode.GetSystem(): TSystem;
 begin
    Result := FSystem;
+end;
+
+
+procedure CancelEvent(var Event: TSystemEvent);
+begin
+   Assert(Assigned(Event));
+   Event.Cancel();
+   Event := nil;
 end;
 
 end. 

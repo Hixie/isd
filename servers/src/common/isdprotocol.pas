@@ -46,7 +46,8 @@ const
    fcMaterialStack = $17;
    fcGridSensor = $18;
    fcGridSensorStatus = $19;
-   fcHighestKnownFeatureCode = fcGridSensorStatus;
+   fcBuilder = $1A;
+   fcHighestKnownFeatureCode = fcBuilder;
    
 implementation
 

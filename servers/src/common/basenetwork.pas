@@ -782,6 +782,7 @@ end;
 
 function TBaseServer.ScheduleEvent(Time: TDateTime; Callback: TEventCallback; var Data): PEvent;
 begin
+   Writeln(ClassName, '.ScheduleEvent() called');
    Assert(Assigned(FClock));
    Assert(Time >= 0);
    if (not Assigned(FScheduledEvents)) then
@@ -797,6 +798,8 @@ begin
    begin
       FNextEvent := Result;
    end;
+   Writeln(' - FNextEvent: ', HexStr(FNextEvent));
+   Writeln(' - FScheduledEvents: ', FScheduledEvents.Count);
 end;
 
 procedure TBaseServer.CancelEvent(var Event: PEvent);

@@ -95,14 +95,14 @@ procedure TSensorFeatureNode.SyncKnowledge();
 begin
    if (not Assigned(FKnownMaterials)) then
    begin
-      Writeln('Initializing FKnownMaterials for ', Parent.DebugName);
+      Writeln('Initializing FKnownMaterials for ', DebugName);
       FKnownMaterials := TGetKnownMaterialsMessage.Create(Parent.Owner);
       InjectBusMessage(FKnownMaterials); // we ignore the result - it doesn't matter if it wasn't handled
       // we free the result in ApplyKnowledge
    end;
    if (not Assigned(FKnownAssetClasses)) then
    begin
-      Writeln('Initializing FKnownAssetClasses for ', Parent.DebugName);
+      Writeln('Initializing FKnownAssetClasses for ', DebugName);
       FKnownAssetClasses := TGetKnownAssetClassesMessage.Create(Parent.Owner);
       InjectBusMessage(FKnownAssetClasses); // we ignore the result - it doesn't matter if it wasn't handled
       // we free the result in ApplyKnowledge

@@ -78,10 +78,10 @@ uses
    sysutils, math, floatutils, exceptions, isdnumbers, icons,
    protoplanetary, time,
    // this must import every feature, so they get registered:
-   food, grid, gridsensor, knowledge, materialpile, messages, mining,
-   name, orbit, orepile, planetary, plot, population, proxy, refining,
-   region, research, rubble, size, spacesensor, stellar, structure,
-   surface;
+   builders, food, grid, gridsensor, knowledge, materialpile,
+   messages, mining, name, orbit, orepile, planetary, plot,
+   population, proxy, refining, region, research, rubble, size,
+   spacesensor, stellar, structure, surface;
 
 var
    InstructionManualText: UTF8String =
@@ -247,7 +247,8 @@ begin
          TRegionFeatureClass.Create(1, 10, High(UInt64)),
          TGenericGridFeatureClass.Create(),
          TKnowledgeBusFeatureClass.Create(),
-         TFoodBusFeatureClass.Create()
+         TFoodBusFeatureClass.Create(),
+         TBuilderBusFeatureClass.Create()
       ],
       PlanetRegionIcon,
       []
@@ -541,7 +542,8 @@ begin
          TRegionFeatureNode.Create(FRegion.Features[0] as TRegionFeatureClass),
          TGridFeatureNode.Create(bePlanetRegion, CellSize, Dimension),
          TKnowledgeBusFeatureNode.Create(),
-         TFoodBusFeatureNode.Create()
+         TFoodBusFeatureNode.Create(),
+         TBuilderBusFeatureNode.Create()
       ]
    );
 end;

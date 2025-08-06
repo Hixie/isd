@@ -5,17 +5,36 @@ The servers export an API using WebSockets.
 The protocol uses WebSocket text frames containing a list of one or
 more null-terminated fields.
 
-Numeric fields are represented as decimal stringifications.
+There are five kinds of fields:
+
+   - int64: optional "-" prefix, followed by digits representing an
+     number in the range -2^63 .. 2^63-1.
+
+   - uint64: digits representing an number in the range 0 .. 2^64-1.
+
+   - double: "Nan" for not-a-number, "+Inf" for positive infinity,
+     "-Inf" for negative infinity, and otherwise an optional sign,
+     followed by digits, a period, and optionally an "E" followed by
+     an optional sign and more digits, where the number before the "E"
+     is the mantissa and the number after the "E" is an exponent, with
+     the range of a IEEE754 binary64. Infinities are never sent by the
+     server. Non-numbers and infinities must never be sent by the
+     client.
+
+   - boolean: "T" for true, "F" for false.
+
+   - string: plain text (that conforms to UTF-8). All fields are text
+     fields unless otherwise specified.
 
 The first field is the command, the second is a 32 bit number called
 the conversation ID. Subsequent fields are arguments to the command
 and are command-specific.
 
 The server responds in the same format. Replies always start with a
-field that says `reply`, then the conversation ID, then either a `T`
-if the command was successful, followed by some extra data specific to
-the command, or an `F` indicating failure, followed by an error code
-from the list in `common/isderrors.pas`.
+field that says `reply`, then the conversation ID (uint64), then
+either a `T` if the command was successful, followed by some extra
+data specific to the command, or an `F` indicating failure, followed
+by an error code from the list in `common/isderrors.pas`.
 
 Replies are not guaranteed to be sent back in the order that messages
 were received (hence the conversation ID field).

@@ -81,7 +81,7 @@ type
 implementation
 
 uses
-   isdprotocol, sysutils;
+   systemnetwork, systemdynasty, isderrors, isdprotocol, sysutils;
 
 type
    PMessageBoardData = ^TMessageBoardData;
@@ -132,9 +132,9 @@ end;
 
 constructor TMessageBoardFeatureNode.CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem);
 begin
-   inherited CreateFromJournal(Journal, AFeatureClass, ASystem);
    Assert(Assigned(AFeatureClass));
    FFeatureClass := AFeatureClass as TMessageBoardFeatureClass;
+   inherited CreateFromJournal(Journal, AFeatureClass, ASystem);
 end;
 
 destructor TMessageBoardFeatureNode.Destroy();
@@ -369,9 +369,18 @@ begin
 end;
 
 function TMessageFeatureNode.HandleCommand(Command: UTF8String; var Message: TMessage): Boolean;
+var
+   PlayerDynasty: TDynasty;
 begin
    if (Command = 'mark-read') then
    begin
+      Result := True;
+      PlayerDynasty := (Message.Connection as TConnection).PlayerDynasty;
+      if (PlayerDynasty <> Parent.Owner) then
+      begin
+         Message.Error(ieInvalidCommand);
+         exit;
+      end;
       if (Message.CloseInput()) then
       begin
          Message.Reply();
@@ -379,11 +388,17 @@ begin
          FIsRead := True;
          MarkAsDirty([dkUpdateClients, dkUpdateJournal]);
       end;
-      Result := True;
    end
    else
    if (Command = 'mark-unread') then
    begin
+      Result := True;
+      PlayerDynasty := (Message.Connection as TConnection).PlayerDynasty;
+      if (PlayerDynasty <> Parent.Owner) then
+      begin
+         Message.Error(ieInvalidCommand);
+         exit;
+      end;
       if (Message.CloseInput()) then
       begin
          Message.Reply();
@@ -391,7 +406,6 @@ begin
          FIsRead := False;
          MarkAsDirty([dkUpdateClients, dkUpdateJournal]);
       end;
-      Result := True;
    end
    else
       Result := inherited;

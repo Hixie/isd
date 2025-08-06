@@ -21,7 +21,7 @@ var
    Settings: PSettings;
    OreRecords: TMaterialHashSet;
    TechnologyTree: TTechnologyTree;
-   SystemClock: TClock;
+   SystemClock, MonotonicClock: TClock;
    GlobalEncyclopedia: TEncyclopedia;
 begin
    try
@@ -66,14 +66,22 @@ begin
             FreeAndNil(TechnologyTree);
          end;
          SystemClock := TSystemClock.Create();
-         Server := TServer.Create(Port, SystemClock, Password, ServerIndex, Settings, GlobalEncyclopedia, DynastyServerDatabase, SystemServersDirectory + IntToStr(ServerIndex) + '/'); // $R-
+         MonotonicClock := TMonotonicClock.Create(SystemClock);
+         Server := TServer.Create(Port, MonotonicClock, Password, ServerIndex, Settings, GlobalEncyclopedia, DynastyServerDatabase, SystemServersDirectory + IntToStr(ServerIndex) + '/'); // $R-
          Writeln('Ready');
          Server.Run();
          Writeln('Exiting...');
          // TODO: have the servers write a last gasp update to their journal so we don't lose time
          // TODO: have the servers cleanly close their network sockets so that the clients know we're disconnected
       finally
+         Writeln('Shutting down...');
+         if (Assigned(RaiseList)) then
+         begin
+            Writeln('Shutdown caused by exception:');
+            ReportCurrentException();
+         end;
          FreeAndNil(Server);
+         FreeAndNil(MonotonicClock);
          FreeAndNil(SystemClock);
          FreeAndNil(DynastyServerDatabase);
          FreeAndNil(OreRecords);

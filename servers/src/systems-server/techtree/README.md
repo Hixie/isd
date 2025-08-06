@@ -85,6 +85,7 @@ class classid {
   description: "Description.";
   icon: "iconname";
   build: land; // or spacedock
+  feature: TBuilderFeatureClass capacity 1, build 1 hp/h;
   feature: TFoodBusFeatureClass;
   feature: TFoodGenerationFeatureClass size 10;
   feature: TKnowledgeBusFeatureClass;

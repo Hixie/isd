@@ -254,8 +254,9 @@ begin
          X := CachedSystem.RandomNumberGenerator.GetCardinal(0, Dimension);
          Y := CachedSystem.RandomNumberGenerator.GetCardinal(0, Dimension);
          OldChild := GetChild(X, Y, nil);
+         Assert(CellSize >= Child.Size);
          Crater := CachedSystem.Encyclopedia.Craterize(CellSize, OldChild, Child);
-         Writeln('  Placed crater ', Crater.DebugName, ' for child ', Child.DebugName, ' at ', X, ',', Y);
+         Writeln('  Placed crater ', Crater.DebugName, ' (', Crater.Size, 'm diameter) for child ', Child.DebugName, ' (', Child.Size, 'm diameter) at ', X, ',', Y, ' (cell with ', CellSize, 'm diameter)');
          AdoptGridChild(Crater, X, Y);
       end;
       Result := True;
@@ -399,6 +400,7 @@ begin
          exit;
       end;
       PlayerDynasty := (Message.Connection as TConnection).PlayerDynasty;
+      // TODO: check if PlayerDynasty can see this grid
       if (Assigned(GetChild(X, Y, PlayerDynasty))) then
       begin
          Message.Error(ieInvalidCommand);
@@ -433,6 +435,7 @@ begin
          exit;
       end;
       PlayerDynasty := (Message.Connection as TConnection).PlayerDynasty;
+      // TODO: check if PlayerDynasty can see this grid
       if (Assigned(GetChild(X, Y, PlayerDynasty))) then
       begin
          Message.Error(ieInvalidCommand);

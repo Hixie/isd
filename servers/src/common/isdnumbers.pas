@@ -87,7 +87,8 @@ type
 
 function RoundUInt64(Value: Double): UInt64;
 function TruncUInt64(Value: Double): UInt64;
-   
+function CeilUInt64(Value: Double): UInt64;
+
 implementation
 
 uses
@@ -711,7 +712,7 @@ var
 begin
    Assert(SizeOf(QWord) = SizeOf(Double));
    if (Value < 0.0) then
-      raise ENumberError.CreateFmt('Cannot represent negative number (%d) in UInt64.', [Value]);
+      raise ENumberError.CreateFmt('Cannot represent negative number (%f) in UInt64.', [Value]);
    if (Value = Double(High(UInt64))) then // 18446744073709551616.0 (2^64)
    begin
       // This particular value (because of floating point lossiness) becomes a number
@@ -751,6 +752,76 @@ begin
    if (Exponent > 0) then
    begin
       // we are adding trailing zeros
+      // the most we can do is add 63-kFractionWidth zeros
+      // otherwise we'd overflow our UInt64
+      if (Exponent >= 64 - kFractionWidth) then
+      begin
+         raise ENumberError.CreateFmt('Integer overflow when converting Double (%f) to UInt64.', [Value]);
+      end;
+      Result := Result shl Exponent;
+   end;
+end;
+
+function CeilUInt64(Value: Double): UInt64;
+var
+   Exponent: Integer;
+   Fraction: QWord;
+   Bits: QWord absolute Value;
+begin
+   Assert(SizeOf(QWord) = SizeOf(Double));
+   if (Value < 0.0) then
+      raise ENumberError.CreateFmt('Cannot represent negative number (%d) in UInt64.', [Value]);
+   if (Value = Double(High(UInt64))) then // 18446744073709551616.0 (2^64)
+   begin
+      // This particular value (because of floating point lossiness) becomes a number
+      // outside the range of UInt64 (by 1 bit). We hard-code this specific value
+      // because otherwise we would overflow when we try to decode it, and it is a
+      // very likely value to occur in this codebase.
+      Value := High(UInt64);
+      exit;
+   end;
+   if (Value = 0.0) then
+   begin
+      Result := 0;
+      exit;
+   end;
+   if (Value <= 1.0) then
+   begin
+      Result := 1;
+      exit;
+   end;
+   Exponent := (Bits and kExponent) >> kFractionWidth; // $R-
+   case Exponent of
+      0: Assert(False); // subnormal
+      1..1022: Assert(False); // less than 1.0
+      $7FF: begin
+         // infinity or NaN
+         // not supported
+         raise ENumberError.Create('Cannot represent infinity or NaN in UInt64.');
+      end;
+   end;
+   Fraction := Bits and kFraction; // $R-
+   Fraction := Fraction + kHiddenBit; // $R-
+   Dec(Exponent, 1023); // IEEE754 exponent bias
+   Dec(Exponent, kFractionWidth); // convert exponent into bit shift to get an integer
+   Result := Fraction;
+   if (Exponent < 0) then
+   begin
+      if (((Result shr -Exponent) shl -Exponent) = Result) then
+      begin
+         // this is an integer
+         Result := (Result shr -Exponent);
+      end
+      else
+      begin
+         // we are dropping trailing digits, round up
+         Result := (Result shr -Exponent) + 1;
+      end;
+   end
+   else
+   if (Exponent > 0) then
+   begin
+      // we are adding trailing zeros, number is already an integer
       // the most we can do is add 63-kFractionWidth zeros
       // otherwise we'd overflow our UInt64
       if (Exponent >= 64 - kFractionWidth) then
@@ -935,6 +1006,37 @@ begin
    Assert(RoundUInt64(1e-307) = 0);
    Assert(RoundUInt64(1e-308) = 0);
    Assert(RoundUInt64(1e-309) = 0);
+
+   Assert(CeilUInt64(0.0) = 0);
+   Assert(CeilUInt64(0.05) = 1);
+   Assert(CeilUInt64(0.5) = 1);
+   Assert(CeilUInt64(0.95) = 1);
+   Assert(CeilUInt64(1.5) = 2);
+   Assert(CeilUInt64(2.5) = 3);
+   Assert(CeilUInt64(3.5) = 4);
+   Assert(CeilUInt64(4.5) = 5);
+   Assert(CeilUInt64(5.5) = 6);
+   Assert(CeilUInt64(6.5) = 7);
+   Assert(CeilUInt64(120918240) = 120918240);
+   Assert(CeilUInt64(120918240.0001) = 120918241);
+   Assert(CeilUInt64(123.45) = 124);
+   Assert(CeilUInt64(18446744073709549568.0) = 18446744073709549568);
+   Assert(CeilUInt64(1e3) = 1000);
+   Assert(CeilUInt64(1e2) = 100);
+   Assert(CeilUInt64(1e1) = 10);
+   Assert(CeilUInt64(1e-15) = 1);
+   Assert(CeilUInt64(1e-25) = 1);
+   Assert(CeilUInt64(1e-30) = 1);
+   Assert(CeilUInt64(1e-35) = 1);
+   Assert(CeilUInt64(1e-40) = 1);
+   Assert(CeilUInt64(1e-100) = 1);
+   Assert(CeilUInt64(1e-200) = 1);
+   Assert(CeilUInt64(1e-300) = 1);
+   Assert(CeilUInt64(1e-305) = 1);
+   Assert(CeilUInt64(1e-306) = 1);
+   Assert(CeilUInt64(1e-307) = 1);
+   Assert(CeilUInt64(1e-308) = 1);
+   Assert(CeilUInt64(1e-309) = 1);
 end;
 {$ENDIF}
 

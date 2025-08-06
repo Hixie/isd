@@ -125,8 +125,8 @@ function TOrbitData.GetCanHaveOrbitalChildren(Parent: TOrbitFeatureNode; Child: 
 begin
    Assert(Child.Mass > 0.0);
    Assert(Assigned(Parent.PrimaryChild));
-   Assert(Parent.PrimaryChild.MassFlowRate.IsZero);
-   Assert(Child.MassFlowRate.IsZero);
+   Assert(Parent.PrimaryChild.MassFlowRate.IsNearZero);
+   Assert(Child.MassFlowRate.IsNearZero);
    Result := GetHillDiameter(Parent.PrimaryChild.Mass, Child.Mass) > Child.Size;
 end;
 
@@ -137,8 +137,8 @@ var
    A, M: Double;
 begin
    Assert(Assigned(Parent.PrimaryChild));
-   Assert(Parent.PrimaryChild.MassFlowRate.IsZero);
-   Assert(Child.MassFlowRate.IsZero);
+   Assert(Parent.PrimaryChild.MassFlowRate.IsNearZero);
+   Assert(Child.MassFlowRate.IsNearZero);
    // we assume the child's mass is <<< the parent's mass. // TODO: assert this
    A := SemiMajorAxis; // m
    M := Parent.PrimaryChild.Mass; // kg
@@ -188,7 +188,7 @@ begin
    try
       Assert(Assigned(APrimaryChild));
       Assert(APrimaryChild.Mass > 0, 'Primary child "' + APrimaryChild.AssetName + '" (class "' + APrimaryChild.AssetClass.Name + '") has zero mass');
-      Assert(APrimaryChild.MassFlowRate.IsZero);
+      Assert(APrimaryChild.MassFlowRate.IsNearZero);
       AdoptChild(APrimaryChild);
       FPrimaryChild := APrimaryChild;
    except
@@ -225,8 +225,7 @@ begin
    begin
       if (Assigned(POrbitData(Child.ParentData)^.CrashEvent)) then
       begin
-         POrbitData(Child.ParentData)^.CrashEvent.Cancel();
-         POrbitData(Child.ParentData)^.CrashEvent := nil;
+         CancelEvent(POrbitData(Child.ParentData)^.CrashEvent);
       end;
       Delete(FChildren, POrbitData(Child.ParentData)^.Index, 1);
       if (POrbitData(Child.ParentData)^.Index < Length(FChildren)) then
@@ -247,7 +246,7 @@ begin
    Assert(Assigned(FPrimaryChild));
    Assert(ChildPrimaryMass <= Child.Mass); // Child.Mass includes the mass of child's satellites.
    Assert(ChildPrimaryMass < FPrimaryChild.Mass, 'Child=' + Child.DebugName + ' Child.Mass=' + FloatToStr(Child.Mass) + ' ChildPrimaryMass=' + FloatToStr(ChildPrimaryMass) + ' FPrimaryChild.Mass=' + FloatToStr(FPrimaryChild.Mass)); // otherwise it wouldn't be orbiting us, we'd be orbiting it
-   Assert(FPrimaryChild.MassFlowRate.IsZero);
+   Assert(FPrimaryChild.MassFlowRate.IsNearZero);
    Result := POrbitData(Child.ParentData)^.GetHillDiameter(FPrimaryChild.Mass, ChildPrimaryMass);
 end;
 
@@ -257,7 +256,7 @@ begin
    // It doesn't apply to bodies that are held together by, like, screws and stuff.
    Assert(ChildMass > 0);
    Assert(Assigned(FPrimaryChild));
-   Assert(FPrimaryChild.MassFlowRate.IsZero);
+   Assert(FPrimaryChild.MassFlowRate.IsNearZero);
    Result := ChildRadius * ((2 * FPrimaryChild.Mass / ChildMass) ** (1.0 / 3.0)); // $R-
 end;
 
@@ -295,8 +294,7 @@ begin
    Assert(Eccentricity <= 0.95); // above this our approximation goes out of the window
    if (Assigned(POrbitData(Child.ParentData)^.CrashEvent)) then
    begin
-      POrbitData(Child.ParentData)^.CrashEvent.Cancel();
-      POrbitData(Child.ParentData)^.CrashEvent := nil;
+      CancelEvent(POrbitData(Child.ParentData)^.CrashEvent);
    end;
    POrbitData(Child.ParentData)^.SemiMajorAxis := SemiMajorAxis;
    POrbitData(Child.ParentData)^.Eccentricity := Eccentricity;
@@ -429,23 +427,20 @@ begin
    Result := TRate.Zero;
    if (Assigned(FPrimaryChild)) then
    begin
-      Assert(FPrimaryChild.MassFlowRate.IsZero, 'unexpected mass flow rate from ' + FPrimaryChild.DebugName + ' ' + FPrimaryChild.MassFlowRate.ToString('kg') + ' (' + FloatToStr(FPrimaryChild.MassFlowRate.AsDouble) + ')');
       Result := Result + FPrimaryChild.MassFlowRate;
    end;
    for Child in FChildren do
    begin
       Assert(Assigned(Child));
-      Assert(Child.MassFlowRate.IsZero, 'unexpected mass flow rate from ' + Child.DebugName + ' ' + Child.MassFlowRate.ToString('kg'));
       Result := Result + Child.MassFlowRate;
    end;
-   Assert(Result.IsZero);
+   Assert(Result.IsNearZero, 'unexpected total mass flow rate for ' + Parent.DebugName + ' orbit feature: ' + Result.ToString('kg'));
 end;
 
 function TOrbitFeatureNode.GetSize(): Double;
 begin
    if (Assigned(FPrimaryChild)) then
    begin
-      Assert(FPrimaryChild.MassFlowRate.IsZero, 'non-zero mass flow rate for ' + FPrimaryChild.DebugName + ': ' + FloatToStr(FPrimaryChild.MassFlowRate.AsDouble));
       if (Parent.Parent is IHillDiameterProvider) then
       begin
          Result := (Parent.Parent as IHillDiameterProvider).GetHillDiameter(Parent, FPrimaryChild.Mass);

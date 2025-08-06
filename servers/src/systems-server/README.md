@@ -1,5 +1,7 @@
 # Systems Server Public Protocol
 
+See the README.md in the parent directory for context.
+
 ## `login`
 
 Fields:
@@ -8,10 +10,10 @@ Fields:
 
 Response:
 
- * A number giving the server version. This number is actually the
-   highest known feature code that the server will use. If this number
-   is higher than expected by the client, the client might fail to
-   parse some server messages.
+ * A number (uint64) giving the server version. This number is
+   actually the highest known feature code that the server will use.
+   If this number is higher than expected by the client, the client
+   might fail to parse some server messages.
 
 The server will subsequently begin sending updates about the systems
 it supports that have the dynasty's presence, starting with a complete
@@ -22,8 +24,8 @@ system description for each system (of assets visible to this dynasty).
 
 Fields:
 
- * System ID (numeric)
- * Asset ID (numeric)
+ * System ID (uint64)
+ * Asset ID (uint64)
  * Command (string)
  * additional fields defined by the command
 
@@ -70,7 +72,7 @@ There are currently no notifications defined.
                         <assetid> <x> <y> ; center of system
                         <assetupdate>+ <zero64> ; assets
 
-<systemid>          ::= <int32> ; the star ID of the canonical star, if any
+<systemid>          ::= <uint32> ; the star ID of the canonical star, if any
 
 <currenttime>       ::= <time> ; current time relative to system's t₀
 
@@ -82,9 +84,9 @@ There are currently no notifications defined.
 
 <assetupdate>       ::= <assetid> <properties> <feature>* <zero32>
 
-<assetid>           ::= <int32> ; non-zero
+<assetid>           ::= <uint32> ; non-zero
 
-<assetclassid>      ::= <signedint32> ; zero indicates absence
+<assetclassid>      ::= <int32> ; zero indicates absence
 
 <properties>        ::= <dynasty> ; owner
                         <double>  ; mass
@@ -96,17 +98,17 @@ There are currently no notifications defined.
                         <string>  ; class name
                         <string>  ; description
 
-<materialid>        ::= <signedint32> ; non-zero material id
+<materialid>        ::= <int32> ; non-zero material id
 
-<dynasty>           ::= <int32> ; zero for unowned
+<dynasty>           ::= <uint32> ; zero for unowned
 
 <feature>           ::= <featurecode> <featuredata>
 
-<featurecode>       ::= <int32> ; non-zero, see below
+<featurecode>       ::= <uint32> ; non-zero, see below
 
 <featuredata>       ::= feature-specific form, see below
 
-<string>            ::= <int32> [ <int32> <byte>* ] ; see below
+<string>            ::= <uint32> [ <uint32> <byte>* ] ; see below
 
 <time>              ::= 64 bit signed integer ; milliseconds
 
@@ -114,11 +116,13 @@ There are currently no notifications defined.
 
 <double>            ::= 64 bit float
 
-<signedint32>       ::= 32 bit signed integer
+<int32>             ::= 32 bit signed integer
 
-<int32>             ::= 32 bit unsigned integer
+<uint32>            ::= 32 bit unsigned integer
 
-<signedint64>       ::= 64 bit signed integer
+<int64>             ::= 64 bit signed integer
+
+<uint64>            ::= 64 bit unsigned integer
 
 <zero8>             ::= 8 bit zero
 
@@ -165,7 +169,9 @@ the asset's mass in kg and mass flow rate in kg/ms, the asset's rough
 diameter in meters, the asset's name (if any; this is often the empty
 string), the asset's class ID, the class' icon name, a class name
 (brief description of the object, e.g. "star", "planet", "ship"), and
-a longer description of the object.
+a longer description of the object. The icon, class name, and
+description are the same as the asset class icon, name, and
+description, if the asset class is known.
 
 The mass flow rate is the rate of change of mass of the object. For
 example, as a pile of dirt grows, its mass will grow. Rather than
@@ -202,6 +208,8 @@ first time a particular string is encountered, it is serialized as a
 32 bit integer identifier, then the string's length, then that many
 bytes giving the string data. The second time, only the identifier is
 specified. String identifiers are scoped to the connection.
+
+> TODO: deduplicate asset classes and materials in a similar way.
 
 
 ### Icons
@@ -275,7 +283,7 @@ could have multiple `fcSpaceSensor` features with different settings.
 
 ```bnf
 <featuredata>       ::= <starid>
-<starid>            ::= <int32>
+<starid>            ::= <uint32>
 ```
 
 
@@ -399,15 +407,15 @@ approximation, and in practice will use different features (e.g. an
 #### `fcStructure` (0x04)
 
 ```bnf
-<featuredata>       ::= <material-lineitem>* <zero32> <hp> <minhp>
-<material-lineitem> ::= <marker> <quantity> <max> <componentname> <materialname> [<materialid> | <zero32>]
-<marker>            ::= 0xFFFFFFFF as an unsigned 32 bit integer
-<quantity>          ::= <int32>
-<max>               ::= <int32>
+<featuredata>       ::= <material-lineitem>* <zero32> <quantity> <rate> <hp> <rate> <minhp>
+<material-lineitem> ::= <max> <componentname> <materialname> [<materialid> | <zero32>]
+<max>               ::= <uint32>
 <componentname>     ::= <string>
 <materialname>      ::= <string>
-<hp>                ::= <int32>
-<minhp>             ::= <int32>
+<quantity>          ::= <uint32>
+<hp>                ::= <uint32>
+<rate>              ::= <double> ; units per millisecond
+<minhp>             ::= <uint32>
 ```
 
 The structure feature describes the make-up and structural integrity
@@ -416,10 +424,10 @@ of the asset.
 Each material line item (`<material-lineitem>`) consists of the
 following data:
 
- * a marker to distinguish it from the terminating zero.
- * how much of the material is present.
- * how much of the material is required (0 if the asset class is not known).
- * the name of the component (an empty string if the asset class is not known).
+ * how much of the material is required (may be smaller than real if
+   the asset class is not known, but will never be zero).
+ * the name of the component (an empty string if the asset class is
+   not known).
  * a brief description of the material (may not be unique).
  * the ID of the material, or zero if the material is not recognized.
 
@@ -428,38 +436,44 @@ systems and servers), but are only provided for recognized materials
 (so the same material might sometimes be reported as zero and
 sometimes with an ID).
 
-Material line items that have zero material present are skipped when
-the asset class is not known.
+When the _asset class_ is not known, material line items will have
+their `<max>` set their current quantity (so the `<max>` may change
+over time).
 
 The description of the material in this list (`<materialname>`) can be
 ignored if the material is known, as the material data (found in an
 `fcKnowledge` feature) will have a more detailed description.
 
-The list of material line items is terminated by a zero (instead of
-the 0xFFFFFFFF marker).
+The list of material line items is terminated by a zero.
 
 After the material line items, the following values describing the
 asset's structural integrity are given:
 
+ * a number indicating how much material is in the asset. This is
+   between zero and the sum of the `<max>` values, and fills
+   components in the order given.
+ * the rate at which that number is increasing.
  * a number indicating the structural integrity of the asset.
+ * the rate at which that number is increasing.
  * the minimum required structural integrity for the object to
    function (0 if the asset class is not known).
 
 The maximum structural integrity is the sum of the quantities in the
 material line items (which may be incomplete if the asset class is not
-known). The current structural integrity can't be greater than the sum
-of the quantities of material preset.
+known). The current structural integrity can't be greater than the
+amount of material present, regardless of the indicated rate of
+increase.
 
-TODO: Currently the structural integrity values have no effect.
+> TODO: Currently the structural integrity values have no effect.
 
 
 ### `fcSpaceSensor` (0x05)
 
 ```bnf
 <featuredata>       ::= <reach> <up> <down> <resolution> [<feature>]
-<reach>             ::= <int32> ; max steps up tree to nearest orbit
-<up>                ::= <int32> ; distance that the sensors reach up the tree from the nearest orbit
-<down>              ::= <int32> ; distance down the tree that the sensors reach
+<reach>             ::= <uint32> ; max steps up tree to nearest orbit
+<up>                ::= <uint32> ; distance that the sensors reach up the tree from the nearest orbit
+<down>              ::= <uint32> ; distance down the tree that the sensors reach
 <resolution>        ::= <double> ; the minimum size of assets that these sensors can detect (meters)
 ```
 
@@ -482,7 +496,7 @@ feature, documented next.
                         <count>
 <nearest-orbit>     ::= <assetid>
 <top-orbit>         ::= <assetid>
-<count>             ::= <int32> ; number of detected assets
+<count>             ::= <uint32> ; number of detected assets
 ```
 
 Reports the "top" and "bottom" nodes of the tree that were affected by
@@ -503,7 +517,7 @@ inferred. So these IDs are never zero.)
 ### `fcPlotControl` (0x08)
 
 ```bnf
-<featuredata>       ::= <int32>
+<featuredata>       ::= <uint32>
 ```
 
 Indicates to the client that the asset has, or could have, some
@@ -542,11 +556,11 @@ The assets in regions of a planetary surface are expected to have the
 ```bnf
 <featuredata>       ::= <cellsize> <width> <height> <cell>* <zero32>
 <cellsize>          ::= <double> ; meters
-<width>             ::= <int32> ; greater than zero
-<height>            ::= <int32> ; greater than zero
+<width>             ::= <uint32> ; greater than zero
+<height>            ::= <uint32> ; greater than zero
 <cell>              ::= <assetid> <x> <y>
-<x>                 ::= <int32> ; 0..width-1
-<y>                 ::= <int32> ; 0..height-1
+<x>                 ::= <uint32> ; 0..width-1
+<y>                 ::= <uint32> ; 0..height-1
 ```
 
 Grids consist of square cells.
@@ -573,6 +587,9 @@ This feature supports the following commands:
    arbitrary and can change from call to call. It should not be used
    as the default order in a UI.
 
+   > TODO: get-buildings shouldn't bother sending the asset class
+   > details, since the client can cache those details from fcKnowledge features
+
  * `build`: two numeric fields, x and y, indicating an empty cell,
    followed by the asset class ID (from the `get-buildings` command).
    No data is returned.
@@ -581,7 +598,7 @@ This feature supports the following commands:
 ### `fcPopulation` (0x0B)
 
 ```bnf
-<featuredata>       ::= <signedint64> <double>
+<featuredata>       ::= <uint64> <double>
 ```
 
 The integer is the number of people at this population center. The
@@ -664,13 +681,19 @@ This feature supports the following commands:
 ### `fcRubblePile` (0x0E)
 
 ```bnf
-<featuredata>       ::= ; nothing
+<featuredata>       ::= [ <materialid> <quantity> ]* <zero32> <quantity>
+<quantity>          ::= <uint64>
 ```
 
 Indicates that the asset contains, possibly among other things, a pile
 of rubble.
 
-> TODO: Expose the contents of the rubble somehow.
+The contents are listed as pairs of material ID and quantity (in
+units). Only known materials are listed. The balance of materials is
+given at the end of the list, paired with the material ID zero.
+
+> TODO: have some command to move materials to material piles, and
+> ores into ore piles
 
 
 ### `fcProxy` (0x0F)
@@ -699,7 +722,7 @@ proxy feature.
                         <string>  ; icon
                         <string>  ; material name
                         <string>  ; description
-                        <signedint64> ; flags, see below
+                        <uint64> ; flags, see below
                         <double>  ; mass (kg) per unit
                         <double>  ; mass (kg) per cubic meter (density)
 ```
@@ -733,7 +756,7 @@ Solid (including components) vs fluid determines how resources are
 transferred and stored.
 
 Quantities of resources (e.g. in fcStructure features) are specified
-in terms of the mass (kg) per unit. For example, if Iron has a mass
+in terms of the mass per unit. For example, if Iron has a mass
 per unit of 1000.0, then 10 Iron is equivalent to 10 metric tons of
 Iron.
 
@@ -787,9 +810,12 @@ with an `fcOrePile` feature that are descendants of the same
 
 The `<flags>` bit field has eight bits interpreted as follows:
 
-   0 (LSB): The mining feature is enabled.
-   1      : The mining feature is active.
-   2      : The mining is being rate-limited by the source.
+   0 (LSB): The mining feature is enabled. (If set, `<currentrate>`
+            is zero, bit 1 is false, and bits 2 and 3 are true.)
+   1      : The mining feature is active. (If not set, `<currentrate>`
+            is zero, and bits 2 and 3 are true.)
+   2      : There is no more to mine in the source. (If set,
+            `<currentrate> is zero.)
    3      : The mining is being rate-limited by the targets.
    4      : reserved, always zero
    5      : reserved, always zero
@@ -859,6 +885,17 @@ or slightly less than the rated capacity.
 
 An empty pile has mass zero. The listed materials are those that are
 recognized.
+
+This feature supports the following command (allowed by any dynasty
+that can detect the pile):
+
+ * `analyze`: No fields. Returns the time of the analysis (int64),
+   followed by an approximation of the total quantity of material in
+   the pile (double), followed by a list of pairs of material IDs
+   (int64) and quantities (uint64) giving the known ores and how much
+   of each there is. (The difference between the sum of these
+   quantities and the given total quantity is the number of unknown
+   ores.) These numbers are quantities, not masses.
 
 
 ### `fcRegion` (0x14)
@@ -961,9 +998,9 @@ removed, if negative) from the pile.
 
 ```bnf
 <featuredata>       ::= <quantity> <flowrate> <capacity> <material>
-<quantity>          ::= <signedint64>
+<quantity>          ::= <uint64>
 <flowrate>          ::= <double>
-<capacity>          ::= <signedint64>
+<capacity>          ::= <uint64>
 <material>          ::= <materialname> ( <materialid> | <zero32> )
 ```
 
@@ -995,7 +1032,7 @@ feature, documented next.
 ```bnf
 <featuredata>       ::= <grid> <count>
 <grid>              ::= <assetid> | <zero32>
-<count>             ::= <int32> ; number of detected assets
+<count>             ::= <uint32> ; number of detected assets
 ```
 
 Reports the grid being scanned, and the total number of detected
@@ -1005,6 +1042,33 @@ This feature, if present, always follows a `fcGridSensor` feature. If
 there are multiple sensors, they may each have a trailing
 `fcGridSensorStatus`; each status applies to the immediately
 preceding sensor.
+
+
+### `fcBuilder` (0x1A)
+
+```bnf
+<featuredata>       ::= <capacity> <rate> <structure>* <zero32>
+<capacity>          ::= <uint32>
+<rate>              ::= <double> ; units per millisecond
+<structure>         ::= <assetid>
+```
+
+A feature that allows `fcStructure` assets to build themselves from
+`fcMaterialPile` assets.
+
+The `<capacity>` is the number of simultaneous buildings that can be
+built. It will always be greater than zero.
+
+The `<rate>` is the speed at which the feature is able to repair (or
+build) structures (this rate may be limited by available resources).
+It specifies the number of `<hp>` that the builder can increase a
+structure by, per millisecond.
+
+The list of `<structure>`s is the assets currently being built by this
+asset.
+
+This feature is only sent to the client if the dynasty has access to
+the asset's internals.
 
 
 # Systems Server Internal Protocol

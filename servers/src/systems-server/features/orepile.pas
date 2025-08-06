@@ -6,7 +6,7 @@ interface
 
 uses
    basenetwork, systems, serverstream, materials, techtree,
-   messageport, region, time;
+   messageport, region, time, annotatedpointer;
 
 type
    TOreMaterialKnowledgePackage = record
@@ -42,12 +42,16 @@ type
    
    TOrePileFeatureNode = class(TFeatureNode, IOrePile)
    strict private
+      type
+         TRegionFlag = (rfNoRegion);
+      var
       FFeatureClass: TOrePileFeatureClass;
       FDynastyKnowledge: TOreMaterialKnowledgePackage; // per dynasty bits for each ore
-      FRegion: TRegionFeatureNode;
+      FRegion: specialize TAnnotatedPointer<TRegionFeatureNode, TRegionFlag>; // TODO: either use TAnnotatedPointer more widely, or remove the use here
    private // IOrePile
       function GetOrePileCapacity(): Double; // kg
       procedure StartOrePile(Region: TRegionFeatureNode);
+      procedure PauseOrePile();
       procedure StopOrePile();
    protected
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
@@ -63,6 +67,7 @@ type
       destructor Destroy(); override;
       procedure UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem); override;
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
+      function HandleCommand(Command: UTF8String; var Message: TMessage): Boolean; override;
    end;
 
 // TODO: handle our ancestor chain changing
@@ -70,7 +75,7 @@ type
 implementation
 
 uses
-   exceptions, sysutils, knowledge, messages, isdprotocol;
+   exceptions, sysutils, systemnetwork, systemdynasty, knowledge, messages, isdprotocol;
 
 function TOreMaterialKnowledgePackage.GetIsPointer(): Boolean;
 begin
@@ -264,9 +269,9 @@ end;
 
 constructor TOrePileFeatureNode.CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem);
 begin
-   inherited CreateFromJournal(Journal, AFeatureClass, ASystem);
    Assert(Assigned(AFeatureClass));
    FFeatureClass := AFeatureClass as TOrePileFeatureClass;
+   inherited CreateFromJournal(Journal, AFeatureClass, ASystem);
 end;
 
 destructor TOrePileFeatureNode.Destroy();
@@ -282,25 +287,32 @@ end;
 
 procedure TOrePileFeatureNode.StartOrePile(Region: TRegionFeatureNode);
 begin
-   Writeln('StartOrePile(', Region.Parent.DebugName, ')');
-   Assert(not Assigned(FRegion));
+   Writeln(DebugName, ' StartOrePile(', Region.Parent.DebugName, ')');
+   Assert((not FRegion.Assigned) or (FRegion.Unwrap() = Region));
    FRegion := Region;
-   MarkAsDirty([dkUpdateClients, dkUpdateJournal]);
+   MarkAsDirty([dkUpdateClients]); // the mass flow rate and contents may have changed
+end;
+
+procedure TOrePileFeatureNode.PauseOrePile();
+begin
+   Writeln(DebugName, ' PauseOrePile(', FRegion.Unwrap().Parent.DebugName, ')');
+   Assert(FRegion.Assigned);
+   MarkAsDirty([dkUpdateClients]); // the mass flow rate and contents may have changed
 end;
 
 procedure TOrePileFeatureNode.StopOrePile();
 begin
-   Writeln('StopOrePile(', FRegion.Parent.DebugName, ')');
-   Assert(Assigned(FRegion));
-   FRegion := nil;
-   MarkAsDirty([dkUpdateClients, dkUpdateJournal, dkNeedsHandleChanges]);
+   Writeln(DebugName, ' StopOrePile(', FRegion.Unwrap().Parent.DebugName, ')');
+   Assert(FRegion.Assigned);
+   FRegion.Clear();
+   MarkAsDirty([dkUpdateClients, dkNeedsHandleChanges]); // the mass flow rate and contents may have changed
 end;
 
 procedure TOrePileFeatureNode.HandleChanges(CachedSystem: TSystem);
 var
    Message: TRegisterOrePileBusMessage;
 begin
-   if (not Assigned(FRegion)) then
+   if (not FRegion.Assigned) then
    begin
       Message := TRegisterOrePileBusMessage.Create(Self);
       InjectBusMessage(Message); // TODO: report if we found a region
@@ -311,9 +323,9 @@ end;
 
 function TOrePileFeatureNode.GetMass(): Double;
 begin
-   if (Assigned(FRegion)) then
+   if (FRegion.Assigned) then
    begin
-      Result := FRegion.GetOrePileMass(Self);
+      Result := FRegion.Unwrap().GetOrePileMass(Self);
    end
    else
    begin
@@ -324,9 +336,9 @@ end;
 
 function TOrePileFeatureNode.GetMassFlowRate(): TRate;
 begin
-   if (Assigned(FRegion)) then
+   if (FRegion.Assigned) then
    begin
-      Result := FRegion.GetOrePileMassFlowRate(Self);
+      Result := FRegion.Unwrap().GetOrePileMassFlowRate(Self);
    end
    else
    begin
@@ -347,13 +359,15 @@ begin
       Writer.WriteDouble(Mass);
       Writer.WriteDouble(MassFlowRate.AsDouble);
       Writer.WriteDouble(FFeatureClass.FCapacityMass);
-      if (Assigned(FRegion)) then
+      if (FRegion.Assigned) then
       begin
-         Ores := FRegion.GetOresPresent() and FDynastyKnowledge[DynastyIndex];
+         Ores := FRegion.Unwrap().GetOresPresent() and FDynastyKnowledge[DynastyIndex];
          for Ore in TOres do
          begin
             if (Ores[Ore]) then
+            begin
                Writer.WriteCardinal(Ore);
+            end;
          end;
       end;
       Writer.WriteCardinal(0);
@@ -382,6 +396,53 @@ end;
 
 procedure TOrePileFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
 begin
+end;
+
+function TOrePileFeatureNode.HandleCommand(Command: UTF8String; var Message: TMessage): Boolean;
+var
+   CachedSystem: TSystem;
+   PlayerDynasty: TDynasty;
+   DynastyIndex: Cardinal;
+   OreKnowledge: TOreFilter;
+   OreQuantities: TOreQuantities;
+   Ore: TOres;
+   Total: Double;
+begin
+   if (Command = 'analyze') then
+   begin
+      Result := True;
+      CachedSystem := System;
+      PlayerDynasty := (Message.Connection as TConnection).PlayerDynasty;
+      DynastyIndex := CachedSystem.DynastyIndex[PlayerDynasty];
+      // TODO: check if we have the right visibility on the ore pile to do an analysis
+      if (Message.CloseInput()) then
+      begin
+         Message.Reply();
+         if (FRegion.Assigned) then
+         begin
+            OreKnowledge := FRegion.Unwrap().GetOresPresent() and FDynastyKnowledge[DynastyIndex];
+            OreQuantities := FRegion.Unwrap().GetOresForPile(Self);
+            Total := 0.0;
+            for Ore in TOres do
+            begin
+               Total := Total + OreQuantities[Ore];
+            end;
+            Message.Output.WriteInt64(CachedSystem.Now.AsInt64);
+            Message.Output.WriteDouble(Total);
+            for Ore in TOres do
+            begin
+               if (OreKnowledge[Ore] and (OreQuantities[Ore] > 0)) then
+               begin
+                  Message.Output.WriteLongint(Ore);
+                  Message.Output.WriteQWord(OreQuantities[Ore]);
+               end;
+            end;
+         end;
+         Message.CloseOutput();
+      end;
+   end
+   else
+      Result := inherited;
 end;
 
 initialization

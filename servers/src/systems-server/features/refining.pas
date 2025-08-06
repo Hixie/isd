@@ -4,6 +4,8 @@ unit refining;
 
 interface
 
+// TODO: refactor to avoid code duplication with mining.pas
+
 uses
    basenetwork, systems, serverstream, materials, techtree,
    messageport, region, time;
@@ -30,6 +32,7 @@ type
       function GetRefineryMaxRate(): TRate; // kg per second
       function GetRefineryCurrentRate(): TRate; // kg per second
       procedure StartRefinery(Region: TRegionFeatureNode; Rate: TRate; SourceLimiting, TargetLimiting: Boolean); // kg per second
+      procedure PauseRefinery();
       procedure StopRefinery();
    protected
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
@@ -51,7 +54,8 @@ type
 implementation
 
 uses
-   exceptions, sysutils, isdprotocol, knowledge, messages, typedump;
+   exceptions, sysutils, systemnetwork, systemdynasty, isderrors,
+   isdprotocol, knowledge, messages, typedump;
 
 constructor TRefiningFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
 var
@@ -89,9 +93,9 @@ end;
 
 constructor TRefiningFeatureNode.CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem);
 begin
-   inherited CreateFromJournal(Journal, AFeatureClass, ASystem);
    Assert(Assigned(AFeatureClass));
    FFeatureClass := AFeatureClass as TRefiningFeatureClass;
+   inherited CreateFromJournal(Journal, AFeatureClass, ASystem);
 end;
 
 destructor TRefiningFeatureNode.Destroy();
@@ -117,18 +121,29 @@ end;
 procedure TRefiningFeatureNode.StartRefinery(Region: TRegionFeatureNode; Rate: TRate; SourceLimiting, TargetLimiting: Boolean); // kg per second
 begin
    Assert(FStatus.Enabled);
+   Assert(Assigned(Region));
+   if ((FStatus.Region <> Region) or
+       (FStatus.Rate <> Rate) or
+       (FStatus.SourceLimiting <> SourceLimiting) or
+       (FStatus.TargetLimiting <> TargetLimiting)) then
+      MarkAsDirty([dkUpdateClients]);
    FStatus.Region := Region;
    FStatus.Rate := Rate;
    FStatus.SourceLimiting := SourceLimiting;
    FStatus.TargetLimiting := TargetLimiting;
    FStatus.Mode := rcActive;
-   MarkAsDirty([dkUpdateClients, dkUpdateJournal]);
-   Writeln('StartRefinery(', FStatus.Region.Parent.DebugName, ', ', Rate.ToString('kg'), ', ', SourceLimiting, ', ', TargetLimiting, ')');
+   Writeln(DebugName, 'StartRefinery(', FStatus.Region.Parent.DebugName, ', ', Rate.ToString('kg'), ', ', SourceLimiting, ', ', TargetLimiting, ')');
+end;
+
+procedure TRefiningFeatureNode.PauseRefinery();
+begin
+   Writeln(DebugName, 'PauseRefinery(', FStatus.Region.Parent.DebugName, ')');
+   FStatus.Mode := rcPending;
 end;
 
 procedure TRefiningFeatureNode.StopRefinery();
 begin
-   Writeln('StopRefinery(', FStatus.Region.Parent.DebugName, ')');
+   Writeln(DebugName, 'StopRefinery(', FStatus.Region.Parent.DebugName, ')');
    FStatus.Region := nil;
    FStatus.Rate := TRate.Zero;
    FStatus.SourceLimiting := False;
@@ -141,16 +156,17 @@ procedure TRefiningFeatureNode.HandleChanges(CachedSystem: TSystem);
 var
    Message: TRegisterRefineryBusMessage;
 begin
-   // If a region stops us, they will probably restart us before we get here.
    if ((FStatus.Enabled) and (FStatus.Mode = rcIdle)) then
    begin
       Message := TRegisterRefineryBusMessage.Create(Self);
       if (InjectBusMessage(Message) = mrHandled) then
       begin
+         Assert(FStatus.Mode = rcIdle);
          FStatus.Mode := rcPending;
       end
       else
       begin
+         Assert(FStatus.Mode = rcIdle);
          FStatus.Mode := rcNoRegion;
       end;
       FreeAndNil(Message);
@@ -189,6 +205,10 @@ begin
          Flags := Flags or $08; // $R-
       Writer.WriteByte(Flags);
       Writer.WriteDouble(FStatus.Rate.AsDouble);
+      {$IFOPT C+}
+      if (FStatus.Mode <> rcActive) then
+         Assert(FStatus.Rate.IsZero, DebugName + ' has non-zero rate but is flagging as inactive (' + specialize EnumToString<TRegionClientMode>(FStatus.Mode) + ')');
+      {$ENDIF}
    end;
 end;
 
@@ -218,10 +238,18 @@ begin
 end;
 
 function TRefiningFeatureNode.HandleCommand(Command: UTF8String; var Message: TMessage): Boolean;
+var
+   PlayerDynasty: TDynasty;
 begin
    if (Command = 'enable') then
    begin
       Result := True;
+      PlayerDynasty := (Message.Connection as TConnection).PlayerDynasty;
+      if (PlayerDynasty <> Parent.Owner) then
+      begin
+         Message.Error(ieInvalidCommand);
+         exit;
+      end;
       Message.Reply();
       if (FStatus.Enabled) then
       begin
@@ -229,6 +257,7 @@ begin
       end
       else
       begin
+         Assert(FStatus.Mode = rcIdle);
          Message.Output.WriteBoolean(True);
          FStatus.Enabled := True;
          MarkAsDirty([dkUpdateClients, dkUpdateJournal, dkNeedsHandleChanges]);
@@ -239,17 +268,23 @@ begin
    if (Command = 'disable') then
    begin
       Result := True;
+      PlayerDynasty := (Message.Connection as TConnection).PlayerDynasty;
+      if (PlayerDynasty <> Parent.Owner) then
+      begin
+         Message.Error(ieInvalidCommand);
+         exit;
+      end;
       Message.Reply();
       if (FStatus.Enabled) then
       begin
+         Message.Output.WriteBoolean(True);
          if (FStatus.Mode in [rcPending, rcActive]) then
          begin
             Assert(Assigned(FStatus.Region));
             FStatus.Region.RemoveRefinery(Self);
-            FStatus.Region := nil;
          end;
+         FStatus.Disable();
          Assert(not Assigned(FStatus.Region));
-         Message.Output.WriteBoolean(True);
          FStatus.Enabled := False;
          MarkAsDirty([dkUpdateClients, dkUpdateJournal, dkNeedsHandleChanges]);
       end

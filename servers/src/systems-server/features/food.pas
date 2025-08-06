@@ -321,9 +321,9 @@ end;
 
 constructor TFoodGenerationFeatureNode.CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem);
 begin
-   inherited CreateFromJournal(Journal, AFeatureClass, ASystem);
    Assert(Assigned(AFeatureClass));
    FFeatureClass := AFeatureClass as TFoodGenerationFeatureClass;
+   inherited CreateFromJournal(Journal, AFeatureClass, ASystem);
 end;
 
 function TFoodGenerationFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
