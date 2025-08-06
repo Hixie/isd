@@ -10,6 +10,7 @@ import 'package:flutter/services.dart';
 import 'connection.dart';
 import 'game.dart';
 import 'http/http.dart' as http;
+import 'hud.dart';
 import 'icons.dart';
 import 'root.dart';
 import 'shaders.dart';
@@ -174,8 +175,11 @@ class _InterstellarDynastiesState extends State<InterstellarDynasties> {
     // see https://main-api.flutter.dev/flutter/widgets/RestorableRouteFuture-class.html
   }
 
+  final GlobalKey hudKey = GlobalKey();
+  
   void _doLogout() {
     widget.game.logout();
+    (hudKey.currentState! as HudLayoutInterface).closeAll();
   }
 
   void _doAbout() {
@@ -230,6 +234,7 @@ class _InterstellarDynastiesState extends State<InterstellarDynasties> {
             rootNode: widget.game.rootNode,
             recommendedFocus: widget.game.recommendedFocus,
             dynastyManager: widget.game.dynastyManager,
+            hudKey: hudKey,
           ),
           Positioned(
             top: 0.0,

@@ -3,19 +3,20 @@ import 'package:flutter/material.dart';
 import '../assets.dart';
 import '../containers/messages.dart';
 import '../nodes/system.dart';
+import '../widgets.dart';
 
 class MessageFeature extends AbilityFeature with ChangeNotifier {
   MessageFeature(this.systemID, this.timestamp, this.isRead, this.subject, this.from, this.body);
   
   final int systemID;
-  final int timestamp;
+  final int timestamp; // TODO: show this in the UI!
   final bool isRead;
   final String subject;
   final String from;
   final String body;
 
   @override
-  RendererType get rendererType => RendererType.box;
+  RendererType get rendererType => RendererType.ui;
 
   // TODO: we shouldn't replace the entire node, losing state, when the server updates us
   // because that way, we lose the "ambiguous" boolean state.
@@ -40,7 +41,7 @@ class MessageFeature extends AbilityFeature with ChangeNotifier {
             padding: const EdgeInsets.fromLTRB(8.0, 4.0, 8.0, 0.0),
             child: Text(
               'Subject: $subject',
-              style: isRead ? null : const TextStyle(fontWeight: FontWeight.bold),
+              style: isRead ? null : bold,
             ),
           ),
           Padding(
@@ -64,7 +65,7 @@ class MessageFeature extends AbilityFeature with ChangeNotifier {
                   if (!_ambiguous) {
                     _ambiguous = true;
                     notifyListeners();
-                    SystemNode.of(context).play(<Object>[parent.id, isRead ? 'mark-unread' : 'mark-read']);
+                    SystemNode.of(parent).play(<Object>[parent.id, isRead ? 'mark-unread' : 'mark-read']);
                   }
                 },
               );
@@ -83,7 +84,7 @@ class MessageFeature extends AbilityFeature with ChangeNotifier {
             builder: (BuildContext context) => ListBody(
               children: <Widget>[
                 Text(subject,
-                  style: isRead ? null : const TextStyle(fontWeight: FontWeight.bold),
+                  style: isRead ? null : bold,
                 ),
                 Text('From: $from',
                   style: DefaultTextStyle.of(context).style.apply(fontSizeFactor: 0.8),
@@ -110,7 +111,7 @@ class MessageFeature extends AbilityFeature with ChangeNotifier {
                 if (!_ambiguous) {
                   _ambiguous = true;
                   notifyListeners();
-                  SystemNode.of(context).play(<Object>[parent.id, isRead ? 'mark-unread' : 'mark-read']);
+                  SystemNode.of(parent).play(<Object>[parent.id, isRead ? 'mark-unread' : 'mark-read']);
                 }
               },
             );

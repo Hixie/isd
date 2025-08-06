@@ -29,13 +29,13 @@ class BinaryStreamReader {
     return result;
   }
 
-  int readInt32() {
+  int readUInt32() {
     final int result = _source.getUint32(_position, Endian.little);
     _position += 4;
     return result;
   }
 
-  int readSignedInt32() {
+  int readInt32() {
     final int result = _source.getInt32(_position, Endian.little);
     _position += 4;
     return result;

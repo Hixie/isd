@@ -1,10 +1,37 @@
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 
 import 'containers/orbits.dart';
 import 'dynasty.dart';
+import 'hud.dart';
 import 'icons.dart';
+import 'layout.dart';
+import 'nodes/system.dart';
+import 'prettifiers.dart';
+import 'root.dart';
 import 'widgets.dart';
 import 'world.dart';
+
+typedef WalkCallback = bool Function(AssetNode node);
+
+enum RendererType {
+  /// do not include this feature in the rendering
+  none,
+
+  /// this is some sort of UI element, should be put in a field or be in a virtual asset container
+  ui,
+
+  /// this is a UI element that can be placed directly on top of the other renderers
+  overlay,
+  
+  /// this is a square renderer
+  square,
+
+  /// this is a round renderer
+  circle,
+
+  /// this renderer doesn't really have a shape (e.g. orbits)
+  space,
+}
 
 abstract class Feature {
   Feature();
@@ -28,23 +55,16 @@ abstract class Feature {
   RendererType get rendererType;
 
   Widget buildRenderer(BuildContext context); // this one is abstract; containers always need to build something
+
+  Widget? buildDialog(BuildContext context) {
+    print('warning: $runtimeType has no buildDialog');
+     return null;
+  }
 }
 
-typedef WalkCallback = bool Function(AssetNode node);
-
-enum RendererType {
-  /// do not include this feature in the rendering
-  none,
-
-  /// this feature returns a RenderBox that should fit into the icon / grid
-  box,
-
-  /// this feature returns a RenderWorld that should be in the background
-  background,
-
-  /// this feature returns a RenderWorld that will take care of the asset
-  foreground,
-}
+const EdgeInsets dialogPadding = EdgeInsets.only(left: 12.0, right: 12.0, top: 8.0);
+const EdgeInsets sectionPadding = EdgeInsets.only(left: 12.0, right: 12.0, top: 12.0);
+const EdgeInsets featurePadding = EdgeInsets.only(left: 20.0, top: 4.0);
 
 abstract class AbilityFeature extends Feature {
   AbilityFeature();
@@ -60,7 +80,7 @@ abstract class AbilityFeature extends Feature {
   }
 }
 
-/// Features that have children.
+/// Features that have children, which have positions.
 ///
 /// Subclasses are expected to attach children (set their `parent` field) on
 /// [attach], and reset them on [detach].
@@ -77,6 +97,12 @@ class AssetNode extends WorldNode {
 
   final int id;
 
+  @override
+  void notifyListeners() {
+    //print(StackTrace.current);
+    super.notifyListeners();
+  }
+  
   int get assetClassID => _assetClassID!;
   int? _assetClassID;
   set assetClassID(int value) {
@@ -113,6 +139,15 @@ class AssetNode extends WorldNode {
     }
   }
 
+  int get timeOrigin => _timeOrigin!; // ms
+  int? _timeOrigin;
+  set timeOrigin(int value) {
+    if (_timeOrigin != value) {
+      _timeOrigin = value;
+      notifyListeners();
+    }
+  }
+
   double get size => _size!; // meters
   double? _size;
   set size(double value) {
@@ -123,6 +158,7 @@ class AssetNode extends WorldNode {
   }
 
   bool get isVirtual => mass == 0.0 && massFlowRate == 0.0 && size == 0.0;
+  bool get isGhost => mass == 0.0 && massFlowRate == 0.0 && size != 0.0;
 
   String get name => _name ?? '';
   String? _name;
@@ -151,6 +187,8 @@ class AssetNode extends WorldNode {
     }
   }
 
+  String get nameOrClassName => name.isEmpty ? className : name;
+  
   String get description => _description!;
   String? _description;
   set description(String value) {
@@ -228,78 +266,125 @@ class AssetNode extends WorldNode {
     }
   }
 
+  HudHandle? _hud;
+  
+  void showInspector(BuildContext context, { bool toggle = true }) {
+    if (_hud != null) {
+      if (toggle) {
+        _hud!.cancel();
+        _hud = null;
+      } else {
+        _hud!.bringToFront();
+      }
+    } else {
+      _hud = HudProvider.add(
+        context,
+        const Size(480.0, 512.0),
+        AssetInspector(
+          SystemNode.of(this),
+          DynastyManager.of(context),
+          this,
+          onClose: () { _hud = null; },
+        ),
+      );
+    }
+  }
+
   @override
-  Widget buildRenderer(BuildContext context, [ Widget? nil ]) {
+  void dispose() {
+    _hud?.cancel();
+    super.dispose();
+  }
+    
+  @override
+  Widget buildRenderer(BuildContext context, [ Widget? nil ]){ 
     // TODO: compute actualDiameter here, and short-circuit if it's too small
-    final List<Widget> backgrounds = <Widget>[];
+    List<Widget>? backgrounds;
+    List<Widget>? overlays;
     List<Widget>? boxes;
-    bool hasBackground = false;
+    BoxShape? shape;
     for (Feature feature in <Feature>[..._containers.values, ..._abilities.values]) {
       switch (feature.rendererType) {
         case RendererType.none:
           ;
-        case RendererType.box:
+        case RendererType.ui:
           boxes ??= <Widget>[];
           boxes.add(feature.buildRenderer(context));
-        case RendererType.background:
-          hasBackground = true;
-          backgrounds.insert(0, feature.buildRenderer(context));
-        case RendererType.foreground:
+        case RendererType.overlay:
+          overlays ??= <Widget>[];
+          overlays.add(feature.buildRenderer(context));
+        case RendererType.circle:
+          backgrounds ??= <Widget>[];
+          backgrounds.add(feature.buildRenderer(context));
+          shape ??= BoxShape.circle; // does not override RendererType.square
+        case RendererType.square:
+          backgrounds ??= <Widget>[];
+          backgrounds.add(feature.buildRenderer(context));
+          shape = BoxShape.rectangle; // does override RendererType.circle
+        case RendererType.space:
+          backgrounds ??= <Widget>[];
           backgrounds.add(feature.buildRenderer(context));
       }
     }
     if (isVirtual) {
+      // virtual assets only have RendererType.ui renderers
+      assert(overlays == null);
+      assert(backgrounds == null);
+      final Widget result;
       if (boxes != null) {
         if (boxes.length > 1) {
-          backgrounds.add(ListBody(children: boxes));
-        } else if (boxes.length == 1) {
-          backgrounds.add(boxes.single);
+          result = ListBody(children: boxes);
+        } else {
+          assert(boxes.length == 1);
+          result = boxes.single;
         }
+      } else {
+        result = const Placeholder();
       }
-      if (backgrounds.length > 1) {
-        return Stack(
-          children: backgrounds,
-        );
-      }
-      if (backgrounds.isEmpty) {
-        backgrounds.add(const Placeholder());
-      }
-      return backgrounds.single;
+      return result;
     }
-    if (!hasBackground) {
+    // non-virtual assets assume a RenderWorld world
+    backgrounds ??= <Widget>[];
+    if (backgrounds.isEmpty) {
+      shape = BoxShape.rectangle;
       backgrounds.insert(0, WorldIcon(
         node: this,
         diameter: diameter,
-        maxDiameter: parent != null ? parent!.maxRenderDiameter : maxRenderDiameter,
+        maxDiameter: parent!.maxRenderDiameter,
         icon: icon,
+        ghost: isGhost,
       ));
-      if (boxes != null) {
-        backgrounds.add(WorldFields(
-          node: this,
-          icon: icon,
-          maxDiameter: parent!.maxRenderDiameter,
-          diameter: diameter,
-          children: boxes,
-        ));
-      }
-    } else if (boxes != null) {
-      backgrounds.add(WorldBoxGrid(
+    }
+    if (boxes != null) {
+      backgrounds.add(WorldFields(
         node: this,
+        icon: icon,
         maxDiameter: parent!.maxRenderDiameter,
         diameter: diameter,
         children: boxes,
+     ));
+    }
+    if (shape != null) {
+      backgrounds.insert(0, WorldTapDetector(
+        node: this,
+        diameter: diameter,
+        maxDiameter: parent!.maxRenderDiameter,
+        shape: shape,
+        onTap: showInspector,
       ));
     }
-    if (backgrounds.length == 1) {
-      return backgrounds.single;
+    if (overlays != null) {
+      backgrounds.addAll(overlays);
     }
-    assert(backgrounds.length > 1);
-    return WorldStack(
-      node: this,
-      maxDiameter: parent!.maxRenderDiameter,
-      diameter: diameter,
-      children: backgrounds,
-    );
+    if (backgrounds.length > 1) {
+      return WorldStack(
+        node: this,
+        maxDiameter: parent!.maxRenderDiameter,
+        diameter: diameter,
+        children: backgrounds,
+      );
+    }
+    return backgrounds.single;
   }
 
   Widget? buildHeader(BuildContext context) {
@@ -311,6 +396,168 @@ class AssetNode extends WorldNode {
     return null;
   }
 
+  Widget asIcon(BuildContext context, { required double size, IconsManager? icons, String? tooltip }) {
+    return IconsManager.icon(context, icon, size: size, icons: icons, tooltip: tooltip);
+  }
+  
+  InlineSpan describe(BuildContext context, IconsManager icons, { required double iconSize }) {
+    final Widget icon = asIcon(context, size: iconSize, icons: icons);
+    return TextSpan(
+      children: <InlineSpan>[
+        WidgetSpan(child: icon),
+        TextSpan(text: name.isNotEmpty ? ' $name' : ' $className'),
+        WidgetSpan(
+          child: Padding(
+            padding: const EdgeInsets.only(left: 4.0, bottom: 1.0),
+            child: InkResponse(
+              radius: iconSize,
+              onTap: () {
+                ZoomProvider.centerOn(context, this);
+              },
+              child: Icon(
+                Icons.location_searching,
+                size: iconSize,
+              ),
+            ),
+          ),
+        ),
+        WidgetSpan(
+          child: Padding(
+            padding: const EdgeInsets.only(left: 4.0, bottom: 1.0),
+            child: InkResponse(
+              radius: iconSize,
+              onTap: () {
+                showInspector(context, toggle: false);
+              },
+              child: Icon(
+                Icons.assignment_outlined,
+                size: iconSize,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   String toString() => '<$_className:$name#${hashCode.toRadixString(16)}>';
+}
+
+class AssetInspector extends StatelessWidget {
+  const AssetInspector(this.system, this.dynastyManager, this.node, { super.key, this.onClose });
+
+  final SystemNode system;
+  final DynastyManager dynastyManager;
+  final AssetNode node;
+  final VoidCallback? onClose;
+  
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: node,
+      builder: (BuildContext context, Widget? child) {
+        final List<Widget> details = <Widget>[
+          if (node.name.isNotEmpty) // we'll put the asset name in the header
+            Padding(
+              padding: dialogPadding,
+              child: Text(node.className, style: bold),
+            ),
+          Padding(
+            padding: dialogPadding,
+            child: Text(node.description, softWrap: true, overflow: TextOverflow.visible),
+          ),
+        ];
+        if (node.ownerDynasty == null) {
+          assert(!node.isGhost);
+          details.add(
+            const Padding(
+              padding: dialogPadding,
+              child: Text('No dynasty controls this.'),
+            ),
+          );
+        } else if (node.ownerDynasty == dynastyManager.currentDynasty) {
+          if (node.isGhost) {
+            details.add(
+              const Padding(
+                padding: dialogPadding,
+                child: Text('We have planned to build this.'),
+              ),
+            );
+          } else {
+            details.add(
+              const Padding(
+                padding: dialogPadding,
+                child: Text('We control this.'),
+              ),
+            );
+          }
+        } else {
+          assert(!node.isGhost);
+          details.add(
+            const Padding(
+              padding: dialogPadding,
+              child: Text('Another dynasty controls this.'),
+            ),
+          );
+        }
+        details.add(
+          Padding(
+            padding: dialogPadding,
+            child: Row(
+              children: <Widget>[
+                Expanded(child: Text('Size: ${prettyLength(node.size)}')),
+                Expanded(
+                  child: node.massFlowRate != 0.0
+                    ? ValueListenableBuilder<double>(
+                        valueListenable: system.spaceTime.asListenable(),
+                        builder: (BuildContext context, double time, Widget? child) {
+                          return Text('Mass: ${prettyMass(node.mass + node.massFlowRate * (time - node.timeOrigin))}');
+                        },
+                      )
+                    : Text(node.mass == 0.0 ? node.isGhost ? 'Not yet built' : 'Massless' : 'Mass: ${prettyMass(node.mass)}'),
+                ),
+              ],
+            ),
+          ),
+        );
+        for (AbilityFeature feature in node._abilities.values) {
+          final Widget? section = feature.buildDialog(context);
+          if (section != null) {
+            details.add(Padding(
+              key: ObjectKey(feature),
+              padding: sectionPadding,
+              child: section,
+            ));
+          }
+        }
+        details.add(const Padding(padding: dialogPadding));
+        // TODO: add a button to zoom to the asset (using ZoomProvider.centerOn)
+        return HudDialog(
+          onClose: onClose,
+          heading: Builder(
+            builder: (BuildContext context) {
+              final double iconSize = DefaultTextStyle.of(context).style.fontSize!;
+              return Row(
+                children: <Widget>[
+                  node.asIcon(context, size: iconSize),
+                  const SizedBox(width: 12.0),
+                  Expanded(child: Text(node.nameOrClassName)),
+                ],
+              );
+            },
+          ),
+          child: DefaultTextStyle.merge(
+            softWrap: false,
+            overflow: TextOverflow.ellipsis,
+            child: SingleChildScrollView(
+              child: ListBody(
+                children: details,
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
 }

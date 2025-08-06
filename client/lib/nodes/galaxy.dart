@@ -7,6 +7,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
 import '../layout.dart';
+import '../prettifiers.dart';
 import '../root.dart';
 import '../widgets.dart';
 import '../world.dart';
@@ -471,9 +472,6 @@ class RenderGalaxy extends RenderWorldWithChildren<GalaxyParentData> {
   static final TextStyle _legendStyle = TextStyle(fontSize: 12.0, foreground: _legendPaint);
 
   final TextStyle _hudStyle = const TextStyle(fontSize: 14.0, color: Color(0xFFFFFFFF));
-
-  static const double lightYearInM = 9460730472580800.0;
-  static const double auInM = 149597870700.0;
 
   static const double minReticuleZoom = 8.0;
   static const double reticuleFadeZoom = 5.0;
@@ -972,7 +970,7 @@ class RenderGalaxy extends RenderWorldWithChildren<GalaxyParentData> {
     RenderWorld? child = lastChild;
     while (child != null) {
       final GalaxyParentData childParentData = child.parentData! as GalaxyParentData;
-      final WorldTapTarget? result = child.routeTap(offset - childParentData._computedPosition!);
+      final WorldTapTarget? result = child.routeTap(offset);
       if (result != null)
         return result;
       child = childParentData.previousSibling;

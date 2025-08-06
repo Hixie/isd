@@ -8,41 +8,20 @@ import '../nodes/system.dart';
 import '../stringstream.dart';
 import '../widgets.dart';
 
-class _ResearchState extends ChangeNotifier {
-  HudHandle? _dialog;
-
-  bool get active => _dialog != null;
-  
-  void activate(BuildContext context, Size size, Widget widget) {
-    _dialog = HudProvider.add(context, size, widget);
-    notifyListeners();
-  }
-
-  void closed() {
-    _dialog = null;
-    notifyListeners();
-  }
-
-  @override
-  void dispose() {
-    _dialog?.cancel();
-    super.dispose();
-  }
-}
-
 class ResearchFeature extends AbilityFeature {
-  ResearchFeature({required this.current});
+  ResearchFeature({
+    required this.current,
+  });
 
   final String current;
 
   @override
-  RendererType get rendererType => RendererType.box;
-
-  static const TextStyle bold = TextStyle(fontWeight: FontWeight.bold);
+  RendererType get rendererType => RendererType.ui;
   
   @override
   Widget buildRenderer(BuildContext context) {
     final DefaultTextStyle parentTextStyles = DefaultTextStyle.of(context);
+    final SystemNode system = SystemNode.of(parent);
     return Column(
       children: <Widget>[
         current.isEmpty ? const Text('No research topic selected.', style: bold, textAlign: TextAlign.center)
@@ -63,27 +42,84 @@ class ResearchFeature extends AbilityFeature {
         ),
         Padding(
           padding: const EdgeInsets.only(top: 8.0),
-          child: StateManagerBuilder<_ResearchState>(
-            creator: _ResearchState.new,
-            disposer: (_ResearchState state) { state.dispose(); },
-            builder: (BuildContext context, _ResearchState state) => OutlinedButton(
-              onPressed: state.active ? null : () {
-                assert(!state.active);
-                state.activate(context, const Size(400.0, 300.0), HudDialog(
-                  heading: const Text('Select Research Topic'),
-                  child: ResearchTopicUi(
-                    system: SystemNode.of(context),
-                    node: parent,
-                    onClose: state.closed,
+          child: _ResearchState.build(context, system, this),
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget buildDialog(BuildContext context) {
+    final SystemNode system = SystemNode.of(parent);
+    return ListBody(
+      children: <Widget>[
+        const Text('Research:', style: bold),
+        Padding(
+          padding: featurePadding,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              current.isEmpty
+                ? const Text('No research topic selected.', style: italic)
+                : Text.rich(
+                    softWrap: true,
+                    TextSpan(
+                      children: <InlineSpan>[
+                        const TextSpan(text: 'Current research focus: ', style: italic),
+                        TextSpan(text: current),
+                      ],
+                    ),
                   ),
-                  onClose: state.closed,
-                ));
-              },
-              child: const Text('Change Topic'),
-            ),
+              const SizedBox(height: 8.0),
+              _ResearchState.build(context, system, this),
+            ],
           ),
         ),
       ],
+    );
+  }
+}
+
+class _ResearchState extends ChangeNotifier {
+  HudHandle? _dialog;
+
+  bool get active => _dialog != null;
+  
+  void activate(BuildContext context, Size size, Widget widget) {
+    _dialog = HudProvider.add(context, size, widget);
+    notifyListeners();
+  }
+
+  void closed() {
+    _dialog = null;
+    notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _dialog?.cancel();
+    super.dispose();
+  }
+
+  static Widget build(BuildContext context, SystemNode system, ResearchFeature feature) {
+    return StateManagerBuilder<_ResearchState>(
+      creator: _ResearchState.new,
+      disposer: (_ResearchState state) { state.dispose(); },
+      builder: (BuildContext context, _ResearchState state) => OutlinedButton(
+        onPressed: state.active ? null : () {
+          assert(!state.active);
+          state.activate(context, const Size(400.0, 300.0), HudDialog(
+            heading: const Text('Select Research Topic'),
+            child: ResearchTopicUi(
+              system: system,
+              node: feature.parent,
+              onClose: state.closed,
+            ),
+            onClose: state.closed,
+          ));
+        },
+        child: const Text('Change Topic'),
+      ),
     );
   }
 }

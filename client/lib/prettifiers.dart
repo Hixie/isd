@@ -1,21 +1,93 @@
-import 'dart:math';
-
 // ignore_for_file: prefer_interpolation_to_compose_strings
 
-String prettyQuantity(double quantity, { String zero = 'empty' }) {
+import 'dart:math';
+
+const double lightYearInM = 9460730472580800.0;
+const double auInM = 149597870700.0;
+
+String prettyTime(int time) {
+  final double days = time / (1000 * 60 * 60 * 24);
+  final int day = days.truncate();
+  final double hours = (days - day) * 24.0;
+  final int hour = hours.truncate();
+  final double minutes = (hours - hour) * 60.0;
+  final int minute = minutes.truncate();
+  return 'Day $day ${hour.toString().padLeft(2, "0")}:${minute.toString().padLeft(2, "0")}';
+}
+
+String prettyQuantity(int quantity, { String zero = '0', String singular = '', String plural = '' }) {
+  if (quantity < 0)
+    return prettyQuantity(-quantity, singular: singular, plural: plural);
   if (quantity < 1) {
     return zero;
   }
-  if (quantity < 1000000) {
-    return quantity.round().toString();
+  if (quantity == 1) {
+    return '$quantity$plural';
   }
-  if (quantity < 1000000000) {
-    return (quantity / 1000000).toStringAsFixed(2) + ' million';
+  if (quantity < 1e6) {
+    return '$quantity$plural';
   }
-  return (quantity / 1000000000).toStringAsFixed(2) + ' billion';
+  if (quantity < 1e9) {
+    return (quantity / 1e6).toStringAsFixed(2) + ' million';
+  }
+  if (quantity < 1e12) {
+    return (quantity / 1e9).toStringAsFixed(2) + ' billion';
+  }
+  return prettyNumberWithExponent(quantity.toDouble());
+}
+
+String prettyHp(double hp) {
+  if (hp == 0.0) {
+    return '0';
+  }
+  if (hp < 1) {
+    return prettyNumberWithExponent(hp);
+  }
+  if (hp < 1e6) {
+    return hp.round().toString();
+  }
+  if (hp < 1e9) {
+    return (hp / 1e6).toStringAsFixed(2) + ' million';
+  }
+  if (hp < 1e12) {
+    return (hp / 1e9).toStringAsFixed(2) + ' billion';
+  }
+  return prettyNumberWithExponent(hp);
+}
+
+String prettyNumber(double number) {
+  if (number == 0.0) {
+    return '0';
+  }
+  if (number < 1e-3) {
+    return prettyNumberWithExponent(number);
+  }
+  if (number < 1) {
+    return number.toStringAsFixed(4);
+  }
+  if (number < 1e6) {
+    return number.toStringAsFixed(1);
+  }
+  if (number < 1e9) {
+    return (number / 1e6).toStringAsFixed(2) + ' million';
+  }
+  if (number < 1e12) {
+    return (number / 1e9).toStringAsFixed(2) + ' billion';
+  }
+  return prettyNumberWithExponent(number);
+}
+
+String prettyHappiness(double happiness) {
+  if (happiness <= 0.0) {
+    return '☹ ' + prettyNumber(happiness);
+  }
+  return '☺ ' + prettyNumber(happiness);
 }
 
 String prettyMass(double mass) {
+  if (mass == 0.0) {
+    return '0.0 kg';
+  }
   if (mass < 0.001) {
     return (mass * 1000000).toStringAsFixed(1) + ' mg';
   }
@@ -31,9 +103,149 @@ String prettyMass(double mass) {
   if (mass < 1000000000) {
     return (mass / 1000000).toStringAsFixed(1) + ' megatonnes';
   }
-  final int exponent = (log(mass) / log(10)).floor();
-  final double mantissa = mass / pow(10.0, exponent);
-  return '${mantissa.toStringAsFixed(1)}×10${_superscript("$exponent")} kg';
+  return '${prettyNumberWithExponent(mass)} kg';
+}
+
+String prettyVolume(double cubicMeters) {
+  if (cubicMeters == 0.0) {
+    return '0.0 L';
+  }
+  if (cubicMeters < 1e-6) {
+    return (cubicMeters * 1e9).toStringAsFixed(1) + ' μL';
+  }
+  if (cubicMeters < 1e-3) {
+    return (cubicMeters * 1e6).toStringAsFixed(1) + ' mL';
+  }
+  if (cubicMeters < 1) {
+    return (cubicMeters * 1e3).toStringAsFixed(1) + ' L';
+  }
+  if (cubicMeters < 1e3) {
+    return cubicMeters.toStringAsFixed(1) + ' m³'; // or kL
+  }
+  if (cubicMeters < 1e6) {
+    return (cubicMeters * 1e-3).toStringAsFixed(1) + ' ML'; // or dam³
+  }
+  if (cubicMeters < 1e9) {
+    return (cubicMeters * 1e-6).toStringAsFixed(1) + ' GL'; // or hm³
+  }
+  return '${prettyNumberWithExponent(cubicMeters)} m³';
+}
+
+String prettyLength(double m) {
+  final double ly = m / lightYearInM;
+  double value;
+  String units;
+  if (ly > 0.9) {
+    value = ly;
+    units = 'ly';
+  } else {
+    final double au = m / auInM;
+    if (au > 0.1) {
+      value = au;
+      units = 'AU';
+    } else {
+      final double km = m / 1000.0;
+      if (km > 0.9) {
+        value = km;
+        units = 'km';
+      } else {
+        if (m > 0.9) {
+          value = m;
+          units = 'm';
+        } else {
+          final double cm = m / 10.0;
+          if (cm > 0.9) {
+            value = cm;
+            units = 'cm';
+          } else {
+            final double mm = m * 1000.0;
+            if (mm > 0.9) {
+              value = mm;
+              units = 'mm';
+            } else {
+              final double um = m * 1e6;
+              if (um > 0.9) {
+                value = um;
+                units = 'μm';
+              } else {
+                final double nm = m * 1e9;
+                if (nm > 0.9) {
+                  value = nm;
+                  units = 'nm';
+                } else {
+                  final double A = m * 1e10;
+                  if (A > 0.1) {
+                    value = A;
+                    units = 'Å';
+                  } else {
+                    final double fm = m * 1e15;
+                    if (fm > 0.9) {
+                      value = fm;
+                      units = 'fm';
+                    } else {
+                      final double am = m * 1e18;
+                      if (am > 0.9) {
+                        value = am;
+                        units = 'am';
+                      } else {
+                        final double zm = m * 1e21;
+                        if (zm > 0.9) {
+                          value = zm;
+                          units = 'zm';
+                        } else {
+                          final double ym = m * 1e24;
+                          if (ym > 0.9) {
+                            value = ym;
+                            units = 'ym';
+                          } else {
+                            final double rm = m * 1e27;
+                            if (rm > 0.9) {
+                              value = rm;
+                              units = 'rm';
+                            } else {
+                              final double rm = m * 1e30;
+                              if (rm > 0.1) {
+                                value = rm;
+                                units = 'qm';
+                              } else {
+                                final double lp = m / 1.616255e-35;
+                                if (lp > 0.9) {
+                                  value = lp;
+                                  units = 'ℓₚ';
+                                } else {
+                                  return '${prettyNumberWithExponent(m)} m';
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  const int sigfig = 1;
+  final double scale = pow(10, sigfig - (log(value) / ln10).ceil()).toDouble();
+  final double roundValue = (value * scale).round() / scale;
+  return '${roundValue.toStringAsFixed(1)} $units';
+}
+
+String prettyNumberWithExponent(double number) {
+  final int exponent = (log(number) / log(10)).floor();
+  final double mantissa = number / pow(10.0, exponent);
+  return '${mantissa.toStringAsFixed(1)}×10${_superscript("$exponent")}';
+}
+
+String prettyFraction(double value) {
+  assert(value >= 0.0);
+  assert(value <= 1.0);
+  return '${(value * 100.0).toStringAsFixed(1)}%';
 }
 
 String _superscript(String value) {
@@ -43,6 +255,7 @@ String _superscript(String value) {
       0x0028 => 0x207D,
       0x0029 => 0x207E,
       0x002B => 0x207A,
+      0x002D => 0x207B, // not in Unicode (0x207B wants to be the superscript of U+2212 MINUS SIGN; this is U+002D HYPHEN-MINUS)
       0x0030 => 0x2070,
       0x0031 => 0x00B9,
       0x0032 => 0x00B2,

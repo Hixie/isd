@@ -23,18 +23,24 @@ class DynastyManager {
       _currentDynasty = getDynasty(id);
     }
   }
-}
 
-class DynastyProvider extends InheritedWidget {
-  const DynastyProvider({ super.key, required this.dynastyManager, required super.child });
-
-  final DynastyManager dynastyManager;
+  static DynastyManager of(BuildContext context) {
+    final DynastyProvider? provider = context.dependOnInheritedWidgetOfExactType<DynastyProvider>();
+    assert(provider != null, 'No DynastyProvider found in context');
+    return provider!.dynastyManager;
+  }
 
   static Dynasty? currentDynastyOf(BuildContext context) {
     final DynastyProvider? provider = context.dependOnInheritedWidgetOfExactType<DynastyProvider>();
     assert(provider != null, 'No DynastyProvider found in context');
     return provider!.dynastyManager.currentDynasty;
   }
+}
+
+class DynastyProvider extends InheritedWidget {
+  const DynastyProvider({ super.key, required this.dynastyManager, required super.child });
+
+  final DynastyManager dynastyManager;
 
   @override
   bool updateShouldNotify(DynastyProvider oldWidget) => dynastyManager != oldWidget.dynastyManager;

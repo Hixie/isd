@@ -2,6 +2,7 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/widgets.dart';
 
 import 'world.dart';
 
@@ -50,6 +51,21 @@ class WorldConstraints extends Constraints {
   }
 
   @override
+  bool operator ==(Object other) {
+    if (other.runtimeType != runtimeType) {
+      return false;
+    }
+    return other is WorldConstraints
+        && other.viewportSize == viewportSize
+        && other.zoom == zoom
+        && other.scale == scale
+        && other._precomputedPositions == _precomputedPositions;
+  }
+
+  @override
+  int get hashCode => Object.hash(viewportSize, zoom, scale, _precomputedPositions);
+
+  @override
   String toString() => 'WorldConstraints(x$zoom, scale=${scale}px/m, viewport=${viewportSize}px)';
 }
 
@@ -92,18 +108,20 @@ abstract class RenderWorld extends RenderObject {
 
   void computeLayout(WorldConstraints constraints);
 
-  Rect? _paintBounds;
+  Offset? _paintCenter;
+  double? _paintDiameter;
   
   @override
   @nonVirtual
   void paint(PaintingContext context, Offset offset) {
     assert(offset.isFinite);
-    _paintBounds = Rect.fromCircle(center: offset, radius: computePaint(context, offset) / 2.0);
+    _paintCenter = offset;
+    _paintDiameter = computePaint(context, offset);
   }
 
   // The offset parameter is the distance from the canvas origin to the asset origin, in pixels.
   // Canvas origin is the center of the viewport, whose size is constraints.viewportSize.
-  // Returns the actual diameter in pixels.
+  // Returns the actual diameter in pixels, which is available in [paintDiameter].
   double computePaint(PaintingContext context, Offset offset);
   
   @override
@@ -138,17 +156,34 @@ abstract class RenderWorld extends RenderObject {
     );
   }
 
+  Offset get paintCenter => _paintCenter!;
+
+  double get paintDiameter => _paintDiameter!;
+  
   @override
-  Rect get paintBounds => _paintBounds!;
+  Rect get paintBounds => Rect.fromCircle(center: _paintCenter!, radius: _paintDiameter! / 2.0);
 
   @override
-  Rect get semanticBounds => _paintBounds!; // TODO: actually implement semantics
+  Rect get semanticBounds => paintBounds; // TODO: actually implement semantics
+
+  bool isInsideCircle(Offset offset) {
+    final double r = paintDiameter / 2.0;
+    return (offset - paintCenter).distanceSquared <= r * r;
+  }
+
+  bool isInsideSquare(Offset offset) {
+    final Offset distance = offset - paintCenter;
+    return (distance.dx.abs() <= paintDiameter / 2.0) && (distance.dy.abs() <= paintDiameter / 2.0);
+  }
 
   @override
   void debugAssertDoesMeetConstraints() { }
 
   bool hitTestChildren(BoxHitTestResult result, { required Offset position });
 
+  // Offset is the offset from the center of the screen at which the tap happened.
+  // Subtracting the offset given to [computePaint] gives you the distance from
+  // the center of the asset to the tap.
   WorldTapTarget? routeTap(Offset offset);
 }
 
@@ -180,5 +215,124 @@ abstract class RenderWorldWithChildren<ParentDataType extends ContainerParentDat
       child = childBefore(child);
     }
     return hit;
+  }
+}
+
+typedef TapDetectorCallback = void Function (BuildContext context);
+
+class WorldTapDetector extends LeafRenderObjectWidget {
+  const WorldTapDetector({
+    super.key,
+    required this.node,
+    required this.diameter,
+    required this.maxDiameter,
+    required this.shape,
+    this.onTap,
+  });
+
+  final WorldNode node;
+  final double diameter;
+  final double maxDiameter;
+  final BoxShape shape;
+  final TapDetectorCallback? onTap;
+  
+  @override
+  RenderWorldTapDetector createRenderObject(BuildContext context) {
+    return RenderWorldTapDetector(
+      node: node,
+      diameter: diameter,
+      maxDiameter: maxDiameter,
+      shape: shape,
+      onTap: onTap == null ? null : () => onTap!(context),
+    );
+  }
+
+  @override
+  void updateRenderObject(BuildContext context, RenderWorldTapDetector renderObject) {
+    renderObject
+      ..node = node
+      ..diameter = diameter
+      ..maxDiameter = maxDiameter
+      ..shape = shape
+      ..onTap = onTap == null ? null : () => onTap!(context);
+    }
+}
+
+class RenderWorldTapDetector extends RenderWorldNode {
+  RenderWorldTapDetector({
+    required super.node,
+    required double diameter,
+    required double maxDiameter,
+    this.shape,
+    this.onTap,
+  }) : _diameter = diameter,
+       _maxDiameter = maxDiameter;
+
+  double get diameter => _diameter;
+  double _diameter;
+  set diameter (double value) {
+    if (value != _diameter) {
+      _diameter = value;
+      markNeedsLayout();
+    }
+  }
+
+  double get maxDiameter => _maxDiameter;
+  double _maxDiameter;
+  set maxDiameter (double value) {
+    if (value != _maxDiameter) {
+      _maxDiameter = value;
+      markNeedsLayout();
+    }
+  }
+
+  BoxShape? shape;
+  VoidCallback? onTap;
+
+  double? _actualDiameter;
+  
+  @override
+  void computeLayout(WorldConstraints constraints) {
+    _actualDiameter = computePaintDiameter(diameter, maxDiameter);
+  }
+  
+  @override
+  double computePaint(PaintingContext context, Offset offset) {
+    return _actualDiameter!;
+  }
+  
+  @override
+  bool hitTestChildren(BoxHitTestResult result, { required Offset position }) {
+    return false;
+  }
+
+  @override
+  WorldTapTarget? routeTap(Offset offset) {
+    if (onTap != null) {
+      if (switch (shape!) {
+        BoxShape.rectangle => isInsideSquare(offset),
+        BoxShape.circle => isInsideCircle(offset),
+      }) {
+        return _TapDetectorTarget(onTap!);
+      }
+    }
+    return null;
+  }
+}
+
+class _TapDetectorTarget implements WorldTapTarget {
+  _TapDetectorTarget(this.onTap);
+
+  final VoidCallback onTap;
+
+  @override
+  void handleTapDown() {}
+
+  @override
+  void handleTapCancel() {}
+
+  @override
+  void handleTapUp() {
+    onTap();
   }
 }

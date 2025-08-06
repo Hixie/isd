@@ -24,7 +24,7 @@ Offset _computeOrbit(Orbit orbit, double primaryMass, double time) {
   assert(orbit.e <= 0.95); // above this, this approximation falls apart
   assert(time.isFinite);
   assert(primaryMass.isFinite);
-  final double period = 2 * pi * sqrt(orbit.a * orbit.a * orbit.a / (gravitationalConstant * primaryMass)); // in seconds
+  final double period = 1000 * 2 * pi * sqrt(orbit.a * orbit.a * orbit.a / (gravitationalConstant * primaryMass)); // in milliseconds
   assert(period.isFinite);
   assert(period > 0.0);
   final double tau = ((time - orbit.timeOrigin) % period) / period;
@@ -101,7 +101,7 @@ class OrbitFeature extends ContainerFeature {
   }
 
   @override
-  RendererType get rendererType => RendererType.background;
+  RendererType get rendererType => RendererType.space;
 
   @override
   Widget buildRenderer(BuildContext context) {
@@ -288,7 +288,7 @@ class RenderOrbit extends RenderWorldWithChildren<OrbitParentData> {
     RenderWorld? child = lastChild;
     while (child != null) {
       final OrbitParentData childParentData = child.parentData! as OrbitParentData;
-      final WorldTapTarget? result = child.routeTap(offset); // TODO: correct offset
+      final WorldTapTarget? result = child.routeTap(offset);
       if (result != null)
         return result;
       child = childParentData.previousSibling;

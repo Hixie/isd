@@ -1,12 +1,14 @@
 import 'dart:async';
-import 'dart:math' show max, min;
+import 'dart:math' show min;
 import 'dart:ui';
 
 import 'package:flutter/rendering.dart' hide Gradient;
 import 'package:flutter/widgets.dart' hide Gradient;
 
+import '../assetclasses.dart';
 import '../assets.dart';
 import '../layout.dart';
+import '../materials.dart';
 import '../root.dart';
 import '../spacetime.dart';
 import '../stringstream.dart';
@@ -75,6 +77,28 @@ class SystemNode extends WorldNode {
   @override
   double get diameter => root.diameter;
 
+  // Tracks all asset classes ever seen during this session in this system.
+  final Map<int, AssetClass> _assetClasses = <int, AssetClass>{};
+
+  void registerAssetClass(AssetClass assetClass) {
+    // TODO: when we deduplicate asset classes in the protocol:
+    // assert(!_assetClasses.containsKey(assetClass.id));
+    _assetClasses[assetClass.id] = assetClass;
+  }
+
+  AssetClass assetClass(int id) => _assetClasses[id]!;
+
+  // Tracks all materials ever seen during this session in this system.
+  final Map<int, Material> _materials = <int, Material>{};
+
+  void registerMaterial(Material material) {
+    // TODO: when we deduplicate materials in the protocol:
+    // assert(!_materials.containsKey(material.id));
+    _materials[material.id] = material;
+  }
+
+  Material material(int id) => _materials[id]!;
+  
   // called when any assets in the system change
   void markAsUpdated() {
     notifyListeners();
@@ -105,20 +129,16 @@ class SystemNode extends WorldNode {
       }
       return true;
     });
-    return _SystemProvider(
-      system: this,
-      child: TickerProviderBuilder(
-        builder: (BuildContext context, TickerProvider vsync) => SystemWidget(
-          node: this,
-          vsync: vsync,
-          diameter: diameter,
-          labels: labels,
-          child: root.build(context),
-          onZoomRequest: (WorldNode node, Offset offset, double diameter) {
-            // TODO: this jumps weirdly when it's previously focused on something else
-            ZoomProvider.centerNear(context, node, offset, diameter);
-          },
-        ),
+    return TickerProviderBuilder(
+      builder: (BuildContext context, TickerProvider vsync) => SystemWidget(
+        node: this,
+        vsync: vsync,
+        diameter: diameter,
+        labels: labels,
+        child: root.build(context),
+        onZoomRequest: (WorldNode node) {
+          ZoomProvider.centerOn(context, node);
+        },
       ),
     );
   }
@@ -127,23 +147,16 @@ class SystemNode extends WorldNode {
     return sendCallback(<Object>['play', id, ...messageParts]);
   }
   
-  static SystemNode of(BuildContext context) {
-    final _SystemProvider? provider = context.dependOnInheritedWidgetOfExactType<_SystemProvider>();
-    assert(provider != null, 'No _SystemProvider found in context');
-    return provider!.system;
+  static SystemNode of(WorldNode node) {
+    while (node is! SystemNode) {
+      assert(node.parent != null);
+      node = node.parent!;
+    }
+    return node;
   }
 }
 
-class _SystemProvider extends InheritedWidget {
-  const _SystemProvider({ /*super.key,*/ required this.system, required super.child });
-
-  final SystemNode system;
-
-  @override
-  bool updateShouldNotify(_SystemProvider oldWidget) => system != oldWidget.system;
-}
-
-typedef ZoomCallback = void Function(WorldNode node, Offset offset, double diameter);
+typedef ZoomCallback = void Function(WorldNode node);
 
 class SystemWidget extends SingleChildRenderObjectWidget {
   const SystemWidget({
@@ -347,16 +360,19 @@ class RenderSystem extends RenderWorldNode with RenderObjectWithChildMixin<Rende
 
   @override
   WorldTapTarget? routeTap(Offset offset) {
+    final Offset offsetInSystem = offset - _childPosition!; // pixels relative to system center
+    if (!isInsideCircle(offset))
+      return null;
     if (_visibleHudElements.isNotEmpty) {
       Rect? target;
       final List<AssetNode> assets = <AssetNode>[];
       _HighlightDetails? biggest;
       for (_HighlightDetails label in _visibleHudElements) {
-        final Offset center = label.offset * constraints.scale;
+        final Offset labelCenter = label.offset * constraints.scale; // pixels relative to system center
         const double marginSquared = -_reticuleOuterRadius * -_reticuleOuterRadius;
-        if ((center - offset).distanceSquared < marginSquared) {
+        if ((labelCenter - offsetInSystem).distanceSquared < marginSquared) {
           assets.add(label.asset);
-          final Rect hitArea = Rect.fromCenter(center: center, width: label.diameter, height: label.diameter);
+          final Rect hitArea = Rect.fromCenter(center: labelCenter, width: label.diameter, height: label.diameter);
           if (target == null) {
             target = hitArea;
             biggest = label;
@@ -369,13 +385,13 @@ class RenderSystem extends RenderWorldNode with RenderObjectWithChildMixin<Rende
       }
       if (assets.isNotEmpty) {
         return _SystemTapHandler(this, assets, () {
-          target!; biggest!;
-          onZoomRequest(biggest.asset, target.center / constraints.scale - biggest.offset, max(target.width, target.height));
+          onZoomRequest(biggest!.asset);
         });
       }
     }
-    if (child != null)
+    if (child != null) {
       return child!.routeTap(offset);
+    }
     return null;
   }
 }

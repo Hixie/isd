@@ -44,7 +44,7 @@ class MessageBoardFeature extends ContainerFeature {
   }
 
   @override
-  RendererType get rendererType => RendererType.box;
+  RendererType get rendererType => RendererType.ui;
 
   @override
   Widget buildRenderer(BuildContext context) {

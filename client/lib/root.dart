@@ -44,11 +44,13 @@ class WorldRoot extends StatefulWidget {
     required this.rootNode,
     required this.recommendedFocus,
     required this.dynastyManager,
+    this.hudKey,
   });
 
   final WorldNode rootNode;
   final ValueListenable<WorldNode?> recommendedFocus;
   final DynastyManager dynastyManager;
+  final Key? hudKey;
 
   @override
   _WorldRootState createState() => _WorldRootState();
@@ -77,6 +79,8 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
   final GlobalKey _worldRootKey = GlobalKey();
   RenderBoxToRenderWorldAdapter get _worldRoot => _worldRootKey.currentContext!.findRenderObject()! as RenderBoxToRenderWorldAdapter;
 
+  // a new instance of _precomputedPositions must be created each time it is changed, DO NOT MUTATE AN EXISTING COPY
+  // (otherwise WorldConstraints will be unstable)
   Map<WorldNode, Offset> _precomputedPositions = <WorldNode, Offset>{};
   Offset _rootPosition = Offset.zero;
 
@@ -112,6 +116,7 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
   void _handlePositionChange() {
     if (mounted) {
       setState(() {
+        // TODO: when we're zoomed in enough that the things that changed position aren't visible, skip doing this
         _precomputedPositions = <WorldNode, Offset>{};
       });
       _notifierImplementation.notifyListeners(); // ignore: invalid_use_of_protected_member, invalid_use_of_visible_for_testing_member
@@ -269,39 +274,40 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
           }
         });
       },
-      child: DynastyProvider(
-        dynastyManager: widget.dynastyManager,
-        child: HudLayout(
-          zoom: this,
-          child: GestureDetector(
-            trackpadScrollCausesScale: true,
-            onScaleUpdate: (ScaleUpdateDetails details) {
-              setState(() {
-                final RenderBoxToRenderWorldAdapter box = _worldRoot;
+      child: ZoomProvider(
+        state: this,
+        child: DynastyProvider(
+          dynastyManager: widget.dynastyManager,
+          child: HudLayout(
+            key: widget.hudKey,
+            zoom: this,
+            child: GestureDetector(
+              trackpadScrollCausesScale: true,
+              onScaleUpdate: (ScaleUpdateDetails details) {
                 setState(() {
-                  _lastScale ??= box.layoutScale;
-                  final double newScale = max(box.minScale, _lastScale! * details.scale);
-                  // TODO: check that this works when you pan AND zoom
-                  _updatePan(_pan.value + details.focalPointDelta / _lastScale!, newScale, zoom: _zoom.value + log(details.scale));
-                  _lastScale = newScale;
+                  final RenderBoxToRenderWorldAdapter box = _worldRoot;
+                  setState(() {
+                    _lastScale ??= box.layoutScale;
+                    final double newScale = max(box.minScale, _lastScale! * details.scale);
+                    // TODO: check that this works when you pan AND zoom
+                    _updatePan(_pan.value + details.focalPointDelta / _lastScale!, newScale, zoom: _zoom.value + log(details.scale));
+                    _lastScale = newScale;
+                  });
                 });
-              });
-            },
-            onTapDown: (TapDownDetails details) {
-              assert(_currentTarget == null);
-              _currentTarget = _worldRoot.routeTap(details.localPosition);
-              _currentTarget?.handleTapDown();
-            },
-            onTapCancel: () {
-              _currentTarget?.handleTapCancel();
-              _currentTarget = null;
-            },
-            onTapUp: (TapUpDetails details) {
-              _currentTarget?.handleTapUp();
-              _currentTarget = null;
-            },
-            child: ZoomProvider(
-              state: this,
+              },
+              onTapDown: (TapDownDetails details) {
+                assert(_currentTarget == null);
+                _currentTarget = _worldRoot.routeTap(details.localPosition);
+                _currentTarget?.handleTapDown();
+              },
+              onTapCancel: () {
+                _currentTarget?.handleTapCancel();
+                _currentTarget = null;
+              },
+              onTapUp: (TapUpDetails details) {
+                _currentTarget?.handleTapUp();
+                _currentTarget = null;
+              },
               child: ListenableBuilder(
                 listenable: Listenable.merge(<Listenable?>[widget.rootNode, _controller]),
                 builder: (BuildContext context, Widget? child) {

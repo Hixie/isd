@@ -4,12 +4,18 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
+import 'assetclasses.dart';
+import 'icons.dart';
 import 'layout.dart';
+import 'materials.dart';
 import 'world.dart';
 
 final CurveTween hudTween = CurveTween(curve: Curves.ease);
 const Duration hudAnimationDuration = Duration(milliseconds: 250);
 const double hudAnimationPauseLength = 75.0; // TODO: convert this to a duration
+
+const TextStyle bold = TextStyle(fontWeight: FontWeight.bold);
+const TextStyle italic = TextStyle(fontStyle: FontStyle.italic);
 
 class WorldLayoutBuilder extends ConstrainedLayoutBuilder<WorldConstraints> {
   const WorldLayoutBuilder({ super.key, required super.builder });
@@ -269,7 +275,6 @@ class RenderWorldBoxGrid extends RenderWorldNode with ContainerRenderObjectMixin
     _cellCount = sqrt(count).ceil();
     _actualDiameter = computePaintDiameter(diameter, maxDiameter);
     _cellSize = _actualDiameter! / _cellCount!;
-    //print('drawing grid, count=$count, cellCount=$_cellCount diameter=$diameter, actualDiameter=$_actualDiameter, _cellSize=$_cellSize');
     final BoxConstraints childConstraints = BoxConstraints.tightFor(width: _cellSize, height: _cellSize);
     RenderBox? child = firstChild;
     while (child != null) {
@@ -514,7 +519,7 @@ class RenderWorldToBoxAdapter extends RenderWorldNode with RenderObjectWithChild
 
   @override
   WorldTapTarget? routeTap(Offset offset) {
-    return null; // TODO
+    return null; // we don't tap into the RenderBox world
   }
 }
 
@@ -536,6 +541,70 @@ class NoZoom extends StatelessWidget {
         });
       },
       child: child,
+    );
+  }
+}
+
+class KnowledgeDish extends StatelessWidget {
+  const KnowledgeDish({super.key, this.assetClasses = const <AssetClass>[], this.materials = const <Material>[]});
+
+  final List<AssetClass> assetClasses;
+  final List<Material> materials;
+
+  @override
+  Widget build(BuildContext context) {
+    const double padding = 12.0;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(padding),
+      child: DecoratedBox(
+        position: DecorationPosition.foreground,
+        decoration: ShapeDecoration(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(padding),
+            side: const BorderSide(),
+          ),
+
+        ),
+        child: DecoratedBox(
+          decoration: ShapeDecoration(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(padding),
+            ),
+            shadows: const <BoxShadow>[
+              BoxShadow(
+                color: Color(0x33000000),
+              ),
+              BoxShadow(
+                offset: Offset(padding / 2.0, padding / 2.0),
+                blurRadius: padding / 2.0,
+                color: Color(0xFFFFFFFF),
+              ),
+            ],
+          ),
+          child: SizedBox(
+            height: IconsManager.knowledgeIconSize + padding * 2,
+            child: ListView(
+              // TODO: scrollbar?
+              scrollDirection: Axis.horizontal,
+              children: <Widget>[
+                for (AssetClass assetClass in assetClasses)
+                  Padding(
+                    key: ObjectKey(assetClass),
+                    padding: const EdgeInsets.only(left: padding, top: padding, bottom: padding),
+                    child: assetClass.asKnowledgeIcon(context),
+                  ),
+                for (Material material in materials)
+                  Padding(
+                    key: ObjectKey(material),
+                    padding: const EdgeInsets.only(left: padding, top: padding, bottom: padding),
+                    child: material.asKnowledgeIcon(context),
+                  ),
+                const SizedBox(width: padding),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

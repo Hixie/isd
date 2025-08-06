@@ -42,7 +42,7 @@ class ProxyFeature extends ContainerFeature {
   }
 
   @override
-  RendererType get rendererType => RendererType.foreground;
+  RendererType get rendererType => RendererType.overlay;
 
   @override
   Widget buildRenderer(BuildContext context) {
@@ -139,7 +139,7 @@ class RenderProxy extends RenderWorldNode with RenderObjectWithChildMixin<Render
   @override
   WorldTapTarget? routeTap(Offset offset) {
     if (child != null) {
-      final WorldTapTarget? result = child!.routeTap(offset); // TODO: position...
+      final WorldTapTarget? result = child!.routeTap(offset); // TODO: correct offset
       if (result != null)
         return result;
     }

@@ -1,33 +1,10 @@
 import 'package:flutter/material.dart' hide Material;
 
+import '../assetclasses.dart';
 import '../assets.dart';
 import '../containers/messages.dart';
-import '../icons.dart';
 import '../materials.dart';
 import '../widgets.dart';
-
-@immutable
-class AssetClass {
-  const AssetClass({
-    required this.id,
-    required this.icon,
-    required this.name,
-    required this.description,
-  });
-
-  final int id;
-  final String icon;
-  final String name;
-  final String description;
-
-  static int alphabeticalSort(AssetClass a, AssetClass b) {
-    return a.name.compareTo(b.name);
-  }
-
-  Widget build(BuildContext context) {
-    return IconsManager.icon(context, icon, '$name\n$description');
-  }
-}
 
 class KnowledgeFeature extends AbilityFeature {
   KnowledgeFeature({
@@ -39,7 +16,7 @@ class KnowledgeFeature extends AbilityFeature {
   final Map<int, Material> materials;
 
   @override
-  RendererType get rendererType => RendererType.box;
+  RendererType get rendererType => RendererType.ui;
 
   @override
   Widget buildRenderer(BuildContext context) {
@@ -51,11 +28,10 @@ class KnowledgeFeature extends AbilityFeature {
           runSpacing: 12.0,
           alignment: WrapAlignment.spaceEvenly,
           children: <Widget>[
-            // TODO: make this clickable (show a HUD with more information)
             for (AssetClass assetClass in assetClasses.values)
-              assetClass.build(context),
+              assetClass.asKnowledgeIcon(context),
             for (Material material in materials.values)
-              material.build(context),
+              material.asKnowledgeIcon(context),
           ],
         );
         if (mode == null) {
@@ -78,6 +54,20 @@ class KnowledgeFeature extends AbilityFeature {
     }
     return const SizedBox.shrink();
   }
-
-  // TODO: display the known asset classes and materials
+  
+  @override
+  Widget buildDialog(BuildContext context) {
+    return ListBody(
+      children: <Widget>[
+        const Text('Knowledge:', style: bold),
+        Padding(
+          padding: featurePadding,
+          child: KnowledgeDish(
+            assetClasses: assetClasses.values.toList(),
+            materials: materials.values.toList(),
+          ),
+        ),
+      ],
+    );
+  }
 }

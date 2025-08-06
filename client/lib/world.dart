@@ -60,7 +60,7 @@ abstract class WorldNode extends ChangeNotifier {
     super.notifyListeners();
   }
 
-  // returns local system time in seconds
+  // returns local system time in milliseconds
   double computeTime(SpaceTime spaceTime, List<VoidCallback> callbacks) {
     return spaceTime.computeTime(<VoidCallback>[notifyListeners, ...callbacks]);
   }

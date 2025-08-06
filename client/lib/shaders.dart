@@ -18,10 +18,18 @@ const int uGridHeight = 4; // pixels
 const int uCellCountWidth = 5; // number of cells
 const int uCellCountHeight = 6; // number of cells
 
+// ghost
+// const int uD = 3; // diameter
+const int uImageWidth = 4;
+const int uImageHeight = 5;
+const int uGhost = 6;
+const int uImage = 0;
+
 class ShaderLibrary {
   const ShaderLibrary._(
     this._stars,
     this._grid,
+    this._ghost,
   );
 
   final FragmentProgram _stars;
@@ -37,11 +45,17 @@ class ShaderLibrary {
       ..setFloat(uCellCountHeight, height.toDouble());
   }
 
+  final FragmentProgram _ghost;
+  FragmentShader get ghost {
+    return _ghost.fragmentShader();
+  }
+
   static Future<ShaderLibrary> initialize() async {
     // TODO: load this in parallel (using Future.wait)
     return ShaderLibrary._(
       await FragmentProgram.fromAsset('lib/abilities/stars.frag'),
       await FragmentProgram.fromAsset('lib/containers/grid.frag'),
+      await FragmentProgram.fromAsset('lib/ghost.frag'),
     );
   }
 }

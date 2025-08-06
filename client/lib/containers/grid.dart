@@ -6,7 +6,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart' hide Gradient;
 import 'package:flutter/rendering.dart' hide Gradient;
 
-import '../abilities/knowledge.dart';
+import '../assetclasses.dart';
 import '../assets.dart';
 import '../hud.dart';
 import '../icons.dart';
@@ -68,7 +68,7 @@ class GridFeature extends ContainerFeature {
   }
 
   @override
-  RendererType get rendererType => RendererType.foreground;
+  RendererType get rendererType => RendererType.square;
 
   @override
   Widget buildRenderer(BuildContext context) {
@@ -85,7 +85,7 @@ class GridFeature extends ContainerFeature {
       childList[parameters.y * width + parameters.x] = child.build(context);
     }
     return GridWidget(
-      spaceTime: SystemNode.of(context).spaceTime,
+      spaceTime: SystemNode.of(parent).spaceTime,
       node: parent,
       cellSize: cellSize,
       width: width,
@@ -175,7 +175,7 @@ class _CellBuildButtonState extends State<CellBuildButton> {
     _build = HudProvider.add(context, const Size(480.0, 512.0), HudDialog(
        heading: const Text('Build'),
        child: BuildUi(
-         system: SystemNode.of(context),
+         system: SystemNode.of(widget.node),
          node: widget.node,
          x: widget.x,
          y: widget.y,
@@ -193,6 +193,7 @@ class _CellBuildButtonState extends State<CellBuildButton> {
   @override
   Widget build(BuildContext context) {
     return MouseRegion(
+      hitTestBehavior: HitTestBehavior.deferToChild,
       onEnter: (PointerEnterEvent event) { setState(() { _hover = true; }); },
       onExit: (PointerExitEvent event) { setState(() { _hover = false; }); },
       cursor: SystemMouseCursors.contextMenu, // TODO: use an image
@@ -211,7 +212,7 @@ class _CellBuildButtonState extends State<CellBuildButton> {
                 duration: _duration,
                 curve: Curves.easeOutCubic,
                 decoration: ShapeDecoration(
-                  color: _hover ? const Color(0xFFCCCCCC) : const Color(0xFFEEEEEE),
+                  color: _hover || _tap ? const Color(0xFFCCCCCC) : const Color(0xFFEEEEEE),
                   shape: _tap ? const StarBorder(points: 4) : const CircleBorder(),
                 ),
               ),
@@ -338,6 +339,7 @@ class BuildTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    const double iconSize = 48.0;
     return Padding(
       padding: const EdgeInsets.fromLTRB(0.0, 2.0, 0.0, 2.0),
       child: InkWell(
@@ -349,19 +351,7 @@ class BuildTile extends StatelessWidget {
             children: <Widget>[
               Padding(
                 padding: const EdgeInsets.fromLTRB(0.0, 0.0, 12.0, 0.0),
-                child: SizedBox(
-                  height: 48.0,
-                  width: 48.0,
-                  child: Image(
-                    image: IconImageProvider(assetClass.icon, icons),
-                    errorBuilder: (BuildContext context, Object error, StackTrace? stackTrace) {
-                      return Tooltip(
-                        message: '$error',
-                        child: const Icon(Icons.circle, color: Color(0x11000000)),
-                      );
-                    },
-                  ),
-                ),
+                child: assetClass.asIcon(context, icons: icons, size: iconSize),
               ),
               Expanded(
                 child: ListBody(
@@ -542,10 +532,12 @@ class RenderGrid extends RenderWorldWithChildren<GridParentData> {
   
   @override
   WorldTapTarget? routeTap(Offset offset) {
+    if (!isInsideSquare(offset))
+      return null;
     RenderWorld? child = lastChild;
     while (child != null) {
       final GridParentData childParentData = child.parentData! as GridParentData;
-      final WorldTapTarget? result = child.routeTap(offset); // TODO: correct offset
+      final WorldTapTarget? result = child.routeTap(offset);
       if (result != null)
         return result;
       child = childParentData.previousSibling;

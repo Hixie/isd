@@ -23,16 +23,40 @@ class SpaceTime {
     }
   }
 
-  // returns local system time in seconds
+  // returns local system time in milliseconds
   double computeTime(List<VoidCallback> callbacks) {
     _lastFrameTime ??= DateTime.now();
     _callbacks.addAll(callbacks);
-    if (!_pending) {
+    if (!_pending && _callbacks.isNotEmpty) {
       SchedulerBinding.instance.scheduleFrameCallback(_handler);
       _pending = true;
     }
     assert(_origin.isUtc);
     final int realElapsed = _lastFrameTime!.difference(_origin).inMicroseconds;
-    return _anchorTime / 1e3 + (realElapsed * _timeFactor) / 1e6;
+    return _anchorTime + (realElapsed * _timeFactor) / 1e3;
+  }
+
+  ValueListenable<double> asListenable() {
+    return _SpaceTimeListenable(this);
+  }
+}
+
+class _SpaceTimeListenable extends ValueNotifier<double> {
+  _SpaceTimeListenable(this.spaceTime) : super(spaceTime.computeTime(const <VoidCallback>[]));
+  
+  final SpaceTime spaceTime;
+
+  void _update() {
+    if (hasListeners) {
+      value = spaceTime.computeTime(<VoidCallback>[_update]);
+    }
+  }
+  
+  @override
+  void addListener(VoidCallback listener) {
+    if (!hasListeners) {
+      value = spaceTime.computeTime(<VoidCallback>[_update]);
+    }
+    super.addListener(listener);
   }
 }

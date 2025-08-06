@@ -16,12 +16,12 @@ class PlanetFeature extends AbilityFeature {
       node: parent,
       diameter: parent.diameter,
       maxDiameter: parent.maxRenderDiameter,
-      spaceTime: SystemNode.of(context).spaceTime,
+      spaceTime: SystemNode.of(parent).spaceTime,
     );
   }
 
   @override
-  RendererType get rendererType => RendererType.background;
+  RendererType get rendererType => RendererType.circle;
 }
 
 class PlanetWidget extends LeafRenderObjectWidget {
@@ -100,7 +100,7 @@ class RenderPlanet extends RenderWorldNode {
 
   Paint get _planetPaint => Paint()
     ..color = const Color(0xFF7FFF7F);
-
+    
   @override
   double computePaint(PaintingContext context, Offset offset) {
     final double actualDiameter = computePaintDiameter(diameter, maxDiameter);
@@ -115,6 +115,8 @@ class RenderPlanet extends RenderWorldNode {
 
   @override
   WorldTapTarget? routeTap(Offset offset) {
-    return null; // TODO
+    //if (!isInsideCircle(offset)) then
+    //  return null;
+    return null;
   }
 }

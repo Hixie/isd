@@ -2,6 +2,7 @@ import 'dart:ui' show Offset;
 
 import 'package:flutter/foundation.dart';
 
+import 'abilities/builder.dart';
 import 'abilities/knowledge.dart';
 import 'abilities/materialpile.dart';
 import 'abilities/materialstack.dart';
@@ -17,6 +18,7 @@ import 'abilities/rubble.dart';
 import 'abilities/sensors.dart';
 import 'abilities/stars.dart';
 import 'abilities/structure.dart';
+import 'assetclasses.dart';
 import 'assets.dart';
 import 'binarystream.dart';
 import 'connection.dart';
@@ -79,7 +81,8 @@ class SystemServer {
   static const int fcMaterialStack = 0x17;
   static const int fcGridSensor = 0x18;
   static const int fcGridSensorStatus = 0x19;
-  static const int expectedVersion = fcGridSensorStatus;
+  static const int fcBuilder = 0x1A;
+  static const int expectedVersion = fcBuilder;
 
   Future<void> _handleLogin() async {
     final StreamReader reader = await _connection.send(<String>['login', token], queue: false);
@@ -93,7 +96,7 @@ class SystemServer {
   final Map<int, AssetNode> _assets = <int, AssetNode>{};
 
   AssetNode? _readAsset(BinaryStreamReader reader) {
-    final int id = reader.readInt32();
+    final int id = reader.readUInt32();
     if (id == 0)
       return null;
     return _assets.putIfAbsent(id, () => AssetNode(id: id));
@@ -110,7 +113,7 @@ class SystemServer {
     final BinaryStreamReader reader = BinaryStreamReader(message, _connection.codeTables);
     AssetNode? colonyShip;
     while (!reader.done) {
-      final int systemID = reader.readInt32();
+      final int systemID = reader.readUInt32();
       final int currentTime = reader.readInt64();
       final double timeFactor = reader.readDouble();
       final SpaceTime spaceTime = SpaceTime(currentTime, timeFactor, now);
@@ -119,7 +122,7 @@ class SystemServer {
         sendCallback: _send,
         spaceTime: spaceTime,
       ));
-      final int rootAssetID = reader.readInt32();
+      final int rootAssetID = reader.readUInt32();
       assert(rootAssetID > 0);
       system.root = _assets.putIfAbsent(rootAssetID, () => AssetNode(id: rootAssetID, parent: system));
       final double x = reader.readDouble();
@@ -129,29 +132,30 @@ class SystemServer {
       AssetNode? asset;
       while ((asset = _readAsset(reader)) != null) {
         asset!;
-        final int ownerDynastyID = reader.readInt32();
+        final int ownerDynastyID = reader.readUInt32();
         if (_verbose) {
           debugPrint('parsing asset $asset');
         }
         asset.ownerDynasty = ownerDynastyID > 0 ? dynastyManager.getDynasty(ownerDynastyID) : null;
         asset.mass = reader.readDouble();
         asset.massFlowRate = reader.readDouble();
+        asset.timeOrigin = currentTime;
         asset.size = reader.readDouble();
         asset.name = reader.readString();
-        asset.assetClassID = reader.readSignedInt32();
+        asset.assetClassID = reader.readInt32();
         asset.icon = reader.readString();
         asset.className = reader.readString();
         asset.description = reader.readString();
         final Set<Type> oldFeatures = asset.featureTypes;
         int lastFeatureCode = 0x00;
         int featureCode;
-        while ((featureCode = reader.readInt32()) != 0) {
+        while ((featureCode = reader.readUInt32()) != 0) {
           if (_verbose) {
             debugPrint('  parsing feature with code $featureCode');
           }
           switch (featureCode) {
             case fcStar:
-              final int starId = reader.readInt32();
+              final int starId = reader.readUInt32();
               oldFeatures.remove(asset.setAbility(StarFeature(starId)));
             case fcPlanet:
               oldFeatures.remove(asset.setAbility(PlanetFeature()));
@@ -181,45 +185,49 @@ class SystemServer {
               oldFeatures.remove(asset.setContainer(OrbitFeature(spaceTime, originChild, children)));
             case fcStructure:
               int structuralIntegrityMax = 0;
-              int marker;
               final List<StructuralComponent> components = <StructuralComponent>[];
-              while ((marker = reader.readInt32()) != 0) {
-                assert(marker == 0xFFFFFFFF);
-                final int materialCurrent = reader.readInt32();
-                final int materialMax = reader.readInt32();
+              int materialMax;
+              while ((materialMax = reader.readUInt32()) != 0) {
                 structuralIntegrityMax += materialMax;
                 final String componentName = reader.readString();
                 final String materialName = reader.readString();
-                final int materialID = reader.readInt32();
+                final int materialID = reader.readUInt32();
                 components.add(StructuralComponent(
-                  current: materialCurrent,
-                  max: materialMax == 0 ? null : materialMax,
-                  name: componentName.isEmpty ? null : componentName,
+                  max: materialMax,
+                  componentName: componentName.isEmpty ? null : componentName,
                   materialID: materialID,
-                  description: materialName,
+                  materialName: materialName,
                 ));
               }
-              final int structuralIntegrityCurrent = reader.readInt32();
-              final int structuralIntegrityMin = reader.readInt32();
+              final int materialsCurrent = reader.readUInt32();
+              final double materialsRate = reader.readDouble();
+              final int structuralIntegrityCurrent = reader.readUInt32();
+              final double structuralIntegrityRate = reader.readDouble();
+              final int structuralIntegrityMin = reader.readUInt32();
               oldFeatures.remove(asset.setAbility(StructureFeature(
                 structuralComponents: components,
-                current: structuralIntegrityCurrent,
-                min: structuralIntegrityMin == 0 ? null : structuralIntegrityMin,
+                timeOrigin: currentTime,
+                spaceTime: spaceTime,
+                materialsCurrent: materialsCurrent,
+                materialsRate: materialsRate,
+                structuralIntegrityCurrent: structuralIntegrityCurrent,
+                structuralIntegrityRate: structuralIntegrityRate,
+                minIntegrity: structuralIntegrityMin == 0 ? null : structuralIntegrityMin,
                 max: structuralIntegrityMax == 0 ? null : structuralIntegrityMax,
               )));
             case fcSpaceSensor:
-              final int reach = reader.readInt32();
-              final int up = reader.readInt32();
-              final int down = reader.readInt32();
+              final int reach = reader.readUInt32();
+              final int up = reader.readUInt32();
+              final int down = reader.readUInt32();
               final double minSize = reader.readDouble();
               AssetNode? nearestOrbit;
               AssetNode? top;
               int? count;
               reader.saveCheckpoint();
-              if (!reader.done && reader.readInt32() == fcSpaceSensorStatus) {
+              if (!reader.done && reader.readUInt32() == fcSpaceSensorStatus) {
                 nearestOrbit = _readAsset(reader);
                 top = _readAsset(reader);
-                count = reader.readInt32();
+                count = reader.readUInt32();
                 reader.discardCheckpoint();
               } else {
                 reader.restoreCheckpoint();
@@ -234,7 +242,7 @@ class SystemServer {
                 detectedCount: count,
               )));
             case fcPlotControl:
-              final int signal = reader.readInt32();
+              final int signal = reader.readUInt32();
               switch (signal) {
                 case 0: ; // nothing
                 case 1: assert(colonyShip == null); colonyShip = asset;
@@ -249,15 +257,15 @@ class SystemServer {
               oldFeatures.remove(asset.setContainer(SurfaceFeature(children)));
             case fcGrid:
               final double cellSize = reader.readDouble();
-              final int width = reader.readInt32();
+              final int width = reader.readUInt32();
               assert(width > 0);
-              final int height = reader.readInt32();
+              final int height = reader.readUInt32();
               assert(height > 0);
               final Map<AssetNode, GridParameters> children = <AssetNode, GridParameters>{};
               AssetNode? child;
               while ((child = _readAsset(reader)) != null) {
-                final int x = reader.readInt32();
-                final int y = reader.readInt32();
+                final int x = reader.readUInt32();
+                final int y = reader.readUInt32();
                 children[child!] = (x: x, y: y);
               }
               oldFeatures.remove(asset.setContainer(GridFeature(cellSize, width, height, children)));
@@ -278,7 +286,7 @@ class SystemServer {
               }
               oldFeatures.remove(asset.setContainer(MessageBoardFeature(children)));
             case fcMessage:
-              final int systemID = reader.readInt32();
+              final int systemID = reader.readUInt32();
               final int timestamp = reader.readInt64();
               final bool isRead = reader.readBool();
               final String body = reader.readString();
@@ -290,7 +298,14 @@ class SystemServer {
               final String from = paragraphs.removeAt(0).substring(fromPrefix.length);
               oldFeatures.remove(asset.setAbility(MessageFeature(systemID, timestamp, isRead, subject, from, paragraphs.join('\n'))));
             case fcRubblePile:
-              oldFeatures.remove(asset.setAbility(RubblePileFeature()));
+              final Map<int, int> materials = <int, int>{};
+              int material;
+              do {
+                material = reader.readInt32();
+                final int quantity = reader.readInt64();
+                materials[material] = quantity;
+              } while (material != 0);
+              oldFeatures.remove(asset.setAbility(RubblePileFeature(manifest: materials)));
             case fcProxy:
               final AssetNode? child = _readAsset(reader);
               oldFeatures.remove(asset.setContainer(ProxyFeature(child)));
@@ -302,20 +317,37 @@ class SystemServer {
                 switch (kind) {
                   case 0x00: break loop;
                   case 0x01:
-                    final int id = reader.readSignedInt32();
+                    final int id = reader.readInt32();
                     final String icon = reader.readString();
                     final String name = reader.readString();
                     final String description = reader.readString();
-                    assetClasses[id] = AssetClass(id: id, icon: icon, name: name, description: description);
+                    final AssetClass assetClass = AssetClass(id: id, icon: icon, name: name, description: description);
+                    assetClasses[id] = assetClass;
+                    system.registerAssetClass(assetClass);
                   case 0x02:
-                    final int id = reader.readSignedInt32();
+                    final int id = reader.readInt32();
                     final String icon = reader.readString();
                     final String name = reader.readString();
                     final String description = reader.readString();
                     final int flags = reader.readInt64(); // TODO: decode flags
+                    final bool isFluid = (flags & 0x01) != 0;
+                    final bool isComponent = (flags & 0x02) != 0;
+                    assert((!isFluid) || (!isComponent));
+                    final bool isPressurized = (flags & 0x08) != 0;
                     final double massPerUnit = reader.readDouble();
                     final double density = reader.readDouble();
-                    materials[id] = Material(id: id, icon: icon, name: name, description: description, flags: flags, massPerUnit: massPerUnit, density: density);
+                    final Material material = Material(
+                      id: id,
+                      icon: icon,
+                      name: name,
+                      description: description,
+                      massPerUnit: massPerUnit,
+                      density: density,
+                      kind: isFluid ? MaterialKind.fluid : isComponent ? MaterialKind.component : MaterialKind.ore,
+                      isPressurized: isPressurized,
+                    );
+                    materials[id] = material;
+                    system.registerMaterial(material);
                 }
               }
               oldFeatures.remove(asset.setAbility(KnowledgeFeature(assetClasses: assetClasses, materials: materials)));
@@ -402,9 +434,9 @@ class SystemServer {
               AssetNode? grid;
               int? count;
               reader.saveCheckpoint();
-              if (!reader.done && reader.readInt32() == fcGridSensorStatus) {
+              if (!reader.done && reader.readUInt32() == fcGridSensorStatus) {
                 grid = _readAsset(reader);
-                count = reader.readInt32();
+                count = reader.readUInt32();
                 reader.discardCheckpoint();
               } else {
                 reader.restoreCheckpoint();
@@ -412,6 +444,19 @@ class SystemServer {
               oldFeatures.remove(asset.setAbility(GridSensorFeature(
                 grid: grid,
                 detectedCount: count,
+              )));
+            case fcBuilder:
+              final int capacity = reader.readUInt32();
+              final double buildRate = reader.readDouble();
+              final List<AssetNode> assignedStructures = <AssetNode>[];
+              AssetNode? child;
+              while ((child = _readAsset(reader)) != null) {
+                assignedStructures.add(child!);
+              }
+              oldFeatures.remove(asset.setAbility(BuilderFeature(
+                capacity: capacity,
+                buildRate: buildRate,
+                assignedStructures: assignedStructures,
               )));
             default:
               throw NetworkError(

@@ -47,7 +47,7 @@ class SurfaceFeature extends ContainerFeature {
   }
 
   @override
-  RendererType get rendererType => RendererType.foreground;
+  RendererType get rendererType => RendererType.overlay;
 
   @override
   Widget buildRenderer(BuildContext context) {
@@ -158,7 +158,7 @@ class RenderSurface extends RenderWorldWithChildren<SurfaceParentData> {
     RenderWorld? child = lastChild;
     while (child != null) {
       final SurfaceParentData childParentData = child.parentData! as SurfaceParentData;
-      final WorldTapTarget? result = child.routeTap(offset); // TODO: position...
+      final WorldTapTarget? result = child.routeTap(offset);
       if (result != null)
         return result;
       child = childParentData.previousSibling;

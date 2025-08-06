@@ -8,6 +8,7 @@ import '../layout.dart';
 import '../nodes/system.dart';
 import '../shaders.dart';
 import '../spacetime.dart';
+import '../widgets.dart';
 import '../world.dart';
 
 class StarFeature extends AbilityFeature {
@@ -22,12 +23,32 @@ class StarFeature extends AbilityFeature {
       starId: starId,
       diameter: parent.diameter,
       maxDiameter: parent.maxRenderDiameter,
-      spaceTime: SystemNode.of(context).spaceTime,
+      spaceTime: SystemNode.of(parent).spaceTime,
     );
   }
 
   @override
-  RendererType get rendererType => RendererType.background;
+  RendererType get rendererType => RendererType.circle;
+
+  @override
+  Widget buildDialog(BuildContext context) {
+    final int category = starId >> 20;
+    return ListBody(
+      children: <Widget>[
+        const Text('Astronomy', style: bold),
+        Padding(
+          padding: featurePadding,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text('Star identifier: $starId'), // '(0x${starId.toRadixString(16).padLeft(8, "0")})'
+              Text('Star category: $category'),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 class StarWidget extends LeafRenderObjectWidget {

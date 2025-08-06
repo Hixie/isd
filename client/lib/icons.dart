@@ -1,9 +1,13 @@
-import 'dart:ui' show Codec, ImmutableBuffer;
+import 'dart:math' as math show log, min, pow;
+import 'dart:ui' show Codec, FragmentShader, ImmutableBuffer, TargetImageSize;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
+import '../nodes/system.dart';
+import '../shaders.dart';
+import '../spacetime.dart';
 import 'http/http.dart' as http;
 import 'layout.dart';
 import 'world.dart';
@@ -125,87 +129,132 @@ class IconsManager {
       return SynchronousFuture<IconDescription>(result);
     }
     if (_pendingLoads.containsKey(icon)) {
-      return _pendingLoads[icon]!;
+      return _pendingLoads[icon]!.catchError((Object error, StackTrace stackTrace) => throw IconRedundantBadFetchException(icon));
     }
     final Uri url = Uri.parse('https://interstellar-dynasties.space/icons/${Uri.encodeComponent(icon)}.png');
     assert(() {
-      debugPrint('$url fetching icon');
+      debugPrint('fetching icon $icon at $url');
       return true;
     }());
     return _pendingLoads[icon] = _httpClient.get(url).then<IconDescription>((http.Response response) {
       assert(!_cache.containsKey(icon));
       _cache[icon] = null; // in case IconDescription.from throws
       if (response.statusCode != 200) {
-        assert(() {
-          debugPrint('Warning! $url is broken (${response.statusCode})');
-          return true;
-        }());
         throw NetworkImageLoadException(uri: url, statusCode: response.statusCode);
       }
-      try {
-        return _cache[icon] = IconDescription.from(response);
-      } catch (error) {
-        assert(() {
-          debugPrint('Warning! $url: $error');
-          return true;
-        }());
-        rethrow;
-      }
+      return _cache[icon] = IconDescription.from(response);
     }).whenComplete(() {
       _pendingLoads.remove(icon);
     });
   }
 
-  static Widget icon(BuildContext context, String icon, String tooltip) {
+  static const double knowledgeIconSize = 64.0;
+  
+  // This renders the icon in the form used to represent knowledge.
+  static Widget knowledgeIcon(BuildContext context, String icon, String tooltip) {
+    const double iconSize = knowledgeIconSize;
+    const double iconPadding = 8.0;
     final IconsManager icons = IconsManagerProvider.of(context);
-    return SizedBox(
-      width: 64.0,
-      height: 64.0,
-      child: Tooltip(
-        message: tooltip,
-        child: DecoratedBox(
-          decoration: ShapeDecoration(
-            gradient: const RadialGradient(
-              center: Alignment(0.0, 0.6),
-              colors: <Color>[
-                Color(0xFFFFFFFF),
-                Color(0xFFFFFFDD),
-              ],
-            ),
-            shape: const RoundedRectangleBorder(
-              borderRadius: BorderRadius.all(Radius.circular(12.0)),
-              side: BorderSide(),
-            ),
-            shadows: kElevationToShadow[2],
+    return Tooltip(
+      message: tooltip,
+      child: DecoratedBox(
+        decoration: ShapeDecoration(
+          gradient: const RadialGradient(
+            center: Alignment(0.0, 0.6),
+            colors: <Color>[
+              Color(0xFFFFFFFF),
+              Color(0xFFFFFFDD),
+            ],
           ),
-          child: Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Image(
-              image: IconImageProvider(icon, icons),
-            ),
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.all(Radius.circular(12.0)),
+            side: BorderSide(),
           ),
+          shadows: kElevationToShadow[2],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(iconPadding),
+          child: IconsManager.icon(context, icon, size: iconSize - iconPadding * 2.0, icons: icons),
         ),
       ),
     );
   }
+
+  // Just the image.
+  static Widget icon(BuildContext context, String icon, { required double size, String? tooltip, IconsManager? icons }) {
+    icons ??= IconsManagerProvider.of(context);
+    Widget result = Image(
+      image: IconImageProvider(icon, icons),
+      height: size,
+      width: size,
+      errorBuilder: (BuildContext context, Object error, StackTrace? stackTrace) {
+        return Tooltip(
+          message: '$error',
+          child: Icon(
+            Icons.circle,
+            color: const Color(0x11000000),
+            size: size,
+          ),
+        );
+      },
+    );
+    if (tooltip != null) {
+      result = Tooltip(
+        message: tooltip,
+        child: result,
+      );
+    }
+    return result;
+  }
 }
 
 @immutable
-class IconImageProvider extends ImageProvider<IconImageProvider> {
+class _IconKey {
+  const _IconKey(this.name, this.icons, this.dimension);
+
+  final String name;
+  final IconsManager icons;
+  final int dimension;
+
+  @override
+  bool operator ==(Object other) {
+    if (other.runtimeType != runtimeType) {
+      return false;
+    }
+    return other is _IconKey
+        && other.name == name
+        && other.icons == icons
+        && other.dimension == dimension;
+  }
+
+  @override
+  int get hashCode => Object.hash(name, icons, dimension);
+}
+
+@immutable
+class IconImageProvider extends ImageProvider<_IconKey> {
   const IconImageProvider(this.name, this.icons);
   
   final String name;
   final IconsManager icons;
 
+  static final double log2 = math.log(2);
+  
   @override
-  Future<IconImageProvider> obtainKey(ImageConfiguration configuration) {
-    // TODO: consider using configuration.devicePixelRatio and configuration.size
-    // (but since we zoom in and out so much, does it really matter?)
-    return SynchronousFuture<IconImageProvider>(this);
+  Future<_IconKey> obtainKey(ImageConfiguration configuration) {
+    assert(configuration.size != null);
+    assert(configuration.devicePixelRatio != null);
+    double target = (configuration.size! * configuration.devicePixelRatio!).longestSide;
+    if (target > 32) {
+      target = math.pow(2, (math.log(target) / log2).ceil()).toDouble();
+    } else {
+      target = 32;
+    }
+    return SynchronousFuture<_IconKey>(_IconKey(name, icons, target.truncate() * 2));
   }
 
   @override
-  ImageStreamCompleter loadImage(IconImageProvider key, ImageDecoderCallback decode) {
+  ImageStreamCompleter loadImage(_IconKey key, ImageDecoderCallback decode) {
     return MultiFrameImageStreamCompleter(
       codec: _load(key, decode),
       scale: 1.0, // doesn't matter really, we ignore the scale and draw it at a specific size
@@ -213,8 +262,15 @@ class IconImageProvider extends ImageProvider<IconImageProvider> {
     );
   }
 
-  Future<Codec> _load(IconImageProvider key, ImageDecoderCallback decode) async {
-    return decode(await ImmutableBuffer.fromUint8List((await key.icons.fetch(key.name)).bytes));
+  Future<Codec> _load(_IconKey key, ImageDecoderCallback decode) async {
+    return decode(
+      await ImmutableBuffer.fromUint8List((await icons.fetch(name)).bytes),
+      getTargetSize: (int intrinsicWidth, int intrinsicHeight) {
+        assert(intrinsicWidth == intrinsicHeight);
+        final int size = math.min(key.dimension, intrinsicWidth);
+        return TargetImageSize(width: size, height: size);
+      },
+    );
   }
 
   @override
@@ -246,6 +302,8 @@ class IconsManagerProvider extends InheritedWidget {
   bool updateShouldNotify(IconsManagerProvider oldWidget) => icons != oldWidget.icons;
 }
 
+typedef IconTapCallback = void Function (BuildContext context);
+
 class WorldIcon extends LeafRenderObjectWidget {
   const WorldIcon({
     super.key,
@@ -253,13 +311,17 @@ class WorldIcon extends LeafRenderObjectWidget {
     required this.icon,
     required this.diameter,
     required this.maxDiameter,
+    required this.ghost,
+    this.onTap,
   });
 
   final WorldNode node;
   final String icon;
   final double diameter;
   final double maxDiameter;
-
+  final bool ghost;
+  final IconTapCallback? onTap;
+  
   @override
   RenderWorldIcon createRenderObject(BuildContext context) {
     return RenderWorldIcon(
@@ -267,8 +329,12 @@ class WorldIcon extends LeafRenderObjectWidget {
       icon: icon,
       diameter: diameter,
       maxDiameter: maxDiameter,
+      ghost: ghost,
       devicePixelRatio: MediaQuery.of(context).devicePixelRatio,
       icons: IconsManagerProvider.of(context),
+      shaders: ShaderProvider.of(context),
+      spaceTime: SystemNode.of(node).spaceTime,
+      onTap: onTap == null ? null : () => onTap!(context),
     );
   }
 
@@ -278,10 +344,14 @@ class WorldIcon extends LeafRenderObjectWidget {
       ..node = node
       ..icon = icon
       ..diameter = diameter
+      ..ghost = ghost
       ..maxDiameter = maxDiameter
       ..devicePixelRatio = MediaQuery.of(context).devicePixelRatio
-      ..icons = IconsManagerProvider.of(context);
-  }
+      ..icons = IconsManagerProvider.of(context)
+      ..shaders = ShaderProvider.of(context)
+      ..spaceTime = SystemNode.of(node).spaceTime
+      ..onTap = onTap == null ? null : () => onTap!(context);
+    }
 }
 
 class RenderWorldIcon extends RenderWorldNode {
@@ -290,13 +360,20 @@ class RenderWorldIcon extends RenderWorldNode {
     required String icon,
     required double diameter,
     required double maxDiameter,
+    required bool ghost,
     required double devicePixelRatio,
     required IconsManager icons,
+    required ShaderLibrary shaders,
+    required SpaceTime spaceTime,
+    this.onTap,
   }) : _icon = icon,
        _diameter = diameter,
        _maxDiameter = maxDiameter,
+       _ghost = ghost,
        _devicePixelRatio = devicePixelRatio,
-       _icons = icons;
+       _icons = icons,
+       _shaders = shaders,
+       _spaceTime = spaceTime;
 
   String get icon => _icon;
   String _icon;
@@ -325,6 +402,15 @@ class RenderWorldIcon extends RenderWorldNode {
     }
   }
 
+  bool get ghost => _ghost;
+  bool _ghost;
+  set ghost (bool value) {
+    if (value != _ghost) {
+      _ghost = value;
+      markNeedsLayout();
+    }
+  }
+
   double get devicePixelRatio => _devicePixelRatio;
   double _devicePixelRatio;
   set devicePixelRatio (double value) {
@@ -343,20 +429,44 @@ class RenderWorldIcon extends RenderWorldNode {
     }
   }
 
+  ShaderLibrary get shaders => _shaders;
+  ShaderLibrary _shaders;
+  set shaders (ShaderLibrary value) {
+    if (value != _shaders) {
+      _shaders = value;
+      _shader = null;
+      markNeedsPaint();
+    }
+  }
+
+  SpaceTime get spaceTime => _spaceTime;
+  SpaceTime _spaceTime;
+  set spaceTime (SpaceTime value) {
+    if (value != _spaceTime) {
+      _spaceTime = value;
+    }
+  }
+
+  VoidCallback? onTap;
+
   ImageStream? _imageStream;
   double? _actualDiameter;
+  FragmentShader? _shader;
   
   @override
   void computeLayout(WorldConstraints constraints) {
     final ImageStream? oldImageStream = _imageStream;
     _actualDiameter = computePaintDiameter(diameter, maxDiameter);
+    _shader ??= shaders.ghost;
+    _shader!.setFloat(uD, _actualDiameter!);
+    _shader!.setFloat(uGhost, ghost ? 1.0 : 0.0);
     _imageStream = IconImageProvider(icon, icons).resolve(ImageConfiguration(
       devicePixelRatio: devicePixelRatio,
       size: Size.square(_actualDiameter!),
     ));
     if (_imageStream!.key != oldImageStream?.key) {
       oldImageStream?.removeListener(_imageChangeListener);
-      _imageStream!.addListener(_imageChangeListener);
+      _imageStream!.addListener(_imageChangeListener); // this can synchronously call _imageChangeHandler below
     }
   }
 
@@ -367,20 +477,28 @@ class RenderWorldIcon extends RenderWorldNode {
   void _imageChangeHandler(ImageInfo imageInfo, bool synchronousCall) {
     _imageInfo?.dispose();
     _imageInfo = imageInfo;
+    _shader!.setFloat(uImageWidth, _imageInfo!.image.width.toDouble());
+    _shader!.setFloat(uImageHeight, _imageInfo!.image.height.toDouble());
+    _shader!.setImageSampler(uImage, _imageInfo!.image);
     _errorMessage = null;
     markNeedsPaint();
   }
   void _imageErrorHandler(Object exception, StackTrace? stackTrace) {
-    _imageStream = null;
     _imageInfo = null;
-    _errorMessage = '$exception';
+    assert(() {
+      _errorMessage = '$exception';
+      return true;
+    }());
     markNeedsPaint();
+    if (exception is! IconRedundantBadFetchException)
+      Error.throwWithStackTrace(exception, stackTrace ?? StackTrace.current);
   }
   
   @override
   void dispose() {
     _imageStream?.removeListener(_imageChangeListener);
     _imageInfo?.dispose();
+    _shader?.dispose();
     super.dispose();
   }
 
@@ -388,7 +506,9 @@ class RenderWorldIcon extends RenderWorldNode {
     ..color = const Color(0x7FFF0000)
     ..strokeWidth = _actualDiameter! / 10.0
     ..style = PaintingStyle.stroke;
-  
+
+  Paint? _paint;
+    
   @override
   double computePaint(PaintingContext context, Offset offset) {
     if (_imageInfo == null) {
@@ -409,16 +529,25 @@ class RenderWorldIcon extends RenderWorldNode {
         return true;
       }());
     } else {
-      paintImage(
-        canvas: context.canvas,
-        rect: Rect.fromCircle(center: offset, radius: _actualDiameter! / 2.0),
-        image: _imageInfo!.image,
-        debugImageLabel: '$icon icon (${_imageInfo!.debugLabel})',
-        scale: _imageInfo!.scale,
-        fit: BoxFit.cover,
-        // filterQuality: ...,
-        // isAntiAlias: ...,
-      );
+      final double time = spaceTime.computeTime(<VoidCallback>[markNeedsPaint]);
+      _shader!.setFloat(uT, time);
+      _shader!.setFloat(uX, offset.dx);
+      _shader!.setFloat(uY, offset.dy);
+      _shader!.setFloat(uD, _actualDiameter!);
+      _paint ??= Paint()
+        ..shader = _shader;
+      final Rect rect = Rect.fromCircle(center: offset, radius: _actualDiameter! / 2.0);
+      context.canvas.drawRect(rect, _paint!);
+      // paintImage(
+      //   canvas: context.canvas,
+      //   rect: rect,
+      //   image: _imageInfo!.image,
+      //   debugImageLabel: '$icon icon (${_imageInfo!.debugLabel})',
+      //   scale: _imageInfo!.scale,
+      //   fit: BoxFit.cover,
+      //   // filterQuality: ...,
+      //   // isAntiAlias: ...,
+      // );
     }
     if (debugPaintSizeEnabled) {
       context.canvas.drawCircle(offset, _actualDiameter! / 2.0, Paint()
@@ -429,16 +558,47 @@ class RenderWorldIcon extends RenderWorldNode {
   }
 
   @override
+  void reassemble() {
+    _imageStream?.removeListener(_imageChangeListener);
+    _imageStream = null;
+    _imageInfo?.dispose();
+    _imageInfo = null;
+    _shader?.dispose();
+    _shader = null;
+    _paint = null;
+    super.reassemble();
+  }
+  
+  @override
   bool hitTestChildren(BoxHitTestResult result, { required Offset position }) {
     return false;
   }
 
   @override
   WorldTapTarget? routeTap(Offset offset) {
-    return null; // TODO
+    if ((onTap != null) && isInsideSquare(offset)) {
+      return _IconTapTarget(onTap!);
+    }
+    return null;
   }
 }
 
+class _IconTapTarget implements WorldTapTarget {
+  _IconTapTarget(this.onTap);
+
+  final VoidCallback onTap;
+
+  @override
+  void handleTapDown() {}
+
+  @override
+  void handleTapCancel() {}
+
+  @override
+  void handleTapUp() {
+    onTap();
+  }
+}
 
 class WorldFields extends MultiChildRenderObjectWidget {
   const WorldFields({
@@ -491,7 +651,9 @@ class WorldFieldPlacementParentData extends ContainerBoxParentData<RenderBox> {
   }
 }
 
-class RenderWorldFieldPlacement extends RenderWorldNode with ContainerRenderObjectMixin<RenderBox, WorldFieldPlacementParentData>, RenderBoxContainerDefaultsMixin<RenderBox, WorldFieldPlacementParentData> {
+class RenderWorldFieldPlacement extends RenderWorldNode
+      with ContainerRenderObjectMixin<RenderBox, WorldFieldPlacementParentData>,
+           RenderBoxContainerDefaultsMixin<RenderBox, WorldFieldPlacementParentData> {
   RenderWorldFieldPlacement({
     required super.node,
     required String icon,
@@ -671,7 +833,7 @@ class RenderWorldFieldPlacement extends RenderWorldNode with ContainerRenderObje
 
   @override
   WorldTapTarget? routeTap(Offset offset) {
-    return null; // TODO: figure out what this should do, if anything
+    return null; // TODO: we don't send these taps into the RenderBox world
   }
             
   @override

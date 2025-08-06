@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:math' show max, min, pi;
 
 import 'package:flutter/material.dart' hide Gradient;
 
+import 'layout.dart';
 import 'widgets.dart';
 
 class HudLayout extends StatefulWidget {
@@ -18,19 +20,48 @@ class HudLayout extends StatefulWidget {
   State<HudLayout> createState() => _HudLayoutState();
 }
 
-class _HudLayoutState extends State<HudLayout> {
+abstract interface class HudLayoutInterface { // ignore: one_member_abstracts
+  void closeAll();
+}
+
+class _HudLayoutState extends State<HudLayout> implements HudLayoutInterface {
   final List<HudHandle> _handles = <HudHandle>[];
   
   HudHandle _register(BuildContext context, Size initialSize, Widget hudWidget) {
+    assert(mounted);
     final HudHandle result = HudHandle(this, context, hudWidget, initialSize);
-    _handles.add(result);
+    setState(() {
+      _handles.add(result);
+    });
     return result;
   }
 
-  void _remove(HudHandle handle) {
-    _handles.remove(handle);
+  void remove(HudHandle handle) {
+    scheduleMicrotask(() {
+      if (mounted) {
+        setState(() {
+          _handles.remove(handle);
+        });
+      }
+    });
   }
 
+  void bringToFront(HudHandle handle) {
+    assert(mounted);
+    setState(() {
+      _handles.remove(handle);
+      _handles.add(handle);
+    });
+  }
+
+  // HudLayoutInterface
+  @override
+  void closeAll() {
+    // does not call onClose for any of the handles
+    assert(mounted);
+    setState(_handles.clear);
+  }
+  
   final List<Widget> _huds = <Widget>[];
   late Size _hudSize;
   
@@ -100,11 +131,18 @@ class HudHandle {
     _box = _computeBox(_state.context, _targetContext, initialSize);
 
   static Rect _computeBox(BuildContext a, BuildContext b, Size size) {
-    final Matrix4 transform = b.findRenderObject()!.getTransformTo(a.findRenderObject());
+    final RenderObject target = b.findRenderObject()!;
+    final RenderObject source = a.findRenderObject()!;
+    final Matrix4 transform = target.getTransformTo(source);
     // should be only a translation. if it's more, we're in trouble.
+    Offset delta = Offset(transform.storage[12] - 64.0, transform.storage[13] - 36.0);
+    if (target is RenderWorld) {
+      delta += target.paintCenter;
+    }
+    delta = Offset(max(minX, delta.dx), max(minY, delta.dy));
     assert(size.width >= minWidth);
     assert(size.height >= minHeight);
-    return Offset(max(transform.storage[12] - 64.0, minX), max(transform.storage[13] - 36.0, minY)) & size;
+    return delta & size;
   }
 
   final _HudLayoutState _state;
@@ -126,9 +164,10 @@ class HudHandle {
     assert(_box.left.round() >= minX.round(), 'invalid box: $_box (minX=$minX)');
     assert(_box.top.round() >= minY.round(), 'invalid box: $_box (minY=$minY)');
     return Positioned(
-      top: _box.top.clamp(minY, hudSize.height - minY - minOverlap),
-      left: _box.left.clamp(minX, hudSize.width - minX - _box.width),
-      width: min(_box.width, hudSize.width),
+      key: ObjectKey(this),
+      top: _box.top.clamp(minY, max(hudSize.height - minY - minOverlap, minY + minHeight)),
+      left: _box.left.clamp(minX, max(hudSize.width - minX - _box.width, minX + minWidth)),
+      width: min(_box.width, max(hudSize.width, minWidth)),
       height: _box.height,
       child: _HudRoot(
         handle: this,
@@ -138,6 +177,7 @@ class HudHandle {
   }
 
   void updatePosition(Offset delta) {
+    assert(_state.mounted);
     _state.setState(() { // ignore: invalid_use_of_protected_member
       _box = Offset(
         (_box.left + delta.dx).clamp(minX, _state._hudSize.width - minX - _box.width),
@@ -147,17 +187,21 @@ class HudHandle {
   }
 
   void updateSize(Offset delta) {
+    assert(_state.mounted);
     _state.setState(() { // ignore: invalid_use_of_protected_member
       _box = _box.topLeft & Size(
         (_box.width + delta.dx).clamp(minWidth, max(minWidth, _state._hudSize.width)),
         max(_box.height + delta.dy, minHeight),
       );
     });
-    print(_box.height);
   }
   
   void cancel() {
-    _state._remove(this);
+    _state.remove(this);
+  }
+
+  void bringToFront() {
+    _state.bringToFront(this);
   }
 
   static HudHandle of(BuildContext context) {
@@ -182,76 +226,104 @@ class HudDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Dialog(
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.all(Radius.circular(28.0)),
+        side: BorderSide(width: 0.75, color: Color(0x7F666666)),
+      ),
       elevation: 24.0,
       shadowColor: const Color(0xFF000000),
       clipBehavior: Clip.antiAlias,
       child: NoZoom(
-        child: Stack(
-          children: <Widget>[
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
-                // TODO: a11y
-                GestureDetector(
-                  // TODO: consider pinning the cursor while you're dragging, because otherwise it'll
-                  // get reset if you drag too far, even though you're still resizing.
-                  behavior: HitTestBehavior.opaque,
-                  onPanUpdate: (DragUpdateDetails details) {
-                    HudHandle.of(context).updatePosition(details.delta);
-                  },
-                  child: MouseRegion(
-                    cursor: SystemMouseCursors.move,
-                    child: Row(
-                      children: <Widget>[
-                        const SizedBox(width: 24.0),
-                        Expanded(
-                          child: DefaultTextStyle(
-                            style: Theme.of(context).textTheme.titleLarge ?? const TextStyle(),
-                            child: heading,
+        child: Listener(
+          onPointerDown: (PointerDownEvent event) {
+            HudHandle.of(context).bringToFront();
+          },
+          child: Stack(
+            children: <Widget>[
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  // TODO: a11y
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    // TODO: when moving, if you go out of bounds, the cursor gets unpinned from the dialog.
+                    onPanUpdate: (DragUpdateDetails details) {
+                      HudHandle.of(context).updatePosition(details.delta);
+                    },
+                    child: MouseRegion(
+                      cursor: SystemMouseCursors.move,
+                      child: DecoratedBox(
+                        decoration: const BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: <Color>[
+                              Color(0x00000000),
+                              Color(0x11000000),
+                              Color(0x00000000),
+                              Color(0x11000000),
+                              Color(0x00000000),
+                              Color(0x11000000),
+                              Color(0x00000000),
+                              Color(0x11000000),
+                              Color(0x00000000),
+                            ],
                           ),
                         ),
-                        const SizedBox(width: 24.0),
-                        IconButton(
-                          icon: const Icon(Icons.close),
-                          onPressed: () {
-                            HudHandle.of(context).cancel();
-                            if (onClose != null)
-                              onClose!();
-                          },
+                        child: Row(
+                          children: <Widget>[
+                            const SizedBox(width: 24.0),
+                            Expanded(
+                              child: DefaultTextStyle(
+                                style: (Theme.of(context).textTheme.titleLarge ?? const TextStyle()).copyWith(fontWeight: FontWeight.w500),
+                                softWrap: false,
+                                overflow: TextOverflow.ellipsis,
+                                child: heading,
+                              ),
+                            ),
+                            const SizedBox(width: 24.0),
+                            IconButton(
+                              icon: const Icon(Icons.close),
+                              onPressed: () {
+                                HudHandle.of(context).cancel();
+                                if (onClose != null)
+                                  onClose!();
+                              },
+                            ),
+                          ],
                         ),
-                      ],
+                      ),
                     ),
                   ),
-                ),
-                Expanded(
-                  child: child,
-                ),
-              ],
-            ),
-            Positioned(
-              // TODO: a11y
-              bottom: 0,
-              right: 0,
-              child: GestureDetector(
-                // TODO: consider pinning the cursor while you're dragging, because otherwise it'll
-                // get reset if you drag too far, even though you're still resizing.
-                onPanUpdate: (DragUpdateDetails details) {
-                  HudHandle.of(context).updateSize(details.delta);
-                },
-                child: MouseRegion(
-                  cursor: SystemMouseCursors.resizeDownRight,
-                  child: SizedBox(
-                    width: 36.0,
-                    height: 36.0,
-                    child: Transform.rotate(
-                      angle: -pi / 4,
-                      child: const Icon(Icons.drag_handle),
+                  Expanded(
+                    child: child,
+                  ),
+                ],
+              ),
+              Positioned(
+                // TODO: a11y
+                bottom: 0,
+                right: 0,
+                child: GestureDetector(
+                  // TODO: when resizing smaller than minimum size, the cursor gets unpinned from the corner.
+                  onPanUpdate: (DragUpdateDetails details) {
+                    HudHandle.of(context).updateSize(details.delta);
+                  },
+                  child: MouseRegion(
+                    cursor: SystemMouseCursors.resizeDownRight,
+                    child: SizedBox(
+                      width: 36.0,
+                      height: 36.0,
+                      child: Transform.rotate(
+                        angle: -pi / 4,
+                        child: const Icon(Icons.drag_handle),
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

@@ -1,4 +1,8 @@
+import 'package:flutter/material.dart';
+
 import '../assets.dart';
+import '../prettifiers.dart';
+import '../widgets.dart';
 
 class PopulationFeature extends AbilityFeature {
   PopulationFeature({
@@ -11,4 +15,24 @@ class PopulationFeature extends AbilityFeature {
 
   @override
   RendererType get rendererType => RendererType.none;
+
+  @override
+  Widget buildDialog(BuildContext context) {
+    return ListBody(
+      children: <Widget>[
+        const Text('Population center', style: bold),
+        Padding(
+          padding: featurePadding,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text('Total population: ${prettyQuantity(count, zero: "none", singular: " person", plural: " people")}'),
+              Text('Mean happiness: ${prettyHappiness(happiness)}'),
+              Text('Total happiness: ${prettyHappiness(happiness * count)}'),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
 }

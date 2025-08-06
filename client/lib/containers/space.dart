@@ -54,7 +54,7 @@ class SpaceFeature extends ContainerFeature {
   }
 
   @override
-  RendererType get rendererType => RendererType.background;
+  RendererType get rendererType => RendererType.circle;
 
   @override
   Widget buildRenderer(BuildContext context) {
@@ -148,7 +148,7 @@ class RenderSpace extends RenderWorldWithChildren<SpaceParentData> {
     RenderWorld? child = lastChild;
     while (child != null) {
       final SpaceParentData childParentData = child.parentData! as SpaceParentData;
-      final WorldTapTarget? result = child.routeTap(offset); // TODO: correct offset
+      final WorldTapTarget? result = child.routeTap(offset);
       if (result != null)
         return result;
       child = childParentData.previousSibling;
