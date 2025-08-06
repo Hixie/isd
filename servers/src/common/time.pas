@@ -24,7 +24,7 @@ type
       function Scale(Factor: Double): TMillisecondsDuration;
       property IsZero: Boolean read GetIsZero; // = 0
       property IsNotZero: Boolean read GetIsNotZero; // <> 0
-      property IsNegative: Boolean read GetIsNegative; // < 0 
+      property IsNegative: Boolean read GetIsNegative; // < 0
       property IsPositive: Boolean read GetIsPositive; // > 0
       property IsInfinite: Boolean read GetIsInfinite;
       property AsInt64: Int64 read Value; // for storage, restore with FromMilliseconds(Int64)
@@ -68,7 +68,7 @@ type
       property AsDouble: Double read Value; // for storage, restore with FromFactor(Double)
       function ToString(): UTF8String;
    end;
-   
+
    TRate = record
    private
       Value: Double;

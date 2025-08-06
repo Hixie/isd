@@ -22,7 +22,7 @@ class _MainAppState extends State<MainApp> {
   void _exit() {
     setState(() { _pane = Pane.main; });
   }
-  
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(

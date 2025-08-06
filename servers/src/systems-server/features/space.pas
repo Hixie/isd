@@ -75,7 +75,7 @@ uses
 type
    TSolarSystemJournalState = (jsNew, jsChanged);
    TSolarSystemJournalStates = set of TSolarSystemJournalState;
-   
+
    PSolarSystemData = ^TSolarSystemData;
    TSolarSystemData = record
       DistanceFromCenter: Double; // meters
@@ -416,7 +416,7 @@ procedure TSolarSystemFeatureNode.ComputeHillSpheres();
       Theta2 := PSolarSystemData(Child2.ParentData)^.Theta;
       Result := Sqrt(R1 * R1 + R2 * R2 - 2 * R1 * R2 * Cos(Theta1 - Theta2)); // $R-
    end;
-   
+
 var
    CandidateHillRadius: Double;
    MaxRadius: Double;

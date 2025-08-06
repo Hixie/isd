@@ -140,7 +140,7 @@ class CellBuildButton extends StatefulWidget {
 
 class _CellBuildButtonState extends State<CellBuildButton> {
   static const Duration _duration = Duration(milliseconds: 160);
-  
+
   bool _hover = false;
   bool _tap = false;
 
@@ -153,7 +153,7 @@ class _CellBuildButtonState extends State<CellBuildButton> {
     _tapTimer?.cancel();
     _tapTimer = null;
   }
-  
+
   void _startTap() {
     if (!_tap) {
       setState(() {
@@ -163,14 +163,14 @@ class _CellBuildButtonState extends State<CellBuildButton> {
     _tapTimer?.cancel();
     _tapTimer = null;
   }
-  
+
   void _endTap() {
     _tapTimer?.cancel();
     _tapTimer = Timer(_duration, _resetTap);
   }
 
   HudHandle? _build;
-  
+
   void _triggerBuild() {
     _build = HudProvider.add(context, const Size(480.0, 512.0), HudDialog(
        heading: const Text('Build'),
@@ -189,7 +189,7 @@ class _CellBuildButtonState extends State<CellBuildButton> {
     _tapTimer?.cancel();
     super.dispose();
   }
-  
+
   @override
   Widget build(BuildContext context) {
     return MouseRegion(
@@ -248,7 +248,7 @@ class _BuildUiState extends State<BuildUi> {
   bool _pending = true;
   bool _tired = false;
   Timer? _loadTimer;
-  
+
   @override
   void initState() {
     super.initState();
@@ -280,7 +280,7 @@ class _BuildUiState extends State<BuildUi> {
       _tired = true;
     });
   }
-  
+
   @override
   Widget build(BuildContext context) {
     Widget body;
@@ -529,7 +529,7 @@ class RenderGrid extends RenderWorldWithChildren<GridParentData> {
     }
     return diameter * constraints.scale;
   }
-  
+
   @override
   WorldTapTarget? routeTap(Offset offset) {
     if (!isInsideSquare(offset))

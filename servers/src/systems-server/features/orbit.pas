@@ -9,7 +9,7 @@ uses
 
 type
    TOrbitBusMessage = class abstract(TBusMessage) end;
-   
+
    PCrashReport = ^TCrashReport;
    TCrashReport = record
       Victims: TAssetNode.TArray; // TODO: make populating this more efficient
@@ -24,7 +24,7 @@ type
       constructor Create(ACrashReport: PCrashReport);
       procedure AddVictim(Node: TAssetNode);
    end;
-   
+
    TReceiveCrashingAssetMessage = class(TOrbitBusMessage)
    private
       FAssets: TAssetNode.TArray;
@@ -32,7 +32,7 @@ type
       constructor Create(ACrashReport: PCrashReport);
       property Assets: TAssetNode.TArray read FAssets;
    end;
-   
+
 type
    TOrbitFeatureClass = class(TFeatureClass)
    strict protected
@@ -78,7 +78,7 @@ type
       procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); override;
       property PrimaryChild: TAssetNode read FPrimaryChild;
    end;
-   
+
 implementation
 
 uses
@@ -271,7 +271,7 @@ begin
    Eccentricity := POrbitData(Child.ParentData)^.Eccentricity;
    Result := SemiMajorAxis * (1 + Eccentricity * Eccentricity / 2.0);
 end;
-   
+
 procedure TOrbitFeatureNode.AddOrbitingChild(CachedSystem: TSystem; Child: TAssetNode; SemiMajorAxis: Double; Eccentricity: Double; Omega: Double; TimeOrigin: TTimeInMilliseconds; Clockwise: Boolean);
 begin
    Assert(Child.AssetClass.ID = idOrbits);
@@ -356,9 +356,9 @@ begin
    Writeln('Crashing "', Child.AssetName, '" (a ', Child.AssetClass.Name, ')');
 
    // TODO: give the clients the predicted crash time when we know it, so they can trigger animations appropriately
-   
+
    CrashReport := New(PCrashReport);
-   
+
    CrashReportMessage := TCrashReportMessage.Create(CrashReport);
    try
       Handled := Child.HandleBusMessage(CrashReportMessage);
@@ -366,7 +366,7 @@ begin
    finally
       FreeAndNil(CrashReportMessage);
    end;
-   
+
    ReceiveMessage := TReceiveCrashingAssetMessage.Create(CrashReport);
    try
       Handled := FPrimaryChild.HandleBusMessage(ReceiveMessage);
@@ -376,7 +376,7 @@ begin
    end;
 
    Dispose(CrashReport);
-   
+
    if (Child.Parent = Self) then
    begin
       Assert(Child.Mass = 0.0, 'unexpectedly, the crashed child has mass ' + FloatToStr(Child.Mass));

@@ -23,7 +23,7 @@ type
       function GetAsset(): TAssetNode;
    end;
    TStructureHashSet = specialize TInterfaceSet<IStructure>;
-   
+
    TRegisterBuilderMessage = class(TPhysicalConnectionBusMessage)
    private
       FBuilder: TBuilderFeatureNode;
@@ -31,7 +31,7 @@ type
       constructor Create(ABuilder: TBuilderFeatureNode);
       property Builder: TBuilderFeatureNode read FBuilder;
       // TODO: some sort of information about prioritization?
-   end;   
+   end;
 
    TRegisterStructureMessage = class(TPhysicalConnectionBusMessage)
    private
@@ -40,7 +40,7 @@ type
       constructor Create(AStructure: IStructure);
       property Structure: IStructure read FStructure;
       // TODO: some sort of information about prioritization?
-   end;   
+   end;
 
    TBuilderBusRecords = record // TODO: possible improvements to performance are available by inlining a bunch of this, if the compiler doesn't do it for us
    strict private
@@ -125,7 +125,7 @@ type
             True: (FBuilders: TBuilderHashSet; FStructures: TStructureHashSet);
             False: (FPerDynastyBuilders: TPerDynastyBuilders; FPerDynastyStructures: TPerDynastyStructures);
    end;
-   
+
    TBuilderBusFeatureClass = class(TFeatureClass)
    strict protected
       function GetFeatureNodeClass(): FeatureNodeReference; override;
@@ -133,7 +133,7 @@ type
       constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
       function InitFeatureNode(): TFeatureNode; override;
    end;
-   
+
    TBuilderBusFeatureNode = class(TFeatureNode)
    protected
       FRecords: TBuilderBusRecords;
@@ -165,9 +165,9 @@ type
    end;
 
    // TODO: handle our ancestor chain changing - we need to disconnect structures, for example
-   
+
    TBuilderMode = (bmIdle, bmConnecting, bmConnected, bmNoBus);
-   
+
    TBuilderFeatureNode = class(TFeatureNode)
    strict private
       FFeatureClass: TBuilderFeatureClass;
@@ -193,7 +193,7 @@ type
    end;
 
 // TODO: this feature assumes that builders and structures can't change ownership.
-   
+
 implementation
 
 uses
@@ -404,7 +404,7 @@ begin
       Result := nil;
    end;
 end;
-      
+
 function TBuilderBusRecords.GetStructureEnumerator(Dynasty: TDynasty): TStructureHashSet.TEnumerator;
 begin
    Assert(Assigned(Dynasty));
@@ -423,7 +423,7 @@ begin
    end;
 end;
 
-  
+
 constructor TBuilderBusRecords.TDynastyEnumerator.Create(ADynasty: TDynasty; ADynastyHashTable1: TPerDynastyBuilders; ADynastyHashTable2: TPerDynastyStructures);
 begin
    inherited Create();
@@ -621,7 +621,7 @@ begin
    end;
    Result := False;
 end;
-      
+
 function TBuilderBusRecords.GetAllStructureEnumerator(): TAllStructureHashsetEnumerator;
 var
    StructureEnumerator: TStructureHashSet.TEnumerator;

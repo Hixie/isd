@@ -43,7 +43,7 @@ uses
 const
    MeanIndividualMass = 70; // kg // TODO: allow species to diverge and such, with different demographics, etc
 
-  
+
 constructor TPopulationFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
 begin
    inherited Create();

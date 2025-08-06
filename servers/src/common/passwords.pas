@@ -30,7 +30,7 @@ function CreateSalt(): TSalt;
 begin
    CryptoGetRandomBytes(@Result[0], SizeOf(TSalt)); // $R- (we know SaltLength will fit)
 end;
-   
+
 function CreatePassword(PasswordLength: Cardinal): UTF8String;
 var
    Index: Cardinal;

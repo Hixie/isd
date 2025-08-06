@@ -110,7 +110,7 @@ abstract class RenderWorld extends RenderObject {
 
   Offset? _paintCenter;
   double? _paintDiameter;
-  
+
   @override
   @nonVirtual
   void paint(PaintingContext context, Offset offset) {
@@ -123,14 +123,14 @@ abstract class RenderWorld extends RenderObject {
   // Canvas origin is the center of the viewport, whose size is constraints.viewportSize.
   // Returns the actual diameter in pixels, which is available in [paintDiameter].
   double computePaint(PaintingContext context, Offset offset);
-  
+
   @override
   void applyPaintTransform(covariant RenderObject child, Matrix4 transform) {
     // This intentionally does nothing, because Flutter's applyPaintTransform logic
     // does not know how to handle our floating origin system.
     // See WorldToBox in widgets.dart.
   }
-  
+
   static const double _minDiameter = 20.0;
   static const double _maxDiameterRatio = 0.1;
 
@@ -159,7 +159,7 @@ abstract class RenderWorld extends RenderObject {
   Offset get paintCenter => _paintCenter!;
 
   double get paintDiameter => _paintDiameter!;
-  
+
   @override
   Rect get paintBounds => Rect.fromCircle(center: _paintCenter!, radius: _paintDiameter! / 2.0);
 
@@ -205,7 +205,7 @@ abstract class RenderWorldWithChildren<ParentDataType extends ContainerParentDat
        extends RenderWorldNode
           with ContainerRenderObjectMixin<RenderWorld, ParentDataType> {
   RenderWorldWithChildren({ required super.node });
-            
+
   @override
   bool hitTestChildren(BoxHitTestResult result, { required Offset position }) {
     bool hit = false;
@@ -235,7 +235,7 @@ class WorldTapDetector extends LeafRenderObjectWidget {
   final double maxDiameter;
   final BoxShape shape;
   final TapDetectorCallback? onTap;
-  
+
   @override
   RenderWorldTapDetector createRenderObject(BuildContext context) {
     return RenderWorldTapDetector(
@@ -290,17 +290,17 @@ class RenderWorldTapDetector extends RenderWorldNode {
   VoidCallback? onTap;
 
   double? _actualDiameter;
-  
+
   @override
   void computeLayout(WorldConstraints constraints) {
     _actualDiameter = computePaintDiameter(diameter, maxDiameter);
   }
-  
+
   @override
   double computePaint(PaintingContext context, Offset offset) {
     return _actualDiameter!;
   }
-  
+
   @override
   bool hitTestChildren(BoxHitTestResult result, { required Offset position }) {
     return false;

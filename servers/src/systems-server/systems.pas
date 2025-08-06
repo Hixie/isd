@@ -97,7 +97,7 @@ uses
 //
 // There is currently no way to detect when visibility changes, only
 // when it's been recomputed.
-    
+
 type
    {$PUSH}
    {$PACKSET 2}
@@ -120,7 +120,7 @@ const
    dmNil = [];
    dmDetectable = [dmVisibleSpectrum]; // need one of these to get any data beyond what you can infer
    dmOwnership = [dmInference, dmVisibleSpectrum, dmInternals]; // anything you own is visible
-   
+
 type
    TAssetClass = class;
    TAssetNode = class;
@@ -128,7 +128,7 @@ type
    TSystem = class;
 
    TAssetClassID = LongInt; // signed because negative values are built-in, and positive values are in tech tree
-   
+
    TDynastyIndexHashTable = class(specialize THashTable<TDynasty, Cardinal, TObjectUtils>)
       constructor Create();
    end;
@@ -150,7 +150,7 @@ type
    end;
 
    TAssetID = Cardinal; // 0 is reserved for placeholders or sentinels
-   
+
    TDynastyNotes = record
    strict private
       FID: TAssetID; // 4 bytes
@@ -194,7 +194,7 @@ type
    // there is one instance of this per material, we end up using 64
    // bits per material even if there's only one dynasty (or any
    // number of dynasties 1-63); we should be using one bit per
-   // material in that world.         
+   // material in that world.
    // TODO: consider the naming scheme in pile.pas
    PKnowledgeSummary = ^TKnowledgeSummary;
    TKnowledgeSummary = packed record
@@ -238,7 +238,7 @@ type
    {$ENDIF}
 
    TAssetChangeKind = (ckAdd, ckChange, ckEndOfList);
-   
+
    TJournalReader = class sealed
    private
       FSystem: TSystem;
@@ -287,7 +287,7 @@ type
       mrInjected, // we did inject the message into a bus but it wasn't handled
       mrHandled // the message got injected and handled
    );
-   
+
    TBusMessage = class abstract(TDebugObject) end;
    TPhysicalConnectionBusMessage = class abstract(TBusMessage) end;
    TAssetManagementBusMessage = class abstract(TBusMessage) end;
@@ -380,7 +380,7 @@ type
    {$IF SizeOf(TBonus) <> 24} {$FATAL TBonus has an unexpected size} {$ENDIF}
 
    TResearchID = Integer; // Negative values are internal. Positive values are from the tech tree. Integer range means we can use A-B to compare IDs, and use $FFFFFFFF as a sentinel.
-   
+
    TResearch = class(TNode)
    public
       type
@@ -417,7 +417,7 @@ type
    TWeightedResearchHashTable = class(specialize THashTable<TResearch, TWeight, TObjectUtils>)
       constructor Create();
    end;
-   
+
    TTopic = class(TNode)
    public
       type
@@ -444,7 +444,7 @@ type
    TTopicHashSet = specialize TObjectSet<TTopic>;
 
    // TODO: add materials and asset classes as possible TNodes, so that things/topics can unlock when you build partiular things or mine particular materials.
-   
+
    TTechTreeReader = record
    strict private
       FTokenizer: TTokenizer;
@@ -452,8 +452,8 @@ type
       FMaterialNames: TMaterialNameHashTable;
       FTopics: TTopicHashTable;
       function GetAssetClass(Identifier: UTF8String): TAssetClass; inline;
-      function GetMaterial(Name: UTF8String): TMaterial; inline;      
-      function GetTopic(Name: UTF8String): TTopic; inline;      
+      function GetMaterial(Name: UTF8String): TMaterial; inline;
+      function GetTopic(Name: UTF8String): TTopic; inline;
    public
       constructor Create(ATokenizer: TTokenizer; AAssetClasses: TAssetClassIdentifierHashTable; AMaterialNames: TMaterialNameHashTable; ATopics: TTopicHashTable);
       property AssetClasses[Identifier: UTF8String]: TAssetClass read GetAssetClass;
@@ -461,7 +461,7 @@ type
       property Topics[Name: UTF8String]: TTopic read GetTopic;
       property Tokens: TTokenizer read FTokenizer;
    end;
-   
+
    TFeatureClass = class abstract (TDebugObject)
    public
       type
@@ -473,7 +473,7 @@ type
       function InitFeatureNode(): TFeatureNode; virtual; abstract;
       property FeatureNodeClass: FeatureNodeReference read GetFeatureNodeClass;
    end;
-   
+
    TDirtyKind = (
       dkNew, // this asset node is newly created*
       dkNeedsHandleChanges, // the node wants HandleChanges to be called
@@ -497,7 +497,7 @@ type
 const
    dkAll = [Low(TDirtyKind) .. High(TDirtyKind)]; // the initial setting on creation
    dkAffectsTreeStructure = [dkAffectsVisibility, dkAffectsNames, dkAffectsKnowledge, dkVisibilityDidChange, dkUpdateClients, dkUpdateJournal, dkChildren]; // set on old/new parents when child's parent changes
-   
+
 type
    ISensorsProvider = interface ['ISensorsProvider']
       // Returns whether the material or asset class is known by the
@@ -510,7 +510,7 @@ type
       function GetOreKnowledge(): TOreFilter;
       property OreKnowledge: TOreFilter read GetOreKnowledge;
    end;
-   
+
    TFeatureNode = class abstract (TDebugObject)
    public
       type
@@ -563,7 +563,7 @@ type
 
    TBuildEnvironment = (bePlanetRegion, beSpaceDock);
    TBuildEnvironments = set of TBuildEnvironment;
-   
+
    TAssetClass = class(TDebugObject)
    public
       type
@@ -612,7 +612,7 @@ type
       property Topics[Name: UTF8String]: TTopic read GetTopic;
       property MinMassPerOreUnit: Double read GetMinMassPerOreUnit;
    end;
-   
+
    TAssetNode = class(TDebugObject)
    public
       type
@@ -679,7 +679,7 @@ type
       property DebugName: UTF8String read GetDebugName;
       property System: TSystem read GetSystem;
    end;
-   
+
    // pointers to these objects are not valid after the event has run or been canceled
    TSystemEvent = class(TDebugObject)
    private
@@ -697,7 +697,7 @@ type
 
    TSystemEventSet = specialize TTightHashSet<TSystemEvent, TTightHashUtilsPtr>; // TODO: consider using regular THashSet instead, as we do a lot of removes from this set
    // TSystemEventSet = specialize THashSet<TSystemEvent, PointerUtils>;
-   
+
    TSystem = class sealed
    strict private
       FServer: TBaseServer;
@@ -1157,7 +1157,7 @@ begin
    else
    begin
       Result := nil;
-   end;      
+   end;
 end;
 
 function TJournalReader.ReadAssetClassReference(): TAssetClass;
@@ -1489,7 +1489,7 @@ begin
    else
    begin
       Result := '<nil>-<' + ClassName + ' @ ' + HexStr(Self) + '>';
-   end;    
+   end;
 end;
 
 destructor TFeatureNode.Destroy();
@@ -2397,7 +2397,7 @@ procedure TSystem.ApplyJournal(FileName: UTF8String);
       if (Assigned(Child.Owner)) then
          Child.Owner.IncRef();
    end;
-   
+
 var
    JournalReader: TJournalReader;
    ID: PtrUInt;
@@ -2465,7 +2465,7 @@ begin
                try
                   Asset := JournalReader.ReadAssetNodeReference();
                   Assert(Assigned(Asset));
-                  Asset.ApplyJournal(JournalReader, Self);               
+                  Asset.ApplyJournal(JournalReader, Self);
                except
                   ReportCurrentException();
                   raise;
@@ -2547,7 +2547,7 @@ procedure TSystem.RecordUpdate();
          Journal.WriteCardinal(Asset.ID(Self, FDynastyIndices[Dynasty], True {AllowZero}));
       Result := True;
    end;
-   
+
 begin
    Assert(dkDescendantUpdateJournal in FChanges);
    Journal.WriteCardinal(jcSystemUpdate);
@@ -2585,7 +2585,7 @@ function TSystem.SerializeSystem(Dynasty: TDynasty; Writer: TServerStreamWriter;
 var
    FoundASelfDirty: Boolean;
    CachedDynastyIndex: Cardinal;
-   
+
    function Serialize(Asset: TAssetNode): Boolean;
    var
       Visibility: TVisibility;
@@ -2667,7 +2667,7 @@ procedure TSystem.UpdateDynastyList(MaintainMaxIDs: Boolean);
 var
    Dynasties: TDynastyHashSet;
    NodeCount: Cardinal;
-   
+
    function TrackDynasties(Asset: TAssetNode): Boolean;
    begin
       if (Assigned(Asset.Owner) and not Dynasties.Has(Asset.Owner)) then
@@ -2772,7 +2772,7 @@ var
       Asset.ApplyKnowledge(VisibilityHelper);
       Result := True;
    end;
-   
+
 begin
    if (dkAffectsDynastyCount in FChanges) then
    begin
@@ -2801,7 +2801,7 @@ var
       Message := TServerStreamWriter(Writer).Serialize(False);
       Connection.WriteFrame(Message[1], Length(Message)); // $R-
       TServerStreamWriter(Writer).Clear();
-   end;      
+   end;
 
    function SkipCleanChildren(Asset: TAssetNode): Boolean;
    begin
@@ -2887,7 +2887,7 @@ begin
    FNextEventHandle := FServer.ScheduleEvent(FServer.Clock.Now() + RealDelta, @RunEvent, FNextEvent);
    Assert(Assigned(FNextEvent) = Assigned(FNextEventHandle));
    Assert(Assigned(FNextEvent) = FScheduledEvents.IsNotEmpty);
-end;   
+end;
 
 procedure TSystem.RescheduleNextEvent();
 begin
@@ -2902,7 +2902,7 @@ begin
    end;
    Assert(Assigned(FNextEvent) = Assigned(FNextEventHandle));
    Assert(Assigned(FNextEvent) = FScheduledEvents.IsNotEmpty);
-end;   
+end;
 
 function TSystem.SelectNextEvent(): TSystemEvent;
 var
@@ -2918,7 +2918,7 @@ begin
       end;
    end;
    Writeln('  Selecting event for ', SystemID, ': ', HexStr(Result));
-end;   
+end;
 
 function TSystem.ScheduleEvent(TimeDelta: TMillisecondsDuration; Callback: TEventCallback; var Data): TSystemEvent;
 begin
@@ -3001,7 +3001,7 @@ function TSystem.FindCommandTarget(Dynasty: TDynasty; AssetID: TAssetID): TAsset
 var
    CachedDynastyIndex: Cardinal;
    FoundAsset: TAssetNode;
-   
+
    function Search(Asset: TAssetNode): Boolean;
    begin
       // TODO: change this to be that you can send the message so long as you can see it (not necessarily own it)
@@ -3011,7 +3011,7 @@ var
       end;
       Result := not Assigned(FoundAsset);
    end;
-   
+
 begin
    if (not HasDynasty(Dynasty)) then
    begin
@@ -3049,7 +3049,7 @@ begin
    FOldVisibilty := dmNil;
    FCurrentVisibility := dmNil;
 end;
-   
+
 constructor TDynastyNotes.InitFrom(const Other: TDynastyNotes);
 begin
    FID := Other.FID;
@@ -3106,7 +3106,7 @@ begin
    end;
    Reset();
 end;
-   
+
 procedure TKnowledgeSummary.Done();
 begin
    if (Assigned(AsRawPointer) and IsLongMode) then
@@ -3264,4 +3264,4 @@ begin
    Event := nil;
 end;
 
-end. 
+end.

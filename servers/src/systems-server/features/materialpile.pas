@@ -19,7 +19,7 @@ type
       constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
       function InitFeatureNode(): TFeatureNode; override;
    end;
-   
+
    TMaterialPileFeatureNode = class(TFeatureNode, IMaterialPile)
    strict private
       FFeatureClass: TMaterialPileFeatureClass;

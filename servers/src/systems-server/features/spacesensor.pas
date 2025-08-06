@@ -111,13 +111,13 @@ var
       end;
       Result := Depth < Target;
       Inc(Depth);
-   end;   
+   end;
 
    procedure SenseUp(Asset: TAssetNode);
    begin
       Dec(Depth);
-   end;   
-      
+   end;
+
 var
    Index: Cardinal;
    Feature: TFeatureNode;
@@ -190,13 +190,13 @@ var
       end;
       Result := Depth < Target;
       Inc(Depth);
-   end;   
+   end;
 
    procedure SenseUp(Asset: TAssetNode);
    begin
       Dec(Depth);
-   end;   
-      
+   end;
+
 var
    Index: Cardinal;
    Node: TAssetNode;

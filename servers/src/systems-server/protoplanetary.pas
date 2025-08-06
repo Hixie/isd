@@ -134,7 +134,7 @@ begin
    // This must remain equivalent to the code in orbit.pas
    Result := Distance * (1 + Eccentricity * Eccentricity / 2.0);
 end;
-   
+
 function WeighBody(const Body: TBody): Double;
 var
    Index: Cardinal;
@@ -480,5 +480,5 @@ begin
    Planets.Sort();
    Result := Planets;
 end;
-   
+
 end.

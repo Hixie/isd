@@ -59,7 +59,7 @@ type
       constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
       function InitFeatureNode(): TFeatureNode; override;
    end;
-   
+
    TMessageFeatureNode = class(TFeatureNode)
    private
       FSourceSystemID: Cardinal;
@@ -324,7 +324,7 @@ constructor TMessageFeatureNode.Create(ASourceSystemID: Cardinal; ATimestamp: TT
 begin
    inherited Create();
    FSourceSystemID := ASourceSystemID;
-   FTimestamp := ATimestamp; 
+   FTimestamp := ATimestamp;
    FIsRead := AIsRead;
    FBody := ABody;
 end;

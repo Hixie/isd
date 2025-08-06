@@ -22,7 +22,7 @@ type
       procedure Disable();
    end;
    {$IF SIZEOF(TRegionClientMode) > 3*8} {$FATAL} {$ENDIF}
-      
+
    IMiner = interface ['IMiner']
       function GetMinerMaxRate(): TRate; // kg per second
       function GetMinerCurrentRate(): TRate; // kg per second
@@ -64,7 +64,7 @@ type
    TMaterialPileHashSet = specialize TInterfaceSet<IMaterialPile>;
 
    // TODO: factories
-   
+
    IMaterialConsumer = interface ['IMaterialConsumer']
       // Consumers grab material as far as possible, and only register when the piles are empty.
       // They might unregister a bit late, in which case GetMaterialConsumerMaterial() can return nil.
@@ -78,7 +78,7 @@ type
    end;
    TRegisterMaterialConsumerBusMessage = specialize TRegisterProviderBusMessage<TPhysicalConnectionBusMessage, IMaterialConsumer>;
    TMaterialConsumerHashSet = specialize TInterfaceSet<IMaterialConsumer>;
-   
+
    TObtainMaterialBusMessage = class(TPhysicalConnectionBusMessage)
    strict private
       FRequest: TMaterialQuantity;
@@ -95,7 +95,7 @@ type
       property Fulfilled: Boolean read GetFulfilled;
       property TransferredManifest: TMaterialQuantity read GetTransferredManifest;
    end;
-      
+
    TRegionFeatureClass = class(TFeatureClass)
    strict private
       FDepth: Cardinal;
@@ -111,7 +111,7 @@ type
       property TargetCount: Cardinal read FTargetCount;
       property TargetQuantity: UInt64 read FTargetQuantity;
    end;
-   
+
    // TODO: Region logic for miners, piles, factories, and consumers needs to be per-dynasty (with a joint ground from which they mine).
 
    TRegionFeatureNode = class(TFeatureNode)
@@ -184,7 +184,7 @@ type
       function GetMaterialPileQuantity(Pile: IMaterialPile): UInt64; // units
       function GetMaterialPileQuantityFlowRate(Pile: IMaterialPile): TRate; // units/s
    end;
-   
+
 implementation
 
 uses
@@ -769,14 +769,14 @@ begin
       exit;
    end;
    Assert(SyncDuration.IsPositive);
-      
+
    {$IFOPT C+}
    Assert(not Busy);
    Busy := true;
    {$ENDIF}
 
    Encyclopedia := CachedSystem.Encyclopedia;
-   
+
    OrePileCapacity := 0.0;
    if (Assigned(FOrePiles)) then
    begin
@@ -785,7 +785,7 @@ begin
          OrePileCapacity := OrePileCapacity + OrePile.GetOrePileCapacity();
       end;
    end;
-   
+
    {$IFDEF DEBUG}
    if (Assigned(FOrePiles)) then
    begin
@@ -993,7 +993,7 @@ begin
          Inc(FGroundComposition[Ore], TransferQuantity);
       end;
    end;
-   
+
    FAnchorTime := CachedSystem.Now;
    Writeln('    Sync() reset FAnchorTime to ', FAnchorTime.ToString());
 
@@ -1005,7 +1005,7 @@ begin
       Assert(CurrentOrePileMass <= OrePileCapacity, 'now over capacity');
    end;
    {$ENDIF}
-   
+
    {$IFOPT C+} Assert(Busy); Busy := False; {$ENDIF}
 end;
 
@@ -1140,7 +1140,7 @@ procedure TRegionFeatureNode.HandleChanges(CachedSystem: TSystem);
       FreeAndNil(Message);
       FAllocatedOres := True;
    end;
-   
+
 var
    OrePileCapacity, RemainingOrePileCapacity: Double;
    CurrentGroundMass, CurrentOrePileMass, MinMassTransfer: Double;
@@ -1297,13 +1297,13 @@ begin
                Writeln('       + ', HexStr(MaterialConsumer), ' consuming ', HexStr(Material), ': nil');
          end;
       end;
-      
+
       // COMPUTE ACTUAL RATES
 
       TimeUntilAnyMaterialPileEmpty := TMillisecondsDuration.Infinity;
 
       // TODO: Consumers that aren't dealing with ores.
-      
+
       // Refineries
       TimeUntilAnyOrePileEmpty := TMillisecondsDuration.Infinity;
       TimeUntilAnyMaterialPileFull := TMillisecondsDuration.Infinity;
@@ -1385,7 +1385,7 @@ begin
                end;
                TimeUntilThisMaterialPileFull := TMillisecondsDuration.Infinity;
             end
-            else 
+            else
             begin
                Writeln('      Refining of ', Encyclopedia.Materials[Ore].Name, ' is limited by incoming ore (mining at ', OreMiningRates[Ore].ToString('kg'), ' vs refining at ', RefiningRate.ToString('kg'), ')');
                Ratio := OreMiningRates[Ore] / RefiningRate;
@@ -1917,7 +1917,7 @@ procedure TRegionFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem:
          end;
       until not Assigned(Material);
    end;
-   
+
 begin
    FAllocatedOres := Journal.ReadBoolean();
    ReadOres(FGroundComposition);

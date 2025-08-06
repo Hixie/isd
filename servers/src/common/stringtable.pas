@@ -20,7 +20,7 @@ type
       function Encode(const S: UTF8String): Cardinal;
       function Encode(const S: UTF8String; out NewlyAdded: Boolean): Cardinal;
    end;
-   
+
 implementation
 
 uses

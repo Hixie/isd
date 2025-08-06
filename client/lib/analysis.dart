@@ -41,7 +41,7 @@ class AnalysisUi extends StatefulWidget {
       child: const Text('Analyze...'),
     );
   }
-  
+
   @override
   State<AnalysisUi> createState() => _AnalysisUiState();
 }
@@ -55,7 +55,7 @@ class _AnalysisUiState extends State<AnalysisUi> {
   late final double _total;
   final Map<Material, int> _analysis = <Material, int>{};
   late final List<Material> _materials;
-  
+
   @override
   void initState() {
     super.initState();
@@ -92,7 +92,7 @@ class _AnalysisUiState extends State<AnalysisUi> {
   int _quantitySort(Material a, Material b) {
     return _analysis[b]! - _analysis[a]!;
   }
-  
+
   @override
   Widget build(BuildContext context) {
     Widget body;
@@ -178,7 +178,7 @@ class PieChart extends StatelessWidget {
     }
     return colors;
   }
-  
+
   @override
   Widget build(BuildContext context) {
     final double fontSize = DefaultTextStyle.of(context).style.fontSize!;
@@ -284,7 +284,7 @@ class _PieChart extends CustomPainter {
     ..style = PaintingStyle.stroke
     ..strokeWidth = 0.0
     ..color = const Color(0x99000000);
-  
+
   @override
   void paint(Canvas canvas, Size size) {
     assert(colors.length >= materials.length);
@@ -302,7 +302,7 @@ class _PieChart extends CustomPainter {
     if (swept < math.pi * 2.0)
       canvas.drawArc(rect, -math.pi / 2.0, swept - 2.0 * math.pi, false, _linePaint);
   }
-  
+
   @override
   bool shouldRepaint(_PieChart old) => (analysis != old.analysis) || (materials != old.materials) || (colors != old.colors);
 }

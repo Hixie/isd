@@ -79,8 +79,8 @@ var
       end
       else
          Result := False;
-   end;   
-      
+   end;
+
 begin
    Writeln('Grid Sensor for ', Parent.DebugName);
    Assert(not Assigned(FKnownMaterials));
@@ -123,8 +123,8 @@ var
       end
       else
          Result := False;
-   end;   
-      
+   end;
+
 begin
    Assert(not Assigned(FKnownMaterials));
    Assert(not Assigned(FKnownAssetClasses));

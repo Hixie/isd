@@ -22,7 +22,7 @@ enum RendererType {
 
   /// this is a UI element that can be placed directly on top of the other renderers
   overlay,
-  
+
   /// this is a square renderer
   square,
 
@@ -102,7 +102,7 @@ class AssetNode extends WorldNode {
     //print(StackTrace.current);
     super.notifyListeners();
   }
-  
+
   int get assetClassID => _assetClassID!;
   int? _assetClassID;
   set assetClassID(int value) {
@@ -188,7 +188,7 @@ class AssetNode extends WorldNode {
   }
 
   String get nameOrClassName => name.isEmpty ? className : name;
-  
+
   String get description => _description!;
   String? _description;
   set description(String value) {
@@ -267,7 +267,7 @@ class AssetNode extends WorldNode {
   }
 
   HudHandle? _hud;
-  
+
   void showInspector(BuildContext context, { bool toggle = true }) {
     if (_hud != null) {
       if (toggle) {
@@ -295,9 +295,9 @@ class AssetNode extends WorldNode {
     _hud?.cancel();
     super.dispose();
   }
-    
+
   @override
-  Widget buildRenderer(BuildContext context, [ Widget? nil ]){ 
+  Widget buildRenderer(BuildContext context, [ Widget? nil ]){
     // TODO: compute actualDiameter here, and short-circuit if it's too small
     List<Widget>? backgrounds;
     List<Widget>? overlays;
@@ -399,7 +399,7 @@ class AssetNode extends WorldNode {
   Widget asIcon(BuildContext context, { required double size, IconsManager? icons, String? tooltip }) {
     return IconsManager.icon(context, icon, size: size, icons: icons, tooltip: tooltip);
   }
-  
+
   InlineSpan describe(BuildContext context, IconsManager icons, { required double iconSize }) {
     final Widget icon = asIcon(context, size: iconSize, icons: icons);
     return TextSpan(
@@ -451,7 +451,7 @@ class AssetInspector extends StatelessWidget {
   final DynastyManager dynastyManager;
   final AssetNode node;
   final VoidCallback? onClose;
-  
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(

@@ -10,7 +10,7 @@ uses
 
 type
    TKnowledgeBusFeatureNode = class;
-   
+
    TKnowledgeBusMessage = class abstract(TPhysicalConnectionBusMessage) end;
    TTargetedKnowledgeBusMessage = class abstract(TKnowledgeBusMessage) end;
    TGlobalKnowledgeBusMessage = class abstract(TKnowledgeBusMessage) end;
@@ -27,7 +27,7 @@ type
       property Owner: TDynasty read FOwner;
       property CachedSystem: TSystem read FCachedSystem;
    end;
-   
+
    TCollectKnownAssetClassesMessage = class(TGlobalKnowledgeBusMessage)
    private
       FKnownAssetClasses: TAssetClassHashSet;
@@ -39,7 +39,7 @@ type
       property Owner: TDynasty read FOwner;
       property CachedSystem: TSystem read FCachedSystem;
    end;
-   
+
    TCollectKnownResearchesMessage = class(TGlobalKnowledgeBusMessage)
    private
       FKnownResearches: TResearchHashSet;
@@ -53,14 +53,14 @@ type
    end;
 
    TCallback = procedure of object;
-   
+
    TSubscribableKnowledgeBusMessage = class abstract (TTargetedKnowledgeBusMessage)
    strict protected
       FBus: TKnowledgeBusFeatureNode;
    public
       procedure Subscribe(Callback: TCallback); inline;
    end;
-   
+
    TGetKnownMaterialsMessage = class(TSubscribableKnowledgeBusMessage)
    private
       FOwner: TDynasty;
@@ -72,7 +72,7 @@ type
       function Knows(Material: TMaterial): Boolean; inline;
       function GetEnumerator(): TMaterialHashSet.TEnumerator; inline;
    end;
-   
+
    TGetKnownAssetClassesMessage = class(TSubscribableKnowledgeBusMessage)
    private
       FOwner: TDynasty;
@@ -84,7 +84,7 @@ type
       function Knows(AssetClass: TAssetClass): Boolean; inline;
       function GetEnumerator(): TAssetClassHashSet.TEnumerator; inline;
    end;
-   
+
    TGetKnownResearchesMessage = class(TSubscribableKnowledgeBusMessage)
    private
       FOwner: TDynasty;
@@ -134,7 +134,7 @@ type
       constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
       function InitFeatureNode(): TFeatureNode; override;
    end;
-   
+
    TKnowledgeFeatureNode = class(TFeatureNode)
    private
       FResearch: TResearch;
@@ -249,7 +249,7 @@ begin
    FBus := ABus;
    FKnownAssetClasses := AKnownAssetClasses;
 end;
-   
+
 function TGetKnownAssetClassesMessage.Knows(AssetClass: TAssetClass): Boolean;
 begin
    Result := Assigned(FKnownAssetClasses) and FKnownAssetClasses.Has(AssetClass);
@@ -279,7 +279,7 @@ begin
    FBus := ABus;
    FKnownResearches := AKnownResearches;
 end;
-   
+
 function TGetKnownResearchesMessage.Knows(Research: TResearch): Boolean;
 begin
    Result := Assigned(FKnownResearches) and FKnownResearches.Has(Research);
@@ -339,7 +339,7 @@ begin
       FreeAndNil(FKnownResearches);
    end;
 end;
-      
+
 destructor TKnowledgeBusFeatureNode.Destroy();
 begin
    FreeCaches();
@@ -478,7 +478,7 @@ begin
    Result := TKnowledgeFeatureNode.Create(nil);
 end;
 
-   
+
 constructor TKnowledgeFeatureNode.Create(AResearch: TResearch);
 begin
    inherited Create;
@@ -494,7 +494,7 @@ end;
 function TKnowledgeFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
 
    function CanSeeKnowledge(Target: TDynasty): Boolean;
-   var     
+   var
       Visibility: TVisibility;
       CachedSystem: TSystem;
    begin
@@ -544,7 +544,7 @@ begin
    end;
    Result := False;
 end;
-   
+
 procedure TKnowledgeFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
 var
    Visibility: TVisibility;
@@ -594,7 +594,7 @@ begin
       Writer.WriteByte($00);
    end;
 end;
-   
+
 procedure TKnowledgeFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
 begin
    if (Assigned(FResearch)) then
@@ -606,7 +606,7 @@ begin
       Journal.WriteInt32(TResearch.kNil);
    end;
 end;
-   
+
 procedure TKnowledgeFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
 var
    ID: TResearchID;
@@ -619,12 +619,12 @@ begin
       FResearch := CachedSystem.Encyclopedia.Researches[ID]; // $R-
    end;
 end;
-   
+
 procedure TKnowledgeFeatureNode.DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean);
 begin
    IsDefinitelyReal := True;
 end;
-   
+
 initialization
    RegisterFeatureClass(TKnowledgeBusFeatureClass);
    RegisterFeatureClass(TKnowledgeFeatureClass);

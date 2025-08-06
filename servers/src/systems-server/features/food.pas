@@ -45,14 +45,14 @@ type
       var
          FFoodReports: TDynastyFoodReport;
       procedure Process();
-      function ReportFor(Dynasty: TDynasty): PFoodReport;   
+      function ReportFor(Dynasty: TDynasty): PFoodReport;
    public
       constructor Create();
       destructor Destroy(); override;
       procedure RequestFoodToEat(Target: IFoodConsumer; Quantity: Int64);
       procedure ReportFoodGenerationCapacity(Target: IFoodGenerator; Quantity: Int64);
-   end;   
-   
+   end;
+
    TFoodBusFeatureClass = class(TFeatureClass)
    strict protected
       function GetFeatureNodeClass(): FeatureNodeReference; override;
@@ -60,7 +60,7 @@ type
       constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
       function InitFeatureNode(): TFeatureNode; override;
    end;
-   
+
    TFoodBusFeatureNode = class(TFeatureNode)
    protected
       function ManageBusMessage(Message: TBusMessage): TBusMessageResult; override;

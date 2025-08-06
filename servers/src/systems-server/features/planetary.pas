@@ -22,7 +22,7 @@ type
       property TargetQuantity: UInt64 read FTargetQuantity;
       property CachedSystem: TSystem read FCachedSystem;
    end;
-   
+
    TPlanetaryBodyFeatureClass = class(TFeatureClass)
    strict protected
       function GetFeatureNodeClass(): FeatureNodeReference; override;

@@ -14,7 +14,7 @@ type
    end;
 
    TServer = class;
-   
+
    TConnection = class(TAuthenticatableBaseIncomingInternalCapableConnection)
    protected
       FServer: TServer;
@@ -40,8 +40,8 @@ type
       procedure Logout(Dynasty: TDynasty);
       procedure ReportConnectionError(ErrorCode: cint); override;
    end;
-   
-   
+
+
    TServer = class(TBaseServer)
    protected
       FPassword: UTF8String;
@@ -381,7 +381,7 @@ begin
          FDynasties[DynastyID] := Dynasty;
       end;
       Close(DynastiesFile);
-   end       
+   end
    else
    begin
       MkDir(FConfigurationDirectory);

@@ -106,7 +106,7 @@ class GalaxyPane extends StatefulWidget {
   const GalaxyPane({super.key, this.onExit});
 
   final VoidCallback? onExit;
-  
+
   @override
   _GalaxyPaneState createState() => _GalaxyPaneState();
 }
@@ -173,7 +173,7 @@ class _GalaxyPaneState extends State<GalaxyPane> {
     }
     return (a.offset.dy - b.offset.dy).sign.toInt();
   }
-  
+
   static Uint32List encode(List<List<Offset>> stars) {
     // converts unit square coordinate to dword units
     final Uint32List data = Uint32List(stars.fold(2 + stars.length, (int count, List<Offset> substars) => count + substars.length * 2));
@@ -200,7 +200,7 @@ class _GalaxyPaneState extends State<GalaxyPane> {
 
   bool _generating = false;
   bool _dirty = true;
-  
+
   Future<void> _regenerate() async {
     if (_generating) {
       _dirty = true;
@@ -367,7 +367,7 @@ class _GalaxyPaneState extends State<GalaxyPane> {
       });
     }
   }
-  
+
   void _selectHomes() {
     assert(_home != null);
     final (int homeCategory, int homeIndex) = Galaxy.decodeStarId(_home!);
@@ -424,7 +424,7 @@ class _GalaxyPaneState extends State<GalaxyPane> {
     }
     print('Found $count home systems with $minStarsPerPlayer reserved stars per home system.');
   }
-  
+
   void _save() {
     // TODO: chose filename
     File('stars.dat').writeAsBytesSync(_encodedStars.buffer.asUint8List());
@@ -494,14 +494,14 @@ class _GalaxyPaneState extends State<GalaxyPane> {
       }
     }
   }
-  
+
   @override
   void initState() {
     super.initState();
     // _galaxyNode.onTap = _handleStarTap; // TODO: port to new API
     _regenerate();
   }
-  
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(

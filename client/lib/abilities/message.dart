@@ -7,7 +7,7 @@ import '../widgets.dart';
 
 class MessageFeature extends AbilityFeature with ChangeNotifier {
   MessageFeature(this.systemID, this.timestamp, this.isRead, this.subject, this.from, this.body);
-  
+
   final int systemID;
   final int timestamp; // TODO: show this in the UI!
   final bool isRead;
@@ -29,7 +29,7 @@ class MessageFeature extends AbilityFeature with ChangeNotifier {
   // TODO: automatically pop-out a message when it comes in?
 
   bool _ambiguous = false;
-  
+
   @override
   Widget buildRenderer(BuildContext context) {
     final MessageBoardMode? mode = MessageBoardMode.of(context);

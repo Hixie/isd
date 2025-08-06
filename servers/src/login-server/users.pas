@@ -10,11 +10,11 @@ type
    TDynastyHashTable = class(specialize THashTable<UTF8String, TDynasty, UTF8StringUtils>)
       constructor Create();
    end;
-   
+
    TDynastyServerHashTable = class(specialize THashTable<UTF8String, Cardinal, UTF8StringUtils>)
       constructor Create();
    end;
-   
+
    TUserDatabase = class
    protected
       const
@@ -123,7 +123,7 @@ begin
          Result := Dynasty;
          exit;
       end;
-   end;      
+   end;
    Result := nil;
 end;
 
@@ -146,7 +146,7 @@ end;
 
 function TUserDatabase.UsernameAdequate(Username: UTF8String): Boolean;
 begin
-   Result := (Username <> '') and 
+   Result := (Username <> '') and
              (not FAccounts.Has(Username)) and
              (Pos(TemporaryUsernameMarker, Username) = 0);
 end;

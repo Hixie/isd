@@ -9,7 +9,7 @@ uses
 
 type
    TCreateRegionCallback = function (CellSize: Double; Dimension: Cardinal): TAssetNode of object;
-   
+
    TSurfaceFeatureClass = class(TFeatureClass)
    private
       FCellSize: Double;
@@ -22,7 +22,7 @@ type
       constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
       function InitFeatureNode(): TFeatureNode; override;
    end;
-   
+
    TSurfaceFeatureNode = class(TFeatureNode)
    private
       FFeatureClass: TSurfaceFeatureClass;
@@ -49,7 +49,7 @@ type
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
       procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); override;
    end;
-   
+
 implementation
 
 uses

@@ -140,7 +140,7 @@ class MessageBoardMode extends InheritedWidget {
 
 class MessagesState extends ChangeNotifier {
   MessagesState(this._count);
-  
+
   int get count => _count;
   int _count = 0;
   set count(int value) {
@@ -150,7 +150,7 @@ class MessagesState extends ChangeNotifier {
       notifyListeners();
     }
   }
-  
+
   int? get selectedMessage => _selectedMessage;
   int? _selectedMessage;
   set selectedMessage(int? value) {
@@ -165,7 +165,7 @@ class MessagesState extends ChangeNotifier {
   VoidCallback? get left => selectedMessage == null || selectedMessage! <= 0 ? null : () {
     selectedMessage = selectedMessage! - 1;
   };
-  
+
   VoidCallback? get right => selectedMessage == null || selectedMessage! >= count - 1 ? null : () {
     selectedMessage = selectedMessage! + 1;
   };

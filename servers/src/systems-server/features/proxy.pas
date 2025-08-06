@@ -35,7 +35,7 @@ type
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
       property Child: TAssetNode read FChild;
    end;
-   
+
 implementation
 
 uses
@@ -131,7 +131,7 @@ begin
       Result := Child.HandleBusMessage(Message);
    end
    else
-   begin     
+   begin
       Result := False;
    end;
 end;

@@ -53,7 +53,7 @@ class MaterialPileFeature extends AbilityFeature {
       ),
     );
   }
-  
+
   @override
   Widget buildRenderer(BuildContext context) {
     if (pileMassFlowRate == 0.0)
@@ -139,7 +139,7 @@ class _Pile extends CustomPainter {
     ..color = const Color(0xFF000000)
     ..strokeWidth = 12.0
     ..style = PaintingStyle.stroke;
-  
+
   @override
   void paint(Canvas canvas, Size size) {
     final Path path = Path()

@@ -100,7 +100,7 @@ class RenderPlanet extends RenderWorldNode {
 
   Paint get _planetPaint => Paint()
     ..color = const Color(0xFF7FFF7F);
-    
+
   @override
   double computePaint(PaintingContext context, Offset offset) {
     final double actualDiameter = computePaintDiameter(diameter, maxDiameter);

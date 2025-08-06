@@ -17,7 +17,7 @@ type
       // a pointer instead of a copy
       ServerID: Cardinal;
    end;
-   
+
    TDynasty = class(TBaseDynasty)
    strict private
       FSettings: TSettings;

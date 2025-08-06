@@ -43,7 +43,7 @@ class SpaceTime {
 
 class _SpaceTimeListenable extends ValueNotifier<double> {
   _SpaceTimeListenable(this.spaceTime) : super(spaceTime.computeTime(const <VoidCallback>[]));
-  
+
   final SpaceTime spaceTime;
 
   void _update() {
@@ -51,7 +51,7 @@ class _SpaceTimeListenable extends ValueNotifier<double> {
       value = spaceTime.computeTime(<VoidCallback>[_update]);
     }
   }
-  
+
   @override
   void addListener(VoidCallback listener) {
     if (!hasListeners) {

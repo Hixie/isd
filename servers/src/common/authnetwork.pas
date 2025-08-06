@@ -21,7 +21,7 @@ type
       function GetDynasty(DynastyID: Cardinal): TBaseDynasty; virtual; abstract;
       function VerifyLogin(var Message: TMessage): Integer;
    end;
-   
+
 implementation
 
 uses
@@ -50,7 +50,7 @@ begin
    begin
       Message.Error(ieUnrecognizedCredentials);
       exit;
-   end;     
+   end;
    Result := ParseInt32(Copy(Token, 1, SeparatorIndex - 1), -1);
    if (Result < 0) then
    begin

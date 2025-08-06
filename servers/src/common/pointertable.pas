@@ -20,7 +20,7 @@ type
       function Encode(const S: Pointer): Cardinal;
       function Encode(const S: Pointer; out NewlyAdded: Boolean): Cardinal;
    end;
-   
+
 implementation
 
 uses

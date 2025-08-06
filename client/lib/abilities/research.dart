@@ -17,7 +17,7 @@ class ResearchFeature extends AbilityFeature {
 
   @override
   RendererType get rendererType => RendererType.ui;
-  
+
   @override
   Widget buildRenderer(BuildContext context) {
     final DefaultTextStyle parentTextStyles = DefaultTextStyle.of(context);
@@ -84,7 +84,7 @@ class _ResearchState extends ChangeNotifier {
   HudHandle? _dialog;
 
   bool get active => _dialog != null;
-  
+
   void activate(BuildContext context, Size size, Widget widget) {
     _dialog = HudProvider.add(context, size, widget);
     notifyListeners();
@@ -158,7 +158,7 @@ class _ResearchTopicUiState extends State<ResearchTopicUi> {
   bool _pending = true;
   bool _tired = false;
   Timer? _loadTimer;
-  
+
   @override
   void initState() {
     super.initState();
@@ -189,7 +189,7 @@ class _ResearchTopicUiState extends State<ResearchTopicUi> {
       _tired = true;
     });
   }
-  
+
   @override
   Widget build(BuildContext context) {
     Widget body;

@@ -20,7 +20,7 @@ type
       UsageCount: Cardinal;
       property URL: UTF8String read GetURL;
    end;
-   
+
    TServerDatabase = class
    protected
       FServers: array of PServerEntry;

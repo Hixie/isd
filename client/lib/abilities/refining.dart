@@ -26,7 +26,7 @@ class RefiningFeature extends AbilityFeature {
   final bool active;
   final bool sourceLimiting;
   final bool targetLimiting;
-  
+
   @override
   RendererType get rendererType => RendererType.ui;
 
@@ -37,7 +37,7 @@ class RefiningFeature extends AbilityFeature {
   // returned Future completes.
 
   late final _RefiningHudState _state = _RefiningHudState(this);
-  
+
   @override
   Widget buildRenderer(BuildContext context) {
     return ListenableBuilder(
@@ -82,7 +82,7 @@ class RefiningFeature extends AbilityFeature {
 
   Widget _buildHudStatus(BuildContext context) {
     if (_state.updating) {
-      return enabled ? const Text('Disabling refining...') : 
+      return enabled ? const Text('Disabling refining...') :
                        const Text('Enabling refining...');
     }
     if (!enabled) {
@@ -176,7 +176,7 @@ class _RefiningHudState extends ChangeNotifier {
   _RefiningHudState(this.feature) : _enabled = feature.enabled;
 
   final RefiningFeature feature;
-  
+
   bool get enabled => _enabled;
   bool _enabled;
   set enabled(bool value) {
@@ -185,7 +185,7 @@ class _RefiningHudState extends ChangeNotifier {
       notifyListeners();
     }
   }
-  
+
   bool get updating => _updating;
   bool _updating = false;
   set updating(bool value) {
@@ -207,7 +207,7 @@ class _RefiningHudState extends ChangeNotifier {
       system.play(<Object>[feature.parent.id, 'disable']);
     }
   }
-  
+
   Widget buildEnabledSwitch(BuildContext context) {
     return Switch(
       value: enabled,

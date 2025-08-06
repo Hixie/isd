@@ -51,7 +51,7 @@ class StructureFeature extends AbilityFeature {
   RendererType get rendererType => RendererType.overlay;
 
   Widget? _cachedBuild;
-  
+
   @override
   Widget buildRenderer(BuildContext context) {
     return _cachedBuild ??= WorldToBoxAdapter(
@@ -93,7 +93,7 @@ class StructureFeature extends AbilityFeature {
     final bool goodHealth = (minIntegrity == null) || (structuralIntegrity >= minIntegrity!);
 
     final List<Widget> bars = <Widget>[];
-    
+
     for (StructuralComponent component in structuralComponents) {
       final int maxAmount = component.max;
       final int actualAmount = remaining >= component.max ? component.max : remaining;
@@ -263,7 +263,7 @@ class StructureFeature extends AbilityFeature {
       ],
     );
   }
-  
+
   @override
   Widget buildDialog(BuildContext context) {
     final double fontSize = DefaultTextStyle.of(context).style.fontSize!;
@@ -307,7 +307,7 @@ class HealthBar extends CustomPainter {
   static const Color darkGrey = Color(0x7F333333);
   static const Color blue = Color(0x7F6060FF);
   static const Color darkBlue = Color(0x7F202099);
-  
+
   static final Paint _green = Paint()
     ..color = green;
 
@@ -316,7 +316,7 @@ class HealthBar extends CustomPainter {
 
   static final Paint _grey = Paint()
     ..color = grey;
-  
+
   @override
   void paint(Canvas canvas, Size size) {
     final double duration = feature.spaceTime.computeTime(const <VoidCallback>[]) - feature.timeOrigin;
@@ -355,7 +355,7 @@ class HealthBar extends CustomPainter {
       );
     }
   }
-  
+
   @override
   bool shouldRepaint(HealthBar old) {
     return feature != old.feature;
@@ -371,7 +371,7 @@ class Brace extends CustomPainter {
     ..style = PaintingStyle.stroke;
 
   static const double margin = 1.0;
-    
+
   @override
   void paint(Canvas canvas, Size size) {
     assert(size.width >= dim);
@@ -387,7 +387,7 @@ class Brace extends CustomPainter {
       ..arcToPoint(Offset(0.0, size.height - margin), radius: Radius.circular((dim - margin) / 2.0));
     canvas.drawPath(path, _paint);
   }
-  
+
   @override
   bool shouldRepaint(Brace old) => false;
 }

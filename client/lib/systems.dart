@@ -107,7 +107,7 @@ class SystemServer {
   }
 
   static const bool _verbose = false;
-  
+
   void _handleUpdate(Uint8List message) {
     final DateTime now = DateTime.timestamp();
     final BinaryStreamReader reader = BinaryStreamReader(message, _connection.codeTables);

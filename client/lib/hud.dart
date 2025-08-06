@@ -26,7 +26,7 @@ abstract interface class HudLayoutInterface { // ignore: one_member_abstracts
 
 class _HudLayoutState extends State<HudLayout> implements HudLayoutInterface {
   final List<HudHandle> _handles = <HudHandle>[];
-  
+
   HudHandle _register(BuildContext context, Size initialSize, Widget hudWidget) {
     assert(mounted);
     final HudHandle result = HudHandle(this, context, hudWidget, initialSize);
@@ -61,10 +61,10 @@ class _HudLayoutState extends State<HudLayout> implements HudLayoutInterface {
     assert(mounted);
     setState(_handles.clear);
   }
-  
+
   final List<Widget> _huds = <Widget>[];
   late Size _hudSize;
-  
+
   void _updateHuds(Size hudSize) {
     _hudSize = hudSize;
     _huds.clear();
@@ -75,7 +75,7 @@ class _HudLayoutState extends State<HudLayout> implements HudLayoutInterface {
     // The way to do this is to insert a layer into the target and a layer into the hud manager,
     // then in the hud manager layer, find the target layers and draw the picture on demand.
   }
-  
+
   @override
   Widget build(BuildContext context) {
     return HudProvider(
@@ -157,7 +157,7 @@ class HudHandle {
   static const double minX = 0.0;
   static const double minWidth = 400.0;
   static const double minHeight = 240.0;
-  
+
   Widget _buildHud(BuildContext context, Size hudSize) {
     assert(_box.width.round() >= minWidth.round(), 'invalid box: $_box (minWidth=$minWidth)');
     assert(_box.height.round() >= minHeight.round(), 'invalid box: $_box (minHeight=$minHeight)');
@@ -195,7 +195,7 @@ class HudHandle {
       );
     });
   }
-  
+
   void cancel() {
     _state.remove(this);
   }
@@ -222,7 +222,7 @@ class HudDialog extends StatelessWidget {
   final Widget child;
   final Widget heading;
   final VoidCallback? onClose;
-  
+
   @override
   Widget build(BuildContext context) {
     return Dialog(

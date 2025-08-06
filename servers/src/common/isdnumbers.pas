@@ -50,7 +50,7 @@ type
    {$IF SIZEOF(Int256) <> 256} {FATAL} {$ENDIF}
 
    PFraction32 = ^Fraction32;
-   
+
    // unsigned 31(ish) bit integer numerator of a fraction whose denominator is 2^31
    Fraction32 = record
    private
@@ -350,7 +350,7 @@ end;
 procedure Int256.ShiftLeft(Operand: Byte);
 var
    ShiftedQuads, ShiftedBits, UnshiftedBits: Integer;
-   
+
 begin
    Assert(Operand > 0);
    ShiftedQuads := Operand div kQuadWidth; // $R-
@@ -463,7 +463,7 @@ begin
    Inc(Bias, StartFraction);
    Inc(Bias, 1023); // IEEE754 bias
    // Move the first 64 bits of the number into FirstQuad (and drop the hidden bit).
-   // And add the 
+   // And add the
    FirstQuad := FirstQuad << (kQuadWidth - StartFraction);
    FirstQuad := FirstQuad or (SecondQuad >> StartFraction);
    // Shift the bits so that the first 52 bits are at the end of FirstQuad.
@@ -841,23 +841,23 @@ var
 begin
    Assert(SizeOf(Int256) = 256 / 8);
    Assert(SizeOf(Fraction32) = 32 / 8);
-   
+
    Assert(Int256.Zero.ToDouble() = 0.0);
    A := Int256.Zero;
    A.Increment();
    Assert(A.ToDouble() = 1.0);
    Assert(Int256.Zero.ToDouble() = 0.0);
-   
+
    A.AssignQuad1($01);
    A.ShiftLeft(9);
    Assert(A.ToString() = '0000000000000000000000000000000000000000000000000000000000000200');
    Assert(A.ToDouble() = 1 << 9);
-   
+
    A.AssignQuad1($01);
    A.ShiftLeft(100);
    Assert(A.ToString() = '0000000000000000000000000000000000000010000000000000000000000000');
    Assert(A.ToDouble() = Double(1267650600228229400000000000000.0));
-   
+
    A.AssignQuad1($01);
    A.ShiftLeft(150);
    Assert(A.ToString() = '0000000000000000000000000040000000000000000000000000000000000000');
@@ -887,7 +887,7 @@ begin
    A := Int256.FromDouble(2.345e10);
    Assert(A.ToString() = '0000000000000000000000000000000000000000000000000000000575BA9A80');
    Assert(A.ToDouble() = 2.345e10);
-   
+
    A.AsQWords[4] := (UInt64($FFFFFFFFFFFFFFFF));
    A.AsQWords[3] := (UInt64($FFFFFFFFFFFFFFFF));
    A.AsQWords[2] := (UInt64($FFFFFFFFFFFFFFFF));
@@ -923,7 +923,7 @@ begin
    Assert(Int256.FromDouble(10) < Int256.FromDouble(1e10));
    Assert(not (Int256.FromDouble(1978365928375) < Int256.FromDouble(1.0)));
    Assert(not (Int256.FromDouble(10) < Int256.FromDouble(10)));
-   
+
    SetLength(L, 5);
    L[0] := Fraction32.FromDouble(0.25);
    L[1] := Fraction32.FromDouble(0.25);

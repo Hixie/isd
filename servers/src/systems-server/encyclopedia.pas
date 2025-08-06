@@ -94,7 +94,7 @@ var
       'procedures that you may find useful upon arrival at your new home.'#10 +
       'From all of us here at Interstellar Dynasties, we wish you a pleasant ' +
       'settlement and a wonderful new life!';
-   
+
 function RoundAboveZero(Value: Double): Cardinal;
 begin
    Assert(Value < High(Result));
@@ -103,14 +103,14 @@ begin
    if (Result = 0) then
       Result := 1;
 end;
-   
+
 constructor TEncyclopedia.Create(Settings: PSettings; AMaterials: TMaterialHashSet; TechTree: TTechnologyTree);
 
    function CreateStarFeatures(): TFeatureClass.TArray;
    begin
       Result := [ TStarFeatureClass.Create(), TAssetNameFeatureClass.Create() ];
    end;
-   
+
 var
    AssetClass: TAssetClass;
    Ore: TOres;
@@ -130,7 +130,7 @@ begin
    FResearches := TResearchIDHashTable.Create();
    FTopics := TTopicHashTable.Create();
    ProcessTechTree(TechTree);
-   
+
    FSpace := TAssetClass.Create(
       idSpace,
       'Space',
@@ -141,7 +141,7 @@ begin
       []
    );
    RegisterAssetClass(FSpace);
-   
+
    FOrbits := TAssetClass.Create(
       idOrbits,
       'Orbit',
@@ -254,7 +254,7 @@ begin
       []
    );
    RegisterAssetClass(FRegion);
-   
+
    FMessage := TAssetClass.Create(
       idMessage,
       'Message', 'Some sort of text',
@@ -267,9 +267,9 @@ begin
       []
    );
    RegisterAssetClass(FMessage);
-   
+
    FPlaceholderShip := TAssetClass.Create(
-      idPlaceholderShip,                                   
+      idPlaceholderShip,
       'Colony Ship', 'Unidentified Flying Object',
       'A ship that people used to escape their dying star.',
       [
@@ -507,7 +507,7 @@ procedure TEncyclopedia.CondenseProtoplanetaryDisks(Space: TSolarSystemFeatureNo
          Dispose(Body.Moons);
       end;
    end;
-   
+
 var
    Index: Cardinal;
    StarOrbit, Star: TAssetNode;

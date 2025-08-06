@@ -23,7 +23,7 @@ type
    end;
 
    TServer = class;
-   
+
    TConnection = class(TAuthenticatableBaseIncomingInternalCapableConnection)
    protected
       FServer: TServer;
@@ -559,7 +559,7 @@ begin
          FSystems[SystemID] := System;
       end;
       Close(SystemsFile);
-   end       
+   end
    else
    begin
       MkDir(FConfigurationDirectory);
@@ -586,7 +586,7 @@ begin
    inherited; // frees connections, which know about the dynasties
    FDynastyManager.Free(); // frees dynasties
 end;
-      
+
 function TServer.CreateNetworkSocket(AListenerSocket: TListenerSocket): TNetworkSocket;
 begin
    Result := TConnection.Create(AListenerSocket, Self);

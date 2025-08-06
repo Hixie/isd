@@ -29,7 +29,7 @@ type
          0: (FSingleData: TOreFilter);
          1: (FArrayData: POreFilter);
    end;
-   
+
    TOrePileFeatureClass = class(TFeatureClass)
    private
       FCapacityMass: Double; // max kg storage
@@ -39,7 +39,7 @@ type
       constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
       function InitFeatureNode(): TFeatureNode; override;
    end;
-   
+
    TOrePileFeatureNode = class(TFeatureNode, IOrePile)
    strict private
       type
@@ -81,7 +81,7 @@ function TOreMaterialKnowledgePackage.GetIsPointer(): Boolean;
 begin
    Result := not FSingleData.Active;
 end;
-   
+
 procedure TOreMaterialKnowledgePackage.Init(DynastyCount: Cardinal);
 var
    NewAllocSize, OldAllocSize: PtrUInt;
@@ -121,7 +121,7 @@ begin
       end;
    end;
 end;
-   
+
 procedure TOreMaterialKnowledgePackage.Done();
 begin
    if (IsPointer and Assigned(FArrayData)) then
@@ -213,7 +213,7 @@ begin
       FSingleData.Add(Value);
    end;
 end;
-   
+
 
 constructor TOrePileFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
 var

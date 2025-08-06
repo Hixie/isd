@@ -14,9 +14,9 @@ type
       StarID: TStarID;
       ServerID: Cardinal;
    end;
-   
+
    TSystemServerFile = File of TSystemServerRecord;
-   
+
    TGalaxyManager = class
    protected
       type
@@ -85,14 +85,14 @@ type
    public
       constructor Create(AGalaxyData, ASystemsData: TBinaryFile; ASettings: PSettings; var AHomeDatabase: THomeSystemsFile; var AServersDatabase: TSystemServerFile);
       destructor Destroy(); override;
-      function SelectNextHomeSystem(): TStarID; 
+      function SelectNextHomeSystem(): TStarID;
       procedure SerializeSystemDescription(System: TStarID; Writer: TBinaryStreamWriter);
       property GalaxyData: TBinaryFile read FGalaxyData;
       property SystemsData: TBinaryFile read FSystemsData;
       property MetersPerDWordUnit: Double read FMetersPerDWordUnit;
       property GalaxyDiameter: Double read GetGalaxyDiameter;
    end;
-   
+
 procedure OpenHomeSystemsDatabase(out F: THomeSystemsFile; Filename: UTF8String);
 procedure OpenSystemServerDatabase(out F: TSystemServerFile; Filename: UTF8String);
 
@@ -270,10 +270,10 @@ var
    HomePosition, StarPosition: TPosition;
 
    function CompareDistances (const A, B: THomeStar): Integer;
-   begin        
+   begin
       Result := Sign(A.DistanceSquared - B.DistanceSquared);
    end;
-   
+
 begin
    CategoryCount := FGalaxyData.Cardinals[1];
    if (CategoryCount < FSettings^.HomeStarCategory) then
@@ -478,7 +478,7 @@ type
       DistanceSquared: Single;
    end;
    TNearbyStarUtils = specialize IncomparableUtils<TNearbyStar>;
-   
+
    function NearbyStarsSorter(const A, B: TNearbyStar): Integer;
    begin
       Result := Sign(A.DistanceSquared - B.DistanceSquared);

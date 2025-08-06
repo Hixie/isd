@@ -9,7 +9,7 @@ interface
 uses
    sysutils, time, systems, plasticarrays, genericutils, tttokenizer, materials;
 
-type   
+type
    TTechnologyTree = class
    strict private
       FResearches: specialize PlasticArray<TResearch, TObjectUtils>;
@@ -32,7 +32,7 @@ type
    end;
 
 function LoadTechnologyTree(Filename: RawByteString; Materials: TMaterialHashSet): TTechnologyTree;
-procedure RegisterFeatureClass(FeatureClass: FeatureClassReference);   
+procedure RegisterFeatureClass(FeatureClass: FeatureClassReference);
 
 function ReadBuildEnvironment(Tokens: TTokenizer): TBuildEnvironment;
 function ReadAssetClass(Reader: TTechTreeReader): TAssetClass;
@@ -127,7 +127,7 @@ type
       Size: QWord;
       class function From(AString: UTF8String): TSegment; inline; overload; static;
       class function From(AStart, AEnd: Pointer): TSegment; inline; overload; static;
-   end;   
+   end;
 
 
 class function TSegment.From(AString: UTF8String): TSegment;
@@ -137,7 +137,7 @@ begin
    Result.Start := @AString[1];
    Result.Size := Length(AString); // $R-
 end;
-   
+
 class function TSegment.From(AStart, AEnd: Pointer): TSegment;
 begin
    Assert(AEnd > AStart);
@@ -167,8 +167,8 @@ type
    end;
 
 var
-   FeatureClasses: TFeatureClassHashTable; 
-  
+   FeatureClasses: TFeatureClassHashTable;
+
 function Parse(Tokens: TTokenizer; Materials: TMaterialHashSet): TTechnologyTree;
 var
    Researches: TResearchHashTable;
@@ -182,7 +182,7 @@ var
    begin
       Result := TTechTreeReader.Create(Tokens, AssetClasses, MaterialNames, Topics);
    end;
-   
+
    function ParseTime(): TMillisecondsDuration;
    var
       Number: Int64;
@@ -226,7 +226,7 @@ var
          Tokens.Error('Unknown research "%s" for node reference', [Value]);
       end;
    end;
-   
+
    function ParseNodeReference(): TNode;
    begin
       if (Tokens.IsIdentifier()) then
@@ -241,7 +241,7 @@ var
       else
          Tokens.Error('Expected identifier or string for node reference', []);
    end;
-   
+
    procedure ParseResearch();
    type
       TComponent = (rcID, rcTakes, rcWeight, rcRequires, rcWith, rcRewards);
@@ -568,7 +568,7 @@ var
             Tokens.Error('Unknown feature class "%s" in asset class block', [FeatureClassName]);
          Feature := FeatureClasses[FeatureClassName].CreateFromTechnologyTree(GetTechTreeReader());
       end;
-      
+
    var
       ID: TAssetClassID;
       Identifier, Name, VagueName, Description, Icon: UTF8String;
@@ -668,7 +668,7 @@ var
             Tokens.Error('Duplicate directive "%s" in material block', [Keyword]);
          Include(Components, Component);
       end;
-      
+
    var
       Material: TMaterial;
       ID: TMaterialID;
@@ -761,7 +761,7 @@ var
       MaterialNames[Material.Name] := Material;
       MaterialIDs[Material.ID] := Material;
    end;
-   
+
 var
    Keyword: UTF8String;
    Material: TMaterial;

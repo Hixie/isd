@@ -53,7 +53,7 @@ class MaterialStackFeature extends AbilityFeature {
       ),
     );
   }
-  
+
   @override
   Widget buildRenderer(BuildContext context) {
     if (pileQuantityFlowRate == 0.0)
@@ -139,7 +139,7 @@ class _Stack extends CustomPainter {
     ..color = const Color(0xFF000000)
     ..strokeWidth = 12.0
     ..style = PaintingStyle.stroke;
-  
+
   @override
   void paint(Canvas canvas, Size size) {
     final double top = size.height * (1.0 - pileQuantity / capacity);

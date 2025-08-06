@@ -9,7 +9,7 @@ class BuilderFeature extends AbilityFeature {
   BuilderFeature({
     required this.capacity,
     required this.buildRate,
-    required this.assignedStructures, 
+    required this.assignedStructures,
  });
 
   final int capacity;

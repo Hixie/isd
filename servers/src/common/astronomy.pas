@@ -19,7 +19,7 @@ const
    StarIndexMask = $FFFFF;
    AU = 149597870700; // meters
    G = 6.67430E-11; // N.m^2.kg^-2
-   
+
 function EncodeStarID(Category: TStarCategory; Index: TStarIndex): TStarID;
 function CategoryOf(ID: TStarID): TStarCategory;
 function StarNameOf(StarID: TStarID): UTF8String;
@@ -162,7 +162,7 @@ const
          Digits := ' ' + IntToStr(D);
       Result := Prefix + Superscript + ' ' + Words1[C] + Space + Words2[E] + Digits + Suffix;
    end;
-   
+
 begin
    Assert(High(StarID) = $1FFFFFF);
    Assert(StarID >= 0);

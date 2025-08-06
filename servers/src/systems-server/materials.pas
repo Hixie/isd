@@ -13,13 +13,13 @@ type
    TMaterialID = LongInt; // signed because negative values are built-in, and positive values are in tech tree and ores.mrf
 
    TOres = 1..22; // IDs that are valid in the ores.mrf file (but not the tech tree)
-   
+
    TMaterialHashSet = specialize TObjectSet<TMaterial>;
 
    TMaterialIDHashTable = class(specialize THashTable<TMaterialID, TMaterial, LongIntUtils>)
       constructor Create(ACount: THashTableSizeInt = 8);
    end;
-   
+
    TMaterialNameHashTable = class(specialize THashTable<UTF8String, TMaterial, UTF8StringUtils>)
       constructor Create(ACount: THashTableSizeInt = 8);
    end;
@@ -29,7 +29,7 @@ type
       Quantity: UInt64;
       procedure Dec(Delta: UInt64);
    end;
-   
+
    TMaterialQuantityHashTable = class(specialize THashTable<TMaterial, UInt64, TObjectUtils>)
       constructor Create(ACount: THashTableSizeInt = 2);
       procedure Inc(Material: TMaterial; Delta: UInt64); inline;
@@ -38,13 +38,13 @@ type
       procedure Dec(Material: TMaterial; Delta: Int64); inline;
       function ClampedDec(Material: TMaterial; Delta: UInt64): UInt64; inline; // returns how much was actually transferred
    end;
-   
+
    TMaterialRateHashTable = class(specialize THashTable<TMaterial, TRate, TObjectUtils>)
       constructor Create(ACount: THashTableSizeInt = 2);
       procedure Inc(Material: TMaterial; Delta: TRate);
       procedure RemoveZeroes(); // removes entries whose rate is zero
    end;
-   
+
    PMaterialQuantityArray = ^TMaterialQuantityArray;
    TMaterialQuantityArray = array of TMaterialQuantity;
 
@@ -55,7 +55,7 @@ type
    TOreFractions = array[TOres] of Fraction32;
    TOreRates = array[TOres] of TRate;
    TOreMasses = array[TOres] of Double;
-   
+
    TMaterialAbundanceParameters = record
       Distance: Double;
       RelativeVolume: Double;
@@ -81,7 +81,7 @@ type
       mtDepth3 // only available at tertiary mining depths/regions
    );
    TMaterialTags = set of TMaterialTag;
-   
+
    TMaterial = class sealed
    public
       type
@@ -190,7 +190,7 @@ begin
       Material := nil;
 end;
 
-      
+
 constructor TMaterialQuantityHashTable.Create(ACount: THashTableSizeInt = 2);
 begin
    inherited Create(@MaterialHash32, ACount);
@@ -214,7 +214,7 @@ begin
       Value := Delta; // $R-
    end;
    Self[Material] := Value;
-end; 
+end;
 
 procedure TMaterialQuantityHashTable.Inc(Material: TMaterial; Delta: Int64);
 var
@@ -236,7 +236,7 @@ begin
       Value := Delta; // $R-
    end;
    Self[Material] := Value;
-end; 
+end;
 
 procedure TMaterialQuantityHashTable.Dec(Material: TMaterial; Delta: UInt64);
 begin
@@ -245,12 +245,12 @@ begin
    Assert(Has(Material));
    Assert(Delta <= Self[Material]);
    Self[Material] := Self[Material] - Delta; // $R-
-end; 
+end;
 
 procedure TMaterialQuantityHashTable.Dec(Material: TMaterial; Delta: Int64);
 begin
    Inc(Material, -Delta);
-end; 
+end;
 
 function TMaterialQuantityHashTable.ClampedDec(Material: TMaterial; Delta: UInt64): UInt64;
 begin
@@ -270,7 +270,7 @@ begin
    end;
 end;
 
-      
+
 constructor TMaterialRateHashTable.Create(ACount: THashTableSizeInt = 2);
 begin
    inherited Create(@MaterialHash32, ACount);
@@ -355,7 +355,7 @@ function TOreFilter.GetActive(): Boolean;
 begin
    Result := FFilterArray[0];
 end;
-   
+
 procedure TOreFilter.Clear();
 begin
    FFilterQuad := kAllDisabled;
@@ -371,7 +371,7 @@ procedure TOreFilter.EnableAll();
 begin
    FFilterQuad := kAllEnabled;
 end;
-   
+
 procedure TOreFilter.Disable(Index: TOres);
 begin
    FFilterArray[Index] := False;
@@ -398,7 +398,7 @@ class operator TOreFilter.and(A, B: TOreFilter): TOreFilter;
 begin
    Result.FFilterQuad := A.FFilterQuad and B.FFilterQuad;
 end;
-   
+
 class operator TOreFilter.or(A, B: TOreFilter): TOreFilter;
 begin
    Result.FFilterQuad := A.FFilterQuad or B.FFilterQuad;
@@ -413,7 +413,7 @@ class operator TOreFilter.not(A: TOreFilter): TOreFilter;
 begin
    Result.FFilterQuad := (not A.FFilterQuad) or kAllDisabled;
 end;
-   
+
 function TOreFilter.GetOres(Index: TOres): Boolean;
 begin
    Assert(Index > 0);
@@ -437,7 +437,7 @@ begin
    Mask := not Mask;
    Result := PopCnt(FFilterQuad and Mask); // $R- (no idea why it's defined to return a QWord, when the range is 0..64)
 end;
-   
+
 
 function LoadOres(Filename: RawByteString): TMaterialHashSet;
 

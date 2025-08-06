@@ -48,7 +48,7 @@ const
    fcGridSensorStatus = $19;
    fcBuilder = $1A;
    fcHighestKnownFeatureCode = fcBuilder;
-   
+
 implementation
 
 end.

@@ -125,21 +125,21 @@ class StateManagerBuilder<T extends Listenable> extends StatefulWidget {
   final ValueGetter<T> creator;
   final StateManagerWidgetBuilder<T> builder;
   final ValueSetter<T> disposer;
-  
+
   @override
   State<StateManagerBuilder<T>> createState() => _StateManagerState<T>();
 }
 
 class _StateManagerState<T extends Listenable> extends State<StateManagerBuilder<T>> {
   T? _value;
-  
+
   @override
   void initState() {
     super.initState();
     _value = widget.creator();
     _value!.addListener(_update);
   }
-  
+
   @override
   void dispose() {
     _value!.removeListener(_update);
@@ -175,7 +175,7 @@ class Sizer extends StatelessWidget {
 
   final Widget child;
   final Widget placeholder;
-  
+
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
@@ -268,7 +268,7 @@ class RenderWorldBoxGrid extends RenderWorldNode with ContainerRenderObjectMixin
   int? _cellCount;
   double? _actualDiameter;
   double? _cellSize;
-  
+
   @override
   void computeLayout(WorldConstraints constraints) {
     final int count = childCount;
@@ -314,7 +314,7 @@ class RenderWorldBoxGrid extends RenderWorldNode with ContainerRenderObjectMixin
   WorldTapTarget? routeTap(Offset offset) {
     return null; // TODO: figure out what this should do, if anything
   }
-            
+
   @override
   bool hitTestChildren(BoxHitTestResult result, { required Offset position }) {
     return defaultHitTestChildren(result, position: position);
@@ -481,7 +481,7 @@ class RenderWorldToBoxAdapter extends RenderWorldNode with RenderObjectWithChild
   }
 
   double _actualDiameter = 0.0;
-  
+
   @override
   void computeLayout(WorldConstraints constraints) {
     _actualDiameter = computePaintDiameter(diameter, maxDiameter);
@@ -491,7 +491,7 @@ class RenderWorldToBoxAdapter extends RenderWorldNode with RenderObjectWithChild
   }
 
   Offset? _childPosition;
-  
+
   @override
   double computePaint(PaintingContext context, Offset offset) {
     _childPosition = Offset(offset.dx - _actualDiameter / 2.0, offset.dy - _actualDiameter / 2.0);

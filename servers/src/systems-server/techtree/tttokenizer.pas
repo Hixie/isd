@@ -93,7 +93,7 @@ type
       Size: QWord;
       class function From(AString: UTF8String): TSegment; inline; overload; static;
       class function From(AStart, AEnd: Pointer): TSegment; inline; overload; static;
-   end;   
+   end;
 
 class function TSegment.From(AString: UTF8String): TSegment;
 begin
@@ -102,7 +102,7 @@ begin
    Result.Start := @AString[1];
    Result.Size := Length(AString); // $R-
 end;
-   
+
 class function TSegment.From(AStart, AEnd: Pointer): TSegment;
 begin
    Assert(AEnd > AStart);
@@ -128,13 +128,13 @@ begin
 end;
 
 procedure TTokenizer.Tokenize();
-   
+
    procedure Advance(); inline;
    begin
       Inc(FPosition);
       Inc(FColumn);
    end;
-   
+
    procedure AdvanceLine(); inline;
    begin
       Inc(FPosition);
@@ -160,7 +160,7 @@ procedure TTokenizer.Tokenize();
 
 var
    StringSegments: specialize PlasticArray<TSegment, specialize IncomparableUtils<TSegment>>;
-   
+
    procedure FixSegments();
    var
       Segment: TSegment;
@@ -573,7 +573,7 @@ begin
                   Mode := tmBlockComment;
                   continue;
                end;
-                        
+
          end;
       until True;
    until FCurrentKind <> tkPending;

@@ -70,7 +70,7 @@ abstract class WorldNode extends ChangeNotifier {
     builder: buildRenderer,
   );
   Widget build(BuildContext context) => _build;
-  
+
   @protected
   Widget buildRenderer(BuildContext context, Widget? nil);
 

@@ -233,7 +233,7 @@ begin
 end;
 
 function TResearchFeatureNode.HandleCommand(Command: UTF8String; var Message: TMessage): Boolean;
- 
+
    procedure DetermineTopics(Topics, ObsoleteTopics: TTopicHashSet);
    var
       KnowledgeBase: TGetKnownResearchesMessage;
@@ -408,7 +408,7 @@ procedure TResearchFeatureNode.UpdateResearch(CachedSystem: TSystem);
 
 var
    Candidates: TResearch.TArray;
-   
+
    function CompareCandidates(const A, B: Integer): Integer;
    begin
       Result := Candidates[A].ID - Candidates[B].ID; // $R-
@@ -537,8 +537,8 @@ begin
          Assert(not Assigned(FResearchEvent));
          {$IFDEF VERBOSE} Writeln('  ', Parent.DebugName, ': No viable research detected for dynasty ', Parent.Owner.DynastyID, '.'); {$ENDIF}
          exit;
-      end;   
-      
+      end;
+
       // We get the researches in a defined order so that changes to
       // the hash table algorithm don't affect the results.
       SetLength(Candidates, WeightedCandidates.Count);
@@ -615,7 +615,7 @@ begin
       // TODO: apply modifier based on how structurally sound this asset is
       // TODO: apply modifiers based on how powered this asset is
       // TODO: apply modifiers based on how staffed this asset is
-      
+
       if (FBankedResearch.Has(FCurrentResearch)) then
       begin
          BankedTime := FBankedResearch[FCurrentResearch];
@@ -626,11 +626,11 @@ begin
          BankedTime := TMillisecondsDuration.FromMilliseconds(0);
 
       FResearchStartTime := CachedSystem.Now - BankedTime;
-      
+
       if (Duration.IsNegative) then
          Duration := TMillisecondsDuration.FromMilliseconds(0);
       Writeln('  ', Parent.DebugName, ': Scheduled research ', FCurrentResearch.ID, '; T-', Duration.ToString());
-      
+
       FResearchEvent := CachedSystem.ScheduleEvent(Duration, @TriggerResearch, Self);
    finally
       WeightedCandidates.Free();

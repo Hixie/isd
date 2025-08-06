@@ -35,7 +35,7 @@ type
       property DynastyServerID: Cardinal read FSettings.ServerID;
       property RefCount: Cardinal read FRefCount;
    end;
-   
+
    TDynastyDatabase = class abstract
    public
       function GetDynastyFromDisk(DynastyID: Cardinal): TDynasty; virtual; abstract;

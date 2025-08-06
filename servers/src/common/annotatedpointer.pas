@@ -20,7 +20,7 @@ type
       function IsFlagClear(Flag: TFlags): Boolean; inline;
       property Assigned: Boolean read GetAssigned;
    end;
-   
+
 implementation
 
 class operator TAnnotatedPointer.:= (Value: PType): specialize TAnnotatedPointer<PType, TFlags>;

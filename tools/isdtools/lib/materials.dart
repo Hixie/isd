@@ -99,16 +99,16 @@ class Material {
 
 class MaterialsPane extends StatefulWidget {
   const MaterialsPane({super.key, required this.onExit});
-  
+
   final VoidCallback onExit;
-  
+
   @override
   _MaterialsPaneState createState() => _MaterialsPaneState();
 }
 
 class _MaterialsPaneState extends State<MaterialsPane> {
   final List<Material> _materials = <Material>[];
- 
+
   static const EdgeInsets graphPadding = EdgeInsets.fromLTRB(72.0, 0.0, 0.0, 32.0);
   static const double spacing = 8.0;
   static const double minDistance = 0.10 * AU;
@@ -217,7 +217,7 @@ class _MaterialsPaneState extends State<MaterialsPane> {
       material.abundanceDistribution.sort();
     });
   }
-  
+
   void _handleRemove(Material material, MaterialNode node) {
     material.abundanceDistribution.remove(node);
     _handleChange(material);
@@ -230,7 +230,7 @@ class _MaterialsPaneState extends State<MaterialsPane> {
       });
     }
   }
-  
+
   static double nearestNotUnder(List<double> sortedList, double value) {
     int min = 0;
     int max = sortedList.length;
@@ -249,7 +249,7 @@ class _MaterialsPaneState extends State<MaterialsPane> {
     }
     return sortedList[min];
   }
-  
+
   @override
   Widget build(BuildContext context) {
     return TweenAnimationBuilder<double>(
@@ -588,7 +588,7 @@ class GraphNodeWidget extends StatefulWidget {
 
 class _GraphNodeWidgetState extends State<GraphNodeWidget> {
   late double _x, _y;
-  
+
   @override
   Widget build(BuildContext context) {
     return Positioned(

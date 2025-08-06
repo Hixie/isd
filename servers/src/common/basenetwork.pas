@@ -30,7 +30,7 @@ type
    end;
 
    TConversationHashSet = specialize THashSet<TBaseConversationHandle, TObjectUtils>;
-   
+
    TMessage = record
    public
       const
@@ -59,7 +59,7 @@ type
    end;
 
    TConnectionCallback = procedure (Connection: TBaseIncomingCapableConnection; Data: Pointer) is nested;
-   
+
    TBaseIncomingCapableConnection = class(TWebSocket)
    strict private
       FConversations: TConversationHashSet;
@@ -124,7 +124,7 @@ type
    end;
 
    TBaseServer = class;
-   
+
    TEventCallback = procedure (var Data) of object;
 
    PEvent = ^TEvent;
@@ -136,7 +136,7 @@ type
    end;
 
    TEventSet = specialize THashSet<PEvent, PointerUtils>;
-   
+
    TBaseServer = class(TNetworkServer)
    private
       FClock: TStableClock;

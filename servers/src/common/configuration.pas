@@ -168,7 +168,7 @@ var
          end;
       end;
    end;
-      
+
 begin
    New(Result);
    FillChar(Result^, SizeOf(Result^), 0);

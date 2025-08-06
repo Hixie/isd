@@ -33,7 +33,7 @@ class OrePileFeature extends AbilityFeature {
   RendererType get rendererType => RendererType.ui;
 
   // TODO: this is exactly the same logic as in materialpile.dart; we should refactor this to avoid code duplication
-  
+
   Widget _buildForMass(BuildContext context, double currentMass) {
     return CustomPaint(
       painter: _Pile(
@@ -54,7 +54,7 @@ class OrePileFeature extends AbilityFeature {
       ),
     );
   }
-  
+
   @override
   Widget buildRenderer(BuildContext context) {
     if (pileMassFlowRate == 0.0)
@@ -143,7 +143,7 @@ class _Pile extends CustomPainter {
     ..color = const Color(0xFF000000)
     ..strokeWidth = 12.0
     ..style = PaintingStyle.stroke;
-  
+
   @override
   void paint(Canvas canvas, Size size) {
     final Path path = Path()

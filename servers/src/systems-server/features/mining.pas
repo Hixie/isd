@@ -44,7 +44,7 @@ type
    end;
 
 // TODO: handle our ancestor chain changing
-  
+
 implementation
 
 uses

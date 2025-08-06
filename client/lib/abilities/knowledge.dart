@@ -54,7 +54,7 @@ class KnowledgeFeature extends AbilityFeature {
     }
     return const SizedBox.shrink();
   }
-  
+
   @override
   Widget buildDialog(BuildContext context) {
     return ListBody(

@@ -122,7 +122,7 @@ class RenderProxy extends RenderWorldNode with RenderObjectWithChildMixin<Render
   }
 
   Offset? _childPosition;
-  
+
   @override
   double computePaint(PaintingContext context, Offset offset) {
     final double actualDiameter = computePaintDiameter(diameter, maxDiameter);

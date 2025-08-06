@@ -90,7 +90,7 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
   void addListener(VoidCallback listener) => _notifierImplementation.addListener(listener);
   @override
   void removeListener(VoidCallback listener) => _notifierImplementation.removeListener(listener);
-  
+
   @override
   void initState() {
     super.initState();
@@ -223,7 +223,7 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
   }
 
   WorldNode? _badNode;
-  
+
   @override
   Widget build(BuildContext context) {
     _lastScale = null;
@@ -472,7 +472,7 @@ class RenderBoxToRenderWorldAdapter extends RenderBox with RenderObjectWithChild
   final LayerHandle<TransformLayer> _universeLayer = LayerHandle<TransformLayer>();
 
   Offset _paintOffset = Offset.zero;
-  
+
   @override
   void paint(PaintingContext context, Offset offset) {
     _paintOffset = size.center(offset);
@@ -496,9 +496,9 @@ class RenderBoxToRenderWorldAdapter extends RenderBox with RenderObjectWithChild
   @override
   void applyPaintTransform(covariant RenderObject child, Matrix4 transform) {
     // See also RenderWorld.applyPaintTransform in layout.dart and WorldToBox in widgets.dart.
-    transform.translate(_paintOffset.dx, _paintOffset.dy);    
+    transform.translate(_paintOffset.dx, _paintOffset.dy);
   }
-  
+
   @override
   bool hitTestSelf(Offset position) {
     return true;

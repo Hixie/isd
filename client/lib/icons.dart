@@ -29,7 +29,7 @@ class IconDescription {
   static IconDescription from(http.Response response) {
     final List<IconField> fields = <IconField>[];
     Size? size;
-    
+
     final List<double> coords = <double>[];
     void flushParts() {
       if (size == null) {
@@ -57,7 +57,7 @@ class IconDescription {
         havePart = false;
       }
     }
-    
+
     final String rawFields = response.headers['isd-fields'] ?? '';
     for (final int c in rawFields.runes) {
       switch (c) {
@@ -93,7 +93,7 @@ class IconDescription {
 class IconRedundantBadFetchException implements Exception {
   IconRedundantBadFetchException(this.name);
   final String name;
-  
+
   @override
   String toString() => 'Tried to fetch icon <$name> which is cached as not available.';
 }
@@ -102,7 +102,7 @@ class IconsManager {
   IconsManager._(this._httpClient);
 
   final http.Client _httpClient;
-  
+
   static Future<IconsManager> initialize(http.Client httpClient) async {
     // TODO: warm cache?
     // TODO: cache on disk
@@ -116,11 +116,11 @@ class IconsManager {
   void resetCache() {
     _cache.clear();
   }
-  
+
   bool isKnownBad(String icon) {
     return _cache.containsKey(icon) && _cache[icon] == null;
   }
-  
+
   Future<IconDescription> fetch(String icon) {
     if (_cache.containsKey(icon)) {
       final IconDescription? result = _cache[icon];
@@ -149,7 +149,7 @@ class IconsManager {
   }
 
   static const double knowledgeIconSize = 64.0;
-  
+
   // This renders the icon in the form used to represent knowledge.
   static Widget knowledgeIcon(BuildContext context, String icon, String tooltip) {
     const double iconSize = knowledgeIconSize;
@@ -234,12 +234,12 @@ class _IconKey {
 @immutable
 class IconImageProvider extends ImageProvider<_IconKey> {
   const IconImageProvider(this.name, this.icons);
-  
+
   final String name;
   final IconsManager icons;
 
   static final double log2 = math.log(2);
-  
+
   @override
   Future<_IconKey> obtainKey(ImageConfiguration configuration) {
     assert(configuration.size != null);
@@ -321,7 +321,7 @@ class WorldIcon extends LeafRenderObjectWidget {
   final double maxDiameter;
   final bool ghost;
   final IconTapCallback? onTap;
-  
+
   @override
   RenderWorldIcon createRenderObject(BuildContext context) {
     return RenderWorldIcon(
@@ -452,7 +452,7 @@ class RenderWorldIcon extends RenderWorldNode {
   ImageStream? _imageStream;
   double? _actualDiameter;
   FragmentShader? _shader;
-  
+
   @override
   void computeLayout(WorldConstraints constraints) {
     final ImageStream? oldImageStream = _imageStream;
@@ -472,7 +472,7 @@ class RenderWorldIcon extends RenderWorldNode {
 
   ImageInfo? _imageInfo;
   String? _errorMessage;
-  
+
   late final ImageStreamListener _imageChangeListener = ImageStreamListener(_imageChangeHandler, onError: _imageErrorHandler);
   void _imageChangeHandler(ImageInfo imageInfo, bool synchronousCall) {
     _imageInfo?.dispose();
@@ -493,7 +493,7 @@ class RenderWorldIcon extends RenderWorldNode {
     if (exception is! IconRedundantBadFetchException)
       Error.throwWithStackTrace(exception, stackTrace ?? StackTrace.current);
   }
-  
+
   @override
   void dispose() {
     _imageStream?.removeListener(_imageChangeListener);
@@ -508,7 +508,7 @@ class RenderWorldIcon extends RenderWorldNode {
     ..style = PaintingStyle.stroke;
 
   Paint? _paint;
-    
+
   @override
   double computePaint(PaintingContext context, Offset offset) {
     if (_imageInfo == null) {
@@ -568,7 +568,7 @@ class RenderWorldIcon extends RenderWorldNode {
     _paint = null;
     super.reassemble();
   }
-  
+
   @override
   bool hitTestChildren(BoxHitTestResult result, { required Offset position }) {
     return false;
@@ -717,7 +717,7 @@ class RenderWorldFieldPlacement extends RenderWorldNode
     _complained = false;
     super.reassemble();
   }
-  
+
   @override
   void computeLayout(WorldConstraints constraints) {
     final double actualDiameter = _actualDiameter = computePaintDiameter(diameter, maxDiameter);
@@ -835,7 +835,7 @@ class RenderWorldFieldPlacement extends RenderWorldNode
   WorldTapTarget? routeTap(Offset offset) {
     return null; // TODO: we don't send these taps into the RenderBox world
   }
-            
+
   @override
   bool hitTestChildren(BoxHitTestResult result, { required Offset position }) {
     RenderBox? child = lastChild;

@@ -98,7 +98,7 @@ class SystemNode extends WorldNode {
   }
 
   Material material(int id) => _materials[id]!;
-  
+
   // called when any assets in the system change
   void markAsUpdated() {
     notifyListeners();
@@ -146,7 +146,7 @@ class SystemNode extends WorldNode {
   Future<StreamReader> play(List<Object> messageParts) {
     return sendCallback(<Object>['play', id, ...messageParts]);
   }
-  
+
   static SystemNode of(WorldNode node) {
     while (node is! SystemNode) {
       assert(node.parent != null);
@@ -318,7 +318,7 @@ class RenderSystem extends RenderWorldNode with RenderObjectWithChildMixin<Rende
   final List<_HighlightDetails> _visibleHudElements = <_HighlightDetails>[];
 
   Offset? _childPosition;
-  
+
   @override
   double computePaint(PaintingContext context, Offset offset) {
     final double visibleDiameter = diameter * constraints.scale;

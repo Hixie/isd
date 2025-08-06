@@ -46,7 +46,7 @@ type
    end;
 
    TBuildingStateFlags = (bsTriggered, bsNoBuilderBus, bsNoRegion);
-   
+
    PBuildingState = ^TBuildingState;
    TBuildingState = record
    private
@@ -138,7 +138,7 @@ begin
       StructuralIntegrity := MaterialsQuantity;
    end;
 end;
-     
+
 
 constructor TStructureFeatureClass.Create(ABillOfMaterials: TMaterialLineItemArray; AMinimumFunctionalQuantity: Cardinal; ADefaultSize: Double);
 begin
@@ -326,7 +326,7 @@ begin
    end;
    Result := nil;
 end;
-   
+
 function TStructureFeatureNode.GetNextStructureQuantity(): UInt64;
 var
    Index: Cardinal;
@@ -638,7 +638,7 @@ procedure TStructureFeatureNode.StartBuilding(Builder: TBuilderFeatureNode; Buil
 begin
    Writeln(DebugName, ' StartBuilding(', Builder.DebugName, ', ', BuildRate.ToString('units'), ')');
    Assert(Assigned(FBuildingState));
-   Assert((not Assigned(FBuildingState^.NextEvent)) or (FBuildingState^.AnchorTime = System.Now));   
+   Assert((not Assigned(FBuildingState^.NextEvent)) or (FBuildingState^.AnchorTime = System.Now));
    Assert(not Assigned(FBuildingState^.PendingMaterial));
    Assert(FBuildingState^.PendingQuantity = 0);
    FBuildingState^.Builder := Builder;
@@ -872,7 +872,7 @@ var
          Duration := System.Now - FBuildingState^.AnchorTime;
       end;
    end;
-   
+
 begin
    Writeln(DebugName, ' DeliverMaterialConsumer(', Delivery, ')');
    Assert(Assigned(FBuildingState));
@@ -945,7 +945,7 @@ begin
    Writeln(DebugName, ' StopMaterialConsumer()');
    // DeliverMaterialConsumer will be called first
    Assert(Assigned(FBuildingState));
-   Assert(Assigned(FBuildingState^.Region)); 
+   Assert(Assigned(FBuildingState^.Region));
    Writeln(DebugName, ' resetting region');
    FBuildingState^.Region := nil;
    FBuildingState^.MaterialsQuantityRate := TRate.Zero;
@@ -1116,7 +1116,7 @@ begin
       end;
    end;
 end;
-         
+
 initialization
    RegisterFeatureClass(TStructureFeatureClass);
 end.

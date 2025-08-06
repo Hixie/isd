@@ -81,7 +81,7 @@ class _GameRootState extends State<GameRoot> {
     super.reassemble();
     widget.icons.resetCache();
   }
-  
+
   @override
   Widget build(BuildContext context) {
     Widget app = MaterialApp(
@@ -176,7 +176,7 @@ class _InterstellarDynastiesState extends State<InterstellarDynasties> {
   }
 
   final GlobalKey hudKey = GlobalKey();
-  
+
   void _doLogout() {
     widget.game.logout();
     (hudKey.currentState! as HudLayoutInterface).closeAll();
@@ -197,7 +197,7 @@ class _InterstellarDynastiesState extends State<InterstellarDynasties> {
   }
 
   // TODO: make it clearer when we are currently disconnected (e.g. show a pulsing "disconnect" icon)
-  
+
   void _handleError(Object error) {
     // TODO: prettier error messages
     _setMessage(error.toString());

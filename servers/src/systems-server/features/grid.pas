@@ -9,7 +9,7 @@ uses
 
 type
    TGridFeatureClass = class abstract (TFeatureClass) end;
-   
+
    TGenericGridFeatureClass = class(TGridFeatureClass)
    strict protected
       function GetFeatureNodeClass(): FeatureNodeReference; override;
@@ -17,7 +17,7 @@ type
       constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
       function InitFeatureNode(): TFeatureNode; override;
    end;
-   
+
    TParameterizedGridFeatureClass = class(TGridFeatureClass)
    strict private
       FBuildEnvironment: TBuildEnvironment;
@@ -30,7 +30,7 @@ type
       constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
       function InitFeatureNode(): TFeatureNode; override;
    end;
-   
+
    TGridFeatureNode = class(TFeatureNode)
    strict private
       FBuildEnvironment: TBuildEnvironment;
@@ -56,7 +56,7 @@ type
       property Dimension: Cardinal read FDimension;
       property CellSize: Double read FCellSize;
    end;
-   
+
 implementation
 
 uses

@@ -61,7 +61,7 @@ var
       if (Result) then
          Reader.Tokens.ReadComma();
    end;
-     
+
 begin
    inherited Create();
    repeat

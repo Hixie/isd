@@ -71,7 +71,7 @@ procedure TAssetNameFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSyst
 begin
    FAssetName := Journal.ReadString();
 end;
-   
+
 function TAssetNameFeatureNode.GetAssetName(): UTF8String;
 begin
    Result := AssetName;

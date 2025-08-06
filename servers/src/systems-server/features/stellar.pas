@@ -46,7 +46,7 @@ const
    MassSalt = $04551455;
    SizeSalt = $51535153;
 
-   
+
 constructor TStarFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
 begin
    Reader.Tokens.Error('Feature class %s is reserved for internal asset classes', [ClassName]);

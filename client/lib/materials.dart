@@ -29,7 +29,7 @@ class Material {
   String get tooltip {
     return '$name\n$description';
   }
-  
+
   Widget asKnowledgeIcon(BuildContext context) {
     // TODO: make this clickable (show a HUD with more information)
     return IconsManager.knowledgeIcon(context, icon, tooltip);
@@ -38,7 +38,7 @@ class Material {
   Widget asIcon(BuildContext context, { required double size, IconsManager? icons }) {
     return IconsManager.icon(context, icon, size: size, tooltip: tooltip, icons: icons);
   }
-  
+
   InlineSpan describe(BuildContext context, IconsManager icons, { required double iconSize }) {
     final Widget icon = asIcon(context, size: iconSize, icons: icons);
     return TextSpan(
@@ -48,7 +48,7 @@ class Material {
       ],
     );
   }
-  
+
   InlineSpan describeQuantity(BuildContext context, IconsManager icons, int quantity, { required double iconSize }) {
     final String amount;
     switch (kind) {
