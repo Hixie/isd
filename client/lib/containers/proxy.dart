@@ -2,7 +2,9 @@ import 'package:flutter/rendering.dart' hide Gradient;
 import 'package:flutter/widgets.dart' hide Gradient;
 
 import '../assets.dart';
+import '../icons.dart';
 import '../layout.dart';
+import '../widgets.dart';
 import '../world.dart';
 
 class ProxyFeature extends ContainerFeature {
@@ -51,6 +53,31 @@ class ProxyFeature extends ContainerFeature {
       diameter: parent.diameter,
       maxDiameter: parent.maxRenderDiameter,
       child: child?.build(context),
+    );
+  }
+
+  @override
+  Widget buildDialog(BuildContext context) {
+    final double fontSize = DefaultTextStyle.of(context).style.fontSize!;
+    final IconsManager icons = IconsManagerProvider.of(context);
+    return ListBody(
+      children: <Widget>[
+        const Text('Structures', style: bold),
+        Padding(
+          padding: featurePadding,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              if (child == null)
+                const Text('None', style: italic),
+              if (child != null)
+                Text.rich(
+                  child!.describe(context, icons, iconSize: fontSize),
+                ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

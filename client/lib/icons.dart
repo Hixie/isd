@@ -813,7 +813,7 @@ class RenderWorldFieldPlacement extends RenderWorldNode
         childParentData._layer.layer = context.pushTransform(
           needsCompositing,
           Offset.zero,
-          childParentData._transform = Matrix4.identity()..translate(rect.left, rect.top)..scale(scale),
+          childParentData._transform = Matrix4.identity()..translateByDouble(rect.left, rect.top, 0.0, 1.0)..scaleByDouble(scale, scale, scale, 1.0),
           child.paint,
           oldLayer: childParentData._layer.layer,
         );

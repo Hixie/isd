@@ -108,7 +108,7 @@ class MiningFeature extends AbilityFeature {
       listenable: _state,
       builder: (BuildContext context, Widget? child) => ListBody(
         children: <Widget>[
-          const Text('Mining:', style: bold),
+          const Text('Mining', style: bold),
           Padding(
             padding: featurePadding,
             child: Column(

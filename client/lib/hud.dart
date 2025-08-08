@@ -139,7 +139,9 @@ class HudHandle {
     if (target is RenderWorld) {
       delta += target.paintCenter;
     }
-    delta = Offset(max(minX, delta.dx), max(minY, delta.dy));
+    assert(source is RenderBox); // should be the HudLayout
+    final double maxTop = (source as RenderBox).size.height * 0.75;
+    delta = Offset(max(minX, delta.dx), max(minY, min(delta.dy, maxTop)));
     assert(size.width >= minWidth);
     assert(size.height >= minHeight);
     return delta & size;
@@ -216,11 +218,13 @@ class HudDialog extends StatelessWidget {
     super.key,
     this.heading = const Text(''),
     this.child = const Placeholder(),
+    this.buttons = const <Widget>[],
     this.onClose,
   });
 
   final Widget child;
   final Widget heading;
+  final List<Widget> buttons;
   final VoidCallback? onClose;
 
   @override
@@ -281,7 +285,8 @@ class HudDialog extends StatelessWidget {
                                 child: heading,
                               ),
                             ),
-                            const SizedBox(width: 24.0),
+                            const SizedBox(width: 24.0),                            
+                            ...buttons,
                             IconButton(
                               icon: const Icon(Icons.close),
                               onPressed: () {

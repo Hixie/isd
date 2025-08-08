@@ -32,7 +32,7 @@ class RubblePileFeature extends AbilityFeature {
     materials.sort((Material a, Material b) => analysis[b]! - analysis[a]!);
     return ListBody(
       children: <Widget>[
-        const Text('Rubble:', style: bold),
+        const Text('Rubble', style: bold),
         const Padding(
           padding: featurePadding,
           child: Text('Known contents:'),

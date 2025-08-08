@@ -53,7 +53,7 @@ class ResearchFeature extends AbilityFeature {
     final SystemNode system = SystemNode.of(parent);
     return ListBody(
       children: <Widget>[
-        const Text('Research:', style: bold),
+        const Text('Research', style: bold),
         Padding(
           padding: featurePadding,
           child: Column(

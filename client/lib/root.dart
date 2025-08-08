@@ -496,7 +496,7 @@ class RenderBoxToRenderWorldAdapter extends RenderBox with RenderObjectWithChild
   @override
   void applyPaintTransform(covariant RenderObject child, Matrix4 transform) {
     // See also RenderWorld.applyPaintTransform in layout.dart and WorldToBox in widgets.dart.
-    transform.translate(_paintOffset.dx, _paintOffset.dy);
+    transform.translateByDouble(_paintOffset.dx, _paintOffset.dy, 0.0, 1.0);
   }
 
   @override

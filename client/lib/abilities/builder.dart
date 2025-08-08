@@ -25,7 +25,7 @@ class BuilderFeature extends AbilityFeature {
     final IconsManager icons = IconsManagerProvider.of(context);
     return ListBody(
       children: <Widget>[
-        const Text('Building:', style: bold),
+        const Text('Building', style: bold),
         Padding(
           padding: featurePadding,
           child: Column(

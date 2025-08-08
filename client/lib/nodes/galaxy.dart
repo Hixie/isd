@@ -541,16 +541,17 @@ class RenderGalaxy extends RenderWorldWithChildren<GalaxyParentData> {
       final Rect visibleGalaxy = wholeGalaxy.intersect(viewport);
       if (_preparedStarsRect == null ||
           _preparedStarsScale == null ||
-          isWithin(_preparedStarsScale!, constraints.scale, 0.0001) ||
+          !isWithin(_preparedStarsScale!, constraints.scale, 0.0001) ||
           (!_preparedStarsRect!.contains(visibleGalaxy.topLeft)) ||
           (!_preparedStarsRect!.contains(visibleGalaxy.bottomRight))) {
         visibleGalaxy.inflate(1.0 * lightYearInM);
         _prepareStars(visibleGalaxy);
         _preparedStarsRect = visibleGalaxy;
+        _preparedStarsScale = constraints.scale;
       }
       final Matrix4 transform = Matrix4.identity()
-        ..translate(offset.dx, offset.dy)
-        ..scale(constraints.scale);
+        ..translateByDouble(offset.dx, offset.dy, 0.0, 1.0)
+        ..scaleByDouble(constraints.scale, constraints.scale, constraints.scale, 1.0);
       _starsLayer.layer = context.pushTransform(
         needsCompositing,
         Offset.zero,

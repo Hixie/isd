@@ -93,6 +93,31 @@ class GridFeature extends ContainerFeature {
       children: childList,
     );
   }
+
+  @override
+  Widget buildDialog(BuildContext context) {
+    final double fontSize = DefaultTextStyle.of(context).style.fontSize!;
+    final IconsManager icons = IconsManagerProvider.of(context);
+    return ListBody(
+      children: <Widget>[
+        const Text('Structures', style: bold),
+        Padding(
+          padding: featurePadding,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              if (children.isEmpty)
+                const Text('None', style: italic),
+              for (AssetNode child in children.keys)
+                Text.rich(
+                  child.describe(context, icons, iconSize: fontSize),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 class DefaultGridCell extends StatelessWidget {

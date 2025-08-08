@@ -283,7 +283,7 @@ class StructureFeature extends AbilityFeature {
     }
     return ListBody(
       children: <Widget>[
-        const Text('Structural integrity and construction:', style: bold),
+        const Text('Structural integrity and construction', style: bold),
         Padding(
           padding: featurePadding,
           child: result,

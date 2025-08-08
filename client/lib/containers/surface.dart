@@ -2,7 +2,9 @@ import 'package:flutter/rendering.dart' hide Gradient;
 import 'package:flutter/widgets.dart' hide Gradient;
 
 import '../assets.dart';
+import '../icons.dart';
 import '../layout.dart';
+import '../widgets.dart';
 import '../world.dart';
 
 typedef SurfaceParameters = ({ Offset position });
@@ -56,6 +58,31 @@ class SurfaceFeature extends ContainerFeature {
       diameter: parent.diameter,
       maxDiameter: parent.maxRenderDiameter,
       children: children.keys.map((AssetNode assetChild) => assetChild.build(context)).toList(),
+    );
+  }
+
+  @override
+  Widget buildDialog(BuildContext context) {
+    final double fontSize = DefaultTextStyle.of(context).style.fontSize!;
+    final IconsManager icons = IconsManagerProvider.of(context);
+    return ListBody(
+      children: <Widget>[
+        const Text('Settlements', style: bold),
+        Padding(
+          padding: featurePadding,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              if (children.isEmpty)
+                const Text('None', style: italic),
+              for (AssetNode region in children.keys)
+                Text.rich(
+                  region.describe(context, icons, iconSize: fontSize),
+                ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

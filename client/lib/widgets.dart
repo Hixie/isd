@@ -21,11 +21,13 @@ class WorldLayoutBuilder extends ConstrainedLayoutBuilder<WorldConstraints> {
   const WorldLayoutBuilder({ super.key, required super.builder });
 
   @override
-  RenderObject createRenderObject(BuildContext context) => _RenderWorldLayoutBuilder();
+  RenderAbstractLayoutBuilderMixin<WorldConstraints, RenderWorld> createRenderObject(BuildContext context) => _RenderWorldLayoutBuilder();
 }
 
 class _RenderWorldLayoutBuilder extends RenderWorld
-      with RenderObjectWithChildMixin<RenderWorld>, RenderConstrainedLayoutBuilder<WorldConstraints, RenderWorld> {
+      with RenderObjectWithChildMixin<RenderWorld>,
+           RenderObjectWithLayoutCallbackMixin,
+           RenderAbstractLayoutBuilderMixin<WorldConstraints, RenderWorld> {
   _RenderWorldLayoutBuilder();
 
   @override
@@ -33,7 +35,7 @@ class _RenderWorldLayoutBuilder extends RenderWorld
 
   @override
   void computeLayout(WorldConstraints constraints) {
-    rebuildIfNecessary();
+    runLayoutCallback();
     if (child != null) {
       child!.layout(constraints, parentUsesSize: true);
     }
@@ -505,7 +507,7 @@ class RenderWorldToBoxAdapter extends RenderWorldNode with RenderObjectWithChild
   @override
   void applyPaintTransform(covariant RenderObject child, Matrix4 transform) {
     // This assumes that 0,0 is the center of the canvas, and that the transform is transforming to that.
-    transform.translate(_childPosition!.dx, _childPosition!.dy);
+    transform.translateByDouble(_childPosition!.dx, _childPosition!.dy, 0.0, 1.0);
   }
 
   @override

@@ -59,7 +59,7 @@ class KnowledgeFeature extends AbilityFeature {
   Widget buildDialog(BuildContext context) {
     return ListBody(
       children: <Widget>[
-        const Text('Knowledge:', style: bold),
+        const Text('Knowledge', style: bold),
         Padding(
           padding: featurePadding,
           child: KnowledgeDish(

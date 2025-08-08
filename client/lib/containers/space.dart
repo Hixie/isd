@@ -4,7 +4,9 @@ import 'package:flutter/rendering.dart' hide Gradient;
 import 'package:flutter/widgets.dart' hide Gradient;
 
 import '../assets.dart';
+import '../icons.dart';
 import '../layout.dart';
+import '../widgets.dart';
 import '../world.dart';
 
 typedef SpaceParameters = ({ double r, double theta });
@@ -62,6 +64,31 @@ class SpaceFeature extends ContainerFeature {
       node: parent,
       diameter: parent.diameter,
       children: children.keys.map((AssetNode assetChild) => assetChild.build(context)).toList(),
+    );
+  }
+
+  @override
+  Widget buildDialog(BuildContext context) {
+    final double fontSize = DefaultTextStyle.of(context).style.fontSize!;
+    final IconsManager icons = IconsManagerProvider.of(context);
+    return ListBody(
+      children: <Widget>[
+        const Text('Astronomical objects', style: bold),
+        Padding(
+          padding: featurePadding,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              if (children.isEmpty)
+                const Text('None detected', style: italic), // this should never happen; at a minimum, we should be able to detect ourselves otherwise we wouldn't know about this system
+              for (AssetNode region in children.keys)
+                Text.rich(
+                  region.describe(context, icons, iconSize: fontSize),
+                ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

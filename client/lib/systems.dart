@@ -156,9 +156,9 @@ class SystemServer {
           switch (featureCode) {
             case fcStar:
               final int starId = reader.readUInt32();
-              oldFeatures.remove(asset.setAbility(StarFeature(starId)));
+              oldFeatures.remove(asset.setFeature(StarFeature(starId)));
             case fcPlanet:
-              oldFeatures.remove(asset.setAbility(PlanetFeature()));
+              oldFeatures.remove(asset.setFeature(PlanetFeature()));
             case fcSpace:
               final Map<AssetNode, SpaceParameters> children = <AssetNode, SpaceParameters>{};
               final AssetNode primaryChild = _readAsset(reader)!;
@@ -169,7 +169,7 @@ class SystemServer {
                 final double theta = reader.readDouble();
                 children[child!] = (r: distance, theta: theta);
               }
-              oldFeatures.remove(asset.setContainer(SpaceFeature(children)));
+              oldFeatures.remove(asset.setFeature(SpaceFeature(children)));
             case fcOrbit:
               final Map<AssetNode, Orbit> children = <AssetNode, Orbit>{};
               final AssetNode originChild = _readAsset(reader)!;
@@ -182,7 +182,7 @@ class SystemServer {
                 final bool clockwise = reader.readBool();
                 children[child!] = (a: semiMajorAxis, e: eccentricity, omega: omega, timeOrigin: timeOrigin, clockwise: clockwise);
               }
-              oldFeatures.remove(asset.setContainer(OrbitFeature(spaceTime, originChild, children)));
+              oldFeatures.remove(asset.setFeature(OrbitFeature(spaceTime, originChild, children)));
             case fcStructure:
               int structuralIntegrityMax = 0;
               final List<StructuralComponent> components = <StructuralComponent>[];
@@ -204,7 +204,7 @@ class SystemServer {
               final int structuralIntegrityCurrent = reader.readUInt32();
               final double structuralIntegrityRate = reader.readDouble();
               final int structuralIntegrityMin = reader.readUInt32();
-              oldFeatures.remove(asset.setAbility(StructureFeature(
+              oldFeatures.remove(asset.setFeature(StructureFeature(
                 structuralComponents: components,
                 timeOrigin: currentTime,
                 spaceTime: spaceTime,
@@ -232,7 +232,7 @@ class SystemServer {
               } else {
                 reader.restoreCheckpoint();
               }
-              oldFeatures.remove(asset.setAbility(SpaceSensorFeature(
+              oldFeatures.remove(asset.setFeature(SpaceSensorFeature(
                 reach: reach,
                 up: up,
                 down: down,
@@ -254,7 +254,7 @@ class SystemServer {
               while ((child = _readAsset(reader)) != null) {
                 children[child!] = (position: Offset(reader.readDouble(), reader.readDouble()));
               }
-              oldFeatures.remove(asset.setContainer(SurfaceFeature(children)));
+              oldFeatures.remove(asset.setFeature(SurfaceFeature(children)));
             case fcGrid:
               final double cellSize = reader.readDouble();
               final int width = reader.readUInt32();
@@ -268,11 +268,11 @@ class SystemServer {
                 final int y = reader.readUInt32();
                 children[child!] = (x: x, y: y);
               }
-              oldFeatures.remove(asset.setContainer(GridFeature(cellSize, width, height, children)));
+              oldFeatures.remove(asset.setFeature(GridFeature(cellSize, width, height, children)));
             case fcPopulation:
               final int count = reader.readInt64();
               final double happiness = reader.readDouble();
-              oldFeatures.remove(asset.setAbility(PopulationFeature(
+              oldFeatures.remove(asset.setFeature(PopulationFeature(
                 count: count,
                 happiness: happiness,
               )));
@@ -284,7 +284,7 @@ class SystemServer {
                 // so that adding children doesn't change the selected one
                 children.insert(0, child!);
               }
-              oldFeatures.remove(asset.setContainer(MessageBoardFeature(children)));
+              oldFeatures.remove(asset.setFeature(MessageBoardFeature(children)));
             case fcMessage:
               final int systemID = reader.readUInt32();
               final int timestamp = reader.readInt64();
@@ -296,7 +296,7 @@ class SystemServer {
               const String fromPrefix = 'From: ';
               assert(paragraphs.first.startsWith(fromPrefix));
               final String from = paragraphs.removeAt(0).substring(fromPrefix.length);
-              oldFeatures.remove(asset.setAbility(MessageFeature(systemID, timestamp, isRead, subject, from, paragraphs.join('\n'))));
+              oldFeatures.remove(asset.setFeature(MessageFeature(systemID, timestamp, isRead, subject, from, paragraphs.join('\n'))));
             case fcRubblePile:
               final Map<int, int> materials = <int, int>{};
               int material;
@@ -305,10 +305,10 @@ class SystemServer {
                 final int quantity = reader.readInt64();
                 materials[material] = quantity;
               } while (material != 0);
-              oldFeatures.remove(asset.setAbility(RubblePileFeature(manifest: materials)));
+              oldFeatures.remove(asset.setFeature(RubblePileFeature(manifest: materials)));
             case fcProxy:
               final AssetNode? child = _readAsset(reader);
-              oldFeatures.remove(asset.setContainer(ProxyFeature(child)));
+              oldFeatures.remove(asset.setFeature(ProxyFeature(child)));
             case fcKnowledge:
               final Map<int, AssetClass> assetClasses = <int, AssetClass>{};
               final Map<int, Material> materials = <int, Material>{};
@@ -350,15 +350,15 @@ class SystemServer {
                     system.registerMaterial(material);
                 }
               }
-              oldFeatures.remove(asset.setAbility(KnowledgeFeature(assetClasses: assetClasses, materials: materials)));
+              oldFeatures.remove(asset.setFeature(KnowledgeFeature(assetClasses: assetClasses, materials: materials)));
               case fcResearch:
                 final String research = reader.readString();
-                oldFeatures.remove(asset.setAbility(ResearchFeature(current: research)));
+                oldFeatures.remove(asset.setFeature(ResearchFeature(current: research)));
               case fcMining:
                 final double maxRate = reader.readDouble();
                 final int flags = reader.readInt8();
                 final double currentRate = reader.readDouble();
-                oldFeatures.remove(asset.setAbility(MiningFeature(
+                oldFeatures.remove(asset.setFeature(MiningFeature(
                   currentRate: currentRate,
                   maxRate: maxRate,
                   enabled: flags & 0x01 > 0,
@@ -375,7 +375,7 @@ class SystemServer {
                 while ((material = reader.readInt32()) != 0) {
                   materials.add(material);
                 }
-                oldFeatures.remove(asset.setAbility(OrePileFeature(
+                oldFeatures.remove(asset.setFeature(OrePileFeature(
                   pileMass: pileMass,
                   pileMassFlowRate: pileMassFlowRate,
                   timeOrigin: currentTime,
@@ -385,13 +385,13 @@ class SystemServer {
                 )));
               case fcRegion:
                 final int flags = reader.readInt8();
-                oldFeatures.remove(asset.setAbility(RegionFeature(minable: (flags & 0x01) > 0)));
+                oldFeatures.remove(asset.setFeature(RegionFeature(minable: (flags & 0x01) > 0)));
               case fcRefining:
                 final int material = reader.readInt32();
                 final double maxRate = reader.readDouble();
                 final int flags = reader.readInt8();
                 final double currentRate = reader.readDouble();
-                oldFeatures.remove(asset.setAbility(RefiningFeature(
+                oldFeatures.remove(asset.setFeature(RefiningFeature(
                   material: material,
                   currentRate: currentRate,
                   maxRate: maxRate,
@@ -406,7 +406,7 @@ class SystemServer {
                 final double capacity = reader.readDouble();
                 final String name = reader.readString();
                 final int material = reader.readInt32();
-                oldFeatures.remove(asset.setAbility(MaterialPileFeature(
+                oldFeatures.remove(asset.setFeature(MaterialPileFeature(
                   pileMass: pileMass,
                   pileMassFlowRate: pileMassFlowRate,
                   timeOrigin: currentTime,
@@ -421,7 +421,7 @@ class SystemServer {
                 final int capacity = reader.readInt64();
                 final String name = reader.readString();
                 final int material = reader.readInt32();
-                oldFeatures.remove(asset.setAbility(MaterialStackFeature(
+                oldFeatures.remove(asset.setFeature(MaterialStackFeature(
                   pileQuantity: pileQuantity,
                   pileQuantityFlowRate: pileQuantityFlowRate,
                   timeOrigin: currentTime,
@@ -441,7 +441,7 @@ class SystemServer {
               } else {
                 reader.restoreCheckpoint();
               }
-              oldFeatures.remove(asset.setAbility(GridSensorFeature(
+              oldFeatures.remove(asset.setFeature(GridSensorFeature(
                 grid: grid,
                 detectedCount: count,
               )));
@@ -453,7 +453,7 @@ class SystemServer {
               while ((child = _readAsset(reader)) != null) {
                 assignedStructures.add(child!);
               }
-              oldFeatures.remove(asset.setAbility(BuilderFeature(
+              oldFeatures.remove(asset.setFeature(BuilderFeature(
                 capacity: capacity,
                 buildRate: buildRate,
                 assignedStructures: assignedStructures,

@@ -56,6 +56,8 @@ abstract class Feature {
 
   Widget buildRenderer(BuildContext context); // this one is abstract; containers always need to build something
 
+  Widget? buildHeader(BuildContext context) => null;
+
   Widget? buildDialog(BuildContext context) {
     print('warning: $runtimeType has no buildDialog');
      return null;
@@ -73,10 +75,6 @@ abstract class AbilityFeature extends Feature {
   Widget buildRenderer(BuildContext context) {
     assert(rendererType == RendererType.none, '$runtimeType does not override buildRenderer');
     throw StateError('buildRenderer should not be called if rendererType is RendererType.none');
-  }
-
-  Widget? buildHeader(BuildContext context) {
-    return null;
   }
 }
 
@@ -198,40 +196,42 @@ class AssetNode extends WorldNode {
     }
   }
 
-  final Map<Type, AbilityFeature> _abilities = <Type, AbilityFeature>{};
-  final Map<Type, ContainerFeature> _containers = <Type, ContainerFeature>{};
+  final Map<Type, Feature> _features = <Type, Feature>{};
+  ContainerFeature? _container;
 
-  Type setAbility(AbilityFeature ability) {
-    final Type type = ability.runtimeType;
-    _abilities[type]?.detach();
-    _abilities[type] = ability;
-    ability.attach(this);
+  Type setFeature(Feature feature) {
+    final Type type = feature.runtimeType;
+    _features[type]?.detach();
+    _features[type] = feature;
+    feature.attach(this);
+    if (feature is ContainerFeature)
+      _container = feature;
     notifyListeners();
     return type;
   }
 
-  Type setContainer(ContainerFeature container) {
-    final Type type = container.runtimeType;
-    _containers[type]?.detach();
-    _containers[type] = container;
-    container.attach(this);
-    notifyListeners();
-    return type;
-  }
-
-  Set<Type> get featureTypes {
-    return <Type>{
-      ..._abilities.keys,
-      ..._containers.keys,
-    };
-  }
+  Set<Type> get featureTypes => _features.keys.toSet();
 
   void removeFeatures(Set<Type> features) {
     if (features.isNotEmpty) {
-      features.forEach(_abilities.remove);
-      features.forEach(_containers.remove);
+      for (Type type in features) {
+        if (features.runtimeType == _container.runtimeType) {
+          _container = null;
+        }
+        _features.remove(type);
+      }
       notifyListeners();
     }
+    assert(() {
+      int containerCount = 0;
+      for (Feature feature in _features.values) {
+        if (feature is ContainerFeature) {
+          containerCount += 1;
+        }
+      }
+      assert(containerCount <= 1);
+      return true;
+    }());
   }
 
   @override
@@ -242,33 +242,37 @@ class AssetNode extends WorldNode {
 
   @override
   double get maxRenderDiameter {
-    if (parent is AssetNode && (parent! as AssetNode)._containers.containsKey(OrbitFeature)) {
+    if ((parent is AssetNode) && ((parent! as AssetNode)._container is OrbitFeature)) {
+      // TODO: this feels like a hack
       return parent!.maxRenderDiameter;
     }
-    return super.maxRenderDiameter;
+    return super.maxRenderDiameter; // returns this.diameter
   }
 
   @override
   Offset findLocationForChild(WorldNode child, List<VoidCallback> callbacks) {
     assert(child.parent == this, '$this was asked for location of child $child but that child\'s parent is ${child.parent}');
     assert(child is AssetNode);
-    if (_containers.length == 1) {
-      return _containers.values.single.findLocationForChild(child as AssetNode, callbacks);
+    if (_container != null) {
+      return _container!.findLocationForChild(child as AssetNode, callbacks);
     }
     throw UnimplementedError();
   }
 
   void walk(WalkCallback callback) {
     if (callback(this)) {
-      for (ContainerFeature container in _containers.values) {
-        container.walk(callback);
-      }
+      _container?.walk(callback);
     }
   }
 
   HudHandle? _hud;
 
   void showInspector(BuildContext context, { bool toggle = true }) {
+    if (_container is OrbitFeature) {
+      // TODO: this feels like a hack
+      (_container! as OrbitFeature).originChild.showInspector(context, toggle: toggle);
+      return;
+    }
     if (_hud != null) {
       if (toggle) {
         _hud!.cancel();
@@ -303,7 +307,7 @@ class AssetNode extends WorldNode {
     List<Widget>? overlays;
     List<Widget>? boxes;
     BoxShape? shape;
-    for (Feature feature in <Feature>[..._containers.values, ..._abilities.values]) {
+    for (Feature feature in _features.values) {
       switch (feature.rendererType) {
         case RendererType.none:
           ;
@@ -388,7 +392,7 @@ class AssetNode extends WorldNode {
   }
 
   Widget? buildHeader(BuildContext context) {
-    for (AbilityFeature feature in _abilities.values) {
+    for (Feature feature in _features.values) {
       final Widget? result = feature.buildHeader(context);
       if (result != null)
         return result;
@@ -401,6 +405,10 @@ class AssetNode extends WorldNode {
   }
 
   InlineSpan describe(BuildContext context, IconsManager icons, { required double iconSize }) {
+    if (_container is OrbitFeature) {
+      // TODO: this feels like a hack
+      return (_container! as OrbitFeature).originChild.describe(context, icons, iconSize: iconSize);
+    }
     final Widget icon = asIcon(context, size: iconSize, icons: icons);
     return TextSpan(
       children: <InlineSpan>[
@@ -436,6 +444,8 @@ class AssetNode extends WorldNode {
             ),
           ),
         ),
+        if (name.isNotEmpty)
+          TextSpan(text: ' ($className)'),
       ],
     );
   }
@@ -521,7 +531,58 @@ class AssetInspector extends StatelessWidget {
             ),
           ),
         );
-        for (AbilityFeature feature in node._abilities.values) {
+        if (node.parent is AssetNode) {
+          final double fontSize = DefaultTextStyle.of(context).style.fontSize!;
+          final IconsManager icons = IconsManagerProvider.of(context);
+          if ((node.parent! as AssetNode)._container is OrbitFeature) {
+            if ((node.parent!.parent is AssetNode) && ((node.parent!.parent! as AssetNode)._container is OrbitFeature)) {
+              // TODO: this feels like a hack
+              details.add(
+                Padding(
+                  padding: dialogPadding,
+                  child: Text.rich(
+                    TextSpan(
+                      text: 'Location: Orbitting ',
+                      children: <InlineSpan>[
+                        ((node.parent!.parent! as AssetNode)._container! as OrbitFeature).originChild.describe(context, icons, iconSize: fontSize),
+                        // TODO: add our orbit semi major axis here
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            } else {
+              details.add(
+                Padding(
+                  padding: dialogPadding,
+                  child: Text.rich(
+                    TextSpan(
+                      text: 'Location: In ',
+                      children: <InlineSpan>[
+                        (node.parent!.parent! as AssetNode).describe(context, icons, iconSize: fontSize),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }
+          } else {
+            details.add(
+              Padding(
+                padding: dialogPadding,
+                child: Text.rich(
+                  TextSpan(
+                    text: 'Location: ',
+                    children: <InlineSpan>[
+                      (node.parent! as AssetNode).describe(context, icons, iconSize: fontSize),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          }
+        }
+        for (Feature feature in node._features.values) {
           final Widget? section = feature.buildDialog(context);
           if (section != null) {
             details.add(Padding(
@@ -531,8 +592,18 @@ class AssetInspector extends StatelessWidget {
             ));
           }
         }
+        if ((node.parent is AssetNode) && ((node.parent! as AssetNode)._container is OrbitFeature)) {
+          // TODO: this feels like a hack
+          final Widget? section = (node.parent! as AssetNode)._container!.buildDialog(context);
+          if (section != null) {
+            details.add(Padding(
+              key: ObjectKey(node.parent),
+              padding: sectionPadding,
+              child: section,
+            ));
+          }
+        }
         details.add(const Padding(padding: dialogPadding));
-        // TODO: add a button to zoom to the asset (using ZoomProvider.centerOn)
         return HudDialog(
           onClose: onClose,
           heading: Builder(
@@ -547,6 +618,14 @@ class AssetInspector extends StatelessWidget {
               );
             },
           ),
+          buttons: <Widget>[
+            IconButton(
+              icon: const Icon(Icons.location_searching),
+              onPressed: () {
+                ZoomProvider.centerOn(context, node);
+              },
+            ),
+          ],
           child: DefaultTextStyle.merge(
             softWrap: false,
             overflow: TextOverflow.ellipsis,

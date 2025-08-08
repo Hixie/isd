@@ -106,7 +106,7 @@ class OrePileFeature extends AbilityFeature {
     }
     return ListBody(
       children: <Widget>[
-        const Text('Ore storage:', style: bold),
+        const Text('Ore storage', style: bold),
         Padding(
           padding: featurePadding,
           child: result,

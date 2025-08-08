@@ -4,8 +4,11 @@ import 'package:flutter/rendering.dart' hide Gradient;
 import 'package:flutter/widgets.dart' hide Gradient;
 
 import '../assets.dart';
+import '../icons.dart';
 import '../layout.dart';
+import '../prettifiers.dart';
 import '../spacetime.dart';
+import '../widgets.dart';
 import '../world.dart';
 
 typedef Orbit = ({
@@ -19,47 +22,6 @@ typedef Orbit = ({
 const Orbit nilOrbit = (a: 0.0, e: 0.0, omega: 0.0, timeOrigin: 0, clockwise: true);
 
 const double gravitationalConstant = 6.67430e-11; // N m^2 kg^−2
-
-Offset _computeOrbit(Orbit orbit, double primaryMass, double time) {
-  assert(orbit.e <= 0.95); // above this, this approximation falls apart
-  assert(time.isFinite);
-  assert(primaryMass.isFinite);
-  final double period = 1000 * 2 * pi * sqrt(orbit.a * orbit.a * orbit.a / (gravitationalConstant * primaryMass)); // in milliseconds
-  assert(period.isFinite);
-  assert(period > 0.0);
-  final double tau = ((time - orbit.timeOrigin) % period) / period;
-  assert(tau.isFinite);
-  assert(tau >= 0.0);
-  assert(tau < 1.0);
-  final double q = -0.99 * (pi / 4) * (orbit.e - 3 * sqrt(orbit.e)); // approximation constant
-  assert(q.isFinite);
-  final double L = orbit.a * (1 - orbit.e * orbit.e); // length of the semi latus rectum
-  assert(L.isFinite);
-  double theta;
-  if (q == 0) {
-    assert(orbit.e == 0.0);
-    // avoids discontinuity when tan(q) == 0.0, which happens when e == 0.0.
-    theta = 2 * pi * tau;
-  } else {
-    assert(orbit.e != 0.0);
-    final double tanQ = tan(q);
-    assert(tanQ.isFinite);
-    // estimate of the angle from the focal point on the semi major axis to the orbital child
-    // theta = 2 * pi * (tan(tau * 2 * q - q) - (tan(-q))) / (tan(q) - tan(-q));
-    theta = 2 * pi * (tan(tau * 2 * q - q) + tanQ) / (tanQ * 2);
-    assert(theta.isFinite);
-  }
-  if (!orbit.clockwise) {
-    theta = -theta;
-  }
-  final double r = L / (1 + orbit.e * cos(theta)); // distance between the orbiting child and the child at the focal point
-  assert(r.isFinite);
-  assert(r >= 0.0);
-  return Offset(
-    r * cos(theta + orbit.omega),
-    r * sin(theta + orbit.omega),
-  );
-}
 
 class OrbitFeature extends ContainerFeature {
   OrbitFeature(this.spaceTime, this.originChild, this.children);
@@ -135,6 +97,47 @@ class OrbitFeature extends ContainerFeature {
     );
   }
 
+  static Offset _computeOrbit(Orbit orbit, double primaryMass, double time) {
+    assert(orbit.e <= 0.95); // above this, this approximation falls apart
+    assert(time.isFinite);
+    assert(primaryMass.isFinite);
+    final double period = 1000 * 2 * pi * sqrt(orbit.a * orbit.a * orbit.a / (gravitationalConstant * primaryMass)); // in milliseconds
+    assert(period.isFinite);
+    assert(period > 0.0);
+    final double tau = ((time - orbit.timeOrigin) % period) / period;
+    assert(tau.isFinite);
+    assert(tau >= 0.0);
+    assert(tau < 1.0);
+    final double q = -0.99 * (pi / 4) * (orbit.e - 3 * sqrt(orbit.e)); // approximation constant
+    assert(q.isFinite);
+    final double L = orbit.a * (1 - orbit.e * orbit.e); // length of the semi latus rectum
+    assert(L.isFinite);
+    double theta;
+    if (q == 0) {
+      assert(orbit.e == 0.0);
+      // avoids discontinuity when tan(q) == 0.0, which happens when e == 0.0.
+      theta = 2 * pi * tau;
+    } else {
+      assert(orbit.e != 0.0);
+      final double tanQ = tan(q);
+      assert(tanQ.isFinite);
+      // estimate of the angle from the focal point on the semi major axis to the orbital child
+      // theta = 2 * pi * (tan(tau * 2 * q - q) - (tan(-q))) / (tan(q) - tan(-q));
+      theta = 2 * pi * (tan(tau * 2 * q - q) + tanQ) / (tanQ * 2);
+      assert(theta.isFinite);
+    }
+    if (!orbit.clockwise) {
+      theta = -theta;
+    }
+    final double r = L / (1 + orbit.e * cos(theta)); // distance between the orbiting child and the child at the focal point
+    assert(r.isFinite);
+    assert(r >= 0.0);
+    return Offset(
+      r * cos(theta + orbit.omega),
+      r * sin(theta + orbit.omega),
+    );
+  }
+
   @override
   Offset findLocationForChild(AssetNode child, List<VoidCallback> callbacks) {
     if (child == originChild) {
@@ -144,6 +147,36 @@ class OrbitFeature extends ContainerFeature {
     parent.addTransientListeners(callbacks);
     final double time = parent.computeTime(spaceTime, callbacks); // TODO: why parent.computeTime, instead of our own?
     return _computeOrbit(children[child]!, originChild.mass, time);
+  }
+
+  @override
+  Widget buildDialog(BuildContext context) {
+    final double fontSize = DefaultTextStyle.of(context).style.fontSize!;
+    final IconsManager icons = IconsManagerProvider.of(context);
+    return ListBody(
+      children: <Widget>[
+        const Text('Orbital system', style: bold),
+        Padding(
+          padding: featurePadding,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              if (children.isEmpty)
+                const Text('No satellites detected', style: italic),
+              for (AssetNode satellite in children.keys)
+                Text.rich(
+                  TextSpan(
+                    children: <InlineSpan>[
+                      satellite.describe(context, icons, iconSize: fontSize),
+                      TextSpan(text: ' (${prettyLength(children[satellite]!.a)})'),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
   }
 }
 
