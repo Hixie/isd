@@ -9,6 +9,7 @@ import '../assetclasses.dart';
 import '../assets.dart';
 import '../layout.dart';
 import '../materials.dart';
+import '../prettifiers.dart';
 import '../root.dart';
 import '../spacetime.dart';
 import '../stringstream.dart';
@@ -130,16 +131,20 @@ class SystemNode extends WorldNode {
       return true;
     });
     return TickerProviderBuilder(
-      builder: (BuildContext context, TickerProvider vsync) => SystemWidget(
-        node: this,
-        vsync: vsync,
-        diameter: diameter,
-        labels: labels,
-        child: root.build(context),
-        onZoomRequest: (WorldNode node) {
+      builder: (BuildContext context, TickerProvider vsync) {
+        void zoom(WorldNode node) {
           ZoomProvider.centerOn(context, node);
-        },
-      ),
+        }
+        return SystemWidget(
+          node: this,
+          vsync: vsync,
+          spaceTime: spaceTime,
+          diameter: diameter,
+          labels: labels,
+          child: root.build(context),
+          onZoomRequest: zoom,
+        );
+      },
     );
   }
 
@@ -166,6 +171,7 @@ class SystemWidget extends SingleChildRenderObjectWidget {
     required this.diameter,
     required this.labels,
     required this.onZoomRequest,
+    required this.spaceTime,
     super.child,
   });
 
@@ -174,6 +180,7 @@ class SystemWidget extends SingleChildRenderObjectWidget {
   final double diameter;
   final Set<_HighlightDetails> labels;
   final ZoomCallback onZoomRequest;
+  final SpaceTime spaceTime;
 
   @override
   RenderSystem createRenderObject(BuildContext context) {
@@ -183,6 +190,7 @@ class SystemWidget extends SingleChildRenderObjectWidget {
       diameter: diameter,
       labels: labels,
       onZoomRequest: onZoomRequest,
+      spaceTime: spaceTime,
     );
   }
 
@@ -193,7 +201,8 @@ class SystemWidget extends SingleChildRenderObjectWidget {
       ..vsync = vsync
       ..diameter = diameter
       ..labels = labels
-      ..onZoomRequest = onZoomRequest;
+      ..onZoomRequest = onZoomRequest
+      ..spaceTime = spaceTime;
   }
 }
 
@@ -204,9 +213,11 @@ class RenderSystem extends RenderWorldNode with RenderObjectWithChildMixin<Rende
     required double diameter,
     required Set<_HighlightDetails> labels,
     required this.onZoomRequest,
+    required SpaceTime spaceTime,
   }) : _vsync = vsync,
        _diameter = diameter,
-       _labels = labels;
+       _labels = labels,
+       _spaceTime = spaceTime;
 
   TickerProvider get vsync => _vsync;
   TickerProvider _vsync;
@@ -242,6 +253,15 @@ class RenderSystem extends RenderWorldNode with RenderObjectWithChildMixin<Rende
 
   ZoomCallback onZoomRequest;
 
+  SpaceTime get spaceTime => _spaceTime;
+  SpaceTime _spaceTime;
+  set spaceTime (SpaceTime value) {
+    if (value != _spaceTime) {
+      _spaceTime = value;
+      markNeedsPaint();
+    }
+  }
+
   final Map<AssetNode, _HudStatus> _hudStatus = <AssetNode, _HudStatus>{};
 
   @override
@@ -249,8 +269,15 @@ class RenderSystem extends RenderWorldNode with RenderObjectWithChildMixin<Rende
     for (_HudStatus status in _hudStatus.values) {
       status.dispose();
     }
+    _clockLabel.dispose();
     super.dispose();
   }
+
+  final TextPainter _clockLabel = TextPainter(textDirection: TextDirection.ltr, textAlign: TextAlign.right);
+  static final Paint _clockPaint = Paint()
+    ..color = const Color(0xFFFFFFFF)
+    ..blendMode = BlendMode.difference;
+  static final TextStyle _clockStyle = TextStyle(fontSize: 12.0, foreground: _clockPaint);
 
   @override
   void computeLayout(WorldConstraints constraints) {
@@ -350,7 +377,18 @@ class RenderSystem extends RenderWorldNode with RenderObjectWithChildMixin<Rende
         }
       }
     }
+    final Rect viewportRect = Rect.fromCenter(center: Offset.zero, width: constraints.viewportSize.width, height: constraints.viewportSize.height);
+    final Rect systemRect = Rect.fromCircle(center: offset, radius: visibleDiameter / 2.0);
+    if (systemRect.contains(viewportRect.topLeft) && systemRect.contains(viewportRect.bottomRight))
+      _paintClock(context);
     return visibleDiameter;
+  }
+
+  void _paintClock(PaintingContext context) {
+    _clockLabel.text = TextSpan(text: prettyTime(spaceTime.computeTime(<VoidCallback>[markNeedsPaint]).round(), precise: false), style: _clockStyle);
+    _clockLabel.layout();
+    final double d = _clockStyle.fontSize!;
+    _clockLabel.paint(context.canvas, Offset(constraints.viewportSize.width / 2.0 - _clockLabel.width - d, constraints.viewportSize.height / 2.0 - d - _clockLabel.height));
   }
 
   @override

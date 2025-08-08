@@ -5,14 +5,16 @@ import 'dart:math';
 const double lightYearInM = 9460730472580800.0;
 const double auInM = 149597870700.0;
 
-String prettyTime(int time) {
+String prettyTime(int time, { bool precise = true }) {
   final double days = time / (1000 * 60 * 60 * 24);
   final int day = days.truncate();
   final double hours = (days - day) * 24.0;
   final int hour = hours.truncate();
   final double minutes = (hours - hour) * 60.0;
   final int minute = minutes.truncate();
-  return 'Day $day ${hour.toString().padLeft(2, "0")}:${minute.toString().padLeft(2, "0")}';
+  if (precise)
+    return 'Day $day ${hour.toString().padLeft(2, "0")}:${minute.toString().padLeft(2, "0")}';
+  return 'Day $day';
 }
 
 String prettyQuantity(int quantity, { String zero = '0', String singular = '', String plural = '' }) {
