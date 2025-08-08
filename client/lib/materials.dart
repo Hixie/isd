@@ -5,8 +5,9 @@ import 'prettifiers.dart';
 
 enum MaterialKind { ore, component, fluid }
 
+@immutable
 class Material {
-  Material({
+  const Material({
     required this.id,
     required this.icon,
     required this.name,
@@ -27,6 +28,7 @@ class Material {
   final bool isPressurized;
 
   String get tooltip {
+    // TODO: if density becomes game-relevant, consider adding it here
     return '$name\n$description';
   }
 

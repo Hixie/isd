@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:flutter/rendering.dart' hide Gradient;
 import 'package:flutter/widgets.dart' hide Gradient;
 
+import '../abilities/stars.dart';
 import '../assets.dart';
 import '../icons.dart';
 import '../layout.dart';
@@ -93,6 +94,7 @@ class OrbitFeature extends ContainerFeature {
       node: parent,
       diameter: radius * 2.0,
       spaceTime: spaceTime,
+      drawPrimaryOnTop: originChild.featureTypes.contains(StarFeature), // TODO: this is a hack
       children: childList,
     );
   }
@@ -186,12 +188,14 @@ class OrbitWidget extends MultiChildRenderObjectWidget {
     required this.node,
     required this.diameter,
     required this.spaceTime,
+    required this.drawPrimaryOnTop,
     required super.children,
   });
 
   final WorldNode node;
   final double diameter;
   final SpaceTime spaceTime;
+  final bool drawPrimaryOnTop;
 
   @override
   RenderOrbit createRenderObject(BuildContext context) {
@@ -199,6 +203,7 @@ class OrbitWidget extends MultiChildRenderObjectWidget {
       node: node,
       diameter: diameter,
       spaceTime: spaceTime,
+      drawPrimaryOnTop: drawPrimaryOnTop,
     );
   }
 
@@ -207,7 +212,8 @@ class OrbitWidget extends MultiChildRenderObjectWidget {
     renderObject
       ..node = node
       ..diameter = diameter
-      ..spaceTime = spaceTime;
+      ..spaceTime = spaceTime
+      ..drawPrimaryOnTop = drawPrimaryOnTop;
   }
 }
 
@@ -247,8 +253,10 @@ class RenderOrbit extends RenderWorldWithChildren<OrbitParentData> {
     required super.node,
     required double diameter,
     required SpaceTime spaceTime,
+    required bool drawPrimaryOnTop,
   }) : _diameter = diameter,
-       _spaceTime = spaceTime;
+       _spaceTime = spaceTime,
+       _drawPrimaryOnTop = drawPrimaryOnTop;
 
   double get diameter => _diameter;
   double _diameter;
@@ -264,6 +272,15 @@ class RenderOrbit extends RenderWorldWithChildren<OrbitParentData> {
   set spaceTime (SpaceTime value) {
     if (value != _spaceTime) {
       _spaceTime = value;
+      markNeedsPaint();
+    }
+  }
+
+  bool get drawPrimaryOnTop => _drawPrimaryOnTop;
+  bool _drawPrimaryOnTop;
+  set drawPrimaryOnTop (bool value) {
+    if (value != _drawPrimaryOnTop) {
+      _drawPrimaryOnTop = value;
       markNeedsPaint();
     }
   }
@@ -292,6 +309,8 @@ class RenderOrbit extends RenderWorldWithChildren<OrbitParentData> {
     final OrbitParentData primaryChildParentData = child!.parentData! as OrbitParentData;
     primaryChildParentData._computedPosition = Offset.zero;
     child = primaryChildParentData.nextSibling;
+    if (!drawPrimaryOnTop)
+      context.paintChild(firstChild!, offset);
     while (child != null) {
       final OrbitParentData childParentData = child.parentData! as OrbitParentData;
       if (debugPaintSizeEnabled) {
@@ -312,7 +331,8 @@ class RenderOrbit extends RenderWorldWithChildren<OrbitParentData> {
       context.paintChild(child, childParentData._computedPosition!);
       child = childParentData.nextSibling;
     }
-    context.paintChild(firstChild!, offset);
+    if (drawPrimaryOnTop)
+      context.paintChild(firstChild!, offset);
     return diameter * constraints.scale;
   }
 

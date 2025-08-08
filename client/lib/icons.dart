@@ -152,6 +152,9 @@ class IconsManager {
 
   // This renders the icon in the form used to represent knowledge.
   static Widget knowledgeIcon(BuildContext context, String icon, String tooltip) {
+    // TODO: consider if there's some value to having these be tappable to show
+    // a dialog with more information (but what more information; currently all
+    // the relevant information is shown in the tooltip anyway).
     const double iconSize = knowledgeIconSize;
     const double iconPadding = 8.0;
     final IconsManager icons = IconsManagerProvider.of(context);
@@ -833,7 +836,7 @@ class RenderWorldFieldPlacement extends RenderWorldNode
 
   @override
   WorldTapTarget? routeTap(Offset offset) {
-    return null; // TODO: we don't send these taps into the RenderBox world
+    return null;
   }
 
   @override

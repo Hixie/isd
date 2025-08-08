@@ -410,7 +410,7 @@ class Button extends StatelessWidget {
             fontWeight: FontWeight.w700,
           ),
           child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 4.0, sigmaY: 4.0),
+            filter: ImageFilter.blur(sigmaX: 1.0, sigmaY: 3.0),
             blendMode: BlendMode.src,
             child: child,
           ),

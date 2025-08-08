@@ -182,7 +182,11 @@ class SystemServer {
                 final bool clockwise = reader.readBool();
                 children[child!] = (a: semiMajorAxis, e: eccentricity, omega: omega, timeOrigin: timeOrigin, clockwise: clockwise);
               }
-              oldFeatures.remove(asset.setFeature(OrbitFeature(spaceTime, originChild, children)));
+              oldFeatures.remove(asset.setFeature(OrbitFeature(
+                spaceTime,
+                originChild,
+                children,
+              )));
             case fcStructure:
               int structuralIntegrityMax = 0;
               final List<StructuralComponent> components = <StructuralComponent>[];

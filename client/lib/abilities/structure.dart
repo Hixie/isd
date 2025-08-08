@@ -58,21 +58,25 @@ class StructureFeature extends AbilityFeature {
       node: parent,
       diameter: parent.diameter,
       maxDiameter: parent.maxRenderDiameter,
-      child: (max == null) || (minIntegrity == null) || (structuralIntegrityCurrent == max!) ? const SizedBox.shrink() : Align(
-        alignment: Alignment.topCenter,
-        child: LayoutBuilder(
-          builder: (BuildContext context, BoxConstraints constraints) {
-            return SizedBox(
-              width: double.infinity,
-              height: math.min(20.0, constraints.maxWidth / 20.0),
-              // TODO: Semantics
-              child: CustomPaint(
-                painter: HealthBar(this),
-              ),
-            );
-          },
+      child: (max == null) ||
+             (minIntegrity == null) ||
+             (((structuralIntegrityCurrent == max!) || (structuralIntegrityCurrent == 0.0)) && structuralIntegrityRate == 0.0)
+        ? const SizedBox.shrink()
+        : Align(
+          alignment: Alignment.topCenter,
+          child: LayoutBuilder(
+            builder: (BuildContext context, BoxConstraints constraints) {
+              return SizedBox(
+                width: double.infinity,
+                height: math.min(20.0, constraints.maxWidth / 20.0),
+                // TODO: Semantics
+                child: CustomPaint(
+                  painter: HealthBar(this),
+                ),
+              );
+            },
+          ),
         ),
-      ),
     );
   }
 
