@@ -7,19 +7,22 @@ import 'package:flutter/widgets.dart';
 const int uT = 0;
 const int uX = 1; // center
 const int uY = 2; // center
+const int uD = 3; // diameter
+
+// planets
+const int uVisible = 4; // viewport shortest side divider by diameter // TODO: give this to everything
+const int uSeed = 5;
 
 // stars
-const int uD = 3; // diameter
 const int uStarCategory = 4;
 
-// grid
+// grid (does not use uD)
 const int uGridWidth = 3; // pixels
 const int uGridHeight = 4; // pixels
 const int uCellCountWidth = 5; // number of cells
 const int uCellCountHeight = 6; // number of cells
 
 // ghost
-// const int uD = 3; // diameter
 const int uImageWidth = 4;
 const int uImageHeight = 5;
 const int uGhost = 6;
@@ -28,6 +31,7 @@ const int uImage = 0;
 class ShaderLibrary {
   const ShaderLibrary._(
     this._stars,
+    this._planet,
     this._grid,
     this._ghost,
   );
@@ -36,6 +40,11 @@ class ShaderLibrary {
   FragmentShader stars(int starCategory) {
     return _stars.fragmentShader()
       ..setFloat(uStarCategory, starCategory.toDouble());
+  }
+
+  final FragmentProgram _planet;
+  FragmentShader get planet {
+    return _planet.fragmentShader();
   }
 
   final FragmentProgram _grid;
@@ -51,12 +60,19 @@ class ShaderLibrary {
   }
 
   static Future<ShaderLibrary> initialize() async {
-    // TODO: load this in parallel (using Future.wait)
-    return ShaderLibrary._(
-      await FragmentProgram.fromAsset('lib/abilities/stars.frag'),
-      await FragmentProgram.fromAsset('lib/containers/grid.frag'),
-      await FragmentProgram.fromAsset('lib/ghost.frag'),
-    );
+    return Future.wait<FragmentProgram>(<Future<FragmentProgram>>[
+      FragmentProgram.fromAsset('lib/abilities/stars.frag'),
+      FragmentProgram.fromAsset('lib/abilities/planet.frag'),
+      FragmentProgram.fromAsset('lib/containers/grid.frag'),
+      FragmentProgram.fromAsset('lib/ghost.frag'),
+    ]).then((List<FragmentProgram> shaders) {
+      return ShaderLibrary._(
+        shaders[0],
+        shaders[1],
+        shaders[2],
+        shaders[3],
+      );
+    });
   }
 }
 

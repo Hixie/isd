@@ -158,7 +158,8 @@ class SystemServer {
               final int starId = reader.readUInt32();
               oldFeatures.remove(asset.setFeature(StarFeature(starId)));
             case fcPlanet:
-              oldFeatures.remove(asset.setFeature(PlanetFeature()));
+              final int seed = reader.readUInt32();
+              oldFeatures.remove(asset.setFeature(PlanetFeature(seed: seed)));
             case fcSpace:
               final Map<AssetNode, SpaceParameters> children = <AssetNode, SpaceParameters>{};
               final AssetNode primaryChild = _readAsset(reader)!;

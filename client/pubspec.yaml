@@ -26,4 +26,5 @@ flutter:
   shaders:
     - lib/ghost.frag
     - lib/abilities/stars.frag
+    - lib/abilities/planet.frag
     - lib/containers/grid.frag
