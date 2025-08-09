@@ -21,7 +21,7 @@ void main() {
 
   vec2 adjustedPos = max(abs(relativePosInCell - 0.5) - 0.45, 0.0);
 
-  float f = 0.95 + max(adjustedPos.x, adjustedPos.y);
+  float f = 0.25 + max(adjustedPos.x, adjustedPos.y);
 
-  fragColor = vec4(f, f, f, 1.0);
+  fragColor = vec4(f, f, f, 0.2);
 }

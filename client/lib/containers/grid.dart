@@ -237,7 +237,7 @@ class _CellBuildButtonState extends State<CellBuildButton> {
                 duration: _duration,
                 curve: Curves.easeOutCubic,
                 decoration: ShapeDecoration(
-                  color: _hover || _tap ? const Color(0xFFCCCCCC) : const Color(0xFFEEEEEE),
+                  color: _hover || _tap ? const Color(0xFFEEEEEE) : const Color(0x2FEEEEEE),
                   shape: _tap ? const StarBorder(points: 4) : const CircleBorder(),
                 ),
               ),
