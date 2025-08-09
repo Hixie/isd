@@ -33,11 +33,12 @@ type
 
    TPlanetaryBodyFeatureNode = class(TFeatureNode)
    strict private
+      FSeed: Cardinal;
+      FDiameter: Double; // m
+      FTemperature: Double; // K
       FComposition: TOreFractions;
       FMass: Int256; // kg
-      FDiameter: Double; // m
       FConsiderForDynastyStart: Boolean;
-      FTemperature: Double; // K
       function GetBondAlbedo(): Double;
    protected
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
@@ -47,7 +48,7 @@ type
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
    public
-      constructor Create(ADiameter, ATemperature: Double; AComposition: TOreFractions; AMass: Double; AConsiderForDynastyStart: Boolean);
+      constructor Create(ASeed: Cardinal; ADiameter, ATemperature: Double; AComposition: TOreFractions; AMass: Double; AConsiderForDynastyStart: Boolean);
       destructor Destroy(); override;
       procedure UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem); override;
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
@@ -91,9 +92,10 @@ begin
 end;
 
 
-constructor TPlanetaryBodyFeatureNode.Create(ADiameter, ATemperature: Double; AComposition: TOreFractions; AMass: Double; AConsiderForDynastyStart: Boolean);
+constructor TPlanetaryBodyFeatureNode.Create(ASeed: Cardinal; ADiameter, ATemperature: Double; AComposition: TOreFractions; AMass: Double; AConsiderForDynastyStart: Boolean);
 begin
    inherited Create();
+   FSeed := ASeed;
    FDiameter := ADiameter;
    FTemperature := ATemperature;
    FComposition := AComposition;
@@ -282,9 +284,10 @@ var
    Visibility: TVisibility;
 begin
    Visibility := Parent.ReadVisibilityFor(DynastyIndex, CachedSystem);
-   if ((dmDetectable * Visibility <> []) and (dmClassKnown in Visibility)) then
+   if (dmDetectable * Visibility <> []) then
    begin
       Writer.WriteCardinal(fcPlanetaryBody);
+      Writer.WriteCardinal(FSeed);
    end;
 end;
 
@@ -293,7 +296,9 @@ var
    QuadIndex: Int256.TQuadIndex;
    OreIndex: TOres;
 begin
+   Journal.WriteCardinal(FSeed);
    Journal.WriteDouble(FDiameter);
+   Journal.WriteDouble(FTemperature);
    for QuadIndex in Int256.TQuadIndex do
       Journal.WriteUInt64(FMass.AsQWords[QuadIndex]);
    Journal.WriteCardinal(Length(FComposition));
@@ -304,7 +309,6 @@ begin
       Journal.WriteCardinal(FComposition[OreIndex].AsCardinal);
    end;
    Journal.WriteBoolean(FConsiderForDynastyStart);
-   Journal.WriteDouble(FTemperature);
 end;
 
 procedure TPlanetaryBodyFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
@@ -313,7 +317,9 @@ var
    Index, Count: Cardinal;
    Material: TMaterial;
 begin
+   FSeed := Journal.ReadCardinal();
    FDiameter := Journal.ReadDouble();
+   FTemperature := Journal.ReadDouble();
    for QuadIndex in Int256.TQuadIndex do
       FMass.AsQWords[QuadIndex] := Journal.ReadUInt64();
    Count := Journal.ReadCardinal();
@@ -329,7 +335,6 @@ begin
       FComposition[Material.ID].AsCardinal := Journal.ReadCardinal();
    end;
    FConsiderForDynastyStart := Journal.ReadBoolean();
-   FTemperature := Journal.ReadDouble();
 end;
 
 procedure TPlanetaryBodyFeatureNode.SetTemperature(ATemperature: Double);

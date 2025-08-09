@@ -290,11 +290,16 @@ could have multiple `fcSpaceSensor` features with different settings.
 #### `fcPlanetaryBody` (0x07)
 
 ```bnf
-<featuredata>       ::= ; nothing
+<featuredata>       ::= <seed>
+<seed>              ::= <uint32>
 ```
 
 The planetary body feature describes a non-stellar celestial feature
 such as a planet, moon, dwarf planet, asteroid, etc.
+
+The seed determines the planet's geological features.
+
+> TODO: define how
 
 
 #### `fcSpace` (0x02)

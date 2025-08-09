@@ -20,6 +20,7 @@ type
       Mass: Double; // approximation computed from Composition
       function GetAverageDistance(): Double;
    public
+      Seed: Cardinal;
       Distance, Eccentricity: Double;
       Clockwise, Habitable: Boolean;
       Composition: array of TBodyComposition;
@@ -344,6 +345,7 @@ begin
       begin
          DidAddPlanet := False;
          Planet := Default(TBody);
+         Planet.Seed := Randomizer.GetUInt32();
          Planet.Distance := Distance;
          Planet.Clockwise := Clockwise;
          if (AddMaterialsTo(Planet, Distance, Materials, Randomizer)) then
@@ -432,6 +434,7 @@ begin
                begin
                   MoonDistance := Randomizer.GetDouble(0.0, PlanetHillRadius);
                   Moon := Default(TBody);
+                  Moon.Seed := Randomizer.GetUInt32();
                   if (Randomizer.GetBoolean(MoonDirectionSwitchProbability)) then
                   begin
                      Moon.Clockwise := not Planet.Clockwise;

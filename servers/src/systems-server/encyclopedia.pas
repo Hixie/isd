@@ -466,6 +466,7 @@ procedure TEncyclopedia.CondenseProtoplanetaryDisks(Space: TSolarSystemFeatureNo
          nil, // no owner
          [
             TPlanetaryBodyFeatureNode.Create(
+               Body.Seed,
                Body.Radius * 2.0, // diameter of body
                Body.Temperature,
                AssetComposition,
