@@ -1,0 +1,554 @@
+research nothing {
+  id: 0 (root);
+}
+
+research election {
+  id: 1;
+  requires nothing;
+  takes 24 hours;
+  rewards [
+    Congratulations
+
+    From: Head of Campaign
+   
+    Congratulations! The votes are in, and you have won the election.
+  ];
+}
+
+research science {
+  id: 2;
+  requires election;
+  takes 1 week;
+  rewards [
+    Congratulations
+
+    From: Director of Research
+
+    I hear congratulations are in order! Since we've now been formally
+    elected, we can now start putting our research plan into place, as
+    we discussed during the campaign. For now, I've got our
+    researchers looking into politics, as they were doing in the
+    campaign itself. But let me know if you think we should look at
+    something else.
+
+    Some of our researchers have asked me to tell you that they think
+    we should study philosophy, which is to say, the question of life,
+    the universe, and everything. There's another group, they call
+    themselves the "pragmatics", who think we should be working out
+    how to expand as fast as possible, and who thus argue we should be
+    looking more into the topic of city development.
+    
+    I recommend that you visit our offices in the city at your
+    convenience and point us in the right direction. As always,
+    researchers think about all kinds of things, but a little
+    motivation can really help focus the mind.
+  ];
+}
+
+topic "Politics" requires election;
+
+material {
+  id: 100001;
+  name: "Brick" ("Square rock");
+  description: "A piece of rock, fashioned into a stackable component, useful for creating buildings.";
+  icon: "brick";
+  
+  metrics: component 10cm weighs 1kg;
+  // metrics: fluid 1m weighs 1kg;
+  // metrics: bulk 1m weighs 1kg;
+}
+
+
+// ------------------------------------------------------------------------
+// BRANCH FOR BASICS OF PHYSICS
+
+topic "Philosophy" requires science;
+
+implicit topic "Church support";
+
+research theophany {
+  id: 1000;
+  takes 1 week;
+  weight 1;
+  requires science;
+  with "Philosophy": time -50%, weight +2000%;
+  rewards [
+    Where we come from
+
+    From: Director of Research
+
+    One of our researchers has figured out where life began! I include
+    his report below.
+
+    INTRODUCTION
+
+    The great question of life, the universe, and everything has
+    puzzled us ever since we came up with it. This is the answer: we
+    were made and placed here by a most powerful being.
+
+    PARALLELS WITH IMAGINATION
+    
+    It's like how when a child plays with his toys, he can put some
+    toy people in a toy city.
+
+    PARALLELS WITH SOCIETY
+    
+    It's like how when a criminal is put in prison, we turn him into a
+    prisoner.
+
+    CONCLUSION
+    
+    It's obvious, really. The only possible answer to the question of
+    life, the universe, and everything is that a most powerful being
+    put us here.
+  ];
+}
+
+class church {
+  id: 1;
+  name: "Church" ("Tall building");
+  description: "This tall building is intended for communicating with the purported creator being.";
+  icon: "church";
+  build: land;
+  // feature: TStructureFeatureClass size 30m, materials (
+  //   "Walls": "Brick" * 1000000,
+  // ), minimum 1000000;
+  feature: TStructureFeatureClass size 100m, materials (
+    "Frame": "Iron" * 100,
+    "Facing": "Silicon" * 50,
+    "Decorations": "Iron" * 10,
+  ), minimum 140;
+  feature: TResearchFeatureClass provides "Church support";
+}
+
+research religion {
+  id: 1001;
+  requires theophany;
+  takes 1 week;
+  with "Philosophy": time -50%, weight +2000%;
+  rewards asset church;
+  rewards [
+    Communicating with our creator
+    
+    From: Bishop of Research, Powerful Being subdivision
+    
+    Since we were put here by a powerful being, we figured it would be
+    a good idea to communicate with that being. Upon further thought,
+    the obvious way to do that is to build a big building for that
+    purpose, and encourage people to go there to talk to him. Let us
+    know where you want us to build these buildings.
+  ];
+}
+
+topic "Religion" requires religion;
+
+research organized-religion {
+  id: 1002;
+  requires religion;
+  takes 1 week;
+  with "Religion": time -50%, weight +2000%;
+  without "Church support": time +5000%;
+  rewards [
+    Reorganisation
+
+    From: Arch Bishop
+    
+    FYI, we've moved the Powerful Being subdivision into its own
+    organisation, which I'll be leading. To help people understand the
+    relationship between our organisation and churches, we're going to
+    call this organisation The Church.
+  ];
+}
+
+research religion-irritation {
+  id: 1003;
+  requires religion;
+  takes 1 month;
+  with "Philosophy": time -25%, weight +100%;
+  with "Religion": time +25%, weight -10%;
+  with organized-religion: time -90%, weight -75%;
+  rewards [
+    "Powerful Being" nonsense
+    
+    From: Director of Research
+    
+    Hey,
+    
+    I'm starting to get really irritated by the former researcher who
+    now styles himself a Bishop. He seems to be leaping to conclusions
+    in a way I'm not entirely comfortable with. Let me know if I
+    should put the research team on to studying this.
+  ];
+}
+
+topic "The Impact of Religion on Society" requires religion-irritation;
+
+research religion-bad {
+  id: 1004;
+  takes 1 month;
+  requires religion;
+  requires religion-irritation;
+  with "Religion": time -10%, weight -50%;
+  with "The Impact of Religion on Society": time -25%, weight +1000%;
+  with "Church support": time +5000%, weight -25%;
+  without "Church support": time -10%, weight +100%;
+  rewards [
+    The Impact of Religion on Society
+
+    From: Director of Research
+    
+    We've concluded our research on The Impact of Religion on Society.
+    I include his report below.
+    
+    INTRODUCTION
+    
+    The answer to the great question of life, the universe, and
+    everything, namely that there is a supreme being, may have
+    unintentional results.
+    
+    PARALLELS WITH GAMES
+    
+    If players in a game start inventing new rules that were not
+    properly tested, they often end up unbalancing the game.
+    
+    PARALLELS WITH ANIMALS
+    
+    When you introduce a cat into a cage with pigeons, the pigeons
+    tend to die.
+    
+    CONCLUSION
+    
+    We should probably not encourage this powerful being concept.
+  ];
+}
+
+implicit topic requires religion-bad, obsoletes "The Impact of Religion on Society";
+
+// Breakthrough: The Scientific Method
+
+
+// ------------------------------------------------------------------------
+// RANDOM STUFF FOR DEV VERSION
+
+topic "City Development" requires science;
+
+class city {
+  id: 2;
+  name: "City" ("Settlement");
+  description: "A collection of buildings and infrastructure for people to live at.";
+  icon: "city";
+  build: land;
+  feature: TParameterizedGridFeatureClass 6*6, 100m, land;
+  feature: TKnowledgeBusFeatureClass;
+  feature: TFoodBusFeatureClass;
+  // feature: TStructureFeatureClass size 100m, materials (
+  //   "Roads": "Silicon" * 1000,
+  //   "Infrastructure": "Iron" * 1000,
+  // ), minimum 1500;
+}
+
+research city-planning {
+  id: 2000;
+  takes 1 week;
+  with "City Development": time -25%, weight +5000%;
+  requires election;
+  rewards asset city;
+  rewards [
+    Breakthrough in City Planning
+
+    From: Research
+
+    I think we've worked out a good way to plan how to build big
+    settlements, so we can start building more cities now.
+    
+    Each city will give us enough infrastructure to do more research.
+  ];
+}
+
+class mining-big-hole {
+  id: 3;
+  name: "Big mining hole" ("Large hole in the ground");
+  description: "This is a hole used for mining dirt from the ground.";
+  icon: "mining-big-hole";
+  build: land;
+  feature: TSizeFeatureClass 100m;
+  feature: TMiningFeatureClass max throughput 10kg/s;
+  feature: TOrePileFeatureClass max mass 30000kg;
+}
+
+class pile {
+  id: 4;
+  name: "Big ore pile" ("Big pile of dirt");
+  description: "This is where we put resources we have mined from the ground.";
+  icon: "empty-land";
+  build: land;
+  feature: TSizeFeatureClass 100m;
+  feature: TOrePileFeatureClass max mass 3000000kg;
+}
+
+topic "Mining" requires science;
+
+research mining-big {
+  id: 3000;
+  takes 3 weeks;
+  weight 1;
+  requires science;
+  with "Mining": time -1400%, weight +500%;
+  rewards asset mining-big-hole;
+  rewards [
+    Mining
+    
+    From: Director of Research
+
+    We've discovered how to extract dirt from the ground by digging holes.
+  ];
+}
+
+research piles {
+  id: 3001;
+  takes 3 weeks;
+  weight 1;
+  requires mining-big;
+  with "Mining": time -1400%, weight +500%;
+  rewards asset pile;
+  rewards [
+    Storage for mining
+    
+    From: Director of Research
+
+    We've figured out we can put the stuff we dig from the ground into separate piles around the region.
+  ];
+}
+
+
+/*
+Breakthrough: Religion and Cities
+Needs: Organised Religion
+Needs: City Planning
+Obscurity: 525600
+
+News: Church Cities
+For: Religion and Cities
+Kind: Memo
+Body: From: Arch Bishop
+Body: Subject: More efficient setup for worship of the powerful being
+Body: 
+Body: After seeing the recent breakthrough on city planning, we think the Church should build cities around our churches. Let us know where you think we should build them. Thanks.
+Body:
+Body: (Note: This is currently the end of the game. Congratulations!)
+
+Technology: Church City
+Needs: Religion and Cities
+Implementation: TOwnableActor ../images/church-2.png land 5000 1000
+Facility: TResearchFacility
+Facility: TPrayerFacility
+*/
+
+
+class mining-hole {
+  id: 5000;
+  name: "Mining hole" ("Hole in the ground");
+  description: "This is a hole used to dig in the ground and get dirt and rocks and stuff.";
+  icon: "mining-hole";
+  build: land;
+  feature: TSizeFeatureClass 50m;
+  feature: TMiningFeatureClass max throughput 1kg/s;
+  feature: TOrePileFeatureClass max mass 30000kg;
+}
+
+research mining {
+  id: 5001;
+  takes 1 hour;
+  weight 10000;
+  requires nothing;
+  rewards asset mining-hole;
+  rewards [
+    Don't mind the holes
+
+    From: Parent of Charlie
+
+    Hey my kid Charlie has started digging a hole I hope that's ok.
+    He said he found stuff in the ground. Might be worth looking into.
+  ];
+}
+
+class giant-mining-hole {
+  id: 5001;
+  name: "Mining hole with more help" ("Hole in the ground");
+  description: "This is a hole used to dig in the ground and get dirt and rocks and stuff, with lots of people helping.";
+  icon: "mining-hole";
+  build: land;
+  feature: TSizeFeatureClass 100m;
+  feature: TMiningFeatureClass max throughput 10kg/s;
+  feature: TOrePileFeatureClass max mass 300000kg;
+}
+
+research giant-mining {
+  id: 5002;
+  takes 2 hours;
+  weight 1000;
+  requires mining;
+  rewards asset giant-mining-hole;
+  rewards [
+    Apologies please don't evict us
+
+    From: Parent of Charlie
+
+    I'm sorry about this but Charlie got some of his friends and now
+    they've figured out how to build even larger holes, I'm really sorry
+    please don't evict us I'll try to stop him, please!
+  ];
+}
+
+class research-hole {
+  id: 5;
+  name: "Archeological hole" ("Hole in the ground");
+  description: "This is a hole used to dig in the ground for artifacts.";
+  icon: "mining-hole";
+  build: land;
+  feature: TSizeFeatureClass 100m;
+  feature: TMiningFeatureClass max throughput 1kg/s;
+  feature: TResearchFeatureClass;
+}
+
+research archeology {
+  id: 3002;
+  requires science;
+  takes 1 week;
+  with "Mining": time -90%, weight +2000%;
+  rewards asset research-hole;
+  rewards [
+    Stuff in holes
+    
+    From: Director of Research
+    
+    We've found stuff in holes that seem interesting. You can now make archeological holes that will study those things.
+  ];
+}
+
+class iron-team {
+  id: 6;
+  name: "Iron team table" ("Table");
+  description: "This is a table used by a small team of people to go through unsorted ores and pluck out bits of iron.";
+  icon: "table";
+  build: land;
+  feature: TSizeFeatureClass 10m;
+  feature: TRefiningFeatureClass for "Iron", max throughput 1000kg/h;
+  feature: TMaterialPileFeatureClass for "Iron", capacity 1000kg;
+}
+
+class iron-pile {
+  id: 7;
+  name: "Iron pile" ("Pile");
+  description: "This is a pile used for storing iron.";
+  icon: "empty-land";
+  build: land;
+  feature: TSizeFeatureClass 500m;
+  feature: TMaterialPileFeatureClass for "Iron", capacity 100000kg;
+}
+
+research iron-team {
+  id: 5003;
+  takes 2 hours;
+  weight 1000;
+  requires mining; // should require actual iron being mined out
+  rewards asset iron-team;
+  rewards asset iron-pile;
+  rewards material "Iron";
+  rewards [
+    Iron team
+
+    From: Director of Research
+
+    So we were looking at the stuff we've been digging out of the
+    ground and we're starting to reliably recognize this one material
+    we've decided to call Iron. It's sort of lumpy and when you
+    scratch it it's shiny, but the most interesting thing is it's very
+    hard.
+
+    I've formed a team that I've called the Iron Team to see if we can
+    extract some of this Iron stuff out of our piles of ore that we've
+    been making. We'll use one of our spare tables and they can go
+    through and filter out the Iron they find.
+
+    We can put the iron we find into a big pile.
+  ];
+}
+
+class drill {
+  id: 8;
+  name: "Drilling Hole" ("Hole");
+  description: "This is a drilling hole used for obtaining large quantities of ore.";
+  icon: "drill";
+  build: land;
+  feature: TSizeFeatureClass 500m;
+  feature: TMiningFeatureClass max throughput 1000kg/h;
+}
+
+research drill {
+  id: 5004;
+  takes 2 hours;
+  weight 2000;
+  requires mining; // should require actual iron being mined out
+  rewards asset drill;
+  rewards [
+    Drill!
+
+    From: Director of Research
+
+    So we were looking at this hole idea that Charlie came up with and we
+    realized that a much better way to do this would be to use some of the
+    many drills we have in storage to just dig right out of the ground.
+
+    We'll need some piles to store the ore though, because if we put the
+    stuff near our drill, it'll just be shaken by the drill and will fall
+    back into the hole.
+  ];
+}
+
+
+
+class silicon-table {
+  id: 9;
+  name: "Silicon Table" ("Table");
+  description: "This is a table used for sorting out silicon.";
+  icon: "table";
+  build: land;
+  feature: TRefiningFeatureClass for "Silicon", max throughput 1000kg/h;
+  feature: TMaterialPileFeatureClass for "Silicon", capacity 1000kg;
+  feature: TStructureFeatureClass size 10m, materials (
+    "Table": "Iron" * 2,
+    "Covering": "Silicon" * 1,
+  ), minimum 1;
+  feature: TBuilderFeatureClass capacity 1, build 100 hp/h;
+}
+
+class silicon-pile {
+  id: 10;
+  name: "Silicon pile" ("Pile");
+  description: "This is a pile used for storing silicon.";
+  icon: "empty-land";
+  build: land;
+  feature: TSizeFeatureClass 500m;
+  feature: TMaterialPileFeatureClass for "Silicon", capacity 100000kg;
+}
+
+research silicon-table {
+  id: 5005;
+  takes 2 hours;
+  weight 1000;
+  requires iron-team; // should require actual silicon being mined out
+  rewards asset silicon-table;
+  rewards asset silicon-pile;
+  rewards material "Silicon";
+  rewards [
+    Silicon
+
+    From: Iron team
+
+    While looking for iron, we've noticed another resource, which 
+    we're calling "Silicon", that's also pretty recognizable. We need
+    tables made of iron to sort it out, though, since it's small and 
+    falls through cracks easily.
+  ];
+}

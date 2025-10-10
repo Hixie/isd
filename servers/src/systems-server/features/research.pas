@@ -4,7 +4,7 @@ unit research;
 
 interface
 
-// {$DEFINE VERBOSE}
+//{$DEFINE VERBOSE}
 
 uses
    hashtable, genericutils, basenetwork, systemnetwork, systems, serverstream, systemdynasty, materials, techtree, time;
@@ -406,24 +406,13 @@ procedure TResearchFeatureNode.UpdateResearch(CachedSystem: TSystem);
       Result := False;
    end;
 
+   function CompareCandidates(const A, B: TResearch): Integer;
+   begin
+      Result := A.ID - B.ID; // $R-
+   end;
+
 var
    Candidates: TResearch.TArray;
-
-   function CompareCandidates(const A, B: Integer): Integer;
-   begin
-      Result := Candidates[A].ID - Candidates[B].ID; // $R-
-   end;
-
-   procedure SwapCandidates(const A, B: Integer);
-   var
-      Temp: TResearch;
-   begin
-      Temp := Candidates[A];
-      Candidates[A] := Candidates[B];
-      Candidates[B] := Temp;
-   end;
-
-var
    KnowledgeBase: TGetKnownResearchesMessage;
    WeightedCandidates: TWeightedResearchHashTable;
    Injected: TBusMessageResult;
@@ -548,14 +537,15 @@ begin
          Candidates[Index] := Candidate;
          Inc(Index);
       end;
-      Sort(Length(Candidates), @CompareCandidates, @SwapCandidates); // $R-
-      Assert(Length(Candidates) = WeightedCandidates.Count);
 
+      specialize Sort<TResearch>(Candidates, @CompareCandidates);
+      Assert(Length(Candidates) = WeightedCandidates.Count);
+      
       // Pick a random number using our seed.
       SelectedResearch := FSeed mod TotalWeight;
       Assert(SelectedResearch >= 0);
       Assert(SelectedResearch < TotalWeight);
-
+      
       // Find the corresponding research
       Index := Low(Candidates);
       repeat

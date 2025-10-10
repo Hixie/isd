@@ -286,23 +286,30 @@ var
    Visibility: TVisibility;
    Child: TAssetNode;
    ChildData: PSurfaceData;
+   FoundChild: Boolean;
 begin
    Visibility := Parent.ReadVisibilityFor(DynastyIndex, CachedSystem);
    if (Visibility <> []) then
    begin
-      Writer.WriteCardinal(fcSurface);
+      FoundChild := False;
       for Child in FChildren do
       begin
          Assert(Assigned(Child));
          if (Child.IsVisibleFor(DynastyIndex, CachedSystem)) then
          begin
+            if (not FoundChild) then
+            begin
+               Writer.WriteCardinal(fcSurface);
+               FoundChild := True;
+            end;
             ChildData := Child.ParentData;
             Writer.WriteCardinal(Child.ID(CachedSystem, DynastyIndex));
             Writer.WriteDouble(ChildData^.X * FFeatureClass.FCellSize);
             Writer.WriteDouble(ChildData^.Y * FFeatureClass.FCellSize);
          end;
       end;
-      Writer.WriteCardinal(0);
+      if (FoundChild) then
+         Writer.WriteCardinal(0);
    end;
 end;
 

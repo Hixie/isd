@@ -4,6 +4,9 @@ unit time;
 
 interface
 
+uses
+   clock;
+
 type
    TMillisecondsDuration = record // solar system milliseconds duration; supports Infinity and -Infinity
    private
@@ -43,6 +46,7 @@ type
    public
       constructor FromMilliseconds(A: Double); overload;
       constructor FromMilliseconds(A: Int64); overload;
+      constructor FromDurationSinceOrigin(A: TMillisecondsDuration); overload;
       function ToString(): UTF8String;
       property AsInt64: Int64 read Value; // for storage, restore with FromMilliseconds(Int64)
       property IsInfinite: Boolean read GetIsInfinite;
@@ -57,6 +61,7 @@ type
    public
       constructor FromMilliseconds(A: Double); overload;
       constructor FromMilliseconds(A: Int64); overload;
+      constructor FromDateTimes(A, B: TDateTime); overload;
       function ToString(): UTF8String;
    end;
 
@@ -134,34 +139,20 @@ operator <= (A: TRate; B: TRate): Boolean; inline;
 operator > (A: TRate; B: TRate): Boolean; inline;
 operator >= (A: TRate; B: TRate): Boolean; inline;
 
+type
+   TMockClock = class(TRootClock)
+   private
+      FNow: TDateTime;
+   public
+      constructor Create(); override;
+      procedure Advance(Duration: TMillisecondsDuration);
+      function Now(): TDateTime; override;
+   end;
+
 implementation
 
 uses
-   dateutils, math, sysutils, exceptions;
-
-const FloatFormat: TFormatSettings = (
-   CurrencyFormat: 1;
-   NegCurrFormat: 1;
-   ThousandSeparator: ',';
-   DecimalSeparator: '.';
-   CurrencyDecimals: 2;
-   DateSeparator: '-';
-   TimeSeparator: ':';
-   ListSeparator: ',';
-   CurrencyString: '$';
-   ShortDateFormat: 'yyyy-mm-dd';
-   LongDateFormat: 'dd" "mmmm" "yyyy';
-   TimeAMString: 'AM';
-   TimePMString: 'PM';
-   ShortTimeFormat: 'hh:nn';
-   LongTimeFormat: 'hh:nn:ss';
-   ShortMonthNames: ('Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec');
-   LongMonthNames: ('January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December');
-   ShortDayNames: ('Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat');
-   LongDayNames: ('Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday');
-   TwoDigitYearCenturyWindow: 50
-);
-
+   dateutils, math, sysutils, exceptions, stringutils;
 
 // inline functions should be first
 
@@ -509,6 +500,11 @@ begin
    Value := A;
 end;
 
+constructor TTimeInMilliseconds.FromDurationSinceOrigin(A: TMillisecondsDuration);
+begin
+   Value := A.Value;
+end;
+
 function TTimeInMilliseconds.ToString(): UTF8String;
 begin
    if (Value = Low(Value)) then
@@ -603,6 +599,11 @@ begin
    Assert(A <= High(Value));
    Assert(A >= Low(Value));
    Value := Round(A);
+end;
+
+constructor TWallMillisecondsDuration.FromDateTimes(A, B: TDateTime);
+begin
+   Value := MillisecondsBetween(A, B);
 end;
 
 function TWallMillisecondsDuration.ToString(): UTF8String;
@@ -789,6 +790,22 @@ begin
    begin
       Result := B;
    end;
+end;
+
+
+constructor TMockClock.Create();
+begin
+   FNow := 0.0;
+end;
+
+procedure TMockClock.Advance(Duration: TMillisecondsDuration);
+begin
+   FNow := FNow + Duration.AsInt64 / MSecsPerDay;
+end;
+
+function TMockClock.Now(): TDateTime;
+begin
+   Result := FNow;
 end;
 
 end.

@@ -78,9 +78,9 @@ There are currently no notifications defined.
 
 <timefactor>        ::= <double> ; rate of time in system (usually 500.0)
 
-<x>                 ::= position of system origin relative to galaxy left, in meters
+<x>                 ::= <double> ; position of system origin relative to galaxy left, in meters
 
-<y>                 ::= position of system origin relative to galaxy top, in meters
+<y>                 ::= <double> ; position of system origin relative to galaxy top, in meters
 
 <assetupdate>       ::= <assetid> <properties> <feature>* <zero32>
 
@@ -91,7 +91,7 @@ There are currently no notifications defined.
 <properties>        ::= <dynasty> ; owner
                         <double>  ; mass
                         <double>  ; mass flow rate
-                        <double>  ; size
+                        <double>  ; size (diameter)
                         <string>  ; name
                         <assetclassid> ; zero if class is not known
                         <string>  ; icon
@@ -165,11 +165,11 @@ Asset ID zero is reserved for indicating the absence of an asset
 the asset in question).
 
 The `<properties>` are the owner dynasty ID (zero for unowned assets),
-the asset's mass in kg and mass flow rate in kg/ms, the asset's rough
-diameter in meters, the asset's name (if any; this is often the empty
-string), the asset's class ID, the class' icon name, a class name
-(brief description of the object, e.g. "star", "planet", "ship"), and
-a longer description of the object. The icon, class name, and
+the asset's mass in kg and mass flow rate in kg/ms, the asset's size
+(rough diameter in meters), the asset's name (if any; this is often
+the empty string), the asset's class ID, the class' icon name, a class
+name (brief description of the object, e.g. "star", "planet", "ship"),
+and a longer description of the object. The icon, class name, and
 description are the same as the asset class icon, name, and
 description, if the asset class is known.
 
@@ -187,12 +187,11 @@ represent data, e.g. messages in a message board.
 The root asset will always be a physical asset. All descendants of
 virtual assets will be virtual. Unless otherwise specified, the
 children of physical assets are physical. It is an error if the server
-sends a virtual asset where a physical asset is expected.
+sends a virtual asset where a physical asset is expected, or vice
+versa.
 
 Asset class IDs are numbers in the range -2,147,483,648 to
 2,147,483,647, but not zero (i.e. signed 32 bit integers).
-
-The diameter is always bigger than zero.
 
 The class name may vary in precision based on the knowledge that the
 dynasty's observing asset has. The icon generally does not vary.
@@ -285,21 +284,6 @@ could have multiple `fcSpaceSensor` features with different settings.
 <featuredata>       ::= <starid>
 <starid>            ::= <uint32>
 ```
-
-
-#### `fcPlanetaryBody` (0x07)
-
-```bnf
-<featuredata>       ::= <seed>
-<seed>              ::= <uint32>
-```
-
-The planetary body feature describes a non-stellar celestial feature
-such as a planet, moon, dwarf planet, asteroid, etc.
-
-The seed determines the planet's geological features.
-
-> TODO: define how
 
 
 #### `fcSpace` (0x02)
@@ -519,6 +503,21 @@ because they are by definition ancestors of the asset with the
 inferred. So these IDs are never zero.)
 
 
+#### `fcPlanetaryBody` (0x07)
+
+```bnf
+<featuredata>       ::= <seed>
+<seed>              ::= <uint32>
+```
+
+The planetary body feature describes a non-stellar celestial feature
+such as a planet, moon, dwarf planet, asteroid, etc.
+
+The seed determines the planet's geological features.
+
+> TODO: define how
+
+
 ### `fcPlotControl` (0x08)
 
 ```bnf
@@ -727,7 +726,7 @@ proxy feature.
                         <string>  ; icon
                         <string>  ; material name
                         <string>  ; description
-                        <uint64> ; flags, see below
+                        <uint64>  ; flags, see below
                         <double>  ; mass (kg) per unit
                         <double>  ; mass (kg) per cubic meter (density)
 ```
@@ -854,6 +853,8 @@ labeled as rate-limited by the targets, the actual useful mining rate
 is determined by the consumers (refineries, `fcRefining`) but the
 given rate is the maximum rate; excess mining product that could not
 be refined is returned to the ground (where it may be mined again).
+
+> TODO: all the stuff about bits 2 and 3 above is self-contradictory
 
 The materials mined will be evident in assets with an `fcOrePile`
 feature (which will have a non-zero mass flow rate while the materials
@@ -1074,6 +1075,36 @@ asset.
 
 This feature is only sent to the client if the dynasty has access to
 the asset's internals.
+
+
+### `fcInternalSensor` (0x1B)
+
+```bnf
+<featuredata>       ::= [<feature>]
+```
+
+Internal sensors work by walking down the tree from the node itself.
+Internal sensors can detect any asset, regardless of size, unless it
+is cloaked in some way. (It represents internal cameras, crew looking
+around, etc.)
+
+The trailing `<feature>`, if present, is a `fcInternalSensorStatus`
+feature, documented next.
+
+
+### `fcInternalSensorStatus` (0x1C)
+
+```bnf
+<featuredata>       ::= <count>
+<count>             ::= <uint32> ; number of detected assets
+```
+
+Reports the total number of detected nodes.
+
+This feature, if present, always follows a `fcInternalSensor` feature.
+If there are multiple sensors, they may each have a trailing
+`fcInternalSensorStatus`; each status applies to the immediately
+preceding sensor.
 
 
 # Systems Server Internal Protocol

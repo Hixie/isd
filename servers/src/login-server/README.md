@@ -1,27 +1,6 @@
 # Protocol
 
-WebSocket text frames whose format is null-terminated fields of UTF-8.
-Each field is a text string (e.g. integers are represented using ASCII
-digits; see the README.md file in the parent directory).
-
-The first field is a uint64 field called the conversation ID (in the
-range of a 32 bit unsigned integer). The second field is a text string
-specifying the command (e.g. `new`, `login`, etc). Subsequent fields
-depend on the specified command, as described in the subsections
-below.
-
-The server responds in the same format. Replies always start with a
-field that says `reply`, then the conversation ID (uint64), then
-either a `T` if the command was successful, followed by some extra
-data as described below, or an `F` indicating failure, followed by an
-error code from the list in `../common/isderrors.pas`.
-
-Replies are not guaranteed to be sent back in the order that messages
-were received (hence the conversation ID field).
-
-In the command descriptions below, fields are strings unless otherwise
-stated.
-
+See the README.md in the parent directory for context.
 
 ## `new`
 

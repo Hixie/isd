@@ -1,0 +1,14 @@
+login server port,40000
+home star category,10
+home star index,4
+galaxy categories,0,1
+star categories,2,3,4,5,6,7,8,9,10
+home candidate categories,2,3,4,5,6,7,8,9
+minimum distance from home,20316764
+local space radius,10158382
+max stars per home system,3
+galaxy diameter,1e21
+star grouping threshold,9460730472580800.0
+gravitational influence constant,5e-15
+default time rate,500.0
+clock type,mock

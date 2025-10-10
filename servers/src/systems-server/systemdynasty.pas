@@ -15,10 +15,10 @@ type
    strict private
       type
          TSettings = record
-            ServerID: Cardinal;
+            ServerID: Cardinal; // ID of dynasty server that manages this dynasty (in case we need to contact it)
          end;
       var
-         FID: Cardinal;
+         FID: Cardinal; // ID of dynasty itself, as used for server to identify dynasty in configuration files, etc
          FSettings: TSettings;
          FRefCount: Cardinal;
          FOnUnreferenced: TDynastyCallback;

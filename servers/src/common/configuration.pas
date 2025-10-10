@@ -5,25 +5,23 @@ unit configuration;
 interface
 
 uses
-   csvdocument, astronomy, time;
+   csvdocument, astronomy, clock, time;
 
 const
-   LoginServerPort = 1024;
-   DataDirectory = 'data/';
    DynastyDataSubDirectory = 'dynasties/';
    SystemDataSubDirectory = 'systems/';
-   LoginServerDirectory = DataDirectory + 'login/';
-   DynastyServersDirectory = DataDirectory + DynastyDataSubDirectory;
-   SystemServersDirectory = DataDirectory + SystemDataSubDirectory;
+   LoginServerDirectory = 'login/';
+   DynastyServersDirectory = DynastyDataSubDirectory;
+   SystemServersDirectory = SystemDataSubDirectory;
 
-   GalaxyBlobFilename = DataDirectory + 'galaxy.dat';
-   SystemsBlobFilename = DataDirectory + 'systems.dat';
-   OreRecordsFilename = DataDirectory + 'ores.mrf'; // mrf = material record file
-   TechnologyTreeFilename = DataDirectory + 'base.tt'; // tt = technology tree
+   GalaxyBlobFilename = 'galaxy.dat';
+   SystemsBlobFilename = 'systems.dat';
+   OreRecordsFilename = 'ores.mrf'; // mrf = material record file
+   TechnologyTreeFilename = 'base.tt'; // tt = technology tree
 
-   ServerSettingsFilename = DataDirectory + 'settings.csv';
-   DynastiesServersListFilename = DataDirectory + 'dynasty-servers.csv';
-   SystemsServersListFilename = DataDirectory + 'systems-servers.csv';
+   ServerSettingsFilename = 'settings.csv';
+   DynastiesServersListFilename = 'dynasty-servers.csv';
+   SystemsServersListFilename = 'systems-servers.csv';
 
    HomeSystemsDatabaseFilename = LoginServerDirectory + 'home-systems.db';
    SystemServerDatabaseFilename = LoginServerDirectory + 'system-servers.db';
@@ -45,12 +43,12 @@ const
    ServerDirectPortCell = 3;
    ServerDirectPasswordCell = 4;
 
-function LoadDynastiesServersConfiguration(): TCSVDocument;
-function LoadSystemsServersConfiguration(): TCSVDocument;
+function LoadServersConfiguration(const DataDirectory, ServersListFilename: UTF8String): TCSVDocument;
 
 type
    PSettings = ^TSettings;
    TSettings = record
+      LoginServerPort: Word;
       HomeStarCategory: TStarCategory;
       HomeStarIndex: TStarIndex;
       GalaxyCategories: TStarCategories;
@@ -63,9 +61,11 @@ type
       StarGroupingThreshold: Double; // meters
       GravitionalInfluenceConstant: Double; // meters per kilogram (to compute default hill diameter of children of space features)
       DefaultTimeRate: TTimeFactor; // game seconds per TAI second
+      ClockType: TRootClockClass;
    end;
 
 const
+   LoginServerPortSetting = 'login server port';
    HomeStarCategorySetting = 'home star category';
    HomeStarIndexSetting = 'home star index';
    GalaxyCategoriesSetting = 'galaxy categories';
@@ -78,29 +78,28 @@ const
    StarGroupingThresholdSetting = 'star grouping threshold'; // meters
    GravitionalInfluenceConstantSetting = 'gravitational influence constant'; // meters per kilogram
    DefaultTimeRateSetting = 'default time rate'; // game seconds per TAI second
+   ClockTypeSetting = 'clock type'; // "mock" or "system"
 
-function LoadSettingsConfiguration(): PSettings;
+function LoadSettingsConfiguration(const DataDirectory: UTF8String): PSettings;
 
 procedure EnsureDirectoryExists(DirectoryName: UTF8String);
 
 implementation
 
 uses
-   sysutils, intutils;
+   sysutils, intutils, stringutils;
 
-function LoadDynastiesServersConfiguration(): TCSVDocument;
+function LoadServersConfiguration(const DataDirectory, ServersListFilename: UTF8String): TCSVDocument;
 begin
    Result := TCSVDocument.Create();
-   Result.LoadFromFile(DynastiesServersListFilename);
+   Result.LoadFromFile(DataDirectory + ServersListFilename);
+   if (Result.RowCount = 0) then
+   begin
+      raise Exception.CreateFmt('Configuration file "%s" has no servers specified.', [ServersListFilename]);
+   end;
 end;
 
-function LoadSystemsServersConfiguration(): TCSVDocument;
-begin
-   Result := TCSVDocument.Create();
-   Result.LoadFromFile(SystemsServersListFilename);
-end;
-
-function LoadSettingsConfiguration(): PSettings;
+function LoadSettingsConfiguration(const DataDirectory: UTF8String): PSettings;
 var
    Settings: TCSVDocument;
    Index: Cardinal;
@@ -119,29 +118,6 @@ var
    end;
 
    function ReadDoubleSetting(): Double;
-   const
-      FloatFormat: TFormatSettings = (
-         CurrencyFormat: 1;
-         NegCurrFormat: 1;
-         ThousandSeparator: ',';
-         DecimalSeparator: '.';
-         CurrencyDecimals: 2;
-         DateSeparator: '-';
-         TimeSeparator: ':';
-         ListSeparator: ',';
-         CurrencyString: '$';
-         ShortDateFormat: 'yyyy-mm-dd';
-         LongDateFormat: 'dd" "mmmm" "yyyy';
-         TimeAMString: 'AM';
-         TimePMString: 'PM';
-         ShortTimeFormat: 'hh:nn';
-         LongTimeFormat: 'hh:nn:ss';
-         ShortMonthNames: ('Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec');
-         LongMonthNames: ('January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December');
-         ShortDayNames: ('Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat');
-         LongDayNames: ('Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday');
-         TwoDigitYearCenturyWindow: 50
-      );
    var
       Value: UTF8String;
    begin
@@ -173,13 +149,18 @@ begin
    New(Result);
    FillChar(Result^, SizeOf(Result^), 0);
    Settings := TCSVDocument.Create();
-   Settings.LoadFromFile(ServerSettingsFilename);
+   Settings.LoadFromFile(DataDirectory + ServerSettingsFilename);
    try
       for Index := 0 to Settings.RowCount - 1 do // $R-
       begin
          if (Settings.ColCount[Index] >= 2) then // $R-
          begin
             Setting := Settings.Cells[0, Index]; // $R-
+            if (Setting = LoginServerPortSetting) then
+            begin
+               Result^.LoginServerPort := ReadCardinalSetting(High(Result^.LoginServerPort)); // $R-
+            end
+            else
             if (Setting = HomeStarCategorySetting) then
             begin
                Result^.HomeStarCategory := ReadCardinalSetting(High(TStarCategory)); // $R-
@@ -240,10 +221,24 @@ begin
                Result^.DefaultTimeRate := TTimeFactor(ReadDoubleSetting()); // $R-
             end
             else
+            if (Setting = ClockTypeSetting) then
             begin
-               Writeln('Unknown configuration key in ', ServerSettingsFilename, ': "', Setting, '"');
+               case (Settings.Cells[1, Index]) of // $R-
+                  'mock': Result^.ClockType := TMockClock;
+                  'system': Result^.ClockType := TSystemClock;
+                else
+                   raise Exception.Create('Unknown configuration value for key ' + ClockTypeSetting + ' in ' + DataDirectory + ServerSettingsFilename + ': "' + Settings.Cells[1, Index] + '"'); // $R-
+               end;
+            end
+            else
+            begin
+               Writeln('Unknown configuration key in ', DataDirectory + ServerSettingsFilename, ': "', Setting, '"');
             end;
          end;
+      end;
+      if (not Assigned(Result^.ClockType)) then
+      begin
+         raise Exception.Create('Missing required configuration key in ' + DataDirectory + ServerSettingsFilename + ': "' + ClockTypeSetting + '"');
       end;
    except
       Dispose(Result);

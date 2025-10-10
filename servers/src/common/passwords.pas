@@ -36,10 +36,12 @@ var
    Index: Cardinal;
    Bytes: TBytes;
 begin
+   Assert(PasswordLength > 0);
    SetLength(Bytes, PasswordLength);
    CryptoGetRandomBytes(PByte(Bytes), Length(Bytes)); // $R- (bytes is a reasonable size)
    for Index := Low(Bytes) to High(Bytes) do // $R- (bytes is a reasonable size)
    begin
+      // We use 6 bits out of each 8 bits of random data, to convert it to readable text.
       Bytes[Index] := (Bytes[Index] and $3F) + $3F; // $R-
    end;
    Result := '';

@@ -391,9 +391,9 @@ var
    FurtherNewKinds: TDirtyKinds;
 begin
    FurtherNewKinds := [];
-   if (dkAffectsNames in NewDirtyKinds) then
+   if (dkChildAffectsNames in NewDirtyKinds) then
    begin
-      Include(FurtherNewKinds, dkUpdateJournal);
+      Include(FurtherNewKinds, dkAffectsNames);
       Include(FurtherNewKinds, dkUpdateClients);
    end;
    if (dkChildren in NewDirtyKinds) then

@@ -40,7 +40,7 @@ type
    TBodyArray = specialize PlasticArray<TBody, TBodyDistanceUtils>;
 
 // TODO: have different logic for home systems, support systems, and other random systems
-function CondenseProtoplanetaryDisk(StarMass, StarRadius, HillRadius, StarTemperature: Double; Materials: TMaterialHashSet; System: TSystem): TBodyArray;
+function CondenseProtoplanetaryDisk(StarMass, StarRadius, HillRadius, StarTemperature: Double; const Materials: TMaterial.TArray; System: TSystem): TBodyArray;
 
 {$IFDEF DEBUG}
 function WeighBody(const Body: TBody): Double;
@@ -267,7 +267,7 @@ begin
    Result := TerrestrialCount < TargetTerrestrialCount;
 end;
 
-function AddMaterialsTo(var Planet: TBody; const D: Double; const Materials: TMaterialHashSet; const R: TRandomNumberGenerator): Boolean;
+function AddMaterialsTo(var Planet: TBody; const D: Double; const Materials: TMaterial.TArray; const R: TRandomNumberGenerator): Boolean;
 var
    Index, DistanceControlPointIndex: Cardinal;
    A, B: TMaterialAbundanceParameters;
@@ -275,7 +275,7 @@ var
    Material: TMaterial;
 begin
    TotalRelativeVolume := 0.0;
-   SetLength(Planet.Composition, Materials.Count);
+   SetLength(Planet.Composition, Length(Materials));
    Index := 0;
    for Material in Materials do
    begin
@@ -315,7 +315,7 @@ begin
    Result := SecondaryRadius * ((2.0 * PrimaryMass / SecondaryMass) ** (1.0 / 3.0)); // $R-
 end;
 
-function CondenseProtoplanetaryDisk(StarMass, StarRadius, HillRadius, StarTemperature: Double; Materials: TMaterialHashSet; System: TSystem): TBodyArray;
+function CondenseProtoplanetaryDisk(StarMass, StarRadius, HillRadius, StarTemperature: Double; const Materials: TMaterial.TArray; System: TSystem): TBodyArray;
 var
    Randomizer: TRandomNumberGenerator;
    Index, PlanetIndex, GenerationStart: Cardinal;

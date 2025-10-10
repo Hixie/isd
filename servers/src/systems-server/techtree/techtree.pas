@@ -31,7 +31,7 @@ type
       function ExtractMaterials(): TMaterial.TArray;
    end;
 
-function LoadTechnologyTree(Filename: RawByteString; Materials: TMaterialHashSet): TTechnologyTree;
+function LoadTechnologyTree(Filename: RawByteString; Materials: TMaterial.TArray): TTechnologyTree;
 procedure RegisterFeatureClass(FeatureClass: FeatureClassReference);
 
 function ReadBuildEnvironment(Tokens: TTokenizer): TBuildEnvironment;
@@ -169,7 +169,7 @@ type
 var
    FeatureClasses: TFeatureClassHashTable;
 
-function Parse(Tokens: TTokenizer; Materials: TMaterialHashSet): TTechnologyTree;
+function Parse(Tokens: TTokenizer; Materials: TMaterial.TArray): TTechnologyTree;
 var
    Researches: TResearchHashTable;
    Topics: TTopicHashTable;
@@ -771,8 +771,8 @@ begin
       Researches := TResearchHashTable.Create();
       Topics := TTopicHashTable.Create();
       AssetClasses := TAssetClassIdentifierHashTable.Create();
-      MaterialNames := TMaterialNameHashTable.Create(Materials.Count);
-      MaterialIDs := TMaterialIDHashTable.Create(Materials.Count);
+      MaterialNames := TMaterialNameHashTable.Create(Length(Materials)); // $R-
+      MaterialIDs := TMaterialIDHashTable.Create(Length(Materials)); // $R-
       for Material in Materials do
       begin
          MaterialNames[Material.Name] := Material;
@@ -812,7 +812,7 @@ begin
    end;
 end;
 
-function LoadTechnologyTree(Filename: RawByteString; Materials: TMaterialHashSet): TTechnologyTree;
+function LoadTechnologyTree(Filename: RawByteString; Materials: TMaterial.TArray): TTechnologyTree;
 var
    Data: TFileData;
    Tokens: TTokenizer;

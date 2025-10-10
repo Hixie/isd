@@ -34,7 +34,6 @@ type
       procedure DoLogin(var Message: TMessage); message 'login';
       procedure DoPlay(var Message: TMessage); message 'play';
       function GetInternalPassword(): UTF8String; override;
-      function FindHome(System: TSystem): TAssetNode;
    public
       constructor Create(AListener: TListenerSocket; AServer: TServer);
       destructor Destroy(); override;
@@ -55,7 +54,7 @@ type
       procedure AddServerFor(Dynasty: TDynasty);
       procedure RemoveServerFor(Dynasty: TDynasty);
    end;
-
+ 
    TDynastyManager = class(TDynastyDatabase)
    protected
       FDynasties: TDynastyHashTable;
@@ -70,6 +69,10 @@ type
       procedure HandleDynastyDeparture(Dynasty: TDynasty);
    end;
 
+   {$IFOPT C+}
+   TDebugHandler = procedure (Arguments: TBinaryStreamReader);
+   {$ENDIF}
+   
    TServer = class(TBaseServer)
    protected
       FPassword: UTF8String;
@@ -80,12 +83,13 @@ type
       FSystems: TSystemHashTable;
       FEncyclopedia: TEncyclopedia;
       FDynastyManager: TDynastyManager;
+      {$IFOPT C+} FDebugHandler: TDebugHandler; {$ENDIF}
       function CreateNetworkSocket(AListenerSocket: TListenerSocket): TNetworkSocket; override;
       function GetSystem(Index: Cardinal): TSystem;
       function CreateSystem(SystemID: Cardinal; X, Y: Double): TSystem;
       procedure ReportChanges(); override;
    public
-      constructor Create(APort: Word; AClock: TClock; APassword: UTF8String; ASystemServerID: Cardinal; ASettings: PSettings; AEncyclopedia: TEncyclopedia; ADynastyServers: TServerDatabase; AConfigurationDirectory: UTF8String);
+      constructor Create(APort: Word; AClock: TClock; APassword: UTF8String; ASystemServerID: Cardinal; ASettings: PSettings; AEncyclopedia: TEncyclopedia; ADynastyServers: TServerDatabase; AConfigurationDirectory: UTF8String {$IFOPT C+}; ADebugHandler: TDebugHandler {$ENDIF});
       destructor Destroy(); override;
       function SerializeAllSystemsFor(Dynasty: TDynasty; Writer: TServerStreamWriter): RawByteString;
       property Password: UTF8String read FPassword;
@@ -94,13 +98,14 @@ type
       property DynastyManager: TDynastyManager read FDynastyManager;
       property DynastyServerDatabase: TServerDatabase read FDynastyServers;
       property Encyclopedia: TEncyclopedia read FEncyclopedia;
+      {$IFOPT C+} property DebugHandler: TDebugHandler read FDebugHandler; {$ENDIF}
    end;
 
 implementation
 
 uses
    sysutils, hashfunctions, isdprotocol, passwords, exceptions, space,
-   orbit, spacesensor, gridsensor, structure, errors, plot, planetary, math, time,
+   orbit, spacesensor, structure, errors, plot, planetary, time,
    population, messages, knowledge, isderrors, food, research;
 
 constructor TSystemHashTable.Create();
@@ -134,37 +139,19 @@ begin
    Callback(Self, FWriter);
 end;
 
-function TConnection.FindHome(System: TSystem): TAssetNode;
-var
-   Home: TAssetNode;
-
-   function Consider(Asset: TAssetNode): Boolean;
-   var
-      Planet: TPlanetaryBodyFeatureNode;
-      N: Cardinal;
-   begin
-      Planet := Asset.GetFeatureByClass(TPlanetaryBodyFeatureClass) as TPlanetaryBodyFeatureNode;
-      N := 1;
-      if (Assigned(Planet) and Planet.ConsiderForDynastyStart) then
-      begin
-         if ((not Assigned(Home)) or (System.RandomNumberGenerator.GetBoolean(1/N))) then
-            Home := Asset;
-         Result := False; // we don't walk into planets
-         Inc(N);
-      end
-      else
-         Result := True;
-   end;
-
-begin
-   Home := nil;
-   System.RootNode.Walk(@Consider, nil);
-   Result := Home;
-end;
-
 procedure TConnection.HandleIPC(Arguments: TBinaryStreamReader);
-const
-   GameStartTime: TWallMillisecondsDuration = (Value: 30000);
+
+
+var
+   NodeCount: Cardinal;
+   
+      function CountNodes(Asset: TAssetNode): Boolean;
+      begin
+         Inc(NodeCount);
+         Result := True;
+      end;
+
+
 type
    TStarEntry = record
       StarID: TStarID;
@@ -173,8 +160,7 @@ type
 var
    Command: UTF8String;
    SystemID, DynastyID, DynastyServerID, StarCount, Index, StarID: Cardinal;
-   Period: TMillisecondsDuration;
-   X, Y, A, PeriodOverTwoPi: Double;
+   X, Y: Double;
    Dynasty: TDynasty;
    System: TSystem;
    Stars: array of TStarEntry;
@@ -182,7 +168,6 @@ var
    Salt: TSalt;
    Hash: THash;
    SolarSystem: TSolarSystemFeatureNode;
-   Home: TAssetNode;
 begin
    Assert(FMode = cmControlMessages);
    Command := Arguments.ReadString();
@@ -241,39 +226,7 @@ begin
          Dynasty := FServer.DynastyManager.HandleDynastyArrival(DynastyID, DynastyServerID); // may contact dynasty server
       end;
       Assert(Dynasty.DynastyServerID = DynastyServerID);
-      Home := FindHome(System);
-      // We pick a period that should mean that the ship is at the
-      // apoapsis and will reach periapsis in GameStartTime of
-      // real-world time, i.e. a period that is twice GameStartTime.
-      // We then figure out what the semi-major axis is for that
-      // orbit, using the normal equation for orbital period, solved
-      // for the semi-major axis.
-      Period := (GameStartTime * System.TimeFactor).Scale(3.0);
-      PeriodOverTwoPi := Period.ToSIUnits() / (2 * Pi); // $R-
-      A := Power(PeriodOverTwoPi * PeriodOverTwoPi * G * Home.Mass, 1/3); // $R-
-      (Home.Parent as TOrbitFeatureNode).AddOrbitingChild(
-         System,
-         FServer.Encyclopedia.WrapAssetForOrbit(FServer.Encyclopedia.PlaceholderShip.Spawn(
-            Dynasty, [
-               TSpaceSensorFeatureNode.Create(FServer.Encyclopedia.PlaceholderShip.Features[0] as TSpaceSensorFeatureClass),
-               TGridSensorFeatureNode.Create(FServer.Encyclopedia.PlaceholderShip.Features[1] as TGridSensorFeatureClass),
-               TStructureFeatureNode.Create(FServer.Encyclopedia.PlaceholderShip.Features[2] as TStructureFeatureClass, 10000 { materials quantity }, 10000 { hp }),
-               TDynastyOriginalColonyShipFeatureNode.Create(Dynasty),
-               TPopulationFeatureNode.CreatePopulated(2000, 1.0),
-               TMessageBoardFeatureNode.Create(FServer.Encyclopedia.PlaceholderShip.Features[5] as TMessageBoardFeatureClass),
-               TKnowledgeBusFeatureNode.Create(),
-               TFoodBusFeatureNode.Create(),
-               TFoodGenerationFeatureNode.Create(FServer.Encyclopedia.PlaceholderShip.Features[8] as TFoodGenerationFeatureClass),
-               TResearchFeatureNode.Create(FServer.Encyclopedia.PlaceholderShip.Features[9] as TResearchFeatureClass),
-               TKnowledgeFeatureNode.Create(FServer.Encyclopedia.PlaceholderShipInstructionManual)
-            ]
-         )),
-         A,
-         0.95, // Eccentricity
-         System.RandomNumberGenerator.GetDouble(0.0, 2.0 * Pi), // Omega // $R-
-         System.Now - (Period - GameStartTime * System.TimeFactor), // TimeOffset
-         System.RandomNumberGenerator.GetBoolean(0.5) // Clockwise (really doesn't matter, it's going in more or less a straight line)
-      );
+      FServer.Encyclopedia.SpawnColonyShip(Dynasty, System);
       Write(#$01);
    end
    else
@@ -306,6 +259,14 @@ begin
       Dynasty.ResetTokens();
       Write(#$01);
    end
+   {$IFOPT C+}
+   else
+   if (Command = icDebug) then
+   begin
+      FServer.DebugHandler(Arguments);
+      Write(#$01);
+   end
+   {$ENDIF}
    else
    begin
       Writeln('Received unknown command: ', Command);
@@ -533,7 +494,7 @@ begin
 end;
 
 
-constructor TServer.Create(APort: Word; AClock: TClock; APassword: UTF8String; ASystemServerID: Cardinal; ASettings: PSettings; AEncyclopedia: TEncyclopedia; ADynastyServers: TServerDatabase; AConfigurationDirectory: UTF8String);
+constructor TServer.Create(APort: Word; AClock: TClock; APassword: UTF8String; ASystemServerID: Cardinal; ASettings: PSettings; AEncyclopedia: TEncyclopedia; ADynastyServers: TServerDatabase; AConfigurationDirectory: UTF8String {$IFOPT C+}; ADebugHandler: TDebugHandler {$ENDIF});
 var
    SystemsFile: File of Cardinal;
    SystemID: Cardinal;
@@ -570,6 +531,9 @@ begin
       Rewrite(SystemsFile);
       Close(SystemsFile);
    end;
+   {$IFOPT C+}
+   FDebugHandler := ADebugHandler;
+   {$ENDIF}
 end;
 
 destructor TServer.Destroy();
@@ -582,7 +546,6 @@ begin
          System.Free();
       FSystems.Free();
    end;
-   FEncyclopedia.Free();
    inherited; // frees connections, which know about the dynasties
    FDynastyManager.Free(); // frees dynasties
 end;

@@ -247,8 +247,8 @@ end;
 
 procedure TSolarSystemFeatureNode.ParentMarkedAsDirty(ParentDirtyKinds, NewDirtyKinds: TDirtyKinds);
 begin
-   if (dkAffectsNames in NewDirtyKinds) then
-      MarkAsDirty([dkUpdateClients, dkUpdateJournal]);
+   if (dkChildAffectsNames in NewDirtyKinds) then
+      MarkAsDirty([dkUpdateClients, dkUpdateJournal, dkAffectsNames]);
    inherited;
 end;
 
@@ -304,6 +304,7 @@ end;
 procedure TSolarSystemFeatureNode.ApplyVisibility(const VisibilityHelper: TVisibilityHelper);
 begin
    Assert(Assigned(Parent));
+   Writeln(DebugName, ' is always known.');
    VisibilityHelper.AddBroadVisibility([dmVisibleSpectrum, dmClassKnown], Parent);
 end;
 

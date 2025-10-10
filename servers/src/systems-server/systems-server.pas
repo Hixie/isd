@@ -3,8 +3,9 @@
 program main;
 
 uses
-   sysutils, systemnetwork, configuration, csvdocument, servers,
-   materials, clock, exceptions, intutils, techtree, encyclopedia;
+   sysutils, configuration, csvdocument, servers, materials, clock,
+   exceptions, intutils, techtree, encyclopedia, systemnetwork, strutils,
+   binarystream, time, isdprotocol;
 
 procedure AssertHandler(const Message: ShortString; const FileName: ShortString; LineNumber: LongInt; ErrorAddr: Pointer);
 begin
@@ -19,27 +20,62 @@ var
    Port, ServerIndex, ServerCount: Integer;
    Password: UTF8String;
    Settings: PSettings;
-   OreRecords: TMaterialHashSet;
+   OreRecords: TMaterial.TArray;
    TechnologyTree: TTechnologyTree;
    SystemClock, MonotonicClock: TClock;
    GlobalEncyclopedia: TEncyclopedia;
+   DataDirectory: UTF8String;
+
+   {$IFOPT C+}
+   procedure DebugHandler(Arguments: TBinaryStreamReader);
+   var
+      Delta: Int64;
+   begin
+      case (Arguments.ReadString()) of
+         'clock': begin
+            if (SystemClock is TMockClock) then
+            begin
+               Delta := Arguments.ReadInt64();
+               (SystemClock as TMockClock).Advance(TMillisecondsDuration.FromMilliseconds(Delta));
+            end
+            else
+               raise Exception.Create('Received a "clock" debug command but clock is configured to use the system clock.');
+         end;
+         else
+            raise Exception.Create('Received unknown debug command.');
+      end;
+   end;
+   {$ENDIF}
+                                  
 begin
    try
       try
          AssertErrorProc := @AssertHandler;
-         if (ParamCount() <> 1) then
+         if (ParamCount() <> 2) then
          begin
-            Writeln('Usage: systems-server <id>');
+            Writeln('Usage: systems-server <configuration-path> <id>');
+            Writeln('Expected 2 arguments, got ', ParamCount(), '.');
             exit;
          end;
-         ServerIndex := ParseInt32(ParamStr(1), -1);
+         DataDirectory := ParamStr(1);
+         if (not EndsStr('/', DataDirectory)) then
+         begin
+            Writeln('Configuration path must end with a slash.');
+            exit;
+         end;
+         if (not DirectoryExists(DataDirectory)) then
+         begin
+            Writeln('Specified configuration path does not exist.');
+            exit;
+         end;
+         ServerIndex := ParseInt32(ParamStr(2), -1);
          if (ServerIndex <= 0) then
          begin
             Writeln('Invalid systems server ID. Value must be an integer greater than zero.');
             exit;
          end;
          Dec(ServerIndex);
-         ServerFile := LoadSystemsServersConfiguration();
+         ServerFile := LoadServersConfiguration(DataDirectory, SystemsServersListFilename);
          try
             ServerCount := ServerFile.RowCount;
             if (ServerIndex >= ServerFile.RowCount) then
@@ -53,22 +89,32 @@ begin
             FreeAndNil(ServerFile);
          end;
          Writeln('Interstellar Dynasties - Systems server ', ServerIndex+1, ' of ', ServerCount, ' on port ', Port);
-         Settings := LoadSettingsConfiguration();
-         EnsureDirectoryExists(SystemServersDirectory);
-         ServerFile := LoadDynastiesServersConfiguration();
+         Settings := LoadSettingsConfiguration(DataDirectory);
+         Assert(Assigned(Settings^.ClockType));
+         EnsureDirectoryExists(DataDirectory + SystemServersDirectory);
+         ServerFile := LoadServersConfiguration(DataDirectory, DynastiesServersListFilename);
          DynastyServerDatabase := TServerDatabase.Create(ServerFile);
          FreeAndNil(ServerFile);
-         OreRecords := LoadOres(OreRecordsFilename);
+         OreRecords := LoadOres(DataDirectory + OreRecordsFilename);
          try
-            TechnologyTree := LoadTechnologyTree(TechnologyTreeFilename, OreRecords);
+            TechnologyTree := LoadTechnologyTree(DataDirectory + TechnologyTreeFilename, OreRecords);
             GlobalEncyclopedia := TEncyclopedia.Create(Settings, OreRecords, TechnologyTree);
          finally
             FreeAndNil(TechnologyTree);
          end;
-         SystemClock := TSystemClock.Create();
+         SystemClock := Settings^.ClockType.Create();
          MonotonicClock := TMonotonicClock.Create(SystemClock);
-         Server := TServer.Create(Port, MonotonicClock, Password, ServerIndex, Settings, GlobalEncyclopedia, DynastyServerDatabase, SystemServersDirectory + IntToStr(ServerIndex) + '/'); // $R-
-         Writeln('Ready');
+         Server := TServer.Create(
+            Port, // $R-
+            MonotonicClock,
+            Password,
+            ServerIndex, // $R-
+            Settings,
+            GlobalEncyclopedia,
+            DynastyServerDatabase,
+            DataDirectory + SystemServersDirectory + IntToStr(ServerIndex) + '/' {$IFOPT C+},
+            @DebugHandler {$ENDIF}
+         );
          Server.Run();
          Writeln('Exiting...');
          // TODO: have the servers write a last gasp update to their journal so we don't lose time
@@ -81,10 +127,10 @@ begin
             ReportCurrentException();
          end;
          FreeAndNil(Server);
+         FreeAndNil(GlobalEncyclopedia);
          FreeAndNil(MonotonicClock);
          FreeAndNil(SystemClock);
          FreeAndNil(DynastyServerDatabase);
-         FreeAndNil(OreRecords);
          Dispose(Settings);
       end;
    except
@@ -93,4 +139,8 @@ begin
       on TObject do
          ReportCurrentException();
    end;
+   {$IFOPT C+}
+   Writeln('Done.', ControlEnd);
+   GlobalSkipIfNoLeaks := True;
+   {$ENDIF}
 end.

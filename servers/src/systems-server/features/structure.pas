@@ -595,11 +595,6 @@ procedure TStructureFeatureNode.DescribeExistentiality(var IsDefinitelyReal, IsD
 begin
    IsDefinitelyReal := (not Assigned(FBuildingState)) or (FBuildingState^.MaterialsQuantity > 0);
    IsDefinitelyGhost := (Assigned(FBuildingState)) and (FBuildingState^.MaterialsQuantity = 0);
-   Writeln(DebugName, ' FBuildingState=', HexStr(FBuildingState));
-   if (Assigned(FBuildingState)) then
-      Writeln(DebugName, ' FBuildingState^.MaterialsQuantity=', FBuildingState^.MaterialsQuantity);
-   Writeln(DebugName, ' decided existence as real=', IsDefinitelyReal, ' ghost=', IsDefinitelyGhost);
-   Writeln(DebugName, ' mass:', Mass);
 end;
 
 procedure TStructureFeatureNode.HandleChanges(CachedSystem: TSystem);
@@ -993,6 +988,7 @@ begin
    end;
    FBuildingState^.NextEvent := CachedSystem.ScheduleEvent(RemainingTime, @HandleEvent, Self);
    FBuildingState^.AnchorTime := CachedSystem.Now;
+   Writeln(DebugName, ' rescheduled next event for ', FBuildingState^.AnchorTime.ToString());
 end;
 
 procedure TStructureFeatureNode.HandleEvent(var Data);

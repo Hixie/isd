@@ -13,6 +13,7 @@ const
    icTriggerNewDynastyScenario = 'trigger-scenario-new-dynasty'; // internal
    icAddSystemServer = 'add-system-server'; // internal
    icRemoveSystemServer = 'remove-system-server'; // internal
+   icDebug = 'debug'; // tests
    // ISD Updates (server-to-client)
    iuSystemServers = 'system-servers';
    TokenSeparator = #$1F;
@@ -47,8 +48,18 @@ const
    fcGridSensor = $18;
    fcGridSensorStatus = $19;
    fcBuilder = $1A;
-   fcHighestKnownFeatureCode = fcBuilder;
+   fcInternalSensor = $1B;
+   fcInternalSensorStatus = $1C;
+   fcHighestKnownFeatureCode = fcInternalSensorStatus;
 
+{$IFOPT C+}
+// Stdout control codes for tests.
+const
+   ControlReady = #05; // Enquiry (network listeners are ready to accept connections)
+   ControlEnd = #04; // End Of Transmission (server ended without any exceptions)
+   ControlError = #21; // Negative Acknowledge (server caught a problem)
+{$ENDIF}
+      
 implementation
 
 end.

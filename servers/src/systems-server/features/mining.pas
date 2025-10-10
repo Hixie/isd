@@ -205,19 +205,22 @@ begin
          Message.Error(ieInvalidCommand);
          exit;
       end;
-      Message.Reply();
-      if (FStatus.Enabled) then
+      if (Message.CloseInput()) then
       begin
-         Message.Output.WriteBoolean(False);
-      end
-      else
-      begin
-         Assert(FStatus.Mode = rcIdle);
-         Message.Output.WriteBoolean(True);
-         FStatus.Enabled := True;
-         MarkAsDirty([dkUpdateClients, dkUpdateJournal, dkNeedsHandleChanges]);
+         Message.Reply();
+         if (FStatus.Enabled) then
+         begin
+            Message.Output.WriteBoolean(False);
+         end
+         else
+         begin
+            Assert(FStatus.Mode = rcIdle);
+            Message.Output.WriteBoolean(True);
+            FStatus.Enabled := True;
+            MarkAsDirty([dkUpdateClients, dkUpdateJournal, dkNeedsHandleChanges]);
+         end;
+         Message.CloseOutput();
       end;
-      Message.CloseOutput();
    end
    else
    if (Command = 'disable') then
@@ -229,23 +232,26 @@ begin
          Message.Error(ieInvalidCommand);
          exit;
       end;
-      Message.Reply();
-      if (FStatus.Enabled) then
+      if (Message.CloseInput()) then
       begin
-         Message.Output.WriteBoolean(True);
-         if (FStatus.Mode in [rcPending, rcActive]) then
+         Message.Reply();
+         if (FStatus.Enabled) then
          begin
-            Assert(Assigned(FStatus.Region));
-            FStatus.Region.RemoveMiner(Self);
-         end;
-         FStatus.Disable();
-         Assert(not Assigned(FStatus.Region));
-         FStatus.Enabled := False;
-         MarkAsDirty([dkUpdateClients, dkUpdateJournal, dkNeedsHandleChanges]);
-      end
-      else
-         Message.Output.WriteBoolean(False);
-      Message.CloseOutput();
+            Message.Output.WriteBoolean(True);
+            if (FStatus.Mode in [rcPending, rcActive]) then
+            begin
+               Assert(Assigned(FStatus.Region));
+               FStatus.Region.RemoveMiner(Self);
+            end;
+            FStatus.Disable();
+            Assert(not Assigned(FStatus.Region));
+            FStatus.Enabled := False;
+            MarkAsDirty([dkUpdateClients, dkUpdateJournal, dkNeedsHandleChanges]);
+         end
+         else
+            Message.Output.WriteBoolean(False);
+         Message.CloseOutput();
+      end;
    end
    else
       Result := inherited;

@@ -157,12 +157,12 @@ type
 const
    ZeroAbundance: TMaterialAbundance = ((Distance: 0.0; RelativeVolume: 0.0));
 
-function LoadOres(Filename: RawByteString): TMaterialHashSet;
+function LoadOres(Filename: RawByteString): TMaterial.TArray;
 
 implementation
 
 uses
-   sysutils, strutils, intutils, math;
+   sysutils, strutils, intutils, math, plasticarrays;
 
 function MaterialHash32(const Key: TMaterial): DWord;
 begin
@@ -439,32 +439,32 @@ begin
 end;
 
 
-function LoadOres(Filename: RawByteString): TMaterialHashSet;
+type
+   MaterialUtils = record
+      class function Equals(const A, B: TMaterial): Boolean; static; inline;
+      class function LessThan(const A, B: TMaterial): Boolean; static; inline;
+      class function GreaterThan(const A, B: TMaterial): Boolean; static; inline;
+   end;
 
+class function MaterialUtils.Equals(const A, B: TMaterial): Boolean;
+begin
+   Result := A = B;
+end;
+
+class function MaterialUtils.LessThan(const A, B: TMaterial): Boolean;
+begin
+   Result := A.ID < B.ID;
+end;
+
+class function MaterialUtils.GreaterThan(const A, B: TMaterial): Boolean;
+begin
+   Result := A.ID > B.ID;
+end;
+
+
+function LoadOres(Filename: RawByteString): TMaterial.TArray;
+   
    function ParseDouble(Value: UTF8String): Double;
-   const
-      FloatFormat: TFormatSettings = (
-         CurrencyFormat: 1;
-         NegCurrFormat: 1;
-         ThousandSeparator: ',';
-         DecimalSeparator: '.';
-         CurrencyDecimals: 2;
-         DateSeparator: '-';
-         TimeSeparator: ':';
-         ListSeparator: ',';
-         CurrencyString: '$';
-         ShortDateFormat: 'yyyy-mm-dd';
-         LongDateFormat: 'dd" "mmmm" "yyyy';
-         TimeAMString: 'AM';
-         TimePMString: 'PM';
-         ShortTimeFormat: 'hh:nn';
-         LongTimeFormat: 'hh:nn:ss';
-         ShortMonthNames: ('Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec');
-         LongMonthNames: ('January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December');
-         ShortDayNames: ('Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat');
-         LongDayNames: ('Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday');
-         TwoDigitYearCenturyWindow: 50
-      );
    begin
       Result := StrToFloat(Value, FloatFormat); // $R-
    end;
@@ -485,8 +485,9 @@ var
    MaterialDensity, MaterialBondAlbedo, MaterialDistance, MaterialAbundance: Double;
    MaterialAbundances: array of TMaterialAbundanceParameters;
    Material: TMaterial;
+   MaterialList: specialize PlasticArray<TMaterial, MaterialUtils>;
 begin
-   Result := TMaterialHashSet.Create();
+   MaterialList.Init(High(TOres) + 1);
    Assign(F, Filename);
    Reset(F);
    while (not EOF(F)) do
@@ -570,9 +571,11 @@ begin
          MaterialTags,
          MaterialAbundances
       );
-      Result.Add(Material);
+      MaterialList.Push(Material);
    end;
    Close(F);
+   MaterialList.Sort();
+   Result := MaterialList.Distill();
 end;
 
 end.

@@ -5,7 +5,7 @@ unit encyclopedia;
 interface
 
 uses
-   systems, configuration, astronomy, space, materials, random, techtree;
+   systems, configuration, astronomy, space, materials, random, techtree, systemdynasty;
 
 type
    TEncyclopedia = class(TEncyclopediaView)
@@ -22,7 +22,7 @@ type
          FMessage: TAssetClass;
          FStars: array[TStarCategory] of TAssetClass;
          FPlanetaryBody, FRegion: TAssetClass;
-         FProtoplanetaryMaterials: TMaterialHashSet;
+         FProtoplanetaryMaterials: TMaterial.TArray; // order matters, it's used in protoplanetary generation
          FDarkMatter: TMaterial;
          FMinMassPerOreUnit: Double; // cached value based on ores in materials passed to constructor
       function GetStarClass(Category: TStarCategory): TAssetClass;
@@ -35,9 +35,10 @@ type
       function GetMinMassPerOreUnit(): Double; override;
       procedure RegisterAssetClass(AssetClass: TAssetClass);
    public
-      constructor Create(Settings: PSettings; AMaterials: TMaterialHashSet; TechTree: TTechnologyTree); // AMaterials must contain all TOres
+      constructor Create(Settings: PSettings; const AMaterials: TMaterial.TArray; TechTree: TTechnologyTree); // AMaterials must contain all TOres
       destructor Destroy(); override;
-      procedure RegisterMaterials(AMaterials: TMaterialHashSet);
+      procedure RegisterMaterials(const AMaterials: TMaterialHashSet);
+      procedure RegisterMaterials(const AMaterials: TMaterial.TArray);
       procedure ProcessTechTree(TechTree: TTechnologyTree);
       property SpaceClass: TAssetClass read FSpace;
       property PlaceholderShip: TAssetClass read FPlaceholderShip;
@@ -47,6 +48,7 @@ type
       function CreateLoneStar(StarID: TStarID): TAssetNode;
       procedure CondenseProtoplanetaryDisks(Space: TSolarSystemFeatureNode; System: TSystem);
       procedure FindTemperatureEquilibria(System: TSystem);
+      procedure SpawnColonyShip(Dynasty: TDynasty; System: TSystem);
       function Craterize(Diameter: Double; OldAsset, NewAsset: TAssetNode): TAssetNode; override;
       property RegionClass: TAssetClass read FRegion;
       property MessageClass: TAssetClass read FMessage;
@@ -78,9 +80,9 @@ uses
    sysutils, math, floatutils, exceptions, isdnumbers, icons,
    protoplanetary, time,
    // this must import every feature, so they get registered:
-   builders, food, grid, gridsensor, knowledge, materialpile,
-   messages, mining, name, orbit, orepile, planetary, plot,
-   population, proxy, refining, region, research, rubble, size,
+   builders, food, grid, gridsensor, internalsensor, knowledge,
+   materialpile, messages, mining, name, orbit, orepile, planetary,
+   plot, population, proxy, refining, region, research, rubble, size,
    spacesensor, stellar, structure, surface;
 
 var
@@ -104,7 +106,7 @@ begin
       Result := 1;
 end;
 
-constructor TEncyclopedia.Create(Settings: PSettings; AMaterials: TMaterialHashSet; TechTree: TTechnologyTree);
+constructor TEncyclopedia.Create(Settings: PSettings; const AMaterials: TMaterial.TArray; TechTree: TTechnologyTree);
 
    function CreateStarFeatures(): TFeatureClass.TArray;
    begin
@@ -116,6 +118,7 @@ var
    Ore: TOres;
 begin
    inherited Create();
+
    FMaterials := TMaterialIDHashTable.Create();
    FProtoplanetaryMaterials := AMaterials;
    RegisterMaterials(FProtoplanetaryMaterials);
@@ -126,6 +129,7 @@ begin
       if (FMaterials[Ore].MassPerUnit < FMinMassPerOreUnit) then
          FMinMassPerOreUnit := FMaterials[Ore].MassPerUnit;
    end;
+
    FAssetClasses := TAssetClassIDHashTable.Create();
    FResearches := TResearchIDHashTable.Create();
    FTopics := TTopicHashTable.Create();
@@ -283,6 +287,7 @@ begin
          TFoodBusFeatureClass.Create(),
          TFoodGenerationFeatureClass.Create(100),
          TResearchFeatureClass.Create(),
+         TInternalSensorFeatureClass.Create([dmVisibleSpectrum]),
          TKnowledgeFeatureClass.Create() // the instruction manual, ziptied to the ship
       ],
       ColonyShipIcon,
@@ -330,7 +335,15 @@ begin
    inherited;
 end;
 
-procedure TEncyclopedia.RegisterMaterials(AMaterials: TMaterialHashSet);
+procedure TEncyclopedia.RegisterMaterials(const AMaterials: TMaterialHashSet);
+var
+   Material: TMaterial;
+begin
+   for Material in AMaterials do
+      FMaterials[Material.ID] := Material;
+end;
+
+procedure TEncyclopedia.RegisterMaterials(const AMaterials: TMaterial.TArray);
 var
    Material: TMaterial;
 begin
@@ -480,7 +493,7 @@ procedure TEncyclopedia.CondenseProtoplanetaryDisks(Space: TSolarSystemFeatureNo
          ]
       );
    end;
-
+   
    procedure AddBody(const Body: TBody; Orbit: TOrbitFeatureNode);
    var
       Node, OrbitNode: TAssetNode;
@@ -530,7 +543,9 @@ begin
       begin
          Planets := CondenseProtoplanetaryDisk(Star.Mass, Star.Size / 2.0, StarHillDiameter / 2.0, StarFeature.Temperature, FProtoplanetaryMaterials, System);
          for Body in Planets do
+         begin
             AddBody(Body, StarOrbitFeature);
+         end;
       end;
    end;
 end;
@@ -610,6 +625,83 @@ procedure TEncyclopedia.FindTemperatureEquilibria(System: TSystem);
 
 begin
    System.RootNode.Walk(@FindSuns, nil);
+end;
+
+procedure TEncyclopedia.SpawnColonyShip(Dynasty: TDynasty; System: TSystem);
+
+   function FindHome(System: TSystem): TAssetNode;
+   var
+      Home: TAssetNode;
+      Count: Cardinal;
+
+      function Consider(Asset: TAssetNode): Boolean;
+      var
+         Planet: TPlanetaryBodyFeatureNode;
+         N: Cardinal;
+      begin
+         Planet := Asset.GetFeatureByClass(TPlanetaryBodyFeatureClass) as TPlanetaryBodyFeatureNode;
+         N := 1;
+         if (Assigned(Planet) and Planet.ConsiderForDynastyStart) then
+         begin
+            if ((not Assigned(Home)) or (System.RandomNumberGenerator.GetBoolean(1/N))) then
+               Home := Asset;
+            Result := False; // we don't walk into planets
+            Inc(N);
+         end
+         else
+            Result := True;
+         Inc(Count);
+      end;
+
+   begin
+      Count := 0;
+      Home := nil;
+      System.RootNode.Walk(@Consider, nil);
+      Result := Home;
+   end;
+
+const
+   GameStartTime: TWallMillisecondsDuration = (Value: 30000);
+var
+   Period: TMillisecondsDuration;
+   A, PeriodOverTwoPi, Omega: Double;
+   Home: TAssetNode;
+begin
+   Home := FindHome(System);
+   // We pick a period that should mean that the ship is at the
+   // apoapsis and will reach periapsis in GameStartTime of
+   // real-world time, i.e. a period that is twice GameStartTime.
+   // We then figure out what the semi-major axis is for that
+   // orbit, using the normal equation for orbital period, solved
+   // for the semi-major axis.
+   Period := (GameStartTime * System.TimeFactor).Scale(3.0);
+   PeriodOverTwoPi := Period.ToSIUnits() / (2 * Pi); // $R-
+   A := Power(PeriodOverTwoPi * PeriodOverTwoPi * G * Home.Mass, 1/3); // $R-
+   Omega := System.RandomNumberGenerator.GetDouble(0.0, 2.0 * Pi); // $R-
+   (Home.Parent as TOrbitFeatureNode).AddOrbitingChild(
+      System,
+      WrapAssetForOrbit(PlaceholderShip.Spawn(
+         Dynasty, [
+            TSpaceSensorFeatureNode.Create(PlaceholderShip.Features[0] as TSpaceSensorFeatureClass),
+            TGridSensorFeatureNode.Create(PlaceholderShip.Features[1] as TGridSensorFeatureClass),
+            TStructureFeatureNode.Create(PlaceholderShip.Features[2] as TStructureFeatureClass, 10000 { materials quantity }, 10000 { hp }),
+            TDynastyOriginalColonyShipFeatureNode.Create(Dynasty),
+            TPopulationFeatureNode.CreatePopulated(2000, 1.0),
+            TMessageBoardFeatureNode.Create(PlaceholderShip.Features[5] as TMessageBoardFeatureClass),
+            TKnowledgeBusFeatureNode.Create(),
+            TFoodBusFeatureNode.Create(),
+            TFoodGenerationFeatureNode.Create(PlaceholderShip.Features[8] as TFoodGenerationFeatureClass),
+            TResearchFeatureNode.Create(PlaceholderShip.Features[9] as TResearchFeatureClass),
+            TInternalSensorFeatureNode.Create(PlaceholderShip.Features[10] as TInternalSensorFeatureClass),
+            TKnowledgeFeatureNode.Create(PlaceholderShipInstructionManual)
+         ]
+      )),
+      A,
+      0.95, // Eccentricity
+      Omega,
+      System.Now - (Period - GameStartTime * System.TimeFactor), // TimeOffset
+      System.RandomNumberGenerator.GetBoolean(0.5) // Clockwise (really doesn't matter, it's going in more or less a straight line)
+   );
 end;
 
 function TEncyclopedia.Craterize(Diameter: Double; OldAsset, NewAsset: TAssetNode): TAssetNode;

@@ -2,25 +2,7 @@
 
 ## Public commands
 
-Commands are sent from the client to the server in the form of
-WebSocket text frames whose format is null-terminated fields of UTF-8,
-as described in the README.md in the parent directory.
-
-The first field is the command, the second is a 32 bit number called
-the conversation ID (sent as a uint64 field).
-
-The server responds in the same format. Replies always start with a
-field that says `reply`, then the conversation ID (uint64), then
-either a `T` if the command was successful, followed by some extra
-data as described below, or an `F` indicating failure, followed by an
-error code from the list in `../common/isderrors.pas`.
-
-Replies are not guaranteed to be sent back in the order that messages
-were received (hence the conversation ID field).
-
-In the command descriptions below, all fields are strings unless
-otherwise specified.
-
+See the README.md in the parent directory for context.
 
 ### `login`
 

@@ -101,13 +101,10 @@ var
            (not Assigned(Asset.Owner)) or // we see unowned ghosts // TODO: this should be redundant, assert instead?
            Asset.IsReal())) then // and we see non-ghosts regardless of who owns them
       begin
-         Writeln('  - ', Asset.DebugName);
          Visibility := FFeatureClass.FSensorKind;
          Asset.HandleVisibility(OwnerIndex, Visibility, VisibilityHelper);
          if (Visibility <> []) then
-            Inc(FLastCountDetected)
-         else
-            Writeln('    DENIED');
+            Inc(FLastCountDetected);
       end;
       Result := Depth < Target;
       Inc(Depth);
@@ -123,7 +120,6 @@ var
    Feature: TFeatureNode;
    Node: TAssetNode;
 begin
-   Writeln('Space Sensor for ', Parent.DebugName);
    Assert(not Assigned(FKnownMaterials));
    Assert(not Assigned(FKnownAssetClasses));
    FLastBottom := nil;

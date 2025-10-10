@@ -161,12 +161,12 @@ type
    end;
 
    procedure ConsoleWriteln(const Prefix, S: UTF8String);
-
+   
 implementation
 
 uses
    sysutils, isderrors, utf8, unicode, exceptions, hashfunctions,
-   sigint, errors, dateutils;
+   sigint, errors, dateutils, isdprotocol, stringutils;
 
 function PEventHash32(const Key: PEvent): DWord;
 begin
@@ -340,7 +340,13 @@ begin
       Output.WriteBoolean(False);
       Output.WriteString(Code);
       CloseOutput();
-   end;
+   end
+   {$IFOPT C+}
+   else
+      Writeln('Detected error after closing network. Error code ', Code, '.'#10 + GetStackTrace());
+   Writeln(ControlError)
+   {$ENDIF}
+   ;
 end;
 
 procedure TMessage.Reply();
@@ -414,7 +420,9 @@ end;
 procedure TBaseIncomingCapableConnection.WriteFrame(const S: UTF8String);
 begin
    ConsoleWriteln('Sending WebSocket Text: ', S);
+   {$IFNDEF TESTS}
    Sleep(500); // this is to simulate bad network conditions
+   {$ENDIF}
    inherited;
 end;
 
@@ -425,7 +433,9 @@ begin
    SetLength(S, Length);
    Move(Buf, S[1], Length);
    ConsoleWriteln('Sending WebSocket Binary: ', S);
+   {$IFNDEF TESTS}
    Sleep(500); // this is to simulate bad network conditions
+   {$ENDIF}
    inherited;
 end;
 {$ENDIF}
@@ -507,15 +517,14 @@ begin
          BufferLength := Reader.ReadCardinal();
          if (SizeOf(Cardinal) + BufferLength <= Length(FullBuffer)) then
          begin
-            FIPCBuffer.Consume(SizeOf(Cardinal) + BufferLength); // $R-
-            Reader.Reset();
-
+            Reader.Reset(); // ReadString needs the Cardinal we just read
             if (Reader.ReadString() <> GetInternalPassword()) then
             begin
                Disconnect();
             end
             else
             begin
+               FIPCBuffer.Consume(SizeOf(Cardinal) + BufferLength); // $R-
                FMode := cmControlMessages;
             end;
          end;
@@ -676,7 +685,8 @@ end;
 constructor TBaseServer.Create(APort: Word; AClock: TClock);
 begin
    inherited Create(APort);
-   FClock := TStableClock.Create(AClock);
+   if (Assigned(AClock)) then
+      FClock := TStableClock.Create(AClock);
 end;
 
 destructor TBaseServer.Destroy();
@@ -685,7 +695,7 @@ begin
    Assert(not Assigned(FNextEvent));
    FScheduledEvents.Free();
    Assert(Length(FDeadObjects) = 0);
-   FClock.Free();
+   FreeAndNil(FClock);
    inherited Destroy();
 end;
 
@@ -705,32 +715,43 @@ begin
 end;
 
 procedure TBaseServer.Run();
+
+   function PrettyTime(Time: TDateTime): UTF8String;
+   begin
+      Result := 'T+' + FloatToStrF(MillisecondsBetween(0.0, Time) / 1000, ffNumber, 15, 1, FloatFormat) + 's';
+   end;
+
 var
    NextTime: Int64;
 begin
+   {$IFOPT C+}
+   Writeln('Ready.', ControlReady);
+   {$ENDIF}
    repeat
-      FClock.Unlatch();
       if (not Assigned(FNextEvent)) then
       begin
-         Select(-1);
+         if (Assigned(FClock)) then
+            FClock.Unlatch();
+         NextTime := -1;
       end
       else
       begin
          Assert(Assigned(FClock));
-         if (not EventIsDueBefore(FNextEvent, FClock.Now())) then
-         begin
-            Writeln('Scheduling alarm for ', MillisecondsBetween(FNextEvent^.FTime, FClock.Now()), 'ms from now...');
-            NextTime := MillisecondsBetween(FNextEvent^.FTime, FClock.Now());
-            Assert(NextTime >= 0);
-            if (NextTime > High(cint)) then
-               NextTime := High(cint);
-            FClock.UnlatchUntil(FNextEvent^.FTime);
-            Select(NextTime); // $R-
-         end;
-         if (Assigned(FNextEvent) and EventIsDueBefore(FNextEvent, FClock.Now())) then
-         begin
-            RunEvent(FNextEvent);
-         end;
+         Assert(not EventIsDueBefore(FNextEvent, FClock.Now()));
+         FClock.UnlatchUntil(FNextEvent^.FTime);
+         NextTime := MillisecondsBetween(FNextEvent^.FTime, FClock.Now());
+         Assert(NextTime >= 0);
+         if (NextTime > High(cint)) then
+            NextTime := High(cint);
+      end;
+      if (NextTime <> 0) then
+         Select(NextTime); // $R-
+      if (Assigned(FClock)) then
+         Writeln('Current internal time: ', PrettyTime(FClock.Now()));
+      while (Assigned(FNextEvent) and EventIsDueBefore(FNextEvent, FClock.Now())) do
+      begin
+         Writeln('Running event for ', PrettyTime(FNextEvent^.FTime));
+         RunEvent(FNextEvent);
       end;
       ReportChanges();
       CompleteDemolition();
@@ -816,5 +837,5 @@ begin
 end;
 
 initialization
-   InstallSigIntHandler();
+   InstallAbortHandler();
 end.

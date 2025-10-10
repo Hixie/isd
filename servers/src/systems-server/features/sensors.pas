@@ -19,6 +19,7 @@ type
    TSensorFeatureNode = class abstract (TFeatureNode, ISensorsProvider)
    private
       procedure SyncKnowledge();
+      function GetDebugName(): UTF8String;
    protected
       FKnownMaterials: TGetKnownMaterialsMessage;
       FKnownAssetClasses: TGetKnownAssetClassesMessage;
@@ -83,6 +84,11 @@ begin
    Assert(not Assigned(FKnownMaterials));
    Assert(not Assigned(FKnownAssetClasses));
    inherited;
+end;
+
+function TSensorFeatureNode.GetDebugName(): UTF8String;
+begin
+   Result := DebugName;
 end;
 
 procedure TSensorFeatureNode.ResetVisibility(CachedSystem: TSystem);

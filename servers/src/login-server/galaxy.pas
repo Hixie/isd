@@ -607,6 +607,7 @@ begin
    end
    else
    begin
+      // non-star systems
       XXX;
    end;
 end;

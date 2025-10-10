@@ -148,6 +148,7 @@ type
       procedure IncMaterialPile(Material: TMaterial; Delta: UInt64);
       procedure DecMaterialPile(Material: TMaterial; Delta: UInt64);
       function ClampedDecMaterialPile(Material: TMaterial; Delta: UInt64): UInt64; // returns how much was actually transferred
+      function GetIsMinable(): Boolean;
    protected
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
       function GetMass(): Double; override;
@@ -183,6 +184,7 @@ type
       function GetMaterialPileMassFlowRate(Pile: IMaterialPile): TRate; // kg/s
       function GetMaterialPileQuantity(Pile: IMaterialPile): UInt64; // units
       function GetMaterialPileQuantityFlowRate(Pile: IMaterialPile): TRate; // units/s
+      property IsMinable: Boolean read GetIsMinable;
    end;
 
 implementation
@@ -604,6 +606,21 @@ begin
    end;
 end;
 
+function TRegionFeatureNode.GetIsMinable(): Boolean;
+var
+   Ore: TOres;
+begin
+   Result := False;
+   for Ore := Low(FGroundComposition) to High(FGroundComposition) do // $R-
+   begin
+      if (FGroundComposition[Ore] > 0) then
+      begin
+         Result := True;
+         break;
+      end;
+   end;
+end;
+
 function TRegionFeatureNode.ManageBusMessage(Message: TBusMessage): TBusMessageResult;
 var
    CachedSystem: TSystem;
@@ -756,6 +773,7 @@ var
    TransferQuantity, ActualTransferQuantity, DesiredTransferQuantity: UInt64;
    Distribution: TOreFractions;
    RefinedOreMasses: array[TOres] of Double;
+   GroundChanged, GroundWasMinable: Boolean;
 begin
    Writeln('  ', DebugName, ' SYNCHRONIZING');
    Assert(FDynamic);
@@ -777,6 +795,9 @@ begin
 
    Encyclopedia := CachedSystem.Encyclopedia;
 
+   GroundChanged := False;
+   GroundWasMinable := IsMinable;
+   
    OrePileCapacity := 0.0;
    if (Assigned(FOrePiles)) then
    begin
@@ -835,6 +856,7 @@ begin
             TransferQuantity := TruncUInt64(ApproximateTransferQuantity);
             Assert(TransferQuantity <= Quantity, 'region composition underflow');
             Dec(FGroundComposition[Ore], TransferQuantity);
+            GroundChanged := True;
             Assert(High(FOrePileComposition[Ore]) - FOrePileComposition[Ore] >= TransferQuantity);
             Writeln('      moving ', TransferQuantity, ' units of ore ', Ore, ', ', Encyclopedia.Materials[Ore].Name, ' (', Encyclopedia.Materials[Ore].MassPerUnit:0:1, 'kg/unit) into piles (out of ', Quantity, ' units of that ore remaining, ', HexStr(Quantity, 16), ') (should be approximately ', ApproximateTransferQuantity:0:5, ') - high-quantity=', HexStr(High(FOrePileComposition[Ore]) - Quantity, 16), ' [', High(FOrePileComposition[Ore]) - Quantity >= TransferQuantity, ']');
             ActualTransfer := ActualTransfer + TransferQuantity * Encyclopedia.Materials[Ore].MassPerUnit;
@@ -858,6 +880,7 @@ begin
          // TODO: consider truncating and remembering how much is left over for next time
          TransferQuantity := RoundUInt64((TotalTransferMass - ActualTransfer) / Encyclopedia.Materials[Ore].MassPerUnit);
          Dec(FGroundComposition[Ore], TransferQuantity);
+         GroundChanged := True;
          Writeln('      moving ', TransferQuantity, ' units of ore ', Ore, ', ', Encyclopedia.Materials[Ore].Name, ' (', Encyclopedia.Materials[Ore].MassPerUnit:0:1, 'kg/unit) into piles (final cleanup move with randomly-selected ore)');
          ActualTransfer := ActualTransfer + TransferQuantity * Encyclopedia.Materials[Ore].MassPerUnit;
          Inc(FOrePileComposition[Ore], TransferQuantity);
@@ -967,6 +990,7 @@ begin
          begin
             Dec(FOrePileComposition[Ore], TransferQuantity);
             Inc(FGroundComposition[Ore], TransferQuantity);
+            GroundChanged := True;
             Writeln('      removing ', TransferQuantity, ' units of ore ', Ore, ', ', Encyclopedia.Materials[Ore].Name, ' (', Encyclopedia.Materials[Ore].MassPerUnit:0:1, 'kg/unit) from ore piles (leaving ', FOrePileComposition[Ore], ' units of that ore in piles)');
             ActualTransfer := ActualTransfer + TransferQuantity * Encyclopedia.Materials[Ore].MassPerUnit;
          end;
@@ -991,9 +1015,22 @@ begin
          Writeln('      moving ', TransferQuantity, ' units of ore ', Ore, ', ', Encyclopedia.Materials[Ore].Name, ' (', Encyclopedia.Materials[Ore].MassPerUnit:0:1, 'kg/unit) into ground (final cleanup move with randomly-selected ore)');
          ActualTransfer := ActualTransfer + TransferQuantity * Encyclopedia.Materials[Ore].MassPerUnit;
          Inc(FGroundComposition[Ore], TransferQuantity);
+         GroundChanged := True;
       end;
    end;
 
+   if (GroundChanged) then
+   begin
+      if (IsMinable <> GroundWasMinable) then
+      begin
+         MarkAsDirty([dkUpdateJournal, dkUpdateClients]);
+      end
+      else
+      begin
+         MarkAsDirty([dkUpdateJournal]);
+      end;
+   end;
+   
    FAnchorTime := CachedSystem.Now;
    Writeln('    Sync() reset FAnchorTime to ', FAnchorTime.ToString());
 
@@ -1076,7 +1113,7 @@ begin
    Sync();
    Pause();
    Assert(not FDynamic);
-   MarkAsDirty([dkUpdateClients, dkUpdateJournal, dkNeedsHandleChanges]);
+   MarkAsDirty([dkUpdateJournal, dkNeedsHandleChanges]);
 end;
 
 procedure TRegionFeatureNode.Reset();
@@ -1824,24 +1861,13 @@ end;
 procedure TRegionFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
 var
    Visibility: TVisibility;
-   Ore: TOres;
-   Minable: Boolean;
 begin
    Visibility := Parent.ReadVisibilityFor(DynastyIndex, CachedSystem);
    if ((dmDetectable * Visibility <> []) and (dmClassKnown in Visibility)) then
    begin
       Writer.WriteCardinal(fcRegion);
       Assert(Length(FGroundComposition) > 0);
-      Minable := False;
-      for Ore := Low(FGroundComposition) to High(FGroundComposition) do // $R-
-      begin
-         if (FGroundComposition[Ore] > 0) then
-         begin
-            Minable := True;
-            break;
-         end;
-      end;
-      Writer.WriteBoolean(Minable); // if we add more flags, they should go into this byte
+      Writer.WriteBoolean(IsMinable); // if we add more flags, they should go into this byte
    end;
 end;
 

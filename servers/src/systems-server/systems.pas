@@ -152,7 +152,7 @@ type
    TAssetID = Cardinal; // 0 is reserved for placeholders or sentinels
 
    TDynastyNotes = record
-   strict private
+   {strict} private
       FID: TAssetID; // 4 bytes
       FOldVisibilty, FCurrentVisibility: TVisibility; // 2 bytes each
       function GetHasID(): Boolean; inline;
@@ -475,28 +475,29 @@ type
    end;
 
    TDirtyKind = (
-      dkNew, // this asset node is newly created*
-      dkNeedsHandleChanges, // the node wants HandleChanges to be called
-      dkDescendantNeedsHandleChanges, // one of the node's descendants wants HandleChanges to be called; automatically set**
-      dkUpdateClients, // this asset node is dirty and we need to update the client // TODO: audit uses of this now that it has a specific meaning
-      dkDescendantUpdateClients, // one or more of the descendants has dkUpdateClients set
-      dkUpdateJournal, // this asset node is dirty and we need to update the journal // TODO: audit uses of this now that it has a specific meaning
-      dkDescendantUpdateJournal, // one or more of the descendants has dkUpdateJournal set
-      dkChildren, // this asset's node's children changed in some way (were added, moved, or removed)
-      dkDescendants, // one or more of the descendants has dkChildren set
+      dkNew, // this asset node is newly created (set automatically; do not use directly) [1]
+      dkNeedsHandleChanges, // the node wants HandleChanges to be called [1]
+      dkDescendantNeedsHandleChanges, // one of the node's descendants has dkNeedsHandleChanges set [2]
+      dkUpdateClients, // this asset node is dirty and we need to update the client [1] // TODO: audit uses of this now that it has a specific meaning
+      dkDescendantUpdateClients, // one or more of the descendants has dkUpdateClients set [2]
+      dkUpdateJournal, // this asset node is dirty and we need to update the journal( // TODO: audit uses of this now that it has a specific meaning
+      dkDescendantUpdateJournal, // one or more of the descendants has dkUpdateJournal set [2]
+      dkChildren, // this asset's node's children changed in some way (were added, moved, or removed)(
+      dkDescendants, // one or more of the descendants has dkChildren set [2]
+      dkAffectsNames, // the asset's name changed [1]
+      dkChildAffectsNames, // a child's name changed [1][2]
       dkVisibilityDidChange, // one or more dynasties changed whether they can see this node (handled by CheckVisibilityChanged)
       dkAffectsVisibility, // system needs to redo a visibility scan
       dkAffectsDynastyCount, // system needs to redo a dynasty census (requires dkAffectsVisibility)
-      dkAffectsNames, // any nodes listening to names of descendants should reset caches
       dkAffectsKnowledge // any nodes caching knowledge of descendants should reset caches
    );
    TDirtyKinds = set of TDirtyKind;
-   //  * dkNew can't be used with MarkAsDirty.
-   // ** When dkNeedsHandleChanges is removed, dkDescendantNeedsHandleChanges is set.
+   //  [1] removed when propagating to parent
+   //  [2] added automatically when appropriate when propagating to parent
 
 const
    dkAll = [Low(TDirtyKind) .. High(TDirtyKind)]; // the initial setting on creation
-   dkAffectsTreeStructure = [dkAffectsVisibility, dkAffectsNames, dkAffectsKnowledge, dkVisibilityDidChange, dkUpdateClients, dkUpdateJournal, dkChildren]; // set on old/new parents when child's parent changes
+   dkAffectsTreeStructure = [dkAffectsVisibility, dkAffectsKnowledge, dkVisibilityDidChange, dkUpdateClients, dkUpdateJournal, dkChildren, dkChildAffectsNames]; // set on old/new parents when child's parent changes
 
 type
    ISensorsProvider = interface ['ISensorsProvider']
@@ -508,7 +509,9 @@ type
       function Knows(AssetClass: TAssetClass): Boolean;
       function Knows(Material: TMaterial): Boolean;
       function GetOreKnowledge(): TOreFilter;
+      function GetDebugName(): UTF8String; // TODO: make this debug-only
       property OreKnowledge: TOreFilter read GetOreKnowledge;
+      property DebugName: UTF8String read GetDebugName;
    end;
 
    TFeatureNode = class abstract (TDebugObject)
@@ -788,11 +791,6 @@ function UpdateDirtyKindsForAncestor(DirtyKinds: TDirtyKinds): TDirtyKinds;
 begin
    Result := DirtyKinds;
    Exclude(Result, dkNew);
-   if (dkChildren in Result) then
-   begin
-      Exclude(Result, dkChildren);
-      Exclude(Result, dkDescendants);
-   end;
    if (dkNeedsHandleChanges in Result) then
    begin
       Exclude(Result, dkNeedsHandleChanges);
@@ -812,6 +810,20 @@ begin
       begin
          Include(Result, dkNeedsHandleChanges); // TODO: we only do this for food, apparently. we should move this logic to the food feature using ParentMarkedAsDirty
       end;
+   end;
+   if (dkChildren in Result) then
+   begin
+      Exclude(Result, dkChildren);
+      Include(Result, dkDescendants);
+   end;
+   if (dkChildAffectsNames in Result) then
+   begin
+      Exclude(Result, dkChildAffectsNames);
+   end;
+   if (dkAffectsNames in Result) then
+   begin
+      Exclude(Result, dkAffectsNames);
+      Include(Result, dkChildAffectsNames);
    end;
 end;
 
@@ -1484,11 +1496,11 @@ function TFeatureNode.GetDebugName(): UTF8String;
 begin
    if (Assigned(Parent)) then
    begin
-      Result := Parent.DebugName + '-<' + ClassName + ' @ ' + HexStr(Self) + '>';
+      Result := Parent.DebugName + '-<' + ClassName + ' ' + '@' + HexStr(Self) + '>';
    end
    else
    begin
-      Result := '<nil>-<' + ClassName + ' @ ' + HexStr(Self) + '>';
+      Result := '<nil>-<' + ClassName + ' @' + HexStr(Self) + '>';
    end;
 end;
 
@@ -1885,7 +1897,7 @@ begin
       NewFlags := DirtyKinds - FDirty;
       FDirty := FDirty + DirtyKinds;
       for Feature in FFeatures do
-         Feature.ParentMarkedAsDirty(FDirty, NewFlags); // might call us re-entrantly
+         Feature.ParentMarkedAsDirty(FDirty, NewFlags); // might call us re-entrantly // TODO: can this just return what needs to change?
       if (Assigned(FParent)) then
          FParent.MarkAsDirty(UpdateDirtyKindsForAncestor(DirtyKinds));
    end;
@@ -2089,7 +2101,7 @@ begin
       end;
       if (Changed) then
       begin
-         MarkAsDirty([dkUpdateClients, dkUpdateJournal, dkVisibilityDidChange]);
+         MarkAsDirty([dkUpdateClients, dkVisibilityDidChange]);
       end;
    end;
 end;
@@ -2107,7 +2119,9 @@ var
    Feature: TFeatureNode;
 begin
    if (Sensors.Knows(FAssetClass)) then
+   begin
       VisibilityHelper.AddSpecificVisibilityByIndex(DynastyIndex, [dmClassKnown], Self);
+   end;
    for Feature in FFeatures do
       Feature.HandleKnowledge(DynastyIndex, VisibilityHelper, Sensors);
 end;
@@ -2784,8 +2798,8 @@ begin
    end;
    VisibilityHelper.Init(Self);
    FRoot.Walk(@ApplyVisibility, nil);
-   FRoot.Walk(@CheckVisibility, nil);
    FRoot.Walk(@ApplyKnowledge, nil);
+   FRoot.Walk(@CheckVisibility, nil);
 end;
 
 procedure TSystem.ReportChanges();
@@ -2813,7 +2827,6 @@ var
    begin
       if (dkNeedsHandleChanges in Asset.Dirty) then
       begin
-         Writeln('Handling changes for ', Asset.DebugName);
          Exclude(Asset.FDirty, dkNeedsHandleChanges);
          Asset.HandleChanges(Self);
       end;
@@ -2822,26 +2835,33 @@ var
 begin
    if (not Dirty) then
       exit;
-   Writeln('== ReportChanges for system ', FSystemID, ' (', HexStr(FSystemID, 6), ') ==');
+   Writeln('== Processing changes for system ', FSystemID, ' (', HexStr(FSystemID, 6), ') ==');
    Assert((dkAffectsVisibility in FChanges) or not (dkAffectsDynastyCount in FChanges)); // dkAffectsDynastyCount requires dkAffectsVisibility
    if (dkAffectsVisibility in FChanges) then
+   begin
+      Writeln('Recomputing visibility...');
       RecomputeVisibility();
+   end;
    while (dkDescendantNeedsHandleChanges in FChanges) do
    begin
-      Writeln('HandleChanges...');
+      Writeln('Handling changes...');
       Exclude(FChanges, dkDescendantNeedsHandleChanges);
       FRoot.Walk(@SkipCleanChildren, @HandleChanges);
    end;
    if (dkDescendantUpdateJournal in FChanges) then
+   begin
+      Writeln('Updating journal...');
       RecordUpdate();
+   end;
    // TODO: tell the clients if anything stopped being visible? or is that implied?
    // TODO: tell the clients if _everything_ stopped being visible
+   Writeln('Updating clients...');
    for Dynasty in FDynasties do
    begin
       Dynasty.ForEachConnection(@ReportChange);
    end;
    Clean();
-   Writeln('Tree cleaned.');
+   Writeln('Done processing changes.');
 end;
 
 function TSystem.HasDynasty(Dynasty: TDynasty): Boolean;
@@ -2878,7 +2898,6 @@ var
    SystemTarget: TTimeInMilliseconds;
    RealDelta: TWallMillisecondsDuration;
 begin
-   Writeln('System ', SystemID, ' scheduling next event (', HexStr(FNextEvent), ')');
    Assert(Assigned(FNextEvent));
    Assert(not Assigned(FNextEventHandle));
    SystemNow := Now;
@@ -2891,7 +2910,6 @@ end;
 
 procedure TSystem.RescheduleNextEvent();
 begin
-   Writeln('System ', SystemID, ' rescheduling next event (', HexStr(FNextEvent), ')');
    Assert(Assigned(FNextEvent) = Assigned(FNextEventHandle));
    Assert(Assigned(FNextEvent) = FScheduledEvents.IsNotEmpty);
    if (Assigned(FNextEvent)) then
@@ -2917,34 +2935,27 @@ begin
             Result := Event;
       end;
    end;
-   Writeln('  Selecting event for ', SystemID, ': ', HexStr(Result));
 end;
 
 function TSystem.ScheduleEvent(TimeDelta: TMillisecondsDuration; Callback: TEventCallback; var Data): TSystemEvent;
 begin
-   Writeln('TSystem.ScheduleEvent for system ', SystemID, ' with ', FScheduledEvents.Count, ' scheduled events; current next event is ', HexStr(FNextEvent));
    // Assigned(FNextEvent) and Assigned(FNextEventHandle) might not be in sync here, if we're handling an event and it schedules its own event
    Assert(Assigned(FNextEvent) = FScheduledEvents.IsNotEmpty);
-   Writeln('  - calling TSystemEvent.Create');
    Result := TSystemEvent.Create(
       Now + TimeDelta,
       Callback,
       Pointer(Data),
       Self
    );
-   Writeln('  - calling FScheduledEvents.Add');
    FScheduledEvents.Add(Result);
-   Writeln('  - FScheduledEvents now has ', FScheduledEvents.Count, ' events');
    if ((not Assigned(FNextEvent)) or (Result.FTime <= FNextEvent.FTime)) then
    begin
       if (Assigned(FNextEventHandle)) then
       begin
-         Writeln('  - calling FServer.CancelEvent(', HexStr(FNextEventHandle), ')');
          FServer.CancelEvent(FNextEventHandle);
       end;
       Assert(not Assigned(FNextEventHandle));
       FNextEvent := Result;
-      Writeln('  Scheduling event ', HexStr(FNextEvent), '...');
       ScheduleNextEvent();
    end;
    Assert(Assigned(FNextEvent) = FScheduledEvents.IsNotEmpty);
@@ -2952,7 +2963,6 @@ end;
 
 procedure TSystem.CancelEvent(Event: TSystemEvent);
 begin
-   Writeln('System ', SystemID, ' canceling event ', HexStr(Event), ' (next event is currently ', HexStr(FNextEvent), ')');
    Assert(Assigned(Event));
    Assert(FScheduledEvents.Has(Event));
    FScheduledEvents.Remove(Event);
@@ -2985,15 +2995,14 @@ function TSystem.GetNow(): TTimeInMilliseconds;
 begin
    if (FCurrentEventTime.IsInfinite) then
    begin
-      Result := TTimeInMilliseconds.FromMilliseconds(0) + TWallMillisecondsDuration.FromMilliseconds(MillisecondsBetween(FServer.Clock.Now(), FTimeOrigin)) * FTimeFactor;
-      Writeln('NOW AT ', SystemID, ' IS ', Result.ToString(), ' NATURALLY');
+      Result := TTimeInMilliseconds.FromDurationSinceOrigin(TWallMillisecondsDuration.FromDateTimes(FServer.Clock.Now(), FTimeOrigin) * FTimeFactor);
    end
    else
    begin
       // We do this because otherwise FTimeFactor introduces an error into the current time and we
       // end up running events at slightly the wrong time, which can affect computations.
       Result := FCurrentEventTime;
-      Writeln('NOW AT ', SystemID, ' IS PINNED TO ', Result.ToString());
+      Assert(Result <= TTimeInMilliseconds.FromDurationSinceOrigin(TWallMillisecondsDuration.FromDateTimes(FServer.Clock.Now(), FTimeOrigin) * FTimeFactor));
    end;
 end;
 
@@ -3027,13 +3036,11 @@ end;
 
 constructor TSystemEvent.Create(ATime: TTimeInMilliseconds; ACallback: TEventCallback; AData: Pointer; ASystem: TSystem);
 begin
-   Writeln('TSystemEvent.Create for ', HexStr(Self), ' started');
    inherited Create();
    FTime := ATime;
    FCallback := ACallback;
    FData := AData;
    FSystem := ASystem;
-   Writeln('TSystemEvent.Create for ', HexStr(Self), ' finished');
 end;
 
 destructor TSystemEvent.Cancel();
