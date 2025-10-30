@@ -463,7 +463,7 @@ end;
 
 
 function LoadOres(Filename: RawByteString): TMaterial.TArray;
-   
+
    function ParseDouble(Value: UTF8String): Double;
    begin
       Result := StrToFloat(Value, FloatFormat); // $R-

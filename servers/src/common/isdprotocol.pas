@@ -63,7 +63,7 @@ const
    ControlEnd = #04; // End Of Transmission (server ended without any exceptions)
    ControlError = #21; // Negative Acknowledge (server caught a problem)
 {$ENDIF}
-      
+
 implementation
 
 end.

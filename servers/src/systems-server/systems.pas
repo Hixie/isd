@@ -309,7 +309,7 @@ type
    TPostWalkCallback = procedure(Asset: TAssetNode) is nested;
 
    TScoreDirtyCallback = procedure(Dynasty: TDynasty) of object;
-   
+
    FeatureClassReference = class of TFeatureClass;
    FeatureNodeReference = class of TFeatureNode;
 
@@ -2358,7 +2358,7 @@ begin
       Walk(nil, @Attach);
    end;
 end;
-      
+
 function TAssetNode.GetHasParent(): Boolean;
 begin
    Result := FParent <> 0;
@@ -2368,7 +2368,7 @@ function TAssetNode.GetParent(): TFeatureNode;
 begin
    Result := TFeatureNode(FParent and not AttachedBit);
 end;
-      
+
 function TAssetNode.GetIsAttached(): Boolean;
 begin
    Result := FParent and AttachedBit > 0;
@@ -2980,7 +2980,7 @@ begin
 end;
 
 function TSystem.ComputeScoreFor(Dynasty: TDynasty): Double;
-   
+
    procedure RecomputeScores(Asset: TAssetNode);
    begin
       if (Asset.Owner = Dynasty) then

@@ -9,7 +9,7 @@ uses
 
 type
    TServerStreamReader = class;
-   
+
    TServerWebSocket = class
    strict private
       const
@@ -58,7 +58,7 @@ type
       constructor Create(const Input: RawByteString; WebSocket: TServerWebSocket);
       function ReadStringReference(): UTF8String;
    end;
-   
+
 type
    TServerIPCSocket = class
    strict private
@@ -102,7 +102,7 @@ type
    end;
 
    TServerProcessList = array of TServerProcess;
-   
+
    TIsdServerTest = class abstract (TIsdTest)
    strict private
       FNextPort: Word;

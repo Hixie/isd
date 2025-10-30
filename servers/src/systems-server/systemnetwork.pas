@@ -55,7 +55,7 @@ type
       procedure RemoveServerFor(Dynasty: TDynasty);
       procedure UpdateScore(Dynasty: TDynasty; Score: Double);
    end;
- 
+
    TDynastyManager = class(TDynastyDatabase)
    protected
       FDynasties: TDynastyHashTable;
@@ -652,5 +652,5 @@ begin
       end;
    end;
 end;
-   
+
 end.

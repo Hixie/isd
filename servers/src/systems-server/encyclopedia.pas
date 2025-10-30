@@ -493,7 +493,7 @@ procedure TEncyclopedia.CondenseProtoplanetaryDisks(Space: TSolarSystemFeatureNo
          ]
       );
    end;
-   
+
    procedure AddBody(const Body: TBody; Orbit: TOrbitFeatureNode);
    var
       Node, OrbitNode: TAssetNode;

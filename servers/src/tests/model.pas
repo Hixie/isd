@@ -26,7 +26,7 @@ type
          FModelSystem: TModelSystem;
          FPrevious: PArena;
          FTop: Pointer; // next thing we can allocate
-         FBottom: Placeholder; // first thing in arena 
+         FBottom: Placeholder; // first thing in arena
    public
       class function FromPointer(Ptr: Pointer): PArena; static; inline;
       class function AllocateArena(ModelSystem: TModelSystem): PArena; static;
@@ -35,7 +35,7 @@ type
       class procedure FreeObject(Arena: PArena; Instance: Pointer); static;
       property ModelSystem: TModelSystem read FModelSystem;
    end;
-   
+
    TModelSystem = class
    strict private
       type
@@ -164,7 +164,7 @@ type
    public
       Children: specialize PlasticArray <TChild, specialize IncomparableUtils<TChild>>;
    end;
-   
+
    TModelOrbitFeature = class (TModelFeature)
    public
       type
@@ -736,7 +736,7 @@ end;
 function TModelSystem.FindAssets(Predicate: TAssetPredicate): TAssetList;
 var
    Results: specialize PlasticArray<TModelAsset, TObjectUtils>;
-   
+
    procedure Search(Asset: TModelAsset);
    begin
       if (Predicate(Asset)) then
@@ -963,7 +963,7 @@ procedure TModelFeature.Describe(var Output: specialize PlasticArray<UTF8String,
 begin
    Output.Push(Indent + '* ' + ClassName);
    AddProperties(Self, Output, Indent + '  ');
-end;   
+end;
 
 
 procedure TModelStarFeature.UpdateFrom(Stream: TServerStreamReader);
@@ -1040,7 +1040,7 @@ begin
    PrimaryAssetId := 0;
    Children.Empty();
 end;
-         
+
 procedure TModelOrbitFeature.Walk(Callback: TAssetWalkCallback);
 var
    Index: Cardinal;
@@ -1430,5 +1430,5 @@ begin
 end;
 
 initialization
-   
+
 end.

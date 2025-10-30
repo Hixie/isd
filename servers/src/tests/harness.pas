@@ -11,10 +11,10 @@ type
    TIsdTest = class abstract
       procedure RunTest(const BaseDirectory, TestDirectory: UTF8String); virtual; abstract;
    end;
-   
+
 const
    TestTimeout = 5000; // 5 seconds
-   
+
 procedure RegisterTest(Test: TIsdTest);
 procedure RunTests(BaseDirectory: UTF8String);
 
@@ -64,7 +64,7 @@ begin
    if (not Condition) then
       raise Exception.Create('test failure');
 end;
-      
+
 var
    Test: TIsdTest;
 initialization

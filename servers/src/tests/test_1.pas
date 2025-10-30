@@ -218,7 +218,7 @@ begin
       List.ReadString(); // description
    end;
    Result := 0;
-   raise Exception.CreateFmt('could not find "%s" in server buildings list (%s)', [Target, List.DebugMessage]); 
+   raise Exception.CreateFmt('could not find "%s" in server buildings list (%s)', [Target, List.DebugMessage]);
 end;
 
 procedure TTest.RunTestBody();
@@ -238,7 +238,7 @@ var
       TimePinned := False;
       Inc(MaxTime, Delta * TimeFactor);
    end;
-   
+
 var
    Response: TStringStreamReader;
    // Username, Password: UTF8String;
@@ -289,7 +289,7 @@ begin
    Response := TStringStreamReader.Create(LoginServer.ReadWebSocketStringMessage());
    VerifyPositiveResponse(Response);
    VerifyEndOfResponse(Response);
-   
+
    // Check with dynasty server.
    DynastyServer := FDynastiesServers[0].ConnectWebSocket();
    DynastyServer.SendWebSocketStringMessage('0'#00'login'#00 + Token + #00);
@@ -324,7 +324,7 @@ begin
    Verify(ModelSystem.CurrentTime = MaxTime);
    ColonyShip := FindColonyShip(ModelSystem);
    Verify(ColonyShip.Parent.HasFeature(TModelOrbitFeature));
-   
+
    AdvanceTime(2 * Minutes); // (wall-clock minutes, not in-game minutes) crash the colony ship
    ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 'Don''t mind the holes');
    Verify(ModelSystem.CurrentTime = 1 * Hours);
@@ -364,7 +364,7 @@ begin
    Response := TStringStreamReader.Create(LoginServer.ReadWebSocketStringMessage());
    VerifyPositiveResponse(Response);
    VerifyEndOfResponse(Response);
-   
+
    // Build a mine
    SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.ID) + #00'get-buildings'#00'0'#00'0'#00);
    Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
@@ -467,7 +467,7 @@ begin
       Verify(Capacity = 3000000.0);
       Verify(PileMassFlowRate = 0.0);
    end;
-   
+
    // Build a pile
    SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(Miner.ID) + #00'disable'#00);
    Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
@@ -492,7 +492,7 @@ begin
       Verify(Capacity = 3000000.0);
       Verify(PileMassFlowRate = 0.0);
    end;
-   
+
    // Build an iron table
    SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.ID) + #00'get-buildings'#00'0'#00'1'#00);
    Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
@@ -611,7 +611,7 @@ begin
       Verify(Capacity = 1000.0);
       Verify(PileMassFlowRate = 0.0);
    end;
-   
+
    // Build a drill
    SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.ID) + #00'get-buildings'#00'1'#00'1'#00);
    Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
@@ -667,7 +667,7 @@ begin
       Verify(PileMassFlowRate > 0);
       Verify(MaterialName = 'Silicon');
    end;
-   
+
    // One day later.
    AdvanceTime(1 * Days div TimeFactor);
    // This is when the table is fully built.
@@ -708,9 +708,9 @@ begin
       Verify(Quantity = 3);
       Verify(QuantityRate = 0);
    end;
-   
+
    ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 4); // table pile full
-   
+
    ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 5); // the structure (with its pile, giving data to a new anchor time)
    with (specialize GetUpdatedFeature<TModelStructureFeature>(ModelSystem)) do
    begin
@@ -733,7 +733,7 @@ begin
       Verify(PileMassFlowRate = 0);
       Verify(MaterialName = 'Silicon');
    end;
-   
+
    FreeAndNil(ModelSystem);
 
    SystemsServerIPC.CloseSocket();
@@ -747,7 +747,7 @@ begin
    SystemsServer.CloseWebSocket();
    FreeAndNil(SystemsServer);
 end;
-   
+
 initialization
    RegisterTest(TTest.Create());
 end.

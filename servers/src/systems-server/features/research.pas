@@ -540,12 +540,12 @@ begin
 
       specialize Sort<TResearch>(Candidates, @CompareCandidates);
       Assert(Length(Candidates) = WeightedCandidates.Count);
-      
+
       // Pick a random number using our seed.
       SelectedResearch := FSeed mod TotalWeight;
       Assert(SelectedResearch >= 0);
       Assert(SelectedResearch < TotalWeight);
-      
+
       // Find the corresponding research
       Index := Low(Candidates);
       repeat

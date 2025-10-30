@@ -137,7 +137,7 @@ begin
    FileMode := 1;
    Rewrite(ScoreFile);
    Close(ScoreFile);
-   
+
    // Prepare message for client (but don't send yet)
    Message.Reply();
    Message.Output.WriteString(Dynasty.Username);
@@ -614,7 +614,7 @@ type
             DynastyIDs.Add(Table[Index].DynastyID);
       end;
    end;
-   
+
 var
    TopEver: THighScoreTable;
    TopNow: THighScoreTable;

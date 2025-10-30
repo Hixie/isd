@@ -44,7 +44,7 @@ type
    end;
 
    TDynastyIDHashSet = specialize TTightHashSet<Cardinal, TTightHashUtils32>;
-   
+
 implementation
 
 function RawToString(var Source; Length: Cardinal): UTF8String;

@@ -164,7 +164,7 @@ type
    end;
 
    procedure ConsoleWriteln(const Prefix, S: UTF8String);
-   
+
 implementation
 
 uses

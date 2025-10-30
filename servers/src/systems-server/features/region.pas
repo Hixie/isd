@@ -797,7 +797,7 @@ begin
 
    GroundChanged := False;
    GroundWasMinable := IsMinable;
-   
+
    OrePileCapacity := 0.0;
    if (Assigned(FOrePiles)) then
    begin
@@ -1030,7 +1030,7 @@ begin
          MarkAsDirty([dkUpdateJournal]);
       end;
    end;
-   
+
    FAnchorTime := CachedSystem.Now;
    Writeln('    Sync() reset FAnchorTime to ', FAnchorTime.ToString());
 
