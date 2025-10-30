@@ -69,6 +69,7 @@ class BinaryStreamReader {
     return _codeTables._strings.putIfAbsent(code, readRawString);
   }
 
+  // TODO: remove, obsolete?
   T readObject<T>(ObjectReader reader) {
     assert(!checkpointed);
     final int code = readInt32();

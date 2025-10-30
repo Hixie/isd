@@ -285,7 +285,7 @@ class HudDialog extends StatelessWidget {
                                 child: heading,
                               ),
                             ),
-                            const SizedBox(width: 24.0),                            
+                            const SizedBox(width: 24.0),
                             ...buttons,
                             IconButton(
                               icon: const Icon(Icons.close),

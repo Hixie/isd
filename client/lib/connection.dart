@@ -11,6 +11,30 @@ typedef ErrorCallback = void Function(Exception error, Duration delay);
 typedef TextMessageCallback = void Function(StreamReader reader);
 typedef BinaryMessageCallback = void Function(Uint8List bytes);
 
+class ConnectionStatus extends ValueNotifier<bool> {
+  ConnectionStatus() : super(false);
+
+  final Set<Connection> _failedConnections = <Connection>{};
+
+  Future<void> get reset => _reset.future;
+  Completer<void> _reset = Completer<void>();
+
+  void addFailedConnection(Connection connection) {
+    _failedConnections.add(connection);
+    value = _failedConnections.isNotEmpty;
+  }
+
+  void removeFailedConnection(Connection connection) {
+    _failedConnections.remove(connection);
+    value = _failedConnections.isNotEmpty;
+  }
+
+  void triggerReset() {
+    _reset.complete();
+    _reset = Completer<void>();
+  }
+}
+
 class NetworkError implements Exception {
   NetworkError(this.message);
 
@@ -33,12 +57,13 @@ class _Conversation {
 }
 
 class Connection {
-  Connection(this.url, { this.onConnected, this.onTextMessage, this.onBinaryMessage, this.onError, this.timeout }) {
+  Connection(this.url, { required this.connectionStatus, this.onConnected, this.onTextMessage, this.onBinaryMessage, this.onError, this.timeout }) {
     log('$url creating connection object');
     _loop(url);
   }
 
   final String url;
+  final ConnectionStatus connectionStatus;
   final ConnectedCallback? onConnected;
   final ErrorCallback? onError;
   final TextMessageCallback? onTextMessage;
@@ -64,6 +89,7 @@ class Connection {
   }
 
   void _handleTimer() {
+    // we aren't using this connection any more, close it
     _timer = null;
     _websocket?.close();
     _websocket = null;
@@ -109,7 +135,8 @@ class Connection {
           _conversations.removeWhere(_Conversation.notQueued);
           _connected.value = true;
           connectDelay = const Duration(seconds: 1);
-          _resetTimer();
+          _resetTimer(); // this is the timeout delay; if it triggers, we close the websocket via _handleTimer
+          connectionStatus.removeFailedConnection(this);
           log('$url idle; listening');
           await _websocket!.closure;
           log('$url stream terminated with ${_conversations.length} conversations pending');
@@ -125,7 +152,14 @@ class Connection {
           return;
         }
       }
-      await Future<void>.delayed(connectDelay);
+      if (_hold == null) // we only create a hold if we're intentionally timed out
+        connectionStatus.addFailedConnection(this);
+      await Future.any<void>(<Future<void>>[
+        Future<void>.delayed(connectDelay),
+        connectionStatus.reset,
+        if (_hold != null)
+          _hold!.future,
+      ]);
       connectDelay *= 2;
     }
   }
@@ -216,6 +250,7 @@ class Connection {
     _websocket?.close();
     _websocket = null;
     _codeTables = null;
+    connectionStatus.removeFailedConnection(this);
   }
 
   static String prettyText(String message) {

@@ -239,9 +239,26 @@ String prettyLength(double m) {
 }
 
 String prettyNumberWithExponent(double number) {
+  if (number.isNaN)
+    return 'NaN';
+  if (number.isInfinite) {
+    if (number > 0)
+      return '∞';
+    return '-∞';
+  }
+  if (number == 0.0) {
+    return '0.0';
+  }
+  final String sign;
+  if (number < 0) {
+    sign = '-';
+    number = -number;
+  } else {
+    sign = '';
+  }
   final int exponent = (log(number) / log(10)).floor();
   final double mantissa = number / pow(10.0, exponent);
-  return '${mantissa.toStringAsFixed(1)}×10${_superscript("$exponent")}';
+  return '$sign${mantissa.toStringAsFixed(1)}×10${_superscript("$exponent")}';
 }
 
 String prettyFraction(double value) {

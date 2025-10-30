@@ -3,11 +3,11 @@ import 'dart:math' as math;
 import 'dart:ui' show ImageFilter;
 
 import 'package:cross_local_storage/cross_local_storage.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'connection.dart';
+import 'dialogs.dart';
 import 'game.dart';
 import 'http/http.dart' as http;
 import 'hud.dart';
@@ -74,8 +74,6 @@ class GameRoot extends StatefulWidget {
 }
 
 class _GameRootState extends State<GameRoot> {
-  bool _debug = false;
-
   @override
   void reassemble() {
     super.reassemble();
@@ -84,36 +82,33 @@ class _GameRootState extends State<GameRoot> {
 
   @override
   Widget build(BuildContext context) {
-    Widget app = MaterialApp(
-      // showSemanticsDebugger: true, // TODO: fix a11y (all the RenderWorld nodes don't report semantics)
-      title: 'Interstellar Dynasties',
+    return ColoredBox(
       color: const Color(0xFF000000),
-      home: AnnotatedRegion<SystemUiOverlayStyle>(
-        value: SystemUiOverlayStyle.light, // TODO: make this depend on the actual UI
-        child: Material(
-          type: MaterialType.transparency,
-          child: ShaderProvider(
-            shaders: widget.shaders,
-            child: IconsManagerProvider(
-              icons: widget.icons,
-              child: InterstellarDynasties(
-                game: widget.game,
-                onToggleDebug: () { setState(() { _debug = !_debug; }); },
+      child: GameProvider(
+        game: widget.game,
+        child: MaterialApp(
+          // showSemanticsDebugger: true, // TODO: fix a11y (all the RenderWorld nodes don't report semantics)
+          restorationScopeId: 'isd',
+          title: 'Interstellar Dynasties',
+          color: const Color(0xFF000000),
+          theme: ThemeData.from(colorScheme: ColorScheme.fromSeed(seedColor: const Color(0x5522FF99))),
+          home: AnnotatedRegion<SystemUiOverlayStyle>(
+            value: SystemUiOverlayStyle.light, // TODO: make this depend on the actual UI
+            child: Material(
+              type: MaterialType.transparency,
+              child: ShaderProvider(
+                shaders: widget.shaders,
+                child: IconsManagerProvider(
+                  icons: widget.icons,
+                  child: InterstellarDynasties(
+                    game: widget.game,
+                  ),
+                ),
               ),
             ),
           ),
         ),
       ),
-    );
-    if (_debug) {
-      app = Padding(
-        padding: const EdgeInsets.all(36.0),
-        child: app,
-      );
-    }
-    return ColoredBox(
-      color: const Color(0xFF000000),
-      child: app,
     );
   }
 }
@@ -121,17 +116,16 @@ class _GameRootState extends State<GameRoot> {
 class InterstellarDynasties extends StatefulWidget {
   InterstellarDynasties({
     required this.game,
-    required this.onToggleDebug,
   }) : super(key: ValueKey<Game>(game));
 
   final Game game;
-  final VoidCallback onToggleDebug;
 
   @override
   _InterstellarDynastiesState createState() => _InterstellarDynastiesState();
 }
 
-class _InterstellarDynastiesState extends State<InterstellarDynasties> {
+@pragma('vm:entry-point')
+class _InterstellarDynastiesState extends State<InterstellarDynasties> with RestorationMixin {
   bool _pending = false;
   bool _showMessage = false;
   String _message = '';
@@ -165,15 +159,129 @@ class _InterstellarDynastiesState extends State<InterstellarDynasties> {
     }
   }
 
-  void _doLogin() {
-    // TODO: show dialog asking for credentials
-    // see https://main-api.flutter.dev/flutter/widgets/RestorableRouteFuture-class.html
+  // DIALOGS
+
+  @override
+  String get restorationId => 'main';
+
+  @override
+  void restoreState(RestorationBucket? oldBucket, bool initialRestore) {
+    registerForRestoration(_loginRoute, 'login');
+    registerForRestoration(_changeCredentialsRoute, 'change-credentials');
+    registerForRestoration(_showScoresRoute, 'show-scores');
+    registerForRestoration(_aboutRoute, 'about');
   }
 
-  void _changeCredentials() {
-    // TODO: show dialog asking for credentials
-    // see https://main-api.flutter.dev/flutter/widgets/RestorableRouteFuture-class.html
+  // LOGIN
+
+  late final RestorableRouteFuture<Credentials?> _loginRoute = RestorableRouteFuture<Credentials?>(
+    onPresent: (NavigatorState navigator, Object? arguments) {
+      return navigator.restorablePush(_loginRouteBuilder, arguments: arguments);
+    },
+    onComplete: (Credentials? value) async {
+      if (value != null) {
+        try {
+          await widget.game.loginWithCredentials(value);
+        } on NetworkError catch (error) {
+          _handleError(error);
+        }
+      }
+    },
+  );
+
+  @pragma('vm:entry-point')
+  static Route<Credentials?> _loginRouteBuilder(BuildContext context, Object? arguments) {
+    return DialogRoute<Credentials?>(
+      context: context,
+      builder: (BuildContext context) => const LoginDialog(),
+    );
   }
+
+  void _doLogin() {
+    _loginRoute.present();
+  }
+
+  // CHANGE USERNAME/PASSWORD
+
+  late final RestorableRouteFuture<Credentials?> _changeCredentialsRoute = RestorableRouteFuture<Credentials?>(
+    onPresent: (NavigatorState navigator, Object? arguments) {
+      return navigator.restorablePush(_changeCredentialsRouteBuilder, arguments: arguments);
+    },
+    onComplete: (Credentials? value) async {
+      if (value != null) {
+        final NetworkError? error = await widget.game.changeCredentials(value);
+        if (error != null) {
+          _handleError(error);
+        } else {
+          _setMessage('Username and password set!');
+        }
+      }
+    },
+  );
+
+  @pragma('vm:entry-point')
+  static Route<Credentials?> _changeCredentialsRouteBuilder(BuildContext context, Object? arguments) {
+    final List<String> credentials = arguments! as List<String>;
+    return DialogRoute<Credentials?>(
+      context: context,
+      builder: (BuildContext context) => ChangeCredentialsDialog(initialUsername: credentials[0], initialPassword: credentials[1]),
+    );
+  }
+
+  void _doChangeCredentials() {
+    _changeCredentialsRoute.present(<String>[widget.game.credentials.value?.username ?? '', widget.game.credentials.value?.password ?? '']);
+  }
+
+  // SHOW SCORES
+
+  late final RestorableRouteFuture<void> _showScoresRoute = RestorableRouteFuture<void>(
+    onPresent: (NavigatorState navigator, Object? arguments) {
+      return navigator.restorablePush(_showScoresRouteBuilder, arguments: arguments);
+    },
+  );
+
+  @pragma('vm:entry-point')
+  static Route<void> _showScoresRouteBuilder(BuildContext context, Object? arguments) {
+    return DialogRoute<void>(
+      context: context,
+      builder: (BuildContext context) => const ScoresDialog(),
+    );
+  }
+
+  void _showScores() {
+    _showScoresRoute.present();
+  }
+
+  // ABOUT
+
+  late final RestorableRouteFuture<void> _aboutRoute = RestorableRouteFuture<void>(
+    onPresent: (NavigatorState navigator, Object? arguments) {
+      return navigator.restorablePush(_aboutRouteBuilder, arguments: arguments);
+    },
+  );
+
+  @pragma('vm:entry-point')
+  static Route<void> _aboutRouteBuilder(BuildContext context, Object? arguments) {
+    return DialogRoute<void>(
+      context: context,
+      builder: (BuildContext context) => const AboutDialog(
+        applicationName: 'Ian\u00A0Hickson\'s Interstellar\u00A0Dynasties',
+        children: <Widget>[
+          Padding(
+            padding: EdgeInsets.fromLTRB(24.0, 0.0, 24.0, 8.0),
+            child: Text('The online multiplayer persistent-universe real-time strategy game of space discovery and empire building.'),
+          ),
+          Text('https://interstellar-dynasties.space/', textAlign: TextAlign.center),
+        ],
+      ),
+    );
+  }
+
+  void _doAbout() {
+    _aboutRoute.present();
+  }
+
+  // END OF DIALOGS
 
   final GlobalKey hudKey = GlobalKey();
 
@@ -182,25 +290,23 @@ class _InterstellarDynastiesState extends State<InterstellarDynasties> {
     (hudKey.currentState! as HudLayoutInterface).closeAll();
   }
 
-  void _doAbout() {
-    showAboutDialog(
-      context: context,
-      applicationName: 'Ian\u00A0Hickson\'s Interstellar\u00A0Dynasties',
-      children: const <Widget>[
-        Padding(
-          padding: EdgeInsets.fromLTRB(24.0, 0.0, 24.0, 8.0),
-          child: Text('The online multiplayer persistent-universe real-time strategy game of space discovery and empire building.'),
-        ),
-        Text('https://interstellar-dynasties.space/', textAlign: TextAlign.center),
-      ],
-    );
-  }
-
-  // TODO: make it clearer when we are currently disconnected (e.g. show a pulsing "disconnect" icon)
-
   void _handleError(Object error) {
     // TODO: prettier error messages
-    _setMessage(error.toString());
+    if (error is NetworkError) {
+      switch (error.message) {
+        case 'unrecognized credentials':
+          _setMessage('Invalid username or password.');
+        case 'inadequate username':
+          _setMessage('There is already a dynasty using that username.');
+        case 'inadequate password':
+          _setMessage('That password is not sufficiently secure.');
+        default:
+          debugPrint('unrecognized error code: ${error.message}');
+          _setMessage(error.message);
+      }
+    } else {
+      _setMessage(error.toString());
+    }
   }
 
   void _setMessage(String message) {
@@ -324,30 +430,76 @@ class _InterstellarDynastiesState extends State<InterstellarDynasties> {
                     ),
                     iconColor: Theme.of(context).colorScheme.onSecondary,
                     itemBuilder: (BuildContext context) => <PopupMenuEntry<void>>[
+                      PopupMenuItem<void>(
+                        child: const ListTile(
+                          leading: Icon(Icons.show_chart),
+                          title: Text('View high scores'),
+                        ),
+                        onTap: _showScores,
+                      ),
                       if (loggedIn)
                         PopupMenuItem<void>(
-                          child: const Text('Change username or password'),
-                          onTap: _changeCredentials,
+                          child: ListTile(
+                            leading: const Icon(Icons.password),
+                            title: widget.game.credentials.value!.username.contains('\u0010')
+                                    ? const Text('Set username and password')
+                                    : const Text('Change username or password'),
+                          ),
+                          onTap: _doChangeCredentials,
                         ),
                       if (loggedIn)
                         PopupMenuItem<void>(
-                          child: const Text('Logout'),
+                          child: const ListTile(
+                            leading: Icon(Icons.logout),
+                            title: Text('Logout'),
+                          ),
                           onTap: _doLogout,
                         ),
-                      if (loggedIn)
-                        const PopupMenuDivider(),
+                      const PopupMenuDivider(),
                       PopupMenuItem<void>(
-                        child: const Text('About'),
+                        child: const ListTile(
+                          leading: Icon(Icons.help),
+                          title: Text('About'),
+                        ),
                         onTap: _doAbout,
                       ),
-                      if (!kReleaseMode)
-                        const PopupMenuDivider(),
-                      if (!kReleaseMode)
-                        PopupMenuItem<void>(
-                          child: const Text('Toggle Debug'),
-                          onTap: widget.onToggleDebug,
-                        ),
                     ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          PositionedDirectional(
+            top: 0.0,
+            end: 0.0,
+            child: ValueListenableBuilder<bool>(
+              valueListenable: widget.game.connectionStatus,
+              builder: (BuildContext context, bool networkProblem, Widget? child) => DisableSubtree(
+                disabled: !networkProblem,
+                child: DecoratedBox(
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: AlignmentDirectional.topEnd,
+                      end: AlignmentDirectional.bottomStart,
+                      colors: <Color>[
+                        Color(0x99000000),
+                        Color(0x00000000),
+                        Color(0x00000000),
+                      ],
+                    ),
+                  ),
+                  child: SafeArea(
+                    child: Padding(
+                      padding: const EdgeInsetsDirectional.fromSTEB(32.0, 8.0, 8.0, 32.0),
+                      child: IconButton(
+                        icon: Icon(Icons.cloud_off, shadows: kElevationToShadow[1]),
+                        tooltip: 'Try to reconnect immediately',
+                        color: Theme.of(context).colorScheme.onSecondary,
+                        onPressed: () {
+                          widget.game.connectionStatus.triggerReset();
+                        },
+                      ),
+                    ),
                   ),
                 ),
               ),

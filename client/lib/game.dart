@@ -6,6 +6,7 @@ import 'package:fs_shim/fs_shim.dart';
 import 'connection.dart';
 import 'dynasty.dart';
 import 'nodes/galaxy.dart';
+import 'scores.dart';
 import 'stringstream.dart';
 import 'systems.dart';
 import 'world.dart';
@@ -32,7 +33,7 @@ class Game {
   Game(String? username, String? password) {
     _connectToLoginServer();
     if (username != null && password != null) {
-      login(username, password).catchError(_handleError);
+      login(username, password).catchError(_handleAsyncError);
     }
     getGalaxy().then((Galaxy galaxy) {
       rootNode.galaxy = galaxy;
@@ -50,11 +51,14 @@ class Game {
     assert(_errorHandlers.contains(handler));
     _errorHandlers.remove(handler);
   }
-  void _handleError(Object error) {
+  void _handleAsyncError(Object error) {
+    _handleSyncError(error);
+    throw HandledError(error);
+  }
+  void _handleSyncError(Object error) {
     for (ErrorHandler handler in _errorHandlers) {
       handler(error);
     }
-    throw HandledError(error);
   }
 
   ValueListenable<Credentials?> get credentials => _credentials;
@@ -80,9 +84,12 @@ class Game {
   ValueListenable<WorldNode?> get recommendedFocus => _recommendedFocus;
   final ValueNotifier<WorldNode?> _recommendedFocus = ValueNotifier<WorldNode?>(null);
 
+  final ConnectionStatus connectionStatus = ConnectionStatus();
+
   void _connectToLoginServer() {
     _loginServer = Connection(
       _loginServerURL,
+      connectionStatus: connectionStatus,
       onError: _handleLoginServerError,
       onTextMessage: _handleLoginServerMessage,
       onBinaryMessage: _handleFile,
@@ -107,10 +114,11 @@ class Game {
 
   void _handleFile(Uint8List data) {
     // obtained file from network
-    final int code = data.buffer.asByteData().getUint32(0, Endian.little);
+    final int code = data.buffer.asByteData(data.offsetInBytes, data.lengthInBytes).getUint32(0, Endian.little);
     assert(_files.containsKey(code));
     _files[code]!.complete(data);
-    fileSystemDefault.file('$code.bin').writeAsBytes(data);
+    if (code > 0)
+      fileSystemDefault.file('$code.bin').writeAsBytes(data);
   }
 
   Future<Uint8List> _getFile(int code) async {
@@ -121,7 +129,7 @@ class Game {
         _files[code]!.complete(fileSystemDefault.file('$code.bin').readAsBytes());
       } else {
         // need to get from network
-        await _loginServer!.send(<Object>['get-file', code]).then(_ignore).catchError(_handleError);
+        await _loginServer!.send(<Object>['get-file', code]).then(_ignore).catchError(_handleAsyncError);
       }
     }
     return _files[code]!.future;
@@ -133,7 +141,7 @@ class Game {
     await Future.wait(<Future<void>>[
       _loginServer!.send(<Object>['get-constants'])
         .then<void>((StreamReader reader) { diameter = reader.readDouble(); })
-        .catchError(_handleError),
+        .catchError(_handleAsyncError),
       _getFile(1)
         .then<void>((Uint8List result) { data = result; }),
     ]);
@@ -142,6 +150,13 @@ class Game {
 
   Future<Uint8List> getSystems() async {
     return _getFile(2);
+  }
+
+  Future<HighScores> getHighScores() async {
+    final Completer<Uint8List> scores = Completer<Uint8List>();
+    _files[0] = scores;
+    await _loginServer!.send(<Object>['get-high-scores', ?dynastyManager.currentDynasty?.id]); // errors are propagated to caller!
+    return HighScores.from(await scores.future);
   }
 
 
@@ -156,11 +171,30 @@ class Game {
   }
 
   // throws on error from server
-  Future<void> login(String username, String password) async {
+  Future<void> loginWithCredentials(Credentials credentials) async {
     _clearCredentials();
-    _credentials.value = Credentials(username, password);
-    _handleLogin(await _loginServer!.send(<Object>['login', username, password]));
+    _credentials.value = credentials;
+    _handleLogin(await _loginServer!.send(<Object>['login', credentials.username, credentials.password]));
     // TODO: handle the case where while we are waiting for the login message to return, we send a different login or new game message
+  }
+
+  // throws on error from server
+  Future<void> login(String username, String password) {
+    return loginWithCredentials(Credentials(username, password));
+  }
+
+  // throws on error from server
+  Future<NetworkError?> changeCredentials(Credentials credentials) async {
+    try {
+      if (_credentials.value!.username != credentials.username)
+        await _loginServer!.send(<Object>['change-username', _credentials.value!.username, _credentials.value!.password, credentials.username]);
+      if (_credentials.value!.password != credentials.password)
+        await _loginServer!.send(<Object>['change-password', credentials.username, _credentials.value!.password, credentials.password]);
+    } on NetworkError catch (e) {
+      return e;
+    }
+    _credentials.value = credentials;
+    return null;
   }
 
   void _handleLogin(StreamReader reader) {
@@ -175,7 +209,7 @@ class Game {
     final String username = _credentials.value!.username;
     final String password = _credentials.value!.password;
     _clearCredentials();
-    await _loginServer!.send(<Object>['logout', username, password]).then(_ignore).catchError(_handleError);
+    await _loginServer!.send(<Object>['logout', username, password]).then(_ignore).catchError(_handleAsyncError);
   }
 
   void _clearCredentials() {
@@ -198,6 +232,7 @@ class Game {
   void _connectToDynastyServer(String url) {
     _dynastyServer = Connection(
       url,
+      connectionStatus: connectionStatus,
       onConnected: _handleDynastyConnected,
       onTextMessage: _handleDynastyServerMessage,
       onError: _handleDynastyServerError,
@@ -212,7 +247,7 @@ class Game {
       dynastyManager.setCurrentDynastyId(reader.readInt());
       _updateSystemServers(reader);
     } on Exception catch (e) {
-      _handleError(e);
+      _handleAsyncError(e);
     }
   }
 
@@ -233,6 +268,7 @@ class Game {
       final String url = reader.readString();
       systemServers.putIfAbsent(url, () => SystemServer(
         url,
+        connectionStatus,
         _currentToken!,
         rootNode,
         dynastyManager,
@@ -249,12 +285,14 @@ class Game {
   }
 
   void _handleDynastyServerError(Exception error, Duration duration) {
+    _handleSyncError('dynasty server: $error');
     debugPrint('dynasty server: $error');
     if (duration > Duration.zero)
       debugPrint('reconnecting in ${duration.inMilliseconds}ms');
   }
 
   void _handleSystemServerError(Exception error, Duration duration) {
+    _handleSyncError('system server: $error');
     debugPrint('system server: $error');
     if (duration > Duration.zero)
       debugPrint('reconnecting in ${duration.inMilliseconds}ms');

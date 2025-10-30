@@ -196,6 +196,9 @@ class AssetNode extends WorldNode {
     }
   }
 
+  // TODO: this should be a list, not a map
+  // when updating, if the types match then the new feature can just be updated
+  // if the types don't match, then delete all remaining features and make new ones
   final Map<Type, Feature> _features = <Type, Feature>{};
   ContainerFeature? _container;
 

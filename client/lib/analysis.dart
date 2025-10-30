@@ -3,14 +3,14 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart' hide Material;
 
-import '../assets.dart';
-import '../hud.dart';
-import '../icons.dart';
-import '../materials.dart';
-import '../nodes/system.dart';
-import '../prettifiers.dart';
-import '../stringstream.dart';
-import '../widgets.dart';
+import 'assets.dart';
+import 'hud.dart';
+import 'icons.dart';
+import 'materials.dart';
+import 'nodes/system.dart';
+import 'prettifiers.dart';
+import 'stringstream.dart';
+import 'widgets.dart';
 
 class AnalysisUi extends StatefulWidget {
   AnalysisUi({

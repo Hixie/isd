@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart' hide Material;
 
-import '../icons.dart';
+import 'icons.dart';
 
 @immutable
 class AssetClass {

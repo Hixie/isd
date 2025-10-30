@@ -38,16 +38,19 @@ import 'stringstream.dart';
 typedef ColonyShipHandler = void Function(AssetNode colonyShip);
 
 class SystemServer {
-  SystemServer(this.url, this.token, this.galaxy, this.dynastyManager, { required this.onError, required this.onColonyShip }) {
+  SystemServer(this.url, this.connectionStatus, this.token, this.galaxy, this.dynastyManager, { required this.onError, required this.onColonyShip }) {
     _connection = Connection(
       url,
+      connectionStatus: connectionStatus,
       onConnected: _handleLogin,
       onBinaryMessage: _handleUpdate,
       onError: onError,
     );
+    connectionStatus.addListener(_handleConnectionStatus);
   }
 
   final String url;
+  final ConnectionStatus connectionStatus;
   final String token;
   final GalaxyNode galaxy;
   final DynastyManager dynastyManager;
@@ -82,7 +85,9 @@ class SystemServer {
   static const int fcGridSensor = 0x18;
   static const int fcGridSensorStatus = 0x19;
   static const int fcBuilder = 0x1A;
-  static const int expectedVersion = fcBuilder;
+  static const int fcInternalSensor = 0x1B;
+  static const int fcInternalSensorStatus = 0x1C;
+  static const int expectedVersion = fcInternalSensorStatus;
 
   Future<void> _handleLogin() async {
     final StreamReader reader = await _connection.send(<String>['login', token], queue: false);
@@ -92,8 +97,18 @@ class SystemServer {
     }
   }
 
+  void _handleConnectionStatus() {
+    if (connectionStatus.value) {
+      // there's a network problem!
+      clock.pause();
+    } else {
+      clock.resume();
+    }
+  }
+
   final Map<int, SystemNode> _systems = <int, SystemNode>{};
   final Map<int, AssetNode> _assets = <int, AssetNode>{};
+  final SystemClock clock = SystemClock();
 
   AssetNode? _readAsset(BinaryStreamReader reader) {
     final int id = reader.readUInt32();
@@ -109,14 +124,13 @@ class SystemServer {
   static const bool _verbose = false;
 
   void _handleUpdate(Uint8List message) {
-    final DateTime now = DateTime.timestamp();
     final BinaryStreamReader reader = BinaryStreamReader(message, _connection.codeTables);
     AssetNode? colonyShip;
     while (!reader.done) {
       final int systemID = reader.readUInt32();
       final int currentTime = reader.readInt64();
       final double timeFactor = reader.readDouble();
-      final SpaceTime spaceTime = SpaceTime(currentTime, timeFactor, now);
+      final SpaceTime spaceTime = SpaceTime(clock, currentTime, timeFactor);
       final SystemNode system = _systems.putIfAbsent(systemID, () => SystemNode(
         id: systemID,
         sendCallback: _send,
@@ -463,6 +477,18 @@ class SystemServer {
                 buildRate: buildRate,
                 assignedStructures: assignedStructures,
               )));
+            case fcInternalSensor:
+              int? count;
+              reader.saveCheckpoint();
+              if (!reader.done && reader.readUInt32() == fcInternalSensorStatus) {
+                count = reader.readUInt32();
+                reader.discardCheckpoint();
+              } else {
+                reader.restoreCheckpoint();
+              }
+              oldFeatures.remove(asset.setFeature(InternalSensorFeature(
+                detectedCount: count,
+              )));
             default:
               throw NetworkError(
                 'Client does not support feature code 0x${featureCode.toRadixString(16).padLeft(8, "0")}, '
@@ -489,5 +515,6 @@ class SystemServer {
 
   void dispose() {
     _connection.dispose();
+    connectionStatus.removeListener(_handleConnectionStatus);
   }
 }

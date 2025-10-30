@@ -28,7 +28,7 @@ class Galaxy {
   static (int, int) decodeStarId(int id) => (id >> 20, id & 0x000fffff);
 
   factory Galaxy.from(Uint8List rawdata, double diameter) {
-    final Uint32List data = rawdata.buffer.asUint32List();
+    final Uint32List data = rawdata.buffer.asUint32List(rawdata.offsetInBytes, rawdata.lengthInBytes ~/ 4);
     assert(data[0] == 1, 'galaxy raw data first dword is ${data[0]}');
     final int categoryCount = data[1];
     final List<Float32List> categories = <Float32List>[];

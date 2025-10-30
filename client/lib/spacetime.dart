@@ -1,10 +1,53 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
 
+class SystemClock {
+  DateTime get now => _now;
+  DateTime _now = DateTime.timestamp();
+
+  bool _active = true;
+  bool _pending = false;
+
+  final Set<VoidCallback> _callbacks = <VoidCallback>{};
+
+  void _handler(Duration timeStamp) {
+    _pending = false;
+    if (_active) {
+      _now = DateTime.timestamp();
+      final List<VoidCallback> oldCallbacks = _callbacks.toList();
+      _callbacks.clear();
+      for (VoidCallback callback in oldCallbacks) {
+        callback();
+      }
+    }
+  }
+
+  void scheduleTick(VoidCallback callback) {
+    _callbacks.add(callback);
+    if (_active && !_pending) {
+      _pending = true;
+      SchedulerBinding.instance.scheduleFrameCallback(_handler);
+    }
+  }
+
+  void pause() {
+    _active = false;
+  }
+
+  void resume() {
+    _active = true;
+    if (!_pending) {
+      _pending = true;
+      SchedulerBinding.instance.scheduleFrameCallback(_handler);
+    }
+  }
+}
+
 @immutable
 class SpaceTime {
-  const SpaceTime(this._anchorTime, this._timeFactor, this._origin);
+  SpaceTime(this.clock, this._anchorTime, this._timeFactor) : _origin = clock.now;
 
+  final SystemClock clock;
   final int _anchorTime; // ms from server
   final double _timeFactor;
   final DateTime _origin;
@@ -13,8 +56,8 @@ class SpaceTime {
   static final Set<VoidCallback> _callbacks = <VoidCallback>{};
   static bool _pending = false;
 
-  void _handler(Duration timestamp) {
-    _lastFrameTime = DateTime.now();
+  void _handler() {
+    _lastFrameTime = clock.now;
     _pending = false;
     final List<VoidCallback> oldCallbacks = _callbacks.toList();
     _callbacks.clear();
@@ -25,10 +68,10 @@ class SpaceTime {
 
   // returns local system time in milliseconds
   double computeTime(List<VoidCallback> callbacks) {
-    _lastFrameTime ??= DateTime.now();
+    _lastFrameTime ??= clock.now;
     _callbacks.addAll(callbacks);
     if (!_pending && _callbacks.isNotEmpty) {
-      SchedulerBinding.instance.scheduleFrameCallback(_handler);
+      clock.scheduleTick(_handler);
       _pending = true;
     }
     assert(_origin.isUtc);

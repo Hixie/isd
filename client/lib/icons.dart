@@ -5,11 +5,11 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
-import '../nodes/system.dart';
-import '../shaders.dart';
-import '../spacetime.dart';
 import 'http/http.dart' as http;
 import 'layout.dart';
+import 'nodes/system.dart';
+import 'shaders.dart';
+import 'spacetime.dart';
 import 'world.dart';
 
 @immutable

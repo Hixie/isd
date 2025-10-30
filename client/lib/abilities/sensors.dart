@@ -113,3 +113,33 @@ class GridSensorFeature extends AbilityFeature {
     );
   }
 }
+
+class InternalSensorFeature extends AbilityFeature {
+  InternalSensorFeature({
+    required this.detectedCount,
+  });
+
+  final int? detectedCount;
+
+  @override
+  RendererType get rendererType => RendererType.none;
+
+  @override
+  Widget buildDialog(BuildContext context) {
+    return ListBody(
+      children: <Widget>[
+        const Text('Internal sensor', style: bold),
+        Padding(
+          padding: featurePadding,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              if (detectedCount != null)
+                Text('Detected ${prettyQuantity(detectedCount!, zero: "nothing", singular: " object", plural: " objects")}.'),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
