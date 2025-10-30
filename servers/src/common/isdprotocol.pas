@@ -5,15 +5,19 @@ unit isdprotocol;
 interface
 
 const
-   // ISD Commands (client-to-server or server-to-server)
+   // Internal ISD Commands (server-to-server)
    icCreateAccount = 'create-account';
    icRegisterToken = 'register-token';
    icLogout = 'logout';
-   icCreateSystem = 'create-system'; // internal
-   icTriggerNewDynastyScenario = 'trigger-scenario-new-dynasty'; // internal
-   icAddSystemServer = 'add-system-server'; // internal
-   icRemoveSystemServer = 'remove-system-server'; // internal
+   icCreateSystem = 'create-system';
+   icTriggerNewDynastyScenario = 'trigger-scenario-new-dynasty';
+   icAddSystemServer = 'add-system-server';
+   icRemoveSystemServer = 'remove-system-server';
+   icAddScoreDatum = 'add-score';
+   icUpdateScoreDatum = 'update-score';
    icDebug = 'debug'; // tests
+
+const
    // ISD Updates (server-to-client)
    iuSystemServers = 'system-servers';
    TokenSeparator = #$1F;

@@ -5,7 +5,7 @@ program main;
 uses
    sysutils, configuration, csvdocument, servers, materials, clock,
    exceptions, intutils, techtree, encyclopedia, systemnetwork, strutils,
-   binarystream, time, isdprotocol;
+   isdprotocol;
 
 procedure AssertHandler(const Message: ShortString; const FileName: ShortString; LineNumber: LongInt; ErrorAddr: Pointer);
 begin
@@ -25,28 +25,6 @@ var
    SystemClock, MonotonicClock: TClock;
    GlobalEncyclopedia: TEncyclopedia;
    DataDirectory: UTF8String;
-
-   {$IFOPT C+}
-   procedure DebugHandler(Arguments: TBinaryStreamReader);
-   var
-      Delta: Int64;
-   begin
-      case (Arguments.ReadString()) of
-         'clock': begin
-            if (SystemClock is TMockClock) then
-            begin
-               Delta := Arguments.ReadInt64();
-               (SystemClock as TMockClock).Advance(TMillisecondsDuration.FromMilliseconds(Delta));
-            end
-            else
-               raise Exception.Create('Received a "clock" debug command but clock is configured to use the system clock.');
-         end;
-         else
-            raise Exception.Create('Received unknown debug command.');
-      end;
-   end;
-   {$ENDIF}
-                                  
 begin
    try
       try
@@ -112,8 +90,7 @@ begin
             Settings,
             GlobalEncyclopedia,
             DynastyServerDatabase,
-            DataDirectory + SystemServersDirectory + IntToStr(ServerIndex) + '/' {$IFOPT C+},
-            @DebugHandler {$ENDIF}
+            DataDirectory + SystemServersDirectory + IntToStr(ServerIndex) + '/'
          );
          Server.Run();
          Writeln('Exiting...');

@@ -224,7 +224,7 @@ end;
 procedure TTest.RunTestBody();
 var
    ModelSystem: TModelSystem;
-   SystemsServerIPC: TServerIPCSocket;
+   SystemsServerIPC, LoginServerIPC: TServerIPCSocket;
    MinTime, MaxTime: Int64;
    TimePinned: Boolean;
 
@@ -234,6 +234,7 @@ var
       Verify(ModelSystem.CurrentTime <= MaxTime);
       MinTime := MaxTime;
       SystemsServerIPC.AdvanceClock(Delta);
+      LoginServerIPC.AdvanceClock(Delta);
       TimePinned := False;
       Inc(MaxTime, Delta * TimeFactor);
    end;
@@ -250,9 +251,20 @@ var
    DrillBit: TModelMiningFeature;
    Grid: TModelGridFeature;
    AssetClass: Int32;
+   Scores: TBinaryStreamReader;
 begin
-   // Create account.
+   // Check high scores with no players.
    LoginServer := FLoginServer.ConnectWebSocket();
+   LoginServer.SendWebSocketStringMessage('0'#00'get-high-scores'#00);
+   Scores := LoginServer.GetStreamReader(LoginServer.ReadWebSocketBinaryMessage());
+   Verify(Scores.ReadCardinal() = 0); // high score marker
+   Scores.ReadEnd();
+   FreeAndNil(Scores);
+   Response := TStringStreamReader.Create(LoginServer.ReadWebSocketStringMessage());
+   VerifyPositiveResponse(Response);
+   VerifyEndOfResponse(Response);
+
+   // Create account.
    LoginServer.SendWebSocketStringMessage('0'#00'new'#00);
    Response := TStringStreamReader.Create(LoginServer.ReadWebSocketStringMessage());
    VerifyPositiveResponse(Response);
@@ -263,6 +275,21 @@ begin
    Verify(DynastyServerURL = 'wss://127.0.0.1:40001/');
    VerifyEndOfResponse(Response);
 
+   // Check high scores.
+   LoginServer.SendWebSocketStringMessage('0'#00'get-high-scores'#00);
+   Scores := LoginServer.GetStreamReader(LoginServer.ReadWebSocketBinaryMessage());
+   Verify(Scores.ReadCardinal() = 0); // high score marker
+   Verify(Scores.ReadCardinal() = 1); // dynasty
+   Verify(Scores.ReadCardinal() = 1); // last data point
+   Verify(Scores.ReadCardinal() = 1); // number of data points
+   Verify(Scores.ReadInt64() = 0); // system start time
+   Verify(Scores.ReadDouble() = 100.0); // default happiness
+   Scores.ReadEnd();
+   FreeAndNil(Scores);
+   Response := TStringStreamReader.Create(LoginServer.ReadWebSocketStringMessage());
+   VerifyPositiveResponse(Response);
+   VerifyEndOfResponse(Response);
+   
    // Check with dynasty server.
    DynastyServer := FDynastiesServers[0].ConnectWebSocket();
    DynastyServer.SendWebSocketStringMessage('0'#00'login'#00 + Token + #00);
@@ -285,6 +312,7 @@ begin
    VerifyEndOfResponse(Response);
 
    SystemsServerIPC := FSystemsServers[0].ConnectIPCSocket();
+   LoginServerIPC := FLoginServer.ConnectIPCSocket();
 
    ModelSystem := TModelSystem.Create();
    MinTime := 0;
@@ -319,6 +347,23 @@ begin
    ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 'Drill!'#10);
    ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 'Iron team'#10);
    ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 'Silicon'#10);
+
+   // Check high scores.
+   LoginServer.SendWebSocketStringMessage('0'#00'get-high-scores'#00);
+   Scores := LoginServer.GetStreamReader(LoginServer.ReadWebSocketBinaryMessage());
+   Verify(Scores.ReadCardinal() = 0); // high score marker
+   Verify(Scores.ReadCardinal() = 1); // dynasty
+   Verify(Scores.ReadCardinal() = 2); // last data point
+   Verify(Scores.ReadCardinal() = 2); // number of data points
+   Verify(Scores.ReadInt64() = 0); // system start time
+   Verify(Scores.ReadDouble() = 100.0); // default happiness
+   Verify(Scores.ReadInt64() = 120); // login server time at time of crash
+   Verify(Round(Scores.ReadDouble()) = -100); // updated happiness
+   Scores.ReadEnd();
+   FreeAndNil(Scores);
+   Response := TStringStreamReader.Create(LoginServer.ReadWebSocketStringMessage());
+   VerifyPositiveResponse(Response);
+   VerifyEndOfResponse(Response);
    
    // Build a mine
    SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.ID) + #00'get-buildings'#00'0'#00'0'#00);
@@ -693,6 +738,8 @@ begin
 
    SystemsServerIPC.CloseSocket();
    FreeAndNil(SystemsServerIPC);
+   LoginServerIPC.CloseSocket();
+   FreeAndNil(LoginServerIPC);
    LoginServer.CloseWebSocket();
    FreeAndNil(LoginServer);
    DynastyServer.CloseWebSocket();

@@ -29,7 +29,7 @@ type
       FServer: TServer;
       FDynasty: TDynasty;
       FWriter: TServerStreamWriter;
-      procedure HandleIPC(Arguments: TBinaryStreamReader); override;
+      procedure HandleIPC(const Command: UTF8String; const Arguments: TBinaryStreamReader); override;
       function GetDynasty(DynastyID: Cardinal): TBaseDynasty; override; // used for VerifyLogin
       procedure DoLogin(var Message: TMessage); message 'login';
       procedure DoPlay(var Message: TMessage); message 'play';
@@ -53,6 +53,7 @@ type
       procedure ReportConnectionError(ErrorCode: cint); override;
       procedure AddServerFor(Dynasty: TDynasty);
       procedure RemoveServerFor(Dynasty: TDynasty);
+      procedure UpdateScore(Dynasty: TDynasty; Score: Double);
    end;
  
    TDynastyManager = class(TDynastyDatabase)
@@ -60,6 +61,7 @@ type
       FDynasties: TDynastyHashTable;
       FConfigurationDirectory: UTF8String;
       FServer: TServer;
+      function GetDynastiesEnumerator(): TDynastyHashTable.TValueEnumerator; inline;
    public
       constructor Create(AConfigurationDirectory: UTF8String; AServer: TServer);
       destructor Destroy(); override;
@@ -67,15 +69,12 @@ type
       function GetDynastyFromDisk(DynastyID: Cardinal): TDynasty; override; // assumes we have it or that it's irrelevant -- used on startup only when replaying journals
       function HandleDynastyArrival(DynastyID, DynastyServerID: Cardinal): TDynasty;
       procedure HandleDynastyDeparture(Dynasty: TDynasty);
+      procedure UpdateScore(Dynasty: TDynasty; Score: Double);
+      property Dynasties: TDynastyHashTable.TValueEnumerator read GetDynastiesEnumerator;
    end;
 
-   {$IFOPT C+}
-   TDebugHandler = procedure (Arguments: TBinaryStreamReader);
-   {$ENDIF}
-   
    TServer = class(TBaseServer)
    protected
-      FPassword: UTF8String;
       FSystemServerID: Cardinal;
       FSettings: PSettings;
       FDynastyServers: TServerDatabase;
@@ -83,29 +82,29 @@ type
       FSystems: TSystemHashTable;
       FEncyclopedia: TEncyclopedia;
       FDynastyManager: TDynastyManager;
-      {$IFOPT C+} FDebugHandler: TDebugHandler; {$ENDIF}
+      FDirtyScores: TDynastySet;
       function CreateNetworkSocket(AListenerSocket: TListenerSocket): TNetworkSocket; override;
       function GetSystem(Index: Cardinal): TSystem;
       function CreateSystem(SystemID: Cardinal; X, Y: Double): TSystem;
       procedure ReportChanges(); override;
+      procedure HandleScoreDirty(Dynasty: TDynasty);
+      function ComputeScoreFor(Dynasty: TDynasty): Double;
    public
-      constructor Create(APort: Word; AClock: TClock; APassword: UTF8String; ASystemServerID: Cardinal; ASettings: PSettings; AEncyclopedia: TEncyclopedia; ADynastyServers: TServerDatabase; AConfigurationDirectory: UTF8String {$IFOPT C+}; ADebugHandler: TDebugHandler {$ENDIF});
+      constructor Create(APort: Word; AClock: TClock; APassword: UTF8String; ASystemServerID: Cardinal; ASettings: PSettings; AEncyclopedia: TEncyclopedia; ADynastyServers: TServerDatabase; AConfigurationDirectory: UTF8String);
       destructor Destroy(); override;
       function SerializeAllSystemsFor(Dynasty: TDynasty; Writer: TServerStreamWriter): RawByteString;
-      property Password: UTF8String read FPassword;
       property SystemServerID: Cardinal read FSystemServerID;
       property Systems[Index: Cardinal]: TSystem read GetSystem;
       property DynastyManager: TDynastyManager read FDynastyManager;
       property DynastyServerDatabase: TServerDatabase read FDynastyServers;
       property Encyclopedia: TEncyclopedia read FEncyclopedia;
-      {$IFOPT C+} property DebugHandler: TDebugHandler read FDebugHandler; {$ENDIF}
    end;
 
 implementation
 
 uses
    sysutils, hashfunctions, isdprotocol, passwords, exceptions, space,
-   orbit, spacesensor, structure, errors, plot, planetary, time,
+   orbit, spacesensor, structure, errors, plot, planetary,
    population, messages, knowledge, isderrors, food, research;
 
 constructor TSystemHashTable.Create();
@@ -121,7 +120,7 @@ end;
 
 constructor TConnection.Create(AListener: TListenerSocket; AServer: TServer);
 begin
-   inherited Create(AListener);
+   inherited Create(AListener, AServer);
    FServer := AServer;
    FWriter := TServerStreamWriter.Create();
 end;
@@ -139,18 +138,15 @@ begin
    Callback(Self, FWriter);
 end;
 
-procedure TConnection.HandleIPC(Arguments: TBinaryStreamReader);
-
-
+procedure TConnection.HandleIPC(const Command: UTF8String; const Arguments: TBinaryStreamReader);
 var
    NodeCount: Cardinal;
-   
-      function CountNodes(Asset: TAssetNode): Boolean;
-      begin
-         Inc(NodeCount);
-         Result := True;
-      end;
 
+   function CountNodes(Asset: TAssetNode): Boolean;
+   begin
+      Inc(NodeCount);
+      Result := True;
+   end;
 
 type
    TStarEntry = record
@@ -158,7 +154,6 @@ type
       DX, DY: Double; // meters
    end;
 var
-   Command: UTF8String;
    SystemID, DynastyID, DynastyServerID, StarCount, Index, StarID: Cardinal;
    X, Y: Double;
    Dynasty: TDynasty;
@@ -169,8 +164,6 @@ var
    Hash: THash;
    SolarSystem: TSolarSystemFeatureNode;
 begin
-   Assert(FMode = cmControlMessages);
-   Command := Arguments.ReadString();
    if (Command = icCreateSystem) then // from login server
    begin
       SystemID := Arguments.ReadCardinal();
@@ -259,20 +252,8 @@ begin
       Dynasty.ResetTokens();
       Write(#$01);
    end
-   {$IFOPT C+}
    else
-   if (Command = icDebug) then
-   begin
-      FServer.DebugHandler(Arguments);
-      Write(#$01);
-   end
-   {$ENDIF}
-   else
-   begin
-      Writeln('Received unknown command: ', Command);
-      Disconnect();
-      exit;
-   end;
+      inherited;
 end;
 
 function TConnection.GetDynasty(DynastyID: Cardinal): TBaseDynasty;
@@ -388,7 +369,7 @@ var
    Message: RawByteString;
 begin
    Writer := TBinaryStreamWriter.Create();
-   Writer.WriteString(icAddSystemServer);
+   Writer.WriteStringByPointer(icAddSystemServer);
    Writer.WriteCardinal(Dynasty.DynastyID);
    Writer.WriteCardinal(FServer.SystemServerID);
    Message := Writer.Serialize(True);
@@ -403,9 +384,25 @@ var
    Message: RawByteString;
 begin
    Writer := TBinaryStreamWriter.Create();
-   Writer.WriteString(icRemoveSystemServer);
+   Writer.WriteStringByPointer(icRemoveSystemServer);
    Writer.WriteCardinal(Dynasty.DynastyID);
    Writer.WriteCardinal(FServer.SystemServerID);
+   Message := Writer.Serialize(True);
+   ConsoleWriteln('Sending IPC to dynasty server: ', Message);
+   Write(Message);
+   FreeAndNil(Writer);
+end;
+
+procedure TInternalDynastyConnection.UpdateScore(Dynasty: TDynasty; Score: Double);
+var
+   Writer: TBinaryStreamWriter;
+   Message: RawByteString;
+begin
+   Writer := TBinaryStreamWriter.Create();
+   Writer.WriteStringByPointer(icUpdateScoreDatum);
+   Writer.WriteCardinal(Dynasty.DynastyID);
+   Writer.WriteCardinal(FServer.SystemServerID);
+   Writer.WriteDouble(Score);
    Message := Writer.Serialize(True);
    ConsoleWriteln('Sending IPC to dynasty server: ', Message);
    Write(Message);
@@ -493,21 +490,50 @@ begin
    Dynasty.ForgetDynasty();
 end;
 
+procedure TDynastyManager.UpdateScore(Dynasty: TDynasty; Score: Double);
+var
+   InternalDynastyConnectionSocket: TInternalDynastyConnection;
+begin
+   Assert(FDynasties.Has(Dynasty.DynastyID));
+   Assert(Dynasty.RefCount > 0);
+   if (Dynasty.LastScore <> Score) then
+   begin
+      // Inform Dynasty server
+      InternalDynastyConnectionSocket := TInternalDynastyConnection.Create(FServer.DynastyServerDatabase.Servers[Dynasty.DynastyServerID], FServer);
+      try
+         InternalDynastyConnectionSocket.Connect();
+      except
+         FreeAndNil(InternalDynastyConnectionSocket);
+         raise;
+      end;
+      FServer.Add(InternalDynastyConnectionSocket);
+      InternalDynastyConnectionSocket.UpdateScore(Dynasty, Score);
+      // TODO: resilience in the face of server connection issues?
+      Dynasty.LastScore := Score;
+   end;
+end;
 
-constructor TServer.Create(APort: Word; AClock: TClock; APassword: UTF8String; ASystemServerID: Cardinal; ASettings: PSettings; AEncyclopedia: TEncyclopedia; ADynastyServers: TServerDatabase; AConfigurationDirectory: UTF8String {$IFOPT C+}; ADebugHandler: TDebugHandler {$ENDIF});
+function TDynastyManager.GetDynastiesEnumerator(): TDynastyHashTable.TValueEnumerator;
+begin
+   Result := FDynasties.Values();
+end;
+
+
+constructor TServer.Create(APort: Word; AClock: TClock; APassword: UTF8String; ASystemServerID: Cardinal; ASettings: PSettings; AEncyclopedia: TEncyclopedia; ADynastyServers: TServerDatabase; AConfigurationDirectory: UTF8String);
 var
    SystemsFile: File of Cardinal;
    SystemID: Cardinal;
    System: TSystem;
+   Dynasty: TDynasty;
 begin
-   inherited Create(APort, AClock);
-   FPassword := APassword;
+   inherited Create(APort, APassword, AClock);
    FSettings := ASettings;
    FDynastyServers := ADynastyServers;
    FConfigurationDirectory := AConfigurationDirectory;
    FEncyclopedia := AEncyclopedia;
    FDynastyManager := TDynastyManager.Create(FConfigurationDirectory + DynastyDataSubDirectory, Self);
    FSystems := TSystemHashTable.Create();
+   FDirtyScores := TDynastySet.Create();
    if (DirectoryExists(FConfigurationDirectory)) then
    begin
       Assign(SystemsFile, FConfigurationDirectory + SystemsDatabaseFileName);
@@ -515,11 +541,13 @@ begin
       while (not Eof(SystemsFile)) do
       begin
          BlockRead(SystemsFile, SystemID, 1); // $DFA- for SystemID
-         System := TSystem.CreateFromDisk(FConfigurationDirectory + SystemDataSubDirectory + IntToStr(SystemID) + '/', SystemID, FEncyclopedia.SpaceClass, Self, FDynastyManager, FEncyclopedia);
+         System := TSystem.CreateFromDisk(FConfigurationDirectory + SystemDataSubDirectory + IntToStr(SystemID) + '/', SystemID, FEncyclopedia.SpaceClass, Self, FDynastyManager, FEncyclopedia, @HandleScoreDirty);
          Assert(System.SystemID = SystemID);
          FSystems[SystemID] := System;
       end;
       Close(SystemsFile);
+      for Dynasty in FDynastyManager.Dynasties do
+         Dynasty.LastScore := ComputeScoreFor(Dynasty);
    end
    else
    begin
@@ -531,9 +559,6 @@ begin
       Rewrite(SystemsFile);
       Close(SystemsFile);
    end;
-   {$IFOPT C+}
-   FDebugHandler := ADebugHandler;
-   {$ENDIF}
 end;
 
 destructor TServer.Destroy();
@@ -544,8 +569,9 @@ begin
    begin
       for System in FSystems.Values do
          System.Free();
-      FSystems.Free();
+      FreeAndNil(FSystems);
    end;
+   FreeAndNil(FDirtyScores);
    inherited; // frees connections, which know about the dynasties
    FDynastyManager.Free(); // frees dynasties
 end;
@@ -565,7 +591,7 @@ var
    SystemsFile: File of Cardinal;
 begin
    Assert(not FSystems.Has(SystemID));
-   Result := TSystem.Create(FConfigurationDirectory + SystemDataSubDirectory + IntToStr(SystemID) + '/', SystemID, X, Y, FEncyclopedia.SpaceClass, Self, FDynastyManager, FEncyclopedia, FSettings);
+   Result := TSystem.Create(FConfigurationDirectory + SystemDataSubDirectory + IntToStr(SystemID) + '/', SystemID, X, Y, FEncyclopedia.SpaceClass, Self, FDynastyManager, FEncyclopedia, FSettings, @HandleScoreDirty);
    FSystems[SystemID] := Result;
    Assign(SystemsFile, FConfigurationDirectory + SystemsDatabaseFileName);
    FileMode := 2;
@@ -578,9 +604,18 @@ end;
 procedure TServer.ReportChanges();
 var
    System: TSystem;
+   Dynasty: TDynasty;
 begin
    for System in FSystems.Values do
       System.ReportChanges();
+   if (FDirtyScores.IsNotEmpty) then
+   begin
+      for Dynasty in FDirtyScores do
+      begin
+         FDynastyManager.UpdateScore(Dynasty, ComputeScoreFor(Dynasty));
+      end;
+      FDirtyScores.Reset();
+   end;
 end;
 
 function TServer.SerializeAllSystemsFor(Dynasty: TDynasty; Writer: TServerStreamWriter): RawByteString;
@@ -598,4 +633,24 @@ begin
    Writer.Clear();
 end;
 
+procedure TServer.HandleScoreDirty(Dynasty: TDynasty);
+begin
+   if (not FDirtyScores.Has(Dynasty)) then
+      FDirtyScores.Add(Dynasty);
+end;
+
+function TServer.ComputeScoreFor(Dynasty: TDynasty): Double;
+var
+   System: TSystem;
+begin
+   Result := 0.0;
+   for System in FSystems.Values do
+   begin
+      if (System.HasDynasty(Dynasty)) then
+      begin
+         Result := Result + System.ComputeScoreFor(Dynasty)
+      end;
+   end;
+end;
+   
 end.

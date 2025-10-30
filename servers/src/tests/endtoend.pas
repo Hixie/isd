@@ -94,8 +94,7 @@ type
       procedure DumpProcessOutput();
    public
       constructor Create(AProcess: TProcess; APort: Word; APassword: UTF8String);
-      class function StartPrimaryServer(const Executable, HostDirectory: UTF8String; Port: Word): TServerProcess;
-      class function StartSecondaryServer(const Executable, HostDirectory: UTF8String; Index: Cardinal; Port: Word; Password: UTF8String): TServerProcess;
+      class function StartServer(const Executable, HostDirectory: UTF8String; Port: Word; Password: UTF8String; Index: Cardinal = 0): TServerProcess;
       destructor Destroy(); override;
       function ConnectWebSocket(): TServerWebSocket;
       function ConnectIPCSocket(): TServerIPCSocket;
@@ -537,7 +536,7 @@ begin
       WaitUntilSocketReadyToSend(FSocket);
       Stream := TBinaryStreamWriter.Create();
       Stream.WriteByte($00);
-      Stream.WriteString(Password);
+      Stream.WriteStringByPointer(Password);
       TransmitSocketBytes(FSocket, Stream.Serialize(False));
    finally
       FreeAndNil(Stream);
@@ -572,8 +571,8 @@ var
    BinaryWriter: TBinaryStreamWriter;
 begin
    BinaryWriter := TBinaryStreamWriter.Create();
-   BinaryWriter.WriteString(icDebug);
-   BinaryWriter.WriteString('clock');
+   BinaryWriter.WriteStringByPointer(icDebug);
+   BinaryWriter.WriteStringByPointer('clock');
    BinaryWriter.WriteInt64(Milliseconds);
    Verify(SendControlMessage(BinaryWriter.Serialize(True)));
    FreeAndNil(BinaryWriter);
@@ -602,14 +601,17 @@ begin
    WaitUntilProcessOutputContains(ControlReady);
 end;
 
-class function TServerProcess.StartPrimaryServer(const Executable, HostDirectory: UTF8String; Port: Word): TServerProcess;
+class function TServerProcess.StartServer(const Executable, HostDirectory: UTF8String; Port: Word; Password: UTF8String; Index: Cardinal = 0): TServerProcess;
+var
+   Arguments: array of UTF8String;
 begin
-   Result := TServerProcess.Create(TProcess.Start(Executable, [HostDirectory]), Port, '');
-end;
-
-class function TServerProcess.StartSecondaryServer(const Executable, HostDirectory: UTF8String; Index: Cardinal; Port: Word; Password: UTF8String): TServerProcess;
-begin
-   Result := TServerProcess.Create(TProcess.Start(Executable, [HostDirectory, IntToStr(Index + 1)]), Port, Password);
+   Arguments := [HostDirectory];
+   if (Index > 0) then
+   begin
+      SetLength(Arguments, Length(Arguments) + 1);
+      Arguments[High(Arguments)] := IntToStr(Index);
+   end;
+   Result := TServerProcess.Create(TProcess.Start(Executable, Arguments), Port, Password);
 end;
 
 function TServerProcess.ConnectWebSocket(): TServerWebSocket;
@@ -796,8 +798,8 @@ begin
    WriteTextFile(TestDirectory + DynastiesServersListFilename, '');
    WriteTextFile(TestDirectory + SystemsServersListFilename, '');
    FSettings := LoadSettingsConfiguration(TestDirectory);
-   FNextPort := FSettings^.LoginServerPort;
-   AssignPort(); // for login server
+   FNextPort := 40000; // TODO: avoid hard-coding this
+   RegisterServers(TestDirectory, LoginServersListFilename, 1);
    RegisterServers(TestDirectory, DynastiesServersListFilename, 1);
    RegisterServers(TestDirectory, SystemsServersListFilename, 1);
 end;
@@ -821,7 +823,7 @@ end;
 
 procedure TIsdServerTest.StartServers(const HostDirectory: UTF8String);
 
-   procedure LaunchServers(const ServersListFilename, Executable: UTF8String; var ServersList: TServerProcessList);
+   procedure LaunchServers(const ServersListFilename, Executable: UTF8String; var ServersList: TServerProcessList; IndexOffset: Integer = 1);
    var
       ServerFile: TCSVDocument;
       ServerDatabase: TServerDatabase;
@@ -835,13 +837,18 @@ procedure TIsdServerTest.StartServers(const HostDirectory: UTF8String);
       for Index := 0 to ServerDatabase.Count - 1 do // $R-
       begin
          ServerConfig := ServerDatabase[Index];
-         ServersList[Index] := TServerProcess.StartSecondaryServer(Executable, HostDirectory, Index, ServerConfig^.DirectPort, ServerConfig^.DirectPassword); // $R-
+         ServersList[Index] := TServerProcess.StartServer(Executable, HostDirectory, ServerConfig^.DirectPort, ServerConfig^.DirectPassword, Index + IndexOffset); // $R-
       end;
       FreeAndNil(ServerDatabase);
    end;
-   
+
+var
+   LoginServers: TServerProcessList;
 begin
-   FLoginServer := TServerProcess.StartPrimaryServer('bin/login-server', HostDirectory, FSettings^.LoginServerPort);
+   LoginServers := [];
+   LaunchServers(LoginServersListFilename, 'bin/login-server', LoginServers, 0);
+   Assert(Length(LoginServers) = 1);
+   FLoginServer := LoginServers[0];
    LaunchServers(DynastiesServersListFilename, 'bin/dynasties-server', FDynastiesServers);
    LaunchServers(SystemsServersListFilename, 'bin/systems-server', FSystemsServers);
 end;

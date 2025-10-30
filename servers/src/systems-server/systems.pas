@@ -308,6 +308,8 @@ type
    TPreWalkCallback = function(Asset: TAssetNode): Boolean is nested;
    TPostWalkCallback = procedure(Asset: TAssetNode) is nested;
 
+   TScoreDirtyCallback = procedure(Dynasty: TDynasty) of object;
+   
    FeatureClassReference = class of TFeatureClass;
    FeatureNodeReference = class of TFeatureNode;
 
@@ -482,12 +484,12 @@ type
       dkDescendantUpdateClients, // one or more of the descendants has dkUpdateClients set [2]
       dkUpdateJournal, // this asset node is dirty and we need to update the journal( // TODO: audit uses of this now that it has a specific meaning
       dkDescendantUpdateJournal, // one or more of the descendants has dkUpdateJournal set [2]
-      dkChildren, // this asset's node's children changed in some way (were added, moved, or removed)(
+      dkChildren, // this asset's node's children changed in some way (were added, moved, or removed)
       dkDescendants, // one or more of the descendants has dkChildren set [2]
       dkAffectsNames, // the asset's name changed [1]
       dkChildAffectsNames, // a child's name changed [1][2]
       dkVisibilityDidChange, // one or more dynasties changed whether they can see this node (handled by CheckVisibilityChanged)
-      dkAffectsVisibility, // system needs to redo a visibility scan
+      dkAffectsVisibility, // system needs to redo a visibility scan // TODO: clarify how this differs from dkVisibilityDidChange
       dkAffectsDynastyCount, // system needs to redo a dynasty census (requires dkAffectsVisibility)
       dkAffectsKnowledge // any nodes caching knowledge of descendants should reset caches
    );
@@ -496,8 +498,13 @@ type
    //  [2] added automatically when appropriate when propagating to parent
 
 const
-   dkAll = [Low(TDirtyKind) .. High(TDirtyKind)]; // the initial setting on creation
-   dkAffectsTreeStructure = [dkAffectsVisibility, dkAffectsKnowledge, dkVisibilityDidChange, dkUpdateClients, dkUpdateJournal, dkChildren, dkChildAffectsNames]; // set on old/new parents when child's parent changes
+   dkNewNode = [ // initial dirty flags used on creation
+      dkNew, dkNeedsHandleChanges, dkUpdateClients, dkUpdateJournal, dkVisibilityDidChange, dkAffectsVisibility, dkAffectsDynastyCount, dkAffectsKnowledge,
+      dkDescendantNeedsHandleChanges, dkDescendantUpdateClients // TODO: remove these two
+   ];
+   dkAffectsTreeStructure = [ // set on old/new parents when child's parent changes
+      dkAffectsVisibility, dkAffectsKnowledge, dkVisibilityDidChange, dkUpdateClients, dkUpdateJournal, dkChildren, dkChildAffectsNames
+   ];
 
 type
    ISensorsProvider = interface ['ISensorsProvider']
@@ -523,10 +530,14 @@ type
    private
       procedure SetParent(Asset: TAssetNode); inline;
       function GetParent(): TAssetNode; inline;
+      function GetIsAttached(): Boolean; inline;
       function GetSystem(): TSystem; inline;
       function GetDebugName(): UTF8String;
    protected
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); virtual;
+      procedure AssetCreated(); virtual; // called when we are associated with an asset after the asset is created; Parent is still nil
+      procedure Attached(); virtual; // called when we are newly in a subtree rooted in a system
+      procedure Detaching(); virtual; // called when an ancestor is about to lose its Parent
       procedure AdoptChild(Child: TAssetNode); virtual;
       procedure DropChild(Child: TAssetNode); virtual;
       procedure MarkAsDirty(DirtyKinds: TDirtyKinds); inline; // Utility function, calls Parent.MarkAsDirty().
@@ -535,6 +546,7 @@ type
       function GetMassFlowRate(): TRate; virtual; // kg/s
       function GetSize(): Double; virtual; // m
       function GetFeatureName(): UTF8String; virtual;
+      function GetHappiness(): Double; virtual;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); virtual;
       function InjectBusMessage(Message: TBusMessage): TBusMessageResult; // (send message up the tree) returns true if message found a bus
       function ManageBusMessage(Message: TBusMessage): TBusMessageResult; virtual; // (consider sending message down the tree) returns true if feature was a bus for this message or should stop propagation
@@ -560,7 +572,9 @@ type
       property MassFlowRate: TRate read GetMassFlowRate; // kg/s
       property Size: Double read GetSize; // m
       property FeatureName: UTF8String read GetFeatureName;
-      property Parent: TAssetNode read FParent;
+      property Happiness: Double read GetHappiness;
+      property Parent: TAssetNode read GetParent;
+      property IsAttached: Boolean read GetIsAttached;
       property DebugName: UTF8String read GetDebugName;
    end;
 
@@ -621,7 +635,10 @@ type
       type
          TArray = array of TAssetNode;
    strict private
-      FParent: TFeatureNode;
+      const
+         AttachedBit = $01;
+      var
+         FParent: PtrUInt; // TFeatureNode with top bit tracking attachment status
    strict protected
       FAssetClass: TAssetClass;
       FOwner: TDynasty; // TODO: if this changes value, some features are going to get very confused (e.g. the builder bus)
@@ -636,11 +653,15 @@ type
       function GetSize(): Double; // m
       function GetDensity(): Double; // kg/m^3
       function GetAssetName(): UTF8String;
+      function GetHappiness(): Double;
       procedure MarkAsDirty(DirtyKinds: TDirtyKinds); virtual;
       procedure ReportChildIsPermanentlyGone(Child: TAssetNode); virtual;
       function GetDebugName(): UTF8String;
    private
       procedure SetParent(AParent: TFeatureNode); inline;
+      function GetParent(): TFeatureNode; inline;
+      function GetHasParent(): Boolean; inline;
+      function GetIsAttached(): Boolean; virtual;
       procedure UpdateID(CachedSystem: TSystem; DynastyIndex: Cardinal; ID: TAssetID); // used from ApplyJournal
       function GetSystem(): TSystem; virtual;
    public
@@ -669,7 +690,9 @@ type
       function ID(CachedSystem: TSystem; DynastyIndex: Cardinal; AllowZero: Boolean = False): TAssetID;
       procedure HandleCommand(Command: UTF8String; var Message: TMessage);
       function IsReal(): Boolean;
-      property Parent: TFeatureNode read FParent;
+      property Parent: TFeatureNode read GetParent;
+      property HasParent: Boolean read GetHasParent;
+      property IsAttached: Boolean read GetIsAttached;
       property Dirty: TDirtyKinds read FDirty;
       property AssetClass: TAssetClass read FAssetClass;
       property Owner: TDynasty read FOwner;
@@ -679,6 +702,7 @@ type
       property Size: Double read GetSize; // meters, must be greater than zero
       property Density: Double read GetDensity; // kg/m^3; computed from mass and size, assuming spherical shape
       property AssetName: UTF8String read GetAssetName;
+      property Happiness: Double read GetHappiness;
       property DebugName: UTF8String read GetDebugName;
       property System: TSystem read GetSystem;
    end;
@@ -704,6 +728,7 @@ type
    TSystem = class sealed
    strict private
       FServer: TBaseServer;
+      FOnScoreDirty: TScoreDirtyCallback;
       FScheduledEvents: TSystemEventSet;
       FNextEvent: TSystemEvent;
       FNextEventHandle: PEvent;
@@ -719,7 +744,7 @@ type
       FTimeFactor: TTimeFactor;
       FRoot: TAssetNode;
       FChanges: TDirtyKinds;
-      procedure Init(AConfigurationDirectory: UTF8String; ASystemID: Cardinal; ARootClass: TAssetClass; AServer: TBaseServer; ADynastyDatabase: TDynastyDatabase; AEncyclopedia: TEncyclopediaView);
+      procedure Init(AConfigurationDirectory: UTF8String; ASystemID: Cardinal; ARootClass: TAssetClass; AServer: TBaseServer; ADynastyDatabase: TDynastyDatabase; AEncyclopedia: TEncyclopediaView; AOnScoreDirty: TScoreDirtyCallback);
       procedure ApplyJournal(FileName: UTF8String);
       procedure OpenJournal(FileName: UTF8String);
       procedure RecordUpdate();
@@ -749,15 +774,17 @@ type
    protected
       procedure MarkAsDirty(DirtyKinds: TDirtyKinds);
    public
-      constructor Create(AConfigurationDirectory: UTF8String; ASystemID: Cardinal; AX, AY: Double; ARootClass: TAssetClass; AServer: TBaseServer; ADynastyDatabase: TDynastyDatabase; AEncyclopedia: TEncyclopediaView; Settings: PSettings);
-      constructor CreateFromDisk(AConfigurationDirectory: UTF8String; ASystemID: Cardinal; ARootClass: TAssetClass; AServer: TBaseServer; ADynastyDatabase: TDynastyDatabase; AEncyclopedia: TEncyclopediaView);
+      constructor Create(AConfigurationDirectory: UTF8String; ASystemID: Cardinal; AX, AY: Double; ARootClass: TAssetClass; AServer: TBaseServer; ADynastyDatabase: TDynastyDatabase; AEncyclopedia: TEncyclopediaView; Settings: PSettings; AOnScoreDirty: TScoreDirtyCallback);
+      constructor CreateFromDisk(AConfigurationDirectory: UTF8String; ASystemID: Cardinal; ARootClass: TAssetClass; AServer: TBaseServer; ADynastyDatabase: TDynastyDatabase; AEncyclopedia: TEncyclopediaView; AOnScoreDirty: TScoreDirtyCallback);
       destructor Destroy(); override;
       function SerializeSystem(Dynasty: TDynasty; Writer: TServerStreamWriter; DirtyOnly: Boolean): Boolean; // true if anything was dkUpdateClients dirty
       procedure ReportChanges();
       function HasDynasty(Dynasty: TDynasty): Boolean; inline;
+      function ComputeScoreFor(Dynasty: TDynasty): Double;
       function ScheduleEvent(TimeDelta: TMillisecondsDuration; Callback: TEventCallback; var Data): TSystemEvent;
       function TimeUntilNext(TimeOrigin: TTimeInMilliseconds; Period: TMillisecondsDuration): TMillisecondsDuration;
       function FindCommandTarget(Dynasty: TDynasty; AssetID: TAssetID): TAssetNode;
+      procedure ReportScoreChanged(Dynasty: TDynasty); inline;
       property RootNode: TAssetNode read FRoot;
       property Dirty: Boolean read GetDirty;
       property SystemID: Cardinal read FSystemID;
@@ -790,7 +817,6 @@ uses
 function UpdateDirtyKindsForAncestor(DirtyKinds: TDirtyKinds): TDirtyKinds;
 begin
    Result := DirtyKinds;
-   Exclude(Result, dkNew);
    if (dkNeedsHandleChanges in Result) then
    begin
       Exclude(Result, dkNeedsHandleChanges);
@@ -816,6 +842,11 @@ begin
       Exclude(Result, dkChildren);
       Include(Result, dkDescendants);
    end;
+   if (dkNew in Result) then
+   begin
+      Exclude(Result, dkNew);
+      Include(Result, dkChildren);
+   end;
    if (dkChildAffectsNames in Result) then
    begin
       Exclude(Result, dkChildAffectsNames);
@@ -829,6 +860,8 @@ end;
 
 type
    TRootAssetNode = class(TAssetNode)
+   private
+      function GetIsAttached(): Boolean; override;
    protected
       FSystem: TSystem;
       function GetSystem(): TSystem; override;
@@ -1331,6 +1364,7 @@ begin
    Assert(Assigned(Asset));
    Assert(not Assigned(FParent));
    FParent := Asset;
+   AssetCreated();
 end;
 
 function TFeatureNode.GetParent(): TAssetNode;
@@ -1345,6 +1379,23 @@ begin
    Result := FParent.System;
 end;
 
+function TFeatureNode.GetIsAttached(): Boolean;
+begin
+   Result := Assigned(FParent) and FParent.IsAttached;
+end;
+
+procedure TFeatureNode.AssetCreated();
+begin
+end;
+
+procedure TFeatureNode.Attached();
+begin
+end;
+
+procedure TFeatureNode.Detaching();
+begin
+end;
+
 procedure TFeatureNode.AdoptChild(Child: TAssetNode);
 var
    DirtyKinds: TDirtyKinds;
@@ -1353,7 +1404,7 @@ begin
       Child.Parent.DropChild(Child);
    Assert(not Assigned(Child.ParentData)); // DropChild is responsible for freeing it; subclass is responsible for allocating this after calling us
    Child.SetParent(Self);
-   DirtyKinds := dkAffectsTreeStructure + UpdateDirtyKindsForAncestor(Child.FDirty);
+   DirtyKinds := dkAffectsTreeStructure + UpdateDirtyKindsForAncestor(Child.Dirty);
    Include(DirtyKinds, dkAffectsDynastyCount); // TODO: only do this if new subtree contains any dynasties that aren't in the rest of the system
    MarkAsDirty(DirtyKinds);
    // TODO: if the node moved (and wasn't just created), notify subtree that it is in a new position in the tree
@@ -1363,11 +1414,11 @@ procedure TFeatureNode.DropChild(Child: TAssetNode);
 var
    DirtyKinds: TDirtyKinds;
 begin
+   Assert(Assigned(FParent));
    Assert(Child.Parent = Self);
    Child.SetParent(nil);
    Assert(not Assigned(Child.ParentData)); // subclass is responsible for freeing child's parent data before calling us
    DirtyKinds := dkAffectsTreeStructure;
-   Assert(Assigned(FParent));
    Include(DirtyKinds, dkAffectsDynastyCount); // TODO: find a way to skip this if System.HasDynasty(Child.Owner) - but while reading journal, we don't have the system
    MarkAsDirty(DirtyKinds);
 end;
@@ -1400,6 +1451,11 @@ end;
 function TFeatureNode.GetFeatureName(): UTF8String;
 begin
    Result := '';
+end;
+
+function TFeatureNode.GetHappiness(): Double;
+begin
+   Result := 0.0;
 end;
 
 procedure TFeatureNode.Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback);
@@ -1722,10 +1778,8 @@ begin
       Assert(Length(AFeatures) = FAssetClass.FeatureCount);
       FFeatures := AFeatures;
       for Feature in FFeatures do
-      begin
          Feature.SetParent(Self);
-      end;
-      FDirty := dkAll;
+      FDirty := dkNewNode;
    except
       ReportCurrentException();
       raise;
@@ -1737,7 +1791,7 @@ begin
    inherited Create();
    try
       ApplyJournal(Journal, ASystem);
-      FDirty := dkAll;
+      FDirty := dkNewNode;
    except
       ReportCurrentException();
       raise;
@@ -1886,6 +1940,15 @@ begin
    Result := '';
 end;
 
+function TAssetNode.GetHappiness(): Double;
+var
+   Feature: TFeatureNode;
+begin
+   Result := 0.0;
+   for Feature in FFeatures do
+      Result := Result + Feature.Happiness;
+end;
+
 procedure TAssetNode.MarkAsDirty(DirtyKinds: TDirtyKinds);
 var
    Feature: TFeatureNode;
@@ -1898,8 +1961,8 @@ begin
       FDirty := FDirty + DirtyKinds;
       for Feature in FFeatures do
          Feature.ParentMarkedAsDirty(FDirty, NewFlags); // might call us re-entrantly // TODO: can this just return what needs to change?
-      if (Assigned(FParent)) then
-         FParent.MarkAsDirty(UpdateDirtyKindsForAncestor(DirtyKinds));
+      if (HasParent) then
+         Parent.MarkAsDirty(UpdateDirtyKindsForAncestor(DirtyKinds));
    end;
 end;
 
@@ -1928,9 +1991,9 @@ begin
          exit;
       end;
    end;
-   if (Assigned(FParent)) then
+   if (HasParent) then
    begin
-      Result := FParent.InjectBusMessage(Message);
+      Result := Parent.InjectBusMessage(Message);
    end
    else
    begin
@@ -2242,7 +2305,8 @@ end;
 
 procedure TAssetNode.ReportChildIsPermanentlyGone(Child: TAssetNode);
 begin
-   Assert(Assigned(FParent));
+   Assert(HasParent);
+   Assert(IsAttached);
    Parent.Parent.ReportChildIsPermanentlyGone(Child);
 end;
 
@@ -2260,9 +2324,54 @@ begin
 end;
 
 procedure TAssetNode.SetParent(AParent: TFeatureNode);
+
+   procedure Attach(Asset: TAssetNode);
+   var
+      Feature: TFeatureNode;
+   begin
+      Asset.FParent := Asset.FParent or AttachedBit;
+      for Feature in Asset.FFeatures do
+         Feature.Attached();
+      if (Asset.Dirty <> []) then
+      begin
+         Asset.Parent.MarkAsDirty(UpdateDirtyKindsForAncestor(Asset.Dirty));
+      end;
+   end;
+
+   procedure Detach(Asset: TAssetNode);
+   var
+      Feature: TFeatureNode;
+   begin
+      Asset.FParent := Asset.FParent and not AttachedBit;
+      for Feature in Asset.FFeatures do
+         Feature.Detaching();
+   end;
+
 begin
-   Assert(Assigned(FParent) <> Assigned(AParent)); // must be dropped being before claimed
-   FParent := AParent;
+   Assert(HasParent <> Assigned(AParent)); // must be dropped being before claimed
+   if (IsAttached) then
+      Walk(nil, @Detach);
+   FParent := PtrUInt(AParent);
+   if (Assigned(AParent) and Parent.IsAttached) then
+   begin
+      FParent := FParent or AttachedBit;
+      Walk(nil, @Attach);
+   end;
+end;
+      
+function TAssetNode.GetHasParent(): Boolean;
+begin
+   Result := FParent <> 0;
+end;
+
+function TAssetNode.GetParent(): TFeatureNode;
+begin
+   Result := TFeatureNode(FParent and not AttachedBit);
+end;
+      
+function TAssetNode.GetIsAttached(): Boolean;
+begin
+   Result := FParent and AttachedBit > 0;
 end;
 
 procedure TAssetNode.UpdateID(CachedSystem: TSystem; DynastyIndex: Cardinal; ID: TAssetID);
@@ -2347,10 +2456,10 @@ begin
 end;
 
 
-constructor TSystem.Create(AConfigurationDirectory: UTF8String; ASystemID: Cardinal; AX, AY: Double; ARootClass: TAssetClass; AServer: TBaseServer; ADynastyDatabase: TDynastyDatabase; AEncyclopedia: TEncyclopediaView; Settings: PSettings);
+constructor TSystem.Create(AConfigurationDirectory: UTF8String; ASystemID: Cardinal; AX, AY: Double; ARootClass: TAssetClass; AServer: TBaseServer; ADynastyDatabase: TDynastyDatabase; AEncyclopedia: TEncyclopediaView; Settings: PSettings; AOnScoreDirty: TScoreDirtyCallback);
 begin
    inherited Create();
-   Init(AConfigurationDirectory, ASystemID, ARootClass, AServer, ADynastyDatabase, AEncyclopedia);
+   Init(AConfigurationDirectory, ASystemID, ARootClass, AServer, ADynastyDatabase, AEncyclopedia, AOnScoreDirty);
    FX := AX;
    FY := AY;
    FTimeOrigin := FServer.Clock.Now() - 0; // 0 is the age of the system so far
@@ -2365,14 +2474,14 @@ begin
    OpenJournal(FConfigurationDirectory + JournalDatabaseFileName); // This walks the entire tree, updates everything, writes it all to the journal, and cleans the dirty flags.
 end;
 
-constructor TSystem.CreateFromDisk(AConfigurationDirectory: UTF8String; ASystemID: Cardinal; ARootClass: TAssetClass; AServer: TBaseServer; ADynastyDatabase: TDynastyDatabase; AEncyclopedia: TEncyclopediaView);
+constructor TSystem.CreateFromDisk(AConfigurationDirectory: UTF8String; ASystemID: Cardinal; ARootClass: TAssetClass; AServer: TBaseServer; ADynastyDatabase: TDynastyDatabase; AEncyclopedia: TEncyclopediaView; AOnScoreDirty: TScoreDirtyCallback);
 begin
-   Init(AConfigurationDirectory, ASystemID, ARootClass, AServer, ADynastyDatabase, AEncyclopedia);
+   Init(AConfigurationDirectory, ASystemID, ARootClass, AServer, ADynastyDatabase, AEncyclopedia, AOnScoreDirty);
    ApplyJournal(FConfigurationDirectory + JournalDatabaseFileName);
    OpenJournal(FConfigurationDirectory + JournalDatabaseFileName); // This walks the entire tree, updates everything, writes it all to the journal, and cleans the dirty flags.
 end;
 
-procedure TSystem.Init(AConfigurationDirectory: UTF8String; ASystemID: Cardinal; ARootClass: TAssetClass; AServer: TBaseServer; ADynastyDatabase: TDynastyDatabase; AEncyclopedia: TEncyclopediaView);
+procedure TSystem.Init(AConfigurationDirectory: UTF8String; ASystemID: Cardinal; ARootClass: TAssetClass; AServer: TBaseServer; ADynastyDatabase: TDynastyDatabase; AEncyclopedia: TEncyclopediaView; AOnScoreDirty: TScoreDirtyCallback);
 begin
    FConfigurationDirectory := AConfigurationDirectory;
    FSystemID := ASystemID;
@@ -2383,6 +2492,7 @@ begin
    FScheduledEvents := TSystemEventSet.Create();
    FCurrentEventTime := TTimeInMilliseconds.Infinity;
    FEncyclopedia := AEncyclopedia;
+   FOnScoreDirty := AOnScoreDirty;
    FRoot := TRootAssetNode.Create(ARootClass, Self, ARootClass.SpawnFeatureNodes());
    Exclude(FRoot.FDirty, dkNew);
    FChanges := [];
@@ -2607,12 +2717,12 @@ var
       Visibility := Asset.ReadVisibilityFor(CachedDynastyIndex, Self);
       if (Visibility <> []) then
       begin
-         if ((dkUpdateClients in Asset.FDirty) or not DirtyOnly) then
+         if ((dkUpdateClients in Asset.Dirty) or not DirtyOnly) then
          begin
             FoundASelfDirty := True;
             Asset.Serialize(CachedDynastyIndex, Writer, Self);
          end;
-         Result := (dkDescendantUpdateClients in Asset.FDirty) or not DirtyOnly;
+         Result := (dkDescendantUpdateClients in Asset.Dirty) or not DirtyOnly;
       end
       else
          Result := False;
@@ -2869,6 +2979,20 @@ begin
    Result := FDynastyIndices.Has(Dynasty);
 end;
 
+function TSystem.ComputeScoreFor(Dynasty: TDynasty): Double;
+   
+   procedure RecomputeScores(Asset: TAssetNode);
+   begin
+      if (Asset.Owner = Dynasty) then
+         Result := Result + Asset.Happiness;
+   end;
+
+begin
+   Result := 0.0;
+   FRoot.Walk(nil, @RecomputeScores);
+end;
+
+
 procedure TSystem.RunEvent(var Data);
 var
    Event: TSystemEvent;
@@ -3031,6 +3155,11 @@ begin
    FoundAsset := nil;
    FRoot.Walk(@Search, nil);
    Result := FoundAsset;
+end;
+
+procedure TSystem.ReportScoreChanged(Dynasty: TDynasty);
+begin
+   FOnScoreDirty(Dynasty);
 end;
 
 
@@ -3244,6 +3373,11 @@ begin
    inherited Create(AAssetClass, nil, AFeatures);
    Assert(Assigned(ASystem));
    FSystem := ASystem;
+end;
+
+function TRootAssetNode.GetIsAttached(): Boolean;
+begin
+   Result := True;
 end;
 
 procedure TRootAssetNode.MarkAsDirty(DirtyKinds: TDirtyKinds);

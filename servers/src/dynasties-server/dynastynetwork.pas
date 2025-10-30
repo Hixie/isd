@@ -19,7 +19,7 @@ type
    protected
       FServer: TServer;
       FDynasty: TDynasty;
-      procedure HandleIPC(Arguments: TBinaryStreamReader); override;
+      procedure HandleIPC(const Command: UTF8String; const Arguments: TBinaryStreamReader); override;
       function GetDynasty(DynastyID: Cardinal): TBaseDynasty; override;
       procedure DoLogin(var Message: TMessage); message 'login';
       procedure GetStarName(var Message: TMessage) message 'get-star-name'; // argument: star ID
@@ -29,34 +29,43 @@ type
       destructor Destroy(); override;
    end;
 
-   TInternalSystemConnection = class(TBaseOutgoingInternalConnection)
+   TInternalConnection = class abstract(TBaseOutgoingInternalConnection)
    protected
       FServer: TServer;
       FConversation: specialize TSharedPointer<TInternalConversationHandle>;
       procedure Done(); override;
    public
-      constructor Create(AServer: TServer; ASystemServer: PServerEntry; AConversation: TInternalConversationHandle);
-      procedure RegisterToken(Dynasty: TDynasty; Salt: TSalt; Hash: THash);
-      procedure Logout(Dynasty: TDynasty);
+      constructor Create(AServer: TServer; AServerEntry: PServerEntry; AConversation: TInternalConversationHandle);
       procedure ReportConnectionError(ErrorCode: cint); override;
    end;
 
+   TInternalSystemConnection = class(TInternalConnection)
+   public
+      procedure RegisterToken(Dynasty: TDynasty; Salt: TSalt; Hash: THash);
+      procedure Logout(Dynasty: TDynasty);
+   end;
+
+   TInternalLoginConnection = class(TInternalConnection)
+   public
+      procedure UpdateScore(Dynasty: TDynasty);
+   end;
 
    TServer = class(TBaseServer)
    protected
-      FPassword: UTF8String;
       FSystemServers: TServerDatabase;
+      FLoginServers: TServerDatabase;
       FDynasties: TDynastyHashTable;
       FConfigurationDirectory: UTF8String;
       function CreateNetworkSocket(AListenerSocket: TListenerSocket): TNetworkSocket; override;
       function GetDynasty(Index: Cardinal): TDynasty;
+      function GetLoginServer(): PServerEntry;
    public
-      constructor Create(APort: Word; APassword: UTF8String; ASystemServers: TServerDatabase; AConfigurationDirectory: UTF8String);
+      constructor Create(APort: Word; APassword: UTF8String; ALoginServers, ASystemServers: TServerDatabase; AConfigurationDirectory: UTF8String);
       destructor Destroy(); override;
       procedure AddDynasty(DynastyID: Cardinal);
-      property Password: UTF8String read FPassword;
       property Dynasties[Index: Cardinal]: TDynasty read GetDynasty;
       property SystemServerDatabase: TServerDatabase read FSystemServers;
+      property LoginServer: PServerEntry read GetLoginServer;
    end;
 
 implementation
@@ -72,7 +81,7 @@ end;
 
 constructor TConnection.Create(AListener: TListenerSocket; AServer: TServer);
 begin
-   inherited Create(AListener);
+   inherited Create(AListener, AServer);
    FServer := AServer;
 end;
 
@@ -83,9 +92,8 @@ begin
    inherited;
 end;
 
-procedure TConnection.HandleIPC(Arguments: TBinaryStreamReader);
+procedure TConnection.HandleIPC(const Command: UTF8String; const Arguments: TBinaryStreamReader);
 var
-   Command: UTF8String;
    DynastyID, SystemServerID: Cardinal;
    Dynasty: TDynasty;
    Salt: TSalt;
@@ -94,10 +102,10 @@ var
    Token: TToken;
    Index: Cardinal;
    Conversation: TInternalConversationHandle;
-   Socket: TInternalSystemConnection;
+   SystemSocket: TInternalSystemConnection;
+   LoginSocket: TInternalLoginConnection;
+   Score: Double;
 begin
-   Assert(FMode = cmControlMessages);
-   Command := Arguments.ReadString();
    if (Command = icCreateAccount) then
    begin
       DynastyID := Arguments.ReadCardinal();
@@ -131,15 +139,15 @@ begin
          Conversation := TInternalConversationHandle.Create(Self);
          for Index := 0 to Dynasty.ServerCount - 1 do // $R-
          begin
-            Socket := TInternalSystemConnection.Create(FServer, FServer.SystemServerDatabase.Servers[Dynasty.Servers[Index].ServerID], Conversation);
+            SystemSocket := TInternalSystemConnection.Create(FServer, FServer.SystemServerDatabase.Servers[Dynasty.Servers[Index]^.ServerID], Conversation);
             try
-               Socket.Connect();
+               SystemSocket.Connect();
             except
-               FreeAndNil(Socket);
+               FreeAndNil(SystemSocket);
                raise;
             end;
-            FServer.Add(Socket);
-            Socket.RegisterToken(Dynasty, Salt, Hash);
+            FServer.Add(SystemSocket);
+            SystemSocket.RegisterToken(Dynasty, Salt, Hash);
          end;
          Assert(Conversation.HasHolds);
       end
@@ -166,15 +174,15 @@ begin
          Conversation := TInternalConversationHandle.Create(Self);
          for Index := 0 to Dynasty.ServerCount - 1 do // $R-
          begin
-            Socket := TInternalSystemConnection.Create(FServer, FServer.SystemServerDatabase.Servers[Dynasty.Servers[Index].ServerID], Conversation);
+            SystemSocket := TInternalSystemConnection.Create(FServer, FServer.SystemServerDatabase.Servers[Dynasty.Servers[Index]^.ServerID], Conversation);
             try
-               Socket.Connect();
+               SystemSocket.Connect();
             except
-               FreeAndNil(Socket);
+               FreeAndNil(SystemSocket);
                raise;
             end;
-            FServer.Add(Socket);
-            Socket.Logout(Dynasty);
+            FServer.Add(SystemSocket);
+            SystemSocket.Logout(Dynasty);
          end;
          Assert(Conversation.HasHolds);
       end
@@ -202,17 +210,17 @@ begin
       if (Length(Tokens) > 0) then
       begin
          Conversation := TInternalConversationHandle.Create(Self);
-         Socket := TInternalSystemConnection.Create(FServer, FServer.SystemServerDatabase.Servers[SystemServerID], Conversation);
+         SystemSocket := TInternalSystemConnection.Create(FServer, FServer.SystemServerDatabase.Servers[SystemServerID], Conversation);
          try
-            Socket.Connect();
+            SystemSocket.Connect();
          except
-            FreeAndNil(Socket);
+            FreeAndNil(SystemSocket);
             raise;
          end;
-         FServer.Add(Socket);
+         FServer.Add(SystemSocket);
          for Token in Tokens do
          begin
-            Socket.RegisterToken(Dynasty, Token.Salt, Token.Hash);
+            SystemSocket.RegisterToken(Dynasty, Token.Salt, Token.Hash);
          end;
          Assert(Conversation.HasHolds);
       end
@@ -238,11 +246,34 @@ begin
       Write(#$01);
    end
    else
+   if (Command = icUpdateScoreDatum) then
    begin
-      Writeln('Received unknown command: ', Command);
-      Disconnect();
-      exit;
-   end;
+      DynastyID := Arguments.ReadCardinal();
+      Dynasty := FServer.Dynasties[DynastyID];
+      if (not Assigned(Dynasty)) then
+      begin
+         Writeln('Received an invalid dynasty ID for ', icUpdateScoreDatum, ' command: Dynasty ', DynastyID, ' is not assigned to this server.');
+         Disconnect();
+         exit;
+      end;
+      SystemServerID := Arguments.ReadCardinal();
+      Score := Arguments.ReadDouble();
+      Dynasty.UpdateScore(SystemServerID, Score);
+      // Now update login server.
+      Conversation := TInternalConversationHandle.Create(Self);
+      LoginSocket := TInternalLoginConnection.Create(FServer, FServer.LoginServer, Conversation);
+      try
+         LoginSocket.Connect();
+      except
+         FreeAndNil(LoginSocket);
+         raise;
+      end;
+      FServer.Add(LoginSocket);
+      LoginSocket.UpdateScore(Dynasty);
+      Assert(Conversation.HasHolds);
+   end
+   else
+      inherited;
 end;
 
 function TConnection.GetDynasty(DynastyID: Cardinal): TBaseDynasty;
@@ -292,24 +323,25 @@ begin
 end;
 
 
-constructor TInternalSystemConnection.Create(AServer: TServer; ASystemServer: PServerEntry; AConversation: TInternalConversationHandle);
+constructor TInternalConnection.Create(AServer: TServer; AServerEntry: PServerEntry; AConversation: TInternalConversationHandle);
 begin
-   inherited Create(ASystemServer);
+   inherited Create(AServerEntry);
    FServer := AServer;
    FConversation := AConversation;
    FConversation.Value.AddHold();
 end;
 
-procedure TInternalSystemConnection.Done();
+procedure TInternalConnection.Done();
 begin
    FConversation.Value.RemoveHold();
 end;
 
-procedure TInternalSystemConnection.ReportConnectionError(ErrorCode: cint);
+procedure TInternalConnection.ReportConnectionError(ErrorCode: cint);
 begin
    FConversation.Value.FailHold();
    Writeln('IPC connection to system server failed with error #', ErrorCode, ': ', StrError(ErrorCode));
 end;
+
 
 procedure TInternalSystemConnection.RegisterToken(Dynasty: TDynasty; Salt: TSalt; Hash: THash);
 var
@@ -317,10 +349,10 @@ var
    Message: RawByteString;
 begin
    Writer := TBinaryStreamWriter.Create();
-   Writer.WriteString(icRegisterToken);
+   Writer.WriteStringByPointer(icRegisterToken);
    Writer.WriteCardinal(Dynasty.DynastyID);
-   Writer.WriteRawBytes(@Salt[0], SizeOf(Salt));
-   Writer.WriteRawBytes(@Hash[0], SizeOf(Hash));
+   Writer.WriteRawBytesByPointer(@Salt[0], SizeOf(Salt));
+   Writer.WriteRawBytesByPointer(@Hash[0], SizeOf(Hash));
    Message := Writer.Serialize(True);
    if (FConversation.Value.HasFailed) then
    begin
@@ -341,7 +373,7 @@ var
    Message: RawByteString;
 begin
    Writer := TBinaryStreamWriter.Create();
-   Writer.WriteString(icLogout);
+   Writer.WriteStringByPointer(icLogout);
    Writer.WriteCardinal(Dynasty.DynastyID);
    Message := Writer.Serialize(True);
    if (FConversation.Value.HasFailed) then
@@ -358,15 +390,40 @@ begin
 end;
 
 
-constructor TServer.Create(APort: Word; APassword: UTF8String; ASystemServers: TServerDatabase; AConfigurationDirectory: UTF8String);
+procedure TInternalLoginConnection.UpdateScore(Dynasty: TDynasty);
+var
+   Writer: TBinaryStreamWriter;
+   Message: RawByteString;
+begin
+   Writer := TBinaryStreamWriter.Create();
+   Writer.WriteStringByPointer(icAddScoreDatum);
+   Writer.WriteCardinal(Dynasty.DynastyID);
+   Writer.WriteDouble(Dynasty.ComputeScore());
+   Message := Writer.Serialize(True);
+   if (FConversation.Value.HasFailed) then
+   begin
+      ConsoleWriteln('Would send IPC to login server (but connection has failed): ', Message);
+   end
+   else
+   begin
+      ConsoleWriteln('Sending IPC to login server: ', Message);
+   end;
+   Write(Message);
+   FreeAndNil(Writer);
+   IncrementPendingCount();
+end;
+
+
+constructor TServer.Create(APort: Word; APassword: UTF8String; ALoginServers,ASystemServers: TServerDatabase; AConfigurationDirectory: UTF8String);
 var
    DynastiesFile: File of Cardinal;
    DynastyID: Cardinal;
    Dynasty: TDynasty;
 begin
-   inherited Create(APort, nil);
-   FPassword := APassword;
+   inherited Create(APort, APassword, nil);
    FSystemServers := ASystemServers;
+   FLoginServers := ALoginServers;
+   Assert(FLoginServers.Count = 1);
    FDynasties := TDynastyHashTable.Create();
    FConfigurationDirectory := AConfigurationDirectory;
    if (DirectoryExists(FConfigurationDirectory)) then
@@ -429,6 +486,11 @@ begin
    Seek(DynastiesFile, FDynasties.Count - 1);
    BlockWrite(DynastiesFile, DynastyID, 1);
    Close(DynastiesFile);
+end;
+
+function TServer.GetLoginServer(): PServerEntry;
+begin
+   Result := FLoginServers.Servers[0];
 end;
 
 end.

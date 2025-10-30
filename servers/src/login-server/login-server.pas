@@ -3,7 +3,7 @@
 program main;
 
 uses
-   sysutils, loginnetwork, users, logindynasty, servers,
+   sysutils, loginnetwork, users, logindynasty, servers, clock,
    configuration, csvdocument, binaries, galaxy, strutils, isdprotocol;
 
 procedure CountDynastiesForServers(UserDatabase: TUserDatabase; ServerDatabase: TServerDatabase);
@@ -22,11 +22,12 @@ var
    UserDatabaseFile: File of TDynastyRecord;
    HomeSystemsDatabaseFile: THomeSystemsFile;
    SystemServerDatabaseFile: TSystemServerFile;
-   DynastyServerDatabase, SystemServerDatabase: TServerDatabase;
+   LoginServerDatabase, DynastyServerDatabase, SystemServerDatabase: TServerDatabase;
    ServerFile: TCSVDocument;
    GalaxyData, SystemsData: TBinaryFile;
    GalaxyManager: TGalaxyManager;
    Settings: PSettings;
+   SystemClock, MonotonicClock: TClock;
    DataDirectory: UTF8String;
 begin
    if (ParamCount() <> 1) then
@@ -51,8 +52,15 @@ begin
    GalaxyData.Init(DataDirectory + GalaxyBlobFilename);
    SystemsData.Init(DataDirectory + SystemsBlobFilename);
    Settings := LoadSettingsConfiguration(DataDirectory);
+   ServerFile := LoadServersConfiguration(DataDirectory, LoginServersListFilename);
+   LoginServerDatabase := TServerDatabase.Create(ServerFile);
+   FreeAndNil(ServerFile);
+   // clock
+   SystemClock := Settings^.ClockType.Create();
+   MonotonicClock := TMonotonicClock.Create(SystemClock);
    // users and dynasties
-   EnsureDirectoryExists(DataDirectory + LoginServerDirectory);
+   EnsureDirectoryExists(DataDirectory + LoginServerSubDirectory);
+   EnsureDirectoryExists(DataDirectory + LoginServerSubDirectory + DynastyDataSubDirectory);
    OpenUserDatabase(UserDatabaseFile, DataDirectory + UserDatabaseFilename);
    UserDatabase := TUserDatabase.Create(UserDatabaseFile);
    ServerFile := LoadServersConfiguration(DataDirectory, DynastiesServersListFilename);
@@ -67,7 +75,16 @@ begin
    FreeAndNil(ServerFile);
    GalaxyManager := TGalaxyManager.Create(GalaxyData, SystemsData, Settings, HomeSystemsDatabaseFile, SystemServerDatabaseFile);
    // server
-   Server := TServer.Create(Settings^.LoginServerPort, UserDatabase, DynastyServerDatabase, SystemServerDatabase, GalaxyManager);
+   Server := TServer.Create(
+      LoginServerDatabase[0]^.DirectPort,
+      LoginServerDatabase[0]^.DirectPassword,
+      MonotonicClock,
+      DataDirectory + LoginServerSubDirectory,
+      UserDatabase,
+      DynastyServerDatabase,
+      SystemServerDatabase,
+      GalaxyManager
+   );
    Server.Run();
    // shutdown
    Writeln('Exiting...');
@@ -75,10 +92,13 @@ begin
    FreeAndNil(GalaxyManager);
    FreeAndNil(SystemServerDatabase);
    FreeAndNil(DynastyServerDatabase);
+   FreeAndNil(LoginServerDatabase);
    FreeAndNil(UserDatabase);
    Close(SystemServerDatabaseFile);
    Close(HomeSystemsDatabaseFile);
    Close(UserDatabaseFile);
+   FreeAndNil(MonotonicClock);
+   FreeAndNil(SystemClock);
    Dispose(Settings);
    SystemsData.Free();
    GalaxyData.Free();

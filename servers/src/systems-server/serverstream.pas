@@ -37,7 +37,7 @@ var
 begin
    WriteCardinal(FStringTable.Encode(Value, NewlyAdded));
    if (NewlyAdded) then
-      WriteString(Value);
+      WriteStringByPointer(Value); // safe because by definition the pointer is now in the string table
 end;
 
 end.

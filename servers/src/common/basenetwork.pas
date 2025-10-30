@@ -9,6 +9,7 @@ uses
    stringstream, sharedpointer, servers, baseunix, clock;
 
 type
+   TBaseServer = class;
    TBaseIncomingCapableConnection = class;
 
    TBaseConversationHandle = class
@@ -63,10 +64,12 @@ type
    TBaseIncomingCapableConnection = class(TWebSocket)
    strict private
       FConversations: TConversationHashSet;
+   private
+      {$IFOPT C+} FServer: TBaseServer; {$ENDIF}
    protected
       procedure HandleMessage(Message: UTF8String); override;
    public
-      constructor Create(AListenerSocket: TListenerSocket);
+      constructor Create(AListenerSocket: TListenerSocket; AServer: TBaseServer);
       destructor Destroy(); override;
       procedure TrackConversation(Conversation: TBaseConversationHandle);
       procedure DiscardConversation(Conversation: TBaseConversationHandle);
@@ -85,10 +88,10 @@ type
       function InternalRead(Data: array of Byte): Boolean; override;
       procedure MaybeHandleIPCPassword();
       procedure MaybeHandleIPC();
-      procedure HandleIPC(Arguments: TBinaryStreamReader); virtual; abstract;
+      procedure HandleIPC(const Command: UTF8String; const Arguments: TBinaryStreamReader); virtual;
       function GetInternalPassword(): UTF8String; virtual; abstract;
    public
-      constructor Create(AListenerSocket: TListenerSocket);
+      constructor Create(AListenerSocket: TListenerSocket; AServer: TBaseServer);
       destructor Destroy(); override;
       procedure HoldsCleared(); virtual;
       procedure HoldsFailed(); virtual;
@@ -123,8 +126,6 @@ type
       procedure ReportConnectionError(ErrorCode: cint); override;
    end;
 
-   TBaseServer = class;
-
    TEventCallback = procedure (var Data) of object;
 
    PEvent = ^TEvent;
@@ -139,6 +140,7 @@ type
 
    TBaseServer = class(TNetworkServer)
    private
+      FPassword: UTF8String;
       FClock: TStableClock;
       FScheduledEvents: TEventSet;
       FNextEvent: PEvent;
@@ -150,13 +152,14 @@ type
       FDeadObjects: array of TObject;
       procedure ReportChanges(); virtual;
    public
-      constructor Create(APort: Word; AClock: TClock);
+      constructor Create(APort: Word; APassword: UTF8String; AClock: TClock);
       destructor Destroy(); override;
       procedure ScheduleDemolition(Victim: TObject);
       procedure CompleteDemolition();
       function ScheduleEvent(Time: TDateTime; Callback: TEventCallback; var Data): PEvent;
       procedure CancelEvent(var Event: PEvent);
       procedure Run();
+      property Password: UTF8String read FPassword;
       property Clock: TClock read GetClock;
    end;
 
@@ -166,7 +169,7 @@ implementation
 
 uses
    sysutils, isderrors, utf8, unicode, exceptions, hashfunctions,
-   sigint, errors, dateutils, isdprotocol, stringutils;
+   sigint, errors, dateutils, isdprotocol, stringutils, time;
 
 function PEventHash32(const Key: PEvent): DWord;
 begin
@@ -359,9 +362,12 @@ begin
 end;
 
 
-constructor TBaseIncomingCapableConnection.Create(AListenerSocket: TListenerSocket);
+constructor TBaseIncomingCapableConnection.Create(AListenerSocket: TListenerSocket; AServer: TBaseServer);
 begin
    inherited Create(AListenerSocket);
+   {$IFOPT C+}
+   FServer := AServer;
+   {$ENDIF}
    FConversations := TConversationHashSet.Create(@ConversationHash32);
 end;
 
@@ -420,9 +426,6 @@ end;
 procedure TBaseIncomingCapableConnection.WriteFrame(const S: UTF8String);
 begin
    ConsoleWriteln('Sending WebSocket Text: ', S);
-   {$IFNDEF TESTS}
-   Sleep(500); // this is to simulate bad network conditions
-   {$ENDIF}
    inherited;
 end;
 
@@ -431,19 +434,17 @@ var
    S: RawByteString;
 begin
    SetLength(S, Length);
-   Move(Buf, S[1], Length);
+   if (Length > 0) then
+      Move(Buf, S[1], Length);
    ConsoleWriteln('Sending WebSocket Binary: ', S);
-   {$IFNDEF TESTS}
-   Sleep(500); // this is to simulate bad network conditions
-   {$ENDIF}
    inherited;
 end;
 {$ENDIF}
 
 
-constructor TBaseIncomingInternalCapableConnection.Create(AListenerSocket: TListenerSocket);
+constructor TBaseIncomingInternalCapableConnection.Create(AListenerSocket: TListenerSocket; AServer: TBaseServer);
 begin
-   inherited Create(AListenerSocket);
+   inherited Create(AListenerSocket, AServer);
    FIPCBuffer := TBinaryStreamWriter.Create();
 end;
 
@@ -477,7 +478,7 @@ begin
    end
    else
    begin
-      FIPCBuffer.WriteRawBytes(@Data[0], Length(Data)); // $R-
+      FIPCBuffer.WriteRawBytes(@Data[0], Length(Data)); // $R- // this must be a copy, don't use WriteRawBytesByPointer variant, because Data is on stack
       if (ReceivedControlHandshake) then
       begin
          FIPCBuffer.Consume(1);
@@ -551,7 +552,8 @@ begin
             FIPCBuffer.Consume(SizeOf(Cardinal) + BufferLength); // $R-
             Reader.Truncate(BufferLength);
             ConsoleWriteln('Received IPC: ', Reader.RawInput);
-            HandleIPC(Reader);
+            Assert(FMode = cmControlMessages);
+            HandleIPC(Reader.ReadString(), Reader);
          end
          else
          begin
@@ -560,6 +562,42 @@ begin
       finally
          FreeAndNil(Reader);
       end;
+   end;
+end;
+
+procedure TBaseIncomingInternalCapableConnection.HandleIPC(const Command: UTF8String; const Arguments: TBinaryStreamReader);
+var
+   Delta: Int64;
+   Clock: TClock;
+begin
+   {$IFOPT C+}
+   if (Command = icDebug) then
+   begin
+      case (Arguments.ReadString()) of
+         'clock': begin
+            Clock := FServer.Clock;
+            while (Clock is TComposedClock) do
+               Clock := (Clock as TComposedClock).Parent;
+            ASsert(Clock is TRootClock);
+            if (Clock is TMockClock) then
+            begin
+               Delta := Arguments.ReadInt64();
+               (Clock as TMockClock).Advance(TMillisecondsDuration.FromMilliseconds(Delta));
+            end
+            else
+               raise Exception.CreateFmt('Received a "clock" debug command but clock is configured to use the system clock (%s).', [Clock.ClassName]);
+         end;
+         else
+            raise Exception.Create('Received unknown debug command.');
+      end;
+      Write(#$01);
+   end
+   {$ENDIF}
+   else
+   begin
+      Writeln('Received unknown command: ', Command);
+      Disconnect();
+      exit;
    end;
 end;
 
@@ -581,6 +619,7 @@ end;
 constructor TInternalConversationHandle.Create(AConnection: TBaseIncomingInternalCapableConnection);
 begin
    inherited Create(AConnection);
+   Assert(FConnection is TBaseIncomingInternalCapableConnection);
 end;
 
 procedure TInternalConversationHandle.AddHold();
@@ -595,6 +634,8 @@ begin
       Dec(FHolds);
       if (FHolds = 0) then
       begin
+         Assert(Assigned(FConnection));
+         Assert(FConnection is TBaseIncomingInternalCapableConnection);
          (FConnection as TBaseIncomingInternalCapableConnection).HoldsCleared();
       end;
    end;
@@ -682,9 +723,10 @@ begin
 end;
 
 
-constructor TBaseServer.Create(APort: Word; AClock: TClock);
+constructor TBaseServer.Create(APort: Word; APassword: UTF8String; AClock: TClock);
 begin
    inherited Create(APort);
+   FPassword := APassword;
    if (Assigned(AClock)) then
       FClock := TStableClock.Create(AClock);
 end;
@@ -746,8 +788,6 @@ begin
       end;
       if (NextTime <> 0) then
          Select(NextTime); // $R-
-      if (Assigned(FClock)) then
-         Writeln('Current internal time: ', PrettyTime(FClock.Now()));
       while (Assigned(FNextEvent) and EventIsDueBefore(FNextEvent, FClock.Now())) do
       begin
          Writeln('Running event for ', PrettyTime(FNextEvent^.FTime));

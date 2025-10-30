@@ -457,8 +457,14 @@ procedure TOrbitFeatureNode.Walk(PreCallback: TPreWalkCallback; PostCallback: TP
 var
    Child: TAssetNode;
 begin
-   Assert(Assigned(FPrimaryChild));
-   FPrimaryChild.Walk(PreCallback, PostCallback);
+   if (Assigned(FPrimaryChild)) then
+   begin
+      // Notably FPrimaryChild is nil when we've detached the primary
+      // child in preparation for us being detached and destroyed;
+      // when we're detached, we walk the tree and thus get here with
+      // a nil FPrimaryChild.
+      FPrimaryChild.Walk(PreCallback, PostCallback);
+   end;
    for Child in FChildren do
    begin
       Assert(Assigned(Child));

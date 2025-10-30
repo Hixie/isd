@@ -25,7 +25,10 @@ type
       function GetOwner(): TDynasty;
       procedure SetFoodUsage(Quantity: Int64);
    protected
+      procedure Attached(); override;
+      procedure Detaching(); override;
       function GetMass(): Double; override;
+      function GetHappiness(): Double; override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
    public
@@ -68,9 +71,24 @@ begin
    FMeanHappiness := AMeanHappiness;
 end;
 
+procedure TPopulationFeatureNode.Attached();
+begin
+   System.ReportScoreChanged(Parent.Owner);
+end;
+
+procedure TPopulationFeatureNode.Detaching();
+begin
+   System.ReportScoreChanged(Parent.Owner);
+end;
+
 function TPopulationFeatureNode.GetMass(): Double;
 begin
    Result := MeanIndividualMass * FPopulation;
+end;
+
+function TPopulationFeatureNode.GetHappiness(): Double;
+begin
+   Result := FPopulation * FMeanHappiness;
 end;
 
 function TPopulationFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
@@ -92,6 +110,8 @@ begin
          Writeln('Discarding message from population center ("', HelpMessage.Body, '")');
       Result := False; // TCrashReportMessage is handled when you explode yourself due to the crash (notifying someone isn't handling it!)
       FreeAndNil(HelpMessage);
+      FMeanHappiness := FMeanHappiness - 0.1; // $R-
+      System.ReportScoreChanged(Parent.Owner);
    end
    else
    if (Message is TInitFoodMessage) then
@@ -138,9 +158,13 @@ end;
 
 procedure TPopulationFeatureNode.SetFoodUsage(Quantity: Int64);
 begin
-   FFoodAvailable := Quantity;
-   // TODO: happiness should change over time, not instantly
-   FMeanHappiness := FFoodAvailable / FPopulation; // TODO: expose why the happiness is as it is
+   if (Quantity <> FFoodAvailable) then
+   begin
+      FFoodAvailable := Quantity;
+      // TODO: happiness should change over time, not instantly
+      FMeanHappiness := FFoodAvailable / FPopulation; // TODO: expose why the happiness is as it is
+      System.ReportScoreChanged(Parent.Owner);
+   end;
 end;
 
 procedure TPopulationFeatureNode.DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean);

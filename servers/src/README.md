@@ -30,7 +30,10 @@ There are several kinds of fields:
    - boolean: "T" for true, "F" for false.
 
    - string: plain text (that conforms to UTF-8). All fields are text
-     fields unless otherwise specified.
+     fields unless otherwise specified. Where the protocol
+     documentation refers to characters, it means Unicode Scalar
+     Values. For example, 🏳️‍🌈 is four characters (U+1F3F3 U+FE0F
+     U+200D U+1F308).
 
 The first field is a 32 bit number called the conversation ID
 (uint32). The second field is a command (string). Subsequent fields

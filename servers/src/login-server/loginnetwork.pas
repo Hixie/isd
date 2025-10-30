@@ -11,8 +11,8 @@ unit loginnetwork;
 interface
 
 uses
-   corenetwork, stringstream, users, logindynasty, isderrors,
-   servers, basenetwork, binaries, galaxy, astronomy;
+   corenetwork, stringstream, users, logindynasty, isderrors, clock,
+   servers, basenetwork, binaries, galaxy, astronomy, binarystream;
 
 const
    DefaultPasswordLength = 64;
@@ -42,11 +42,13 @@ type
       procedure RegisterNewHome(System: TStarID; Dynasty: TDynasty; DynastyServerID: Cardinal);
    end;
 
-   TConnection = class(TBaseIncomingCapableConnection)
+   TConnection = class(TBaseIncomingInternalCapableConnection)
    protected
       FServer: TServer;
       function ParseDynastyArguments(Message: TMessage): TDynasty;
       procedure SendBinary(var Message: TMessage; BinaryFile: TBinaryFile);
+      function GetInternalPassword(): UTF8String; override;
+      procedure HandleIPC(const Command: UTF8String; const Arguments: TBinaryStreamReader); override;
    protected
       procedure DoCreateDynasty(var Message: TMessage) message 'new'; // no arguments
       procedure DoLogin(var Message: TMessage) message 'login'; // arguments: username, password
@@ -55,18 +57,23 @@ type
       procedure DoChangePassword(var Message: TMessage) message 'change-password'; // arguments: username, password, new password
       procedure GetConstants(var Message: TMessage) message 'get-constants'; // no arguments
       procedure GetFile(var Message: TMessage) message 'get-file'; // arguments: file id
+      procedure GetHighScores(var Message: TMessage) message 'get-high-scores'; // arguments: optional list of dynasty IDs
+      procedure GetScores(var Message: TMessage) message 'get-scores'; // arguments: list of pairs of dynasty IDs and point indicies
    public
       constructor Create(AListener: TListenerSocket; AServer: TServer);
    end;
 
    TServer = class(TBaseServer)
    protected
+      FInternalPassword, FDataDirectory: UTF8String;
       FGalaxyManager: TGalaxyManager;
       FUserDatabase: TUserDatabase;
       FDynastyServerDatabase, FSystemServerDatabase: TServerDatabase;
       function CreateNetworkSocket(AListenerSocket: TListenerSocket): TNetworkSocket; override;
    public
-      constructor Create(APort: Word; AUserDatabase: TUserDatabase; ADynastyServerDatabase, ASystemServerDatabase: TServerDatabase; AGalaxyManager: TGalaxyManager);
+      constructor Create(APort: Word; AInternalPassword: UTF8String; AClock: TClock; ADataDirectory: UTF8String; AUserDatabase: TUserDatabase; ADynastyServerDatabase, ASystemServerDatabase: TServerDatabase; AGalaxyManager: TGalaxyManager);
+      procedure AddHighScoreDynasties(const DynastyIDs: TDynastyIDHashSet);
+      property DataDirectory: UTF8String read FDataDirectory;
       property UserDatabase: TUserDatabase read FUserDatabase;
       property DynastyServerDatabase: TServerDatabase read FDynastyServerDatabase;
       property SystemServerDatabase: TServerDatabase read FSystemServerDatabase;
@@ -76,11 +83,17 @@ type
 implementation
 
 uses
-   sysutils, exceptions, isdprotocol, passwords, binarystream;
+   sysutils, exceptions, isdprotocol, passwords, plasticarrays, genericutils, fileutils, configuration;
+
+type
+   TScoreRecord = packed record
+      Timestamp: Int64;
+      Score: Double;
+   end;
 
 constructor TConnection.Create(AListener: TListenerSocket; AServer: TServer);
 begin
-   inherited Create(AListener);
+   inherited Create(AListener, AServer);
    FServer := AServer;
 end;
 
@@ -106,6 +119,7 @@ var
    InternalDynastyConnectionSocket: TInternalDynastyConnection;
    InternalSystemConnectionSocket: TInternalSystemConnection;
    StarID: TStarID;
+   ScoreFile: File of TScoreRecord;
 begin
    if (not Message.CloseInput()) then
       exit;
@@ -119,6 +133,11 @@ begin
    Dynasty := FServer.UserDatabase.CreateNewAccount(Password, DynastyServerID);
    FServer.DynastyServerDatabase.IncreaseLoadOnServer(DynastyServerID);
 
+   Assign(ScoreFile, GenerateScoreFilename(FServer.DataDirectory + DynastyDataSubDirectory, Dynasty.ID));
+   FileMode := 1;
+   Rewrite(ScoreFile);
+   Close(ScoreFile);
+   
    // Prepare message for client (but don't send yet)
    Message.Reply();
    Message.Output.WriteString(Dynasty.Username);
@@ -270,6 +289,164 @@ begin
    end;
 end;
 
+procedure TConnection.GetHighScores(var Message: TMessage); // arguments: optional list of dynasty IDs
+var
+   EndOffset: QWord;
+   DynastyID: Cardinal;
+   DynastyIDs: TDynastyIDHashSet;
+   OpenFiles: specialize PlasticArray<TFileData, specialize IncomparableUtils<TFileData>>;
+   BinaryStream: TBinaryStreamWriter;
+   BinaryBits: RawByteString;
+   Scores: TFileData;
+begin
+   DynastyIDs := TDynastyIDHashSet.Create();
+   try
+      FServer.AddHighScoreDynasties(DynastyIDs);
+      while (Message.Input.CanReadMore) do
+      begin
+         DynastyID := Message.Input.ReadCardinal();
+         if ((DynastyID = 0) or (DynastyID > FServer.UserDatabase.DynastyCount)) then
+         begin
+            Message.Error(ieUnknownDynasty);
+            exit;
+         end;
+         if (not DynastyIDs.Has(DynastyID)) then
+            DynastyIDs.Add(DynastyID);
+      end;
+      if (DynastyIDs.Count > 16) then
+      begin
+         Message.Error(ieInvalidMessage);
+         exit;
+      end;
+      if (not Message.CloseInput()) then
+         exit;
+      Message.Reply();
+      OpenFiles.Init();
+      BinaryStream := TBinaryStreamWriter.Create();
+      try
+         BinaryStream.WriteCardinal(0);
+         for DynastyID in DynastyIDs do
+         begin
+            Scores := ReadFileTail(GenerateScoreFilename(FServer.DataDirectory + DynastyDataSubDirectory, DynastyID), 1024 * SizeOf(TScoreRecord), EndOffset);
+            Assert(Scores.Length mod SizeOf(TScoreRecord) = 0);
+            Assert(EndOffset mod SizeOf(TScoreRecord) = 0);
+            BinaryStream.WriteCardinal(DynastyID);
+            BinaryStream.WriteCardinal(EndOffset div SizeOf(TScoreRecord)); // $R-
+            BinaryStream.WriteCardinal(Scores.Length div SizeOf(TScoreRecord)); // $R-
+            BinaryStream.WriteRawBytesByPointer(Scores.Start, Scores.Length); // $R- (Scores.Length can't be too big, we only grab 1024 samples)
+            OpenFiles.Push(Scores);
+         end;
+         BinaryBits := BinaryStream.Serialize(False);
+         if (Length(BinaryBits) > 0) then
+         begin
+            WriteFrame(BinaryBits[1], Length(BinaryBits)); // $R-
+         end
+         else
+         begin
+            WriteFrame('', 0); // $R-
+         end;
+         Message.CloseOutput();
+      finally
+         FreeAndNil(BinaryStream);
+         for Scores in OpenFiles do
+            Scores.Destroy();
+      end;
+   finally
+      FreeAndNil(DynastyIDs);
+   end;
+end;
+
+procedure TConnection.GetScores(var Message: TMessage); // arguments: list of pairs of dynasty IDs and point indicies
+var
+   DynastyID, Index: Cardinal;
+   DynastyIDs: specialize PlasticArray<Cardinal, CardinalUtils>;
+   DynastyOffsets: specialize PlasticArray<Cardinal, CardinalUtils>;
+   OpenFiles: specialize PlasticArray<TFileData, specialize IncomparableUtils<TFileData>>;
+   BinaryStream: TBinaryStreamWriter;
+   BinaryBits: RawByteString;
+   Scores: TFileData;
+begin
+   DynastyIDs.Init();
+   DynastyOffsets.Init();
+   while (Message.Input.CanReadMore) do
+   begin
+      DynastyID := Message.Input.ReadCardinal();
+      if ((DynastyID = 0) or (DynastyID <= FServer.UserDatabase.DynastyCount)) then
+      begin
+         Message.Error(ieUnknownDynasty);
+         exit;
+      end;
+      DynastyIDs.Push(DynastyID);
+      DynastyOffsets.Push(Message.Input.ReadCardinal());
+   end;
+   if ((DynastyIDs.Length = 0) or (DynastyIDs.Length > 16)) then
+   begin
+      Message.Error(ieInvalidMessage);
+      exit;
+   end;
+   if (not Message.CloseInput()) then
+      exit;
+   Message.Reply();
+   OpenFiles.Init();
+   BinaryStream := TBinaryStreamWriter.Create();
+   try
+      BinaryStream.WriteCardinal(0);
+      for Index := 0 to DynastyIDs.Length - 1 do // $R- (we know there's at least one)
+      begin
+         Scores := ReadFilePart(GenerateScoreFilename(FServer.DataDirectory + DynastyDataSubDirectory, DynastyIDs[Index]), 1024 * SizeOf(TScoreRecord), DynastyOffsets[Index] * SizeOf(TScoreRecord)); // $R- (the offsets can't be more than 2^32)
+         Assert(Scores.Length mod SizeOf(TScoreRecord) = 0);
+         BinaryStream.WriteCardinal(DynastyID);
+         BinaryStream.WriteCardinal(DynastyOffsets[Index]); // $R-
+         BinaryStream.WriteCardinal(Scores.Length div SizeOf(TScoreRecord)); // $R-
+         BinaryStream.WriteRawBytesByPointer(Scores.Start, Scores.Length); // $R- (Scores.Length can't be too big, we only grab 1024 samples)
+         OpenFiles.Push(Scores);
+      end;
+      BinaryBits := BinaryStream.Serialize(False);
+      WriteFrame(BinaryBits[1], Length(BinaryBits)); // $R-
+      Message.CloseOutput();
+   finally
+      FreeAndNil(BinaryStream);
+      for Scores in OpenFiles do
+         Scores.Destroy();
+   end;
+end;
+
+function TConnection.GetInternalPassword(): UTF8String;
+begin
+   Result := FServer.Password;
+end;
+
+procedure TConnection.HandleIPC(const Command: UTF8String; const Arguments: TBinaryStreamReader);
+var
+   DynastyID: Cardinal;
+   ScoreRecord: TScoreRecord; // {BOGUS Note: Local variable "ScoreRecord" is assigned but never used}
+   ScoreFile: File of TScoreRecord;
+begin
+   if (Command = icAddScoreDatum) then
+   begin
+      DynastyID := Arguments.ReadCardinal();
+      if (DynastyID > FServer.UserDatabase.DynastyCount) then
+      begin
+         Writeln('Received an invalid dynasty ID for ', icAddScoreDatum, ' command: Dynasty ', DynastyID, ' does not exist (there are only ', FServer.UserDatabase.DynastyCount, ' dynasties).');
+         Disconnect();
+         exit;
+      end;
+      Assert(Assigned(FServer.Clock));
+      ScoreRecord.TimeStamp := FServer.Clock.AsUnixEpoch();
+      ScoreRecord.Score := Arguments.ReadDouble();
+      Assign(ScoreFile, GenerateScoreFilename(FServer.DataDirectory + DynastyDataSubDirectory, DynastyID));
+      FileMode := 2;
+      Reset(ScoreFile);
+      Seek(ScoreFile, FileSize(ScoreFile));
+      BlockWrite(ScoreFile, ScoreRecord, 1);
+      Close(ScoreFile);
+      Write(#$01);
+      FServer.UserDatabase.RegisterScoreUpdate(DynastyID, ScoreRecord.Score);
+   end
+   else
+      inherited;
+end;
+
 
 constructor TInternalDynastyConnection.Create(AClientMessage: TMessage; ADynastyServer: PServerEntry);
 begin
@@ -296,7 +473,7 @@ var
    Message: RawByteString;
 begin
    Writer := TBinaryStreamWriter.Create();
-   Writer.WriteString(icCreateAccount);
+   Writer.WriteStringByPointer(icCreateAccount);
    Writer.WriteCardinal(Dynasty.ID);
    Message := Writer.Serialize(True);
    ConsoleWriteln('Sending IPC to dynasty server: ', Message);
@@ -318,10 +495,10 @@ begin
    Salt := CreateSalt();
    ComputeHash(Salt, Token, HashedToken);
    Writer := TBinaryStreamWriter.Create();
-   Writer.WriteString(icRegisterToken);
+   Writer.WriteStringByPointer(icRegisterToken);
    Writer.WriteCardinal(Dynasty.ID);
-   Writer.WriteRawBytes(@Salt[0], SizeOf(Salt));
-   Writer.WriteRawBytes(@HashedToken[0], SizeOf(HashedToken));
+   Writer.WriteRawBytesByPointer(@Salt[0], SizeOf(Salt));
+   Writer.WriteRawBytesByPointer(@HashedToken[0], SizeOf(HashedToken));
    Message := Writer.Serialize(True);
    ConsoleWriteln('Sending IPC to dynasty server: ', Message);
    Write(Message);
@@ -337,7 +514,7 @@ var
    Message: RawByteString;
 begin
    Writer := TBinaryStreamWriter.Create();
-   Writer.WriteString(icLogout);
+   Writer.WriteStringByPointer(icLogout);
    Writer.WriteCardinal(Dynasty.ID);
    Message := Writer.Serialize(True);
    ConsoleWriteln('Sending IPC to dynasty server: ', Message);
@@ -360,14 +537,14 @@ var
 begin
    Assert(System >= 0);
    Writer := TBinaryStreamWriter.Create();
-   Writer.WriteString(icCreateSystem);
+   Writer.WriteStringByPointer(icCreateSystem);
    FServer.GalaxyManager.SerializeSystemDescription(System, Writer);
    Message := Writer.Serialize(True);
    ConsoleWriteln('Sending IPC to system server: ', Message);
    Write(Message);
    IncrementPendingCount();
    Writer.Clear();
-   Writer.WriteString(icTriggerNewDynastyScenario);
+   Writer.WriteStringByPointer(icTriggerNewDynastyScenario);
    Writer.WriteCardinal(Dynasty.ID);
    Writer.WriteCardinal(DynastyServerID);
    Writer.WriteCardinal(System); // $R-
@@ -379,9 +556,10 @@ begin
 end;
 
 
-constructor TServer.Create(APort: Word; AUserDatabase: TUserDatabase; ADynastyServerDatabase, ASystemServerDatabase: TServerDatabase; AGalaxyManager: TGalaxyManager);
+constructor TServer.Create(APort: Word; AInternalPassword: UTF8String; AClock: TClock; ADataDirectory: UTF8String; AUserDatabase: TUserDatabase; ADynastyServerDatabase, ASystemServerDatabase: TServerDatabase; AGalaxyManager: TGalaxyManager);
 begin
-   inherited Create(APort, nil);
+   inherited Create(APort, AInternalPassword, AClock);
+   FDataDirectory := ADataDirectory;
    FUserDatabase := AUserDatabase;
    FDynastyServerDatabase := ADynastyServerDatabase;
    FSystemServerDatabase := ASystemServerDatabase;
@@ -391,6 +569,69 @@ end;
 function TServer.CreateNetworkSocket(AListenerSocket: TListenerSocket): TNetworkSocket;
 begin
    Result := TConnection.Create(AListenerSocket, Self);
+end;
+
+procedure TServer.AddHighScoreDynasties(const DynastyIDs: TDynastyIDHashSet);
+const
+   HighScoreCount = 3;
+type
+   TEntry = record
+      DynastyID: Cardinal;
+      Score: Double;
+   end;
+   THighScoreTable = array[1..HighScoreCount] of TEntry;
+
+   procedure Consider(DynastyID: Cardinal; Score: Double; var Table: THighScoreTable);
+   var
+      Index: Cardinal;
+   begin
+      for Index := High(Table) downto Low(Table) do
+      begin
+         if ((Table[Index].DynastyID = 0) or (Table[Index].Score < Score)) then
+         begin
+            if (Index < High(Table)) then
+            begin
+               Table[Index + 1].DynastyID := Table[Index].DynastyID;
+               Table[Index + 1].Score := Table[Index].Score;
+            end;
+            Table[Index].DynastyID := DynastyID;
+            Table[Index].Score := Score;
+         end
+         else
+            exit;
+      end;
+   end;
+
+   procedure AddDynastiesFrom(const Table: THighScoreTable);
+   var
+      Index: Cardinal;
+   begin
+      for Index := Low(Table) to High(Table) do
+      begin
+         if (Table[Index].DynastyID = 0) then
+            exit;
+         if (not DynastyIDs.Has(Table[Index].DynastyID)) then
+            DynastyIDs.Add(Table[Index].DynastyID);
+      end;
+   end;
+   
+var
+   TopEver: THighScoreTable;
+   TopNow: THighScoreTable;
+   Index: Cardinal;
+   Dynasty: TDynasty;
+begin
+   for Index := Low(TopEver) to High(TopEver) do
+      TopEver[Index] := Default(TEntry);
+   for Index := Low(TopNow) to High(TopNow) do
+      TopNow[Index] := Default(TEntry);
+   for Dynasty in UserDatabase.Dynasties do
+   begin
+      Consider(Dynasty.ID, Dynasty.CurrentScore, TopNow);
+      Consider(Dynasty.ID, Dynasty.TopScore, TopEver);
+   end;
+   AddDynastiesFrom(TopNow);
+   AddDynastiesFrom(TopEver);
 end;
 
 end.

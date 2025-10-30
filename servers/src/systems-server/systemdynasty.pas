@@ -5,7 +5,7 @@ unit systemdynasty;
 interface
 
 uses
-   sysutils, passwords, basedynasty;
+   sysutils, passwords, basedynasty, hashset, genericutils;
 
 type
    TDynasty = class(TBaseDynasty)
@@ -22,6 +22,7 @@ type
          FSettings: TSettings;
          FRefCount: Cardinal;
          FOnUnreferenced: TDynastyCallback;
+         FLastScore: Double;
       procedure SaveSettings();
       procedure LoadSettings();
    public
@@ -34,6 +35,7 @@ type
       property DynastyID: Cardinal read FID;
       property DynastyServerID: Cardinal read FSettings.ServerID;
       property RefCount: Cardinal read FRefCount;
+      property LastScore: Double read FLastScore write FLastScore;
    end;
 
    TDynastyDatabase = class abstract
@@ -43,6 +45,12 @@ type
 
 function DynastyHash32(const Key: TDynasty): DWord;
 
+type
+   TDynastySet = class(specialize THashSet<TDynasty, PointerUtils>)
+   public
+      constructor Create();
+   end;
+
 implementation
 
 uses
@@ -51,6 +59,11 @@ uses
 function DynastyHash32(const Key: TDynasty): DWord;
 begin
    Result := ObjectHash32(Key);
+end;
+
+constructor TDynastySet.Create();
+begin
+   inherited Create(@DynastyHash32);
 end;
 
 

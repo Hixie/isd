@@ -7,7 +7,7 @@ uses
 
 var
    Server: TServer;
-   SystemServerDatabase: TServerDatabase;
+   LoginServerDatabase, SystemServerDatabase: TServerDatabase;
    ServerFile: TCSVDocument;
    Port, ServerIndex, ServerCount: Integer;
    DataDirectory, Password: UTF8String;
@@ -53,11 +53,15 @@ begin
    ServerFile := LoadServersConfiguration(DataDirectory, SystemsServersListFilename);
    SystemServerDatabase := TServerDatabase.Create(ServerFile);
    FreeAndNil(ServerFile);
+   ServerFile := LoadServersConfiguration(DataDirectory, LoginServersListFilename);
+   LoginServerDatabase := TServerDatabase.Create(ServerFile);
+   FreeAndNil(ServerFile);
    EnsureDirectoryExists(DataDirectory + DynastyServersDirectory);
-   Server := TServer.Create(Port, Password, SystemServerDatabase, DataDirectory + DynastyServersDirectory + IntToStr(ServerIndex) + '/'); // $R-
+   Server := TServer.Create(Port, Password, LoginServerDatabase, SystemServerDatabase, DataDirectory + DynastyServersDirectory + IntToStr(ServerIndex) + '/'); // $R-
    Server.Run();
    Writeln('Exiting...');
    FreeAndNil(SystemServerDatabase);
+   FreeAndNil(LoginServerDatabase);
    FreeAndNil(Server);
    {$IFOPT C+}
    Writeln('Done.', ControlEnd);

@@ -47,6 +47,9 @@ Fields:
 
 Server returns no additional data.
 
+Username must be unique, must be between 1 and 127 characters long
+(inclusive), and must not contain a U+0010 character.
+
 
 ## `change-password`
 
@@ -57,6 +60,8 @@ Fields:
  * new password
 
 Server returns no additional data.
+
+Password must be at least six characters long.
 
 
 ## `get-constants`
@@ -77,15 +82,59 @@ Fields:
 
 The server will send a binary frame whose first 32 bytes form the
 given code as a little-endian number, and whose subsequent bytes are
-as described in the "Binary frames" section below.
+as described in the "Data files" section below.
 
 Then, the server will respond to the original message with no
 additional data.
 
 
-## Binary frames
+## `get-high-scores`
 
-The server sends raw data as binary frames. The binary frames start
+Fields:
+
+ * Zero or more dynasty IDs (uint32) to include
+
+This returns the latest 1024 (or fewer) data points for the scores of
+the listed dynasties, the currently highest-scoring dynasties, and the
+all-time highest scoring dynasties (even if they have since lost that
+distinction).
+
+The server will send a binary frame that consists of a zero (uint32)
+followed by the following segments, repeated multiple times (once per
+dynasty):
+
+ * Dynasty ID (uint32)
+ * Index of the last data point being reported for this dynasty (uint32)
+ * N: Number of data points (uint32; index or 1024 whichever is smaller)
+ * Timestamp (uint64) and score (double), N times.
+
+Then, the server will respond to the original message with no
+additional data.
+
+
+## `get-scores`
+
+Fields:
+
+ * One or more pairs of:
+    * Dynasty ID (uint32)
+    * Index of last requested datapoint (uint32)
+
+This returns 1024 (or fewer) data points for the scores of the listed
+dynasties, with the last data point of each one being the requested
+index. The index must be valid (use `get-high-scores` first to get the
+maximum allowed index).
+
+The server will send a binary frame in the same form as
+`get-high-scores` (see above).
+
+Then, the server will respond to the original message with no
+additional data.
+
+
+## Data files
+
+The server sends data files as binary frames. The binary frames start
 with a 32 bit little-endian file identifier, then the rest of the
 frame is the raw data of that file.
 
@@ -93,6 +142,8 @@ File identifiers:
 
  * 1: `stars.dat`, the galaxy.
  * 2: `systems.dart`, the multiple star systems map.
+
+The file identifier 0 is used by the high scores logic (see above).
 
 
 ## Galaxy (file 1)
@@ -150,3 +201,25 @@ to 0xfffff).
 
 Star IDs, by definition, do not have any of their top four bits set
 (they are numbers in the range 0x00000000 to 0x0FFFFFFF).
+
+
+
+# Internal Protocol
+
+Raw TCP, starting with a null, a 4-byte length, a password of that
+length, and then 4-byte length-prefixed frames.
+
+Each frame starts with a 4-byte-length-prefixed string, the command.
+
+
+## `add-score` (`icAddScoreDatum`)
+
+Fields:
+
+ * dynasty ID (4-byte integer)
+ * score (double)
+
+Response is one of:
+
+ * 0x01 byte indicating success
+ * disconnection indicating failure

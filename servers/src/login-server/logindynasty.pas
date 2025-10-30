@@ -5,7 +5,7 @@ unit logindynasty;
 interface
 
 uses
-   sysutils, passwords;
+   sysutils, passwords, hashsettight;
 
 type
    TDynastyRecord = packed record
@@ -17,6 +17,7 @@ type
          Salt: TSalt;
          PasswordHash: THash;
          DynastyServer: Cardinal;
+         CurrentScore, TopScore: Double;
    end;
 
    TDynasty = class
@@ -26,6 +27,7 @@ type
       FSalt: TSalt;
       FPasswordHash: THash;
       FDynastyServer: Cardinal;
+      FCurrentScore, FTopScore: Double;
    public
       constructor Create(AID: Cardinal; AUsername: UTF8String; APassword: UTF8String; ADynastyServer: Cardinal);
       constructor CreateFromRecord(AID: Cardinal; DynastyRecord: TDynastyRecord);
@@ -33,11 +35,16 @@ type
       procedure UpdateUsername(NewUsername: UTF8String);
       procedure UpdatePassword(NewPassword: UTF8String);
       function VerifyPassword(Candidate: UTF8String): Boolean;
+      procedure UpdateScore(Score: Double);
       property ID: Cardinal read FID;
       property Username: UTF8String read FUsername;
       property ServerID: Cardinal read FDynastyServer;
+      property CurrentScore: Double read FCurrentScore;
+      property TopScore: Double read FTopScore;
    end;
 
+   TDynastyIDHashSet = specialize TTightHashSet<Cardinal, TTightHashUtils32>;
+   
 implementation
 
 function RawToString(var Source; Length: Cardinal): UTF8String;
@@ -71,6 +78,8 @@ begin
    FSalt := DynastyRecord.Salt;
    FPasswordHash := DynastyRecord.PasswordHash;
    FDynastyServer := DynastyRecord.DynastyServer;
+   FCurrentScore := DynastyRecord.CurrentScore;
+   FTopScore := DynastyRecord.TopScore;
 end;
 
 function TDynasty.ToRecord(): TDynastyRecord;
@@ -80,6 +89,8 @@ begin
    Move(FSalt[0], Result.Salt[0], Length(Result.Salt));
    Move(FPasswordHash[0], Result.PasswordHash[0], Length(Result.PasswordHash));
    Result.DynastyServer := FDynastyServer;
+   Result.CurrentScore := CurrentScore;
+   Result.TopScore := TopScore;
 end;
 
 procedure TDynasty.UpdateUsername(NewUsername: UTF8String);
@@ -106,6 +117,13 @@ begin
    Assert(Length(HashedPassword) = Length(FPasswordHash));
    Assert(Length(HashedPassword) > 0);
    Result := CompareHashes(HashedPassword, FPasswordHash);
+end;
+
+procedure TDynasty.UpdateScore(Score: Double);
+begin
+   if (FTopScore < Score) then
+      FTopScore := Score;
+   FCurrentScore := Score;
 end;
 
 end.

@@ -13,6 +13,7 @@ const
    ieUnknownFileCode = 'unknown file code';
    ieNotLoggedIn = 'not logged in';
    ieInvalidCommand = 'invalid command';
+   ieUnknownDynasty = 'unknown dynasty';
 
 implementation
 

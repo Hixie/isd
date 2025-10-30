@@ -12,10 +12,10 @@ type
       DynastyID: Cardinal;
    end;
 
+   PSystemServer = ^TSystemServer;
    TSystemServer = record
-      // if we make this longer, we should make the logic below return
-      // a pointer instead of a copy
       ServerID: Cardinal;
+      Score: Double;
    end;
 
    TDynasty = class(TBaseDynasty)
@@ -23,7 +23,7 @@ type
       FSettings: TSettings;
       FSystemServers: array of TSystemServer;
       function GetServerCount(): Cardinal;
-      function GetServer(Index: Cardinal): TSystemServer;
+      function GetServer(Index: Cardinal): PSystemServer;
       procedure SaveSettings();
       procedure SaveSystems();
    protected
@@ -35,9 +35,11 @@ type
       procedure EncodeServers(ServerDatabase: TServerDatabase; Writer: TStringStreamWriter);
       procedure UpdateClients(ServerDatabase: TServerDatabase);
       procedure ForgetDynasty(); override;
+      procedure UpdateScore(SystemServerID: Cardinal; Score: Double);
+      function ComputeScore(): Double;
       property DynastyID: Cardinal read FSettings.DynastyID;
       property ServerCount: Cardinal read GetServerCount;
-      property Servers[Index: Cardinal]: TSystemServer read GetServer;
+      property Servers[Index: Cardinal]: PSystemServer read GetServer; // pointers are not valid past further calls into this object
    end;
 
 implementation
@@ -58,9 +60,9 @@ begin
    Result := Length(FSystemServers); // $R-
 end;
 
-function TDynasty.GetServer(Index: Cardinal): TSystemServer;
+function TDynasty.GetServer(Index: Cardinal): PSystemServer;
 begin
-   Result := FSystemServers[Index];
+   Result := @FSystemServers[Index];
 end;
 
 procedure TDynasty.Reload();
@@ -201,6 +203,35 @@ begin
    DeleteFile(FConfigurationDirectory + SettingsDatabaseFileName);
    DeleteFile(FConfigurationDirectory + SystemsDatabaseFileName);
    inherited;
+end;
+
+procedure TDynasty.UpdateScore(SystemServerID: Cardinal; Score: Double);
+var
+   Index: Cardinal;
+begin
+   // TODO: this is slow when players have systems spread across many servers
+   Index := 0;
+   while (Index < Length(FSystemServers)) do
+   begin
+      if (FSystemServers[Index].ServerID = SystemServerID) then
+      begin
+         FSystemServers[Index].Score := Score;
+         SaveSystems();
+         exit;
+      end;
+   end;
+   raise Exception.CreateFmt('Could not find system server with ID %d for dynasty %d', [SystemServerID, DynastyID]);
+end;
+
+function TDynasty.ComputeScore(): Double;
+var
+   Index: Cardinal;
+begin
+   // TODO: this is slow when players have systems spread across many servers
+   Assert(Length(FSystemServers) > 0); // otherwise what's going on here
+   Result := 0.0;
+   for Index := Low(FSystemServers) to High(FSystemServers) do // $R-
+      Result := Result + FSystemServers[Index].Score;
 end;
 
 end.

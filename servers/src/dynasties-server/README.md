@@ -118,3 +118,17 @@ Response is one of:
 
  * 0x01 byte indicating success
  * disconnection indicating failure
+
+
+## `update-score` (`icUpdateScoreDatum`)
+
+Fields:
+
+ * dynasty ID (4-byte integer)
+ * system server ID (4-byte integer)
+ * score (64 bit float)
+
+Response is one of:
+
+ * 0x01 byte indicating success
+ * disconnection indicating failure

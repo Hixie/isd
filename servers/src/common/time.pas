@@ -795,7 +795,7 @@ end;
 
 constructor TMockClock.Create();
 begin
-   FNow := 0.0;
+   FNow := UnixToDateTime(0);
 end;
 
 procedure TMockClock.Advance(Duration: TMillisecondsDuration);

@@ -10,7 +10,7 @@ uses
 const
    DynastyDataSubDirectory = 'dynasties/';
    SystemDataSubDirectory = 'systems/';
-   LoginServerDirectory = 'login/';
+   LoginServerSubDirectory = 'login/';
    DynastyServersDirectory = DynastyDataSubDirectory;
    SystemServersDirectory = SystemDataSubDirectory;
 
@@ -20,12 +20,13 @@ const
    TechnologyTreeFilename = 'base.tt'; // tt = technology tree
 
    ServerSettingsFilename = 'settings.csv';
+   LoginServersListFilename = 'login-server.csv';
    DynastiesServersListFilename = 'dynasty-servers.csv';
    SystemsServersListFilename = 'systems-servers.csv';
 
-   HomeSystemsDatabaseFilename = LoginServerDirectory + 'home-systems.db';
-   SystemServerDatabaseFilename = LoginServerDirectory + 'system-servers.db';
-   UserDatabaseFilename = LoginServerDirectory + 'users.db';
+   HomeSystemsDatabaseFilename = LoginServerSubDirectory + 'home-systems.db';
+   SystemServerDatabaseFilename = LoginServerSubDirectory + 'system-servers.db';
+   UserDatabaseFilename = LoginServerSubDirectory + 'users.db';
 
    DynastiesDatabaseFilename = 'dynasties.db';
    TokensDatabaseFilename = 'tokens.db';
@@ -33,6 +34,7 @@ const
    SystemsDatabaseFileName = 'systems.db';
    JournalDatabaseFileName = 'journal.db';
    SnapshotDatabaseFileName = 'snapshot.db';
+   ScoresDatabaseFileName = '.scores.db';
 
    TemporaryExtension = '.$$$';
 
@@ -48,7 +50,6 @@ function LoadServersConfiguration(const DataDirectory, ServersListFilename: UTF8
 type
    PSettings = ^TSettings;
    TSettings = record
-      LoginServerPort: Word;
       HomeStarCategory: TStarCategory;
       HomeStarIndex: TStarIndex;
       GalaxyCategories: TStarCategories;
@@ -65,7 +66,6 @@ type
    end;
 
 const
-   LoginServerPortSetting = 'login server port';
    HomeStarCategorySetting = 'home star category';
    HomeStarIndexSetting = 'home star index';
    GalaxyCategoriesSetting = 'galaxy categories';
@@ -83,6 +83,8 @@ const
 function LoadSettingsConfiguration(const DataDirectory: UTF8String): PSettings;
 
 procedure EnsureDirectoryExists(DirectoryName: UTF8String);
+
+function GenerateScoreFilename(const DataDirectory: UTF8String; DynastyID: Cardinal): UTF8String;
 
 implementation
 
@@ -156,11 +158,6 @@ begin
          if (Settings.ColCount[Index] >= 2) then // $R-
          begin
             Setting := Settings.Cells[0, Index]; // $R-
-            if (Setting = LoginServerPortSetting) then
-            begin
-               Result^.LoginServerPort := ReadCardinalSetting(High(Result^.LoginServerPort)); // $R-
-            end
-            else
             if (Setting = HomeStarCategorySetting) then
             begin
                Result^.HomeStarCategory := ReadCardinalSetting(High(TStarCategory)); // $R-
@@ -252,6 +249,11 @@ procedure EnsureDirectoryExists(DirectoryName: UTF8String);
 begin
    if (not DirectoryExists(DirectoryName)) then
       MkDir(DirectoryName);
+end;
+
+function GenerateScoreFilename(const DataDirectory: UTF8String; DynastyID: Cardinal): UTF8String;
+begin
+   Result := DataDirectory + IntToStr(DynastyID) + ScoresDatabaseFileName;
 end;
 
 end.

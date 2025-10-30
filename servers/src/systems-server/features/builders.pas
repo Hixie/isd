@@ -112,7 +112,6 @@ type
       procedure Destroy();
       property Builders[Dynasty: TDynasty]: TBuilderHashSet.TEnumerator read GetBuilderEnumerator;
       property Structures[Dynasty: TDynasty]: TStructureHashSet.TEnumerator read GetStructureEnumerator;
-      // XXX TODO: dynasty enumerator
       property Dynasties: TDynastyEnumerator read GetDynastyEnumerator;
       property AllBuilders: TAllBuilderHashsetEnumerator read GetAllBuilderEnumerator;
       property AllStructures: TAllStructureHashsetEnumerator read GetAllStructureEnumerator;
