@@ -15,12 +15,18 @@ type
    TBuilderFeatureNode = class;
    TBuilderHashSet = specialize TObjectSet<TBuilderFeatureNode>;
 
+   TPriority = 0..2147483647;
+   TManualPriority = 1..1073741823;
+   TAutoPriority = 1073741824..2147483647;
+   
    IStructure = interface ['IStructure']
       procedure BuilderBusConnected(Bus: TBuilderBusFeatureNode); // must come from builder bus
       procedure BuilderBusReset(); // must come from builder bus, can assume all other participants (notably, builders) were also reset
       procedure StartBuilding(Builder: TBuilderFeatureNode; BuildRate: TRate);
       procedure StopBuilding();
       function GetAsset(): TAssetNode;
+      function GetPriority(): TPriority;
+      procedure SetAutoPriority(Value: TAutoPriority);
    end;
    TStructureHashSet = specialize TInterfaceSet<IStructure>;
 
@@ -42,14 +48,16 @@ type
       // TODO: some sort of information about prioritization?
    end;
 
+   TBuilderFeatureNodeArray = array of TBuilderFeatureNode;
+   IStructureArray = array of IStructure;
+   
    TBuilderBusRecords = record // TODO: possible improvements to performance are available by inlining a bunch of this, if the compiler doesn't do it for us
    strict private
+      FNextPriority: TAutoPriority;
       FAssignedBuilders: Boolean;
    private
+      property NextPriority: TAutoPriority read FNextPriority write FNextPriority;
       property AssignedBuilders: Boolean read FAssignedBuilders write FAssignedBuilders;
-   strict private
-      function GetBuilderEnumerator(Dynasty: TDynasty): TBuilderHashSet.TEnumerator;
-      function GetStructureEnumerator(Dynasty: TDynasty): TStructureHashSet.TEnumerator;
    strict private
       type
          TPerDynastyBuilders = specialize THashTable<TDynasty, TBuilderHashSet, TObjectUtils>;
@@ -102,6 +110,7 @@ type
       function GetAllBuilderEnumerator(): TAllBuilderHashsetEnumerator;
       function GetAllStructureEnumerator(): TAllStructureHashsetEnumerator;
    private
+      procedure Init();
       procedure AddBuilder(Builder: TBuilderFeatureNode);
       procedure RemoveBuilder(Builder: TBuilderFeatureNode);
       procedure ResetBuilders();
@@ -110,8 +119,8 @@ type
       procedure ResetStructures();
       function HasBothBuildersAndStructures(Dynasty: TDynasty): Boolean;
       procedure Destroy();
-      property Builders[Dynasty: TDynasty]: TBuilderHashSet.TEnumerator read GetBuilderEnumerator;
-      property Structures[Dynasty: TDynasty]: TStructureHashSet.TEnumerator read GetStructureEnumerator;
+      function GetSortedBuildersFor(Dynasty: TDynasty): TBuilderFeatureNodeArray;
+      function GetSortedStructuresFor(Dynasty: TDynasty): IStructureArray;
       property Dynasties: TDynastyEnumerator read GetDynastyEnumerator;
       property AllBuilders: TAllBuilderHashsetEnumerator read GetAllBuilderEnumerator;
       property AllStructures: TAllStructureHashsetEnumerator read GetAllStructureEnumerator;
@@ -136,12 +145,14 @@ type
    TBuilderBusFeatureNode = class(TFeatureNode)
    protected
       FRecords: TBuilderBusRecords;
+      constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
       procedure Reset();
       procedure Sync();
       function ManageBusMessage(Message: TBusMessage): TBusMessageResult; override;
       procedure HandleChanges(CachedSystem: TSystem); override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
    public
+      constructor Create();
       destructor Destroy(); override;
       procedure UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem); override;
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
@@ -173,6 +184,7 @@ type
       FBus: TBuilderBusFeatureNode;
       FStructures: TStructureHashSet;
       FMode: TBuilderMode; // TODO: this could be merged with FBus by using a special value like PtrUInt(-1) to mean "no bus"
+      FPriority: TPriority; // TODO: must be reset to zero whenever the bus changes (including to/from nil)
       function GetCapacity(): Cardinal; inline;
    protected
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
@@ -188,6 +200,8 @@ type
       procedure BuilderBusStartBuilding(Structure: IStructure); // must come from builder bus
       procedure BuilderBusSync(); // must come from builder bus; indicates bus is redoing its assignments; BuildingBusStartBuilding may be called again
       procedure StopBuilding(Structure: IStructure); // must come from *structure*; bus must also have RemoveStructure called
+      function GetPriority(): TPriority;
+      procedure SetAutoPriority(Value: TAutoPriority);
       property Capacity: Cardinal read GetCapacity;
    end;
 
@@ -196,7 +210,12 @@ type
 implementation
 
 uses
-   exceptions, isdprotocol, typedump;
+   exceptions, isdprotocol, typedump, arrayutils;
+
+procedure TBuilderBusRecords.Init();
+begin
+   FNextPriority := Low(FNextPriority);
+end;
 
 procedure TBuilderBusRecords.AddBuilder(Builder: TBuilderFeatureNode);
 var
@@ -252,6 +271,12 @@ begin
       FPerDynastyBuilders[NewDynasty] := SelectedBuilders;
       SelectedBuilders.Add(Builder);
       Pointer(FDynasty) := MultiDynastic;
+   end;
+   if (Builder.GetPriority() = 0) then
+   begin
+      Builder.SetAutoPriority(FNextPriority);
+      Assert(FNextPriority < High(FNextPriority));
+      FNextPriority := FNextPriority + 1; // $R-
    end;
 end;
 
@@ -347,6 +372,12 @@ begin
       SelectedStructures.Add(Structure);
       Pointer(FDynasty) := MultiDynastic;
    end;
+   if (Structure.GetPriority() = 0) then
+   begin
+      Structure.SetAutoPriority(FNextPriority);
+      Assert(FNextPriority < High(FNextPriority));
+      FNextPriority := FNextPriority + 1; // $R-
+   end;
 end;
 
 procedure TBuilderBusRecords.RemoveStructure(Structure: IStructure);
@@ -383,42 +414,6 @@ begin
          if (Assigned(FStructures)) then
             FStructures.Reset();
       end;
-   end;
-end;
-
-function TBuilderBusRecords.GetBuilderEnumerator(Dynasty: TDynasty): TBuilderHashSet.TEnumerator;
-begin
-   Assert(Assigned(Dynasty));
-   if (FDynasty = Dynasty) then
-   begin
-      Result := FBuilders.GetEnumerator();
-   end
-   else
-   if ((Pointer(FDynasty) = MultiDynastic) and Assigned(FPerDynastyBuilders)) then
-   begin
-      Result := FPerDynastyBuilders[Dynasty].GetEnumerator();
-   end
-   else
-   begin
-      Result := nil;
-   end;
-end;
-
-function TBuilderBusRecords.GetStructureEnumerator(Dynasty: TDynasty): TStructureHashSet.TEnumerator;
-begin
-   Assert(Assigned(Dynasty));
-   if (FDynasty = Dynasty) then
-   begin
-      Result := FStructures.GetEnumerator();
-   end
-   else
-   if ((Pointer(FDynasty) = MultiDynastic) and Assigned(FPerDynastyStructures)) then
-   begin
-      Result := FPerDynastyStructures[Dynasty].GetEnumerator();
-   end
-   else
-   begin
-      Result := nil;
    end;
 end;
 
@@ -669,7 +664,6 @@ begin
    end;
 end;
 
-
 procedure TBuilderBusRecords.Destroy();
 begin
    if (Assigned(FDynasty)) then
@@ -686,6 +680,89 @@ begin
       end;
    end;
 end;
+
+function TBuilderBusRecords.GetSortedBuildersFor(Dynasty: TDynasty): TBuilderFeatureNodeArray;
+
+   function Compare(const A, B: TBuilderFeatureNode): Integer;
+   begin
+      Result := A.GetPriority() - B.GetPriority(); // $R-
+   end;
+
+var
+   Builders: TBuilderHashSet;
+   Builder: TBuilderFeatureNode;
+   Index: Cardinal;
+begin
+   Assert(Assigned(Dynasty));
+   if (FDynasty = Dynasty) then
+   begin
+      Builders := FBuilders;
+   end
+   else
+   if ((Pointer(FDynasty) = MultiDynastic) and Assigned(FPerDynastyBuilders)) then
+   begin
+      Builders := FPerDynastyBuilders[Dynasty];
+   end
+   else
+   begin
+      Builders := nil;
+   end;
+   if (not Assigned(Builders)) then
+   begin
+      Result := [];
+      exit;
+   end;
+   SetLength(Result, Builders.Count);
+   Index := 0;
+   for Builder in Builders do
+   begin
+      Result[Index] := Builder;
+      Inc(Index);
+   end;
+   specialize Sort<TBuilderFeatureNode>(Result, @Compare);
+end;
+
+function TBuilderBusRecords.GetSortedStructuresFor(Dynasty: TDynasty): IStructureArray;
+
+   function Compare(const A, B: IStructure): Integer;
+   begin
+      Result := A.GetPriority() - B.GetPriority(); // $R-
+   end;
+
+var
+   Structures: TStructureHashSet;
+   Structure: IStructure;
+   Index: Cardinal;
+begin
+   Assert(Assigned(Dynasty));
+   if (FDynasty = Dynasty) then
+   begin
+      Structures := FStructures;
+   end
+   else
+   if ((Pointer(FDynasty) = MultiDynastic) and Assigned(FPerDynastyStructures)) then
+   begin
+      Structures := FPerDynastyStructures[Dynasty];
+   end
+   else
+   begin
+      Structures := nil;
+   end;
+   if (not Assigned(Structures)) then
+   begin
+      Result := [];
+      exit;
+   end;
+   SetLength(Result, Structures.Count);
+   Index := 0;
+   for Structure in Structures do
+   begin
+      Result[Index] := Structure;
+      Inc(Index);
+   end;
+   specialize Sort<IStructure>(Result, @Compare);
+end;
+
 
 
 constructor TRegisterBuilderMessage.Create(ABuilder: TBuilderFeatureNode);
@@ -717,6 +794,18 @@ begin
    Result := TBuilderBusFeatureNode.Create();
 end;
 
+
+constructor TBuilderBusFeatureNode.Create();
+begin
+   inherited;
+   FRecords.Init();
+end;
+
+constructor TBuilderBusFeatureNode.CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem);
+begin
+   inherited;
+   FRecords.Init();
+end;
 
 destructor TBuilderBusFeatureNode.Destroy();
 begin
@@ -795,7 +884,8 @@ end;
 
 procedure TBuilderBusFeatureNode.HandleChanges(CachedSystem: TSystem);
 var
-   Builders: TBuilderHashSet.TEnumerator;
+   Builders: TBuilderFeatureNodeArray;
+   BuilderIndex: Integer;
    Structure: IStructure;
    Remaining: Cardinal;
    Dynasty: TDynasty;
@@ -806,24 +896,25 @@ begin
       begin
          if (FRecords.HasBothBuildersAndStructures(Dynasty)) then
          begin
-            Builders := FRecords.Builders[Dynasty];
+            Builders := FRecords.GetSortedBuildersFor(Dynasty);
+            BuilderIndex := -1;
             Remaining := 0;
-            for Structure in FRecords.Structures[Dynasty] do
+            for Structure in FRecords.GetSortedStructuresFor(Dynasty) do
             begin
                if (Remaining = 0) then
                begin
-                  if (Builders.MoveNext()) then
+                  Inc(BuilderIndex);
+                  if (BuilderIndex < Length(Builders)) then
                   begin
-                     Remaining := Builders.Current.Capacity;
+                     Remaining := Builders[BuilderIndex].Capacity;
                   end;
                end;
                if (Remaining > 0) then
                begin
-                  Builders.Current.BuilderBusStartBuilding(Structure);
+                  Builders[BuilderIndex].BuilderBusStartBuilding(Structure);
                   Dec(Remaining);
                end;
             end;
-            Builders.Free();
          end;
       end;
       FRecords.AssignedBuilders := True;
@@ -837,10 +928,12 @@ end;
 
 procedure TBuilderBusFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
 begin
+   Journal.WriteCardinal(FRecords.NextPriority);
 end;
 
 procedure TBuilderBusFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
 begin
+   FRecords.NextPriority := Journal.ReadCardinal(); // $R-
 end;
 
 
@@ -974,10 +1067,12 @@ end;
 
 procedure TBuilderFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
 begin
+   Journal.WriteCardinal(FPriority);
 end;
 
 procedure TBuilderFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
 begin
+   FPriority := Journal.ReadCardinal(); // $R-
 end;
 
 procedure TBuilderFeatureNode.BuilderBusConnected(Bus: TBuilderBusFeatureNode); // must come from builder bus
@@ -1028,6 +1123,17 @@ begin
       Structure.StopBuilding();
    FreeAndNil(FStructures);
    MarkAsDirty([dkNeedsHandleChanges]);
+end;
+
+function TBuilderFeatureNode.GetPriority(): TPriority;
+begin
+   Result := FPriority;
+end;
+
+procedure TBuilderFeatureNode.SetAutoPriority(Value: TAutoPriority);
+begin
+   FPriority := Value;
+   MarkAsDirty([dkUpdateJournal]);
 end;
 
 

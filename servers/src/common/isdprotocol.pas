@@ -15,7 +15,10 @@ const
    icRemoveSystemServer = 'remove-system-server';
    icAddScoreDatum = 'add-score';
    icUpdateScoreDatum = 'update-score';
-   icDebug = 'debug'; // tests
+   {$IFDEF TESTSUITE}
+   icAdvanceClock = 'advance-clock';
+   icAwaitScores = 'await-scores';
+   {$ENDIF}
 
 const
    // ISD Updates (server-to-client)
@@ -54,8 +57,16 @@ const
    fcBuilder = $1A;
    fcInternalSensor = $1B;
    fcInternalSensorStatus = $1C;
-   fcHighestKnownFeatureCode = fcInternalSensorStatus;
+   fcOnOff = $1D;
+   fcHighestKnownFeatureCode = fcOnOff;
 
+type
+   TDisabledReason = (
+      drManuallyDisabled, // Manually disabled.
+      drStructuralIntegrity // Structural integrity has not yet reached minimum functional threshold.
+   );
+   TDisabledReasons = set of TDisabledReason;
+   
 {$IFOPT C+}
 // Stdout control codes for tests.
 const

@@ -15,7 +15,7 @@ type
    TFeatureList = array of TModelFeature;
 
    TAssetPredicate = reference to function(Asset: TModelAsset): Boolean;
-   TAssetWalkCallback = procedure(Asset: TModelAsset) is nested;
+   TAssetWalkChildrenCallback = procedure(Asset: TModelAsset) is nested;
 
    PArena = ^TArena;
    TArena = packed record
@@ -56,6 +56,7 @@ type
       procedure UpdateFrom(Stream: TServerStreamReader);
       property UpdateCount: Cardinal read GetUpdatesLength;
       function GetUpdatedAssets(): TAssetList;
+      function DescribeSystem(): UTF8String;
    public
       SystemID: UInt32;
       CurrentTime: Int64;
@@ -81,7 +82,7 @@ type
    private
       FParent: TModelFeature;
    protected
-      procedure Walk(Callback: TAssetWalkCallback);
+      procedure WalkChildren(Callback: TAssetWalkChildrenCallback);
    public
       constructor Create(AID: UInt32);
       class function NewInstance(): TModelAsset; override;
@@ -126,7 +127,7 @@ type
       FParent: TModelAsset;
    protected
       procedure ResetChildren(); virtual;
-      procedure Walk(Callback: TAssetWalkCallback); virtual;
+      procedure WalkChildren(Callback: TAssetWalkChildrenCallback); virtual;
       function GetModelSystem(): TModelSystem; inline;
    public
       constructor Create(AParent: TModelAsset); virtual;
@@ -158,7 +159,7 @@ type
          end;
    protected
       procedure ResetChildren(); override;
-      procedure Walk(Callback: TAssetWalkCallback); override;
+      procedure WalkChildren(Callback: TAssetWalkChildrenCallback); override;
    public
       procedure UpdateFrom(Stream: TServerStreamReader); override;
    public
@@ -176,7 +177,7 @@ type
          end;
    protected
       procedure ResetChildren(); override;
-      procedure Walk(Callback: TAssetWalkCallback); override;
+      procedure WalkChildren(Callback: TAssetWalkChildrenCallback); override;
    public
       procedure UpdateFrom(Stream: TServerStreamReader); override;
    strict private
@@ -264,7 +265,7 @@ type
          end;
    protected
       procedure ResetChildren(); override;
-      procedure Walk(Callback: TAssetWalkCallback); override;
+      procedure WalkChildren(Callback: TAssetWalkChildrenCallback); override;
    public
       procedure UpdateFrom(Stream: TServerStreamReader); override;
    public
@@ -280,7 +281,7 @@ type
          end;
    protected
       procedure ResetChildren(); override;
-      procedure Walk(Callback: TAssetWalkCallback); override;
+      procedure WalkChildren(Callback: TAssetWalkChildrenCallback); override;
    public
       procedure UpdateFrom(Stream: TServerStreamReader); override;
    strict private
@@ -308,7 +309,7 @@ type
    TModelMessageBoardFeature = class (TModelFeature)
    protected
       procedure ResetChildren(); override;
-      procedure Walk(Callback: TAssetWalkCallback); override;
+      procedure WalkChildren(Callback: TAssetWalkChildrenCallback); override;
    public
       procedure UpdateFrom(Stream: TServerStreamReader); override;
    public
@@ -349,7 +350,7 @@ type
    TModelProxyFeature = class (TModelFeature)
    protected
       procedure ResetChildren(); override;
-      procedure Walk(Callback: TAssetWalkCallback); override;
+      procedure WalkChildren(Callback: TAssetWalkChildrenCallback); override;
    public
       procedure UpdateFrom(Stream: TServerStreamReader); override;
    strict private
@@ -401,10 +402,12 @@ type
       procedure UpdateFrom(Stream: TServerStreamReader); override;
    strict private
       FMaxRate: Double;
+      FDisabledReasons: Cardinal;
       FFlags: Byte;
       FCurrentRate: Double;
    published
       property MaxRate: Double read FMaxRate write FMaxRate;
+      property DisabledReasons: Cardinal read FDisabledReasons write FDisabledReasons;
       property Flags: Byte read FFlags write FFlags;
       property CurrentRate: Double read FCurrentRate write FCurrentRate;
    end;
@@ -439,11 +442,13 @@ type
    strict private
       FOre: Int32;
       FMaxRate: Double;
+      FDisabledReasons: Cardinal;
       FFlags: Byte;
       FCurrentRate: Double;
    published
       property Ore: Int32 read FOre write FOre;
       property MaxRate: Double read FMaxRate write FMaxRate;
+      property DisabledReasons: Cardinal read FDisabledReasons write FDisabledReasons;
       property Flags: Byte read FFlags write FFlags;
       property CurrentRate: Double read FCurrentRate write FCurrentRate;
    end;
@@ -527,6 +532,15 @@ type
       property Count: UInt32 read FCount write FCount;
    end;
 
+   TModelOnOffFeature = class (TModelFeature)
+   public
+      procedure UpdateFrom(Stream: TServerStreamReader); override;
+   strict private
+      FEnabled: Boolean;
+   published
+      property Enabled: Boolean read FEnabled write FEnabled;
+   end;
+
 const
    ModelFeatureClasses: array[1..fcHighestKnownFeatureCode] of TModelFeatureClass = (
      TModelStarFeature,
@@ -556,7 +570,8 @@ const
      TModelGridSensorStatusFeature,
      TModelBuilderFeature,
      TModelInternalSensorFeature,
-     TModelInternalSensorStatusFeature
+     TModelInternalSensorStatusFeature,
+     TModelOnOffFeature
    );
 
 implementation
@@ -692,6 +707,45 @@ begin
    inherited;
 end;
 
+function TModelSystem.DescribeSystem(): UTF8String;
+var
+   Lines: specialize PlasticArray<UTF8String, UTF8StringUtils>;
+
+   procedure GetDescription(Asset: TModelAsset);
+   begin
+      Lines.Push(' - #' + IntToStr(Asset.ID) + ' ' + Asset.ToString() + ' (' + IntToStr(Asset.FeatureCount) + ' features)');
+      Asset.Describe(Lines, '   ');
+      Lines.Push('');
+      Asset.WalkChildren(@GetDescription);
+   end;
+
+var
+   Size: Cardinal;
+   Index: Cardinal;
+   S: UTF8String;
+begin
+   Lines.Init();
+   GetDescription(FAssets[RootAsset]);
+   Assert(Lines.Length > 0);
+   Size := 0;
+   for Index := 0 to Lines.Length - 1 do // $R-
+      Inc(Size, Length(Lines[Index]) + 1);
+   Result := '';
+   SetLength(Result, Size);
+   Size := 1;
+   for Index := 0 to Lines.Length - 1 do // $R-
+   begin
+      S := Lines[Index];
+      if (Length(S) > 0) then
+      begin
+         Move(S[1], Result[Size], Length(S));
+         Inc(Size, Length(S));
+      end;
+      Result[Size] := #10;
+      Inc(Size);
+   end;
+end;
+
 function TModelSystem.GetAsset(ID: UInt32): TModelAsset;
 begin
    Assert(ID > 0);
@@ -741,7 +795,7 @@ var
    begin
       if (Predicate(Asset)) then
          Results.Push(Asset);
-      Asset.Walk(@Search);
+      Asset.WalkChildren(@Search);
    end;
 
 var
@@ -749,7 +803,7 @@ var
 begin
    Results.Init(8);
    Root := Assets[RootAsset];
-   Root.Walk(@Search);
+   Root.WalkChildren(@Search);
    Result := Results.Distill();
 end;
 
@@ -879,12 +933,12 @@ begin
    FFeatures.Length := Index;
 end;
 
-procedure TModelAsset.Walk(Callback: TAssetWalkCallback);
+procedure TModelAsset.WalkChildren(Callback: TAssetWalkChildrenCallback);
 var
    Feature: TModelFeature;
 begin
    for Feature in FFeatures do
-      Feature.Walk(Callback);
+      Feature.WalkChildren(Callback);
 end;
 
 function TModelAsset.ToString(): UTF8String;
@@ -952,10 +1006,10 @@ procedure TModelFeature.ResetChildren();
    end;
 
 begin
-   Walk(@ResetParent);
+   WalkChildren(@ResetParent);
 end;
 
-procedure TModelFeature.Walk(Callback: TAssetWalkCallback);
+procedure TModelFeature.WalkChildren(Callback: TAssetWalkChildrenCallback);
 begin
 end;
 
@@ -999,7 +1053,7 @@ begin
    Children.Empty();
 end;
 
-procedure TModelSpaceFeature.Walk(Callback: TAssetWalkCallback);
+procedure TModelSpaceFeature.WalkChildren(Callback: TAssetWalkChildrenCallback);
 var
    Index: Cardinal;
    System: TModelSystem;
@@ -1041,7 +1095,7 @@ begin
    Children.Empty();
 end;
 
-procedure TModelOrbitFeature.Walk(Callback: TAssetWalkCallback);
+procedure TModelOrbitFeature.WalkChildren(Callback: TAssetWalkChildrenCallback);
 var
    Index: Cardinal;
    System: TModelSystem;
@@ -1130,7 +1184,7 @@ begin
    Children.Empty();
 end;
 
-procedure TModelSurfaceFeature.Walk(Callback: TAssetWalkCallback);
+procedure TModelSurfaceFeature.WalkChildren(Callback: TAssetWalkChildrenCallback);
 var
    Index: Cardinal;
    System: TModelSystem;
@@ -1168,7 +1222,7 @@ begin
    Children.Empty();
 end;
 
-procedure TModelGridFeature.Walk(Callback: TAssetWalkCallback);
+procedure TModelGridFeature.WalkChildren(Callback: TAssetWalkChildrenCallback);
 var
    Index: Cardinal;
    System: TModelSystem;
@@ -1208,7 +1262,7 @@ begin
    Children.Empty();
 end;
 
-procedure TModelMessageBoardFeature.Walk(Callback: TAssetWalkCallback);
+procedure TModelMessageBoardFeature.WalkChildren(Callback: TAssetWalkChildrenCallback);
 var
    Index: Cardinal;
    System: TModelSystem;
@@ -1258,7 +1312,7 @@ begin
    Child := 0;
 end;
 
-procedure TModelProxyFeature.Walk(Callback: TAssetWalkCallback);
+procedure TModelProxyFeature.WalkChildren(Callback: TAssetWalkChildrenCallback);
 var
    System: TModelSystem;
 begin
@@ -1332,6 +1386,7 @@ end;
 procedure TModelMiningFeature.UpdateFrom(Stream: TServerStreamReader);
 begin
    MaxRate := Stream.ReadDouble();
+   DisabledReasons := Stream.ReadCardinal();
    Flags := Stream.ReadByte();
    CurrentRate := Stream.ReadDouble();
 end;
@@ -1365,6 +1420,7 @@ procedure TModelRefiningFeature.UpdateFrom(Stream: TServerStreamReader);
 begin
    Ore := Stream.ReadInt32();
    MaxRate := Stream.ReadDouble();
+   DisabledReasons := Stream.ReadCardinal();
    Flags := Stream.ReadByte();
    CurrentRate := Stream.ReadDouble();
 end;
@@ -1427,6 +1483,12 @@ end;
 procedure TModelInternalSensorStatusFeature.UpdateFrom(Stream: TServerStreamReader);
 begin
    Count := Stream.ReadCardinal();
+end;
+
+
+procedure TModelOnOffFeature.UpdateFrom(Stream: TServerStreamReader);
+begin
+   Enabled := Stream.ReadBoolean();
 end;
 
 initialization

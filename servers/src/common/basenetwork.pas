@@ -104,8 +104,8 @@ type
       function GetHasHolds(): Boolean;
    public
       constructor Create(AConnection: TBaseIncomingInternalCapableConnection);
-      procedure AddHold();
-      procedure RemoveHold();
+      procedure AddHold(Count: Cardinal = 1);
+      procedure RemoveHold(Count: Cardinal = 1);
       procedure FailHold();
       property HasHolds: Boolean read GetHasHolds;
       property HasFailed: Boolean read FFailed;
@@ -169,7 +169,8 @@ implementation
 
 uses
    sysutils, isderrors, utf8, unicode, exceptions, hashfunctions,
-   sigint, errors, dateutils, isdprotocol, stringutils, time;
+   {$IFDEF TESTSUITE} time, {$ENDIF}
+   sigint, errors, dateutils, isdprotocol, stringutils;
 
 function PEventHash32(const Key: PEvent): DWord;
 begin
@@ -566,34 +567,31 @@ begin
 end;
 
 procedure TBaseIncomingInternalCapableConnection.HandleIPC(const Command: UTF8String; const Arguments: TBinaryStreamReader);
+{$IFDEF TESTSUITE}
 var
    Delta: Int64;
    Clock: TClock;
+{$ENDIF}
 begin
-   {$IFOPT C+}
-   if (Command = icDebug) then
+   Assert(FMode = cmControlMessages);
+   {$IFDEF TESTSUITE}
+   if (Command = icAdvanceClock) then
    begin
-      case (Arguments.ReadString()) of
-         'clock': begin
-            Clock := FServer.Clock;
-            while (Clock is TComposedClock) do
-               Clock := (Clock as TComposedClock).Parent;
-            ASsert(Clock is TRootClock);
-            if (Clock is TMockClock) then
-            begin
-               Delta := Arguments.ReadInt64();
-               (Clock as TMockClock).Advance(TMillisecondsDuration.FromMilliseconds(Delta));
-            end
-            else
-               raise Exception.CreateFmt('Received a "clock" debug command but clock is configured to use the system clock (%s).', [Clock.ClassName]);
-         end;
-         else
-            raise Exception.Create('Received unknown debug command.');
-      end;
+      Clock := FServer.Clock;
+      while (Clock is TComposedClock) do
+         Clock := (Clock as TComposedClock).Parent;
+      ASsert(Clock is TRootClock);
+      if (Clock is TMockClock) then
+      begin
+         Delta := Arguments.ReadInt64();
+         (Clock as TMockClock).Advance(TMillisecondsDuration.FromMilliseconds(Delta));
+      end
+      else
+         raise Exception.CreateFmt('Received a "%s" debug command but clock is configured to use the system clock (%s).', [icAdvanceClock, Clock.ClassName]);
       Write(#$01);
    end
-   {$ENDIF}
    else
+   {$ENDIF}
    begin
       Writeln('Received unknown command: ', Command);
       Disconnect();
@@ -622,16 +620,23 @@ begin
    Assert(FConnection is TBaseIncomingInternalCapableConnection);
 end;
 
-procedure TInternalConversationHandle.AddHold();
+procedure TInternalConversationHandle.AddHold(Count: Cardinal = 1);
 begin
-   Inc(FHolds);
+   Inc(FHolds, Count);
 end;
 
-procedure TInternalConversationHandle.RemoveHold();
+procedure TInternalConversationHandle.RemoveHold(Count: Cardinal = 1);
 begin
    if (not FFailed) then
    begin
-      Dec(FHolds);
+      if (Count > FHolds) then
+      begin
+         FHolds := 0;
+      end
+      else
+      begin
+         Dec(FHolds, Count);
+      end;
       if (FHolds = 0) then
       begin
          Assert(Assigned(FConnection));

@@ -70,6 +70,7 @@ type
       destructor Destroy(); override;
       function SendControlMessage(const Data: RawByteString): Boolean;
       procedure AdvanceClock(Milliseconds: Int64);
+      procedure AwaitScores(Count: Cardinal);
       procedure CloseSocket();
    end;
 
@@ -571,9 +572,19 @@ var
    BinaryWriter: TBinaryStreamWriter;
 begin
    BinaryWriter := TBinaryStreamWriter.Create();
-   BinaryWriter.WriteStringByPointer(icDebug);
-   BinaryWriter.WriteStringByPointer('clock');
+   BinaryWriter.WriteStringByPointer(icAdvanceClock);
    BinaryWriter.WriteInt64(Milliseconds);
+   Verify(SendControlMessage(BinaryWriter.Serialize(True)));
+   FreeAndNil(BinaryWriter);
+end;
+
+procedure TServerIPCSocket.AwaitScores(Count: Cardinal);
+var
+   BinaryWriter: TBinaryStreamWriter;
+begin
+   BinaryWriter := TBinaryStreamWriter.Create();
+   BinaryWriter.WriteStringByPointer(icAwaitScores);
+   BinaryWriter.WriteCardinal(Count);
    Verify(SendControlMessage(BinaryWriter.Serialize(True)));
    FreeAndNil(BinaryWriter);
 end;

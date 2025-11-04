@@ -274,6 +274,7 @@ class mining-big-hole {
   feature: TSizeFeatureClass 100m;
   feature: TMiningFeatureClass max throughput 10kg/s;
   feature: TOrePileFeatureClass max mass 30000kg;
+  feature: TOnOffFeatureClass;
 }
 
 class pile {
@@ -354,6 +355,7 @@ class mining-hole {
   feature: TSizeFeatureClass 50m;
   feature: TMiningFeatureClass max throughput 1kg/s;
   feature: TOrePileFeatureClass max mass 30000kg;
+  feature: TOnOffFeatureClass;
 }
 
 research mining {
@@ -381,6 +383,7 @@ class giant-mining-hole {
   feature: TSizeFeatureClass 100m;
   feature: TMiningFeatureClass max throughput 10kg/s;
   feature: TOrePileFeatureClass max mass 300000kg;
+  feature: TOnOffFeatureClass;
 }
 
 research giant-mining {
@@ -409,6 +412,7 @@ class research-hole {
   feature: TSizeFeatureClass 100m;
   feature: TMiningFeatureClass max throughput 1kg/s;
   feature: TResearchFeatureClass;
+  feature: TOnOffFeatureClass;
 }
 
 research archeology {
@@ -435,6 +439,7 @@ class iron-team {
   feature: TSizeFeatureClass 10m;
   feature: TRefiningFeatureClass for "Iron", max throughput 1000kg/h;
   feature: TMaterialPileFeatureClass for "Iron", capacity 1000kg;
+  feature: TOnOffFeatureClass;
 }
 
 class iron-pile {
@@ -483,6 +488,7 @@ class drill {
   build: land;
   feature: TSizeFeatureClass 500m;
   feature: TMiningFeatureClass max throughput 1000kg/h;
+  feature: TOnOffFeatureClass;
 }
 
 research drill {
@@ -506,7 +512,14 @@ research drill {
   ];
 }
 
-
+class hack-builders {
+  id: 11;
+  name: "Builder rally point" ("Meeting point");
+  description: "This is the designated point for some builders to get together when planning building projects.";
+  icon: "rally-point";
+  build: land;
+  feature: TBuilderFeatureClass capacity 1, build 100 hp/h;
+}
 
 class silicon-table {
   id: 9;
@@ -521,6 +534,7 @@ class silicon-table {
     "Covering": "Silicon" * 1,
   ), minimum 1;
   feature: TBuilderFeatureClass capacity 1, build 100 hp/h;
+  feature: TOnOffFeatureClass;
 }
 
 class silicon-pile {
@@ -540,6 +554,7 @@ research silicon-table {
   requires iron-team; // should require actual silicon being mined out
   rewards asset silicon-table;
   rewards asset silicon-pile;
+  rewards asset hack-builders;
   rewards material "Silicon";
   rewards [
     Silicon

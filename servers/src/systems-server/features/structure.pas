@@ -62,6 +62,7 @@ type
       Builder: TBuilderFeatureNode;
       Region: TRegionFeatureNode;
       Flags: set of TBuildingStateFlags; // could use AnnotatedPointers instead
+      Priority: TPriority;
       procedure IncStructuralIntegrity(const Delta: Double);
    end;
 
@@ -101,6 +102,8 @@ type
       procedure StartBuilding(Builder: TBuilderFeatureNode; BuildRate: TRate); // from builder
       procedure StopBuilding(); // from builder
       function GetAsset(): TAssetNode;
+      function GetPriority(): TPriority;
+      procedure SetAutoPriority(Value: TAutoPriority);
    private // IMaterialConsumer
       function GetMaterialConsumerMaterial(): TMaterial;
       function GetMaterialConsumerMaxDelivery(): UInt64;
@@ -114,7 +117,7 @@ type
 implementation
 
 uses
-   sysutils, isdprotocol, exceptions, rubble, plasticarrays, genericutils, math;
+   sysutils, isdprotocol, exceptions, rubble, plasticarrays, genericutils, math, onoff;
 
 constructor TMaterialLineItem.Create(AComponentName: UTF8String; AMaterial: TMaterial; AQuantity: Cardinal);
 begin
@@ -390,11 +393,16 @@ end;
 function TStructureFeatureNode.GetMassFlowRate(): TRate;
 begin
    Result := TRate.Zero;
+   Writeln(DebugName, ' considering mass flow rate.');
    if (Assigned(FBuildingState) and FBuildingState^.MaterialsQuantityRate.IsNotZero) then
    begin
+      Writeln('  we are building, using ', FBuildingState^.PendingMaterial.Name);
+      Writeln('  quantity rate: ', FBuildingState^.MaterialsQuantityRate.ToString('units'));
+      Writeln('  mass per unit: ', FBuildingState^.PendingMaterial.MassPerUnit);
       Assert(Assigned(FBuildingState^.PendingMaterial));
       Result := FBuildingState^.MaterialsQuantityRate * FBuildingState^.PendingMaterial.MassPerUnit;
    end;
+   Writeln('  result: ', Result.ToString('kg'));
 end;
 
 function TStructureFeatureNode.GetSize(): Double;
@@ -408,9 +416,16 @@ var
    Index: Cardinal;
    LineItem: TMaterialLineItem;
 begin
-   Result := False;
+   if (Message is TEnableCheckBusMessage) then
+   begin
+      Result := Assigned(FBuildingState) and (FBuildingState^.StructuralIntegrity < FFeatureClass.MinimumFunctionalQuantity);
+      if (Result) then
+         (Message as TEnableCheckBusMessage).AddReason(drStructuralIntegrity);
+   end
+   else
    if (Message is TRubbleCollectionMessage) then
    begin
+      Result := False;
       RubbleMessage := Message as TRubbleCollectionMessage;
       RubbleMessage.Grow(FFeatureClass.BillOfMaterialsLength);
       Assert(FFeatureClass.BillOfMaterialsLength > 0);
@@ -556,29 +571,34 @@ begin
    begin
       Journal.WriteCardinal(FBuildingState^.MaterialsQuantity);
       Journal.WriteCardinal(FBuildingState^.StructuralIntegrity);
+      Journal.WriteCardinal(FBuildingState^.Priority);
    end
    else
    begin
       Journal.WriteCardinal(FFeatureClass.TotalQuantity);
       Journal.WriteCardinal(FFeatureClass.TotalQuantity);
+      Journal.WriteCardinal(0);
    end;
 end;
 
 procedure TStructureFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
 var
-   MaterialsQuantity, StructuralIntegrity: Cardinal;
+   MaterialsQuantity, StructuralIntegrity, Priority: Cardinal;
 begin
    MaterialsQuantity := Journal.ReadCardinal();
    StructuralIntegrity := Journal.ReadCardinal();
+   Priority := Journal.ReadCardinal();
    if ((MaterialsQuantity < FFeatureClass.TotalQuantity) or (StructuralIntegrity < FFeatureClass.TotalQuantity)) then
    begin
       if (not Assigned(FBuildingState)) then
          InitBuildingState();
       FBuildingState^.MaterialsQuantity := MaterialsQuantity;
       FBuildingState^.StructuralIntegrity := StructuralIntegrity;
+      FBuildingState^.Priority := Priority; // $R-
    end
    else
    begin
+      Assert(Priority = 0);
       if (Assigned(FBuildingState)) then
       begin
          Assert(not Assigned(FBuildingState^.NextEvent));
@@ -822,6 +842,19 @@ begin
    Result := Parent;
 end;
 
+function TStructureFeatureNode.GetPriority(): TPriority;
+begin
+   Assert(Assigned(FBuildingState));
+   Result := FBuildingState^.Priority;
+end;
+
+procedure TStructureFeatureNode.SetAutoPriority(Value: TAutoPriority);
+begin
+   Assert(Assigned(FBuildingState));
+   FBuildingState^.Priority := Value;
+   MarkAsDirty([dkUpdateJournal]);
+end;
+
 function TStructureFeatureNode.GetMaterialConsumerMaterial(): TMaterial;
 begin
    Assert(Assigned(FBuildingState));
@@ -958,6 +991,7 @@ end;
 procedure TStructureFeatureNode.RescheduleNextEvent(CachedSystem: TSystem);
 var
    RemainingTime: TMillisecondsDuration;
+   TimeUntilMaterialFunctional, TimeUntilIntegrityFunctional: TMillisecondsDuration;
 begin
    Writeln(DebugName, ' scheduling next event...');
    Assert(Assigned(FBuildingState));
@@ -985,6 +1019,18 @@ begin
       Writeln('  We are doing nothing; no schedulable event.');
       // nothing to wait for
       exit;
+   end;
+   if (FBuildingState^.StructuralIntegrity < FFeatureClass.MinimumFunctionalQuantity) then
+   begin
+      TimeUntilMaterialFunctional := (FBuildingState^.MaterialsQuantity - FFeatureClass.MinimumFunctionalQuantity) / FBuildingState^.MaterialsQuantityRate;
+      TimeUntilIntegrityFunctional := (FBuildingState^.StructuralIntegrity - FFeatureClass.MinimumFunctionalQuantity) / FBuildingState^.MaterialsQuantityRate;
+      if (TimeUntilMaterialFunctional > TimeUntilIntegrityFunctional) then
+         TimeUntilIntegrityFunctional := TimeUntilMaterialFunctional;
+      if ((TimeUntilIntegrityFunctional.IsPositive) and (TimeUntilIntegrityFunctional < RemainingTime)) then
+      begin
+         RemainingTime := TimeUntilIntegrityFunctional;
+         Writeln('  RemainingTime until structural integrity functional: ', RemainingTime.ToString());
+      end;
    end;
    FBuildingState^.NextEvent := CachedSystem.ScheduleEvent(RemainingTime, @HandleEvent, Self);
    FBuildingState^.AnchorTime := CachedSystem.Now;

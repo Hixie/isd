@@ -46,7 +46,6 @@ type
       destructor Destroy(); override;
       procedure UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem); override;
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
-      function HandleCommand(Command: UTF8String; var Message: TMessage): Boolean; override;
    end;
 
 // TODO: handle our ancestor chain changing
@@ -54,8 +53,7 @@ type
 implementation
 
 uses
-   exceptions, sysutils, systemnetwork, systemdynasty, isderrors,
-   isdprotocol, knowledge, messages, typedump;
+   exceptions, sysutils, isdprotocol, knowledge, messages, typedump, onoff;
 
 constructor TRefiningFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
 var
@@ -88,7 +86,7 @@ constructor TRefiningFeatureNode.Create(AFeatureClass: TRefiningFeatureClass);
 begin
    inherited Create();
    FFeatureClass := AFeatureClass;
-   FStatus.Enabled := True;
+   FStatus.Enable();
 end;
 
 constructor TRefiningFeatureNode.CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem);
@@ -154,8 +152,33 @@ end;
 
 procedure TRefiningFeatureNode.HandleChanges(CachedSystem: TSystem);
 var
+   OnOffMessage: TEnableCheckBusMessage;
+   NewEnabled: Boolean;
    Message: TRegisterRefineryBusMessage;
 begin
+   // check if we can turn on
+   OnOffMessage := TEnableCheckBusMessage.Create();
+   NewEnabled := not Parent.HandleBusMessage(OnOffMessage);
+   if (NewEnabled <> FStatus.Enabled) then
+   begin
+      if (NewEnabled) then
+      begin
+         Assert(FStatus.Mode = rcIdle);
+         FStatus.Enable();
+      end
+      else
+      begin
+         if (FStatus.Mode in [rcPending, rcActive]) then
+         begin
+            Assert(Assigned(FStatus.Region));
+            FStatus.Region.RemoveRefinery(Self);
+         end;
+         FStatus.Disable(OnOffMessage.Reasons);
+         Assert(not Assigned(FStatus.Region));
+      end;
+   end;
+   FreeAndNil(OnOffMessage);
+
    if ((FStatus.Enabled) and (FStatus.Mode = rcIdle)) then
    begin
       Message := TRegisterRefineryBusMessage.Create(Self);
@@ -182,6 +205,8 @@ begin
    Visibility := Parent.ReadVisibilityFor(DynastyIndex, CachedSystem);
    if ((dmDetectable * Visibility <> []) and (dmClassKnown in Visibility)) then
    begin
+      Assert(FStatus.Mode <> rcPending);
+      Assert((not FStatus.Enabled) or (FStatus.Mode <> rcIdle));
       Writer.WriteCardinal(fcRefining);
       if (FOreKnowledge.GetEntry(DynastyIndex)) then
       begin
@@ -192,17 +217,12 @@ begin
          Writer.WriteCardinal(0);
       end;
       Writer.WriteDouble(FFeatureClass.FBandwidth.AsDouble);
+      Writer.WriteCardinal(Cardinal(FStatus.DisabledReasons));
       Flags := $00;
-      if (FStatus.Enabled) then
-         Flags := Flags or $01; // $R-
-      if (FStatus.Mode = rcActive) then
-         Flags := Flags or $02; // $R-
-      Assert(FStatus.Mode <> rcPending);
-      Assert((not FStatus.Enabled) or (FStatus.Mode <> rcIdle));
       if (FStatus.SourceLimiting) then
-         Flags := Flags or $04; // $R-
+         Flags := Flags or $01; // $R-
       if (FStatus.TargetLimiting) then
-         Flags := Flags or $08; // $R-
+         Flags := Flags or $02; // $R-
       Writer.WriteByte(Flags);
       Writer.WriteDouble(FStatus.Rate.AsDouble);
       {$IFOPT C+}
@@ -229,71 +249,10 @@ end;
 
 procedure TRefiningFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
 begin
-   Journal.WriteBoolean(FStatus.Enabled);
 end;
 
 procedure TRefiningFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
 begin
-   FStatus.Enabled := Journal.ReadBoolean();
-end;
-
-function TRefiningFeatureNode.HandleCommand(Command: UTF8String; var Message: TMessage): Boolean;
-var
-   PlayerDynasty: TDynasty;
-begin
-   if (Command = 'enable') then
-   begin
-      Result := True;
-      PlayerDynasty := (Message.Connection as TConnection).PlayerDynasty;
-      if (PlayerDynasty <> Parent.Owner) then
-      begin
-         Message.Error(ieInvalidCommand);
-         exit;
-      end;
-      Message.Reply();
-      if (FStatus.Enabled) then
-      begin
-         Message.Output.WriteBoolean(False);
-      end
-      else
-      begin
-         Assert(FStatus.Mode = rcIdle);
-         Message.Output.WriteBoolean(True);
-         FStatus.Enabled := True;
-         MarkAsDirty([dkUpdateClients, dkUpdateJournal, dkNeedsHandleChanges]);
-      end;
-      Message.CloseOutput();
-   end
-   else
-   if (Command = 'disable') then
-   begin
-      Result := True;
-      PlayerDynasty := (Message.Connection as TConnection).PlayerDynasty;
-      if (PlayerDynasty <> Parent.Owner) then
-      begin
-         Message.Error(ieInvalidCommand);
-         exit;
-      end;
-      Message.Reply();
-      if (FStatus.Enabled) then
-      begin
-         Message.Output.WriteBoolean(True);
-         if (FStatus.Mode in [rcPending, rcActive]) then
-         begin
-            Assert(Assigned(FStatus.Region));
-            FStatus.Region.RemoveRefinery(Self);
-         end;
-         FStatus.Disable();
-         Assert(not Assigned(FStatus.Region));
-         FStatus.Enabled := False;
-         MarkAsDirty([dkUpdateClients, dkUpdateJournal, dkNeedsHandleChanges]);
-      end
-      else
-         Message.Output.WriteBoolean(False);
-      Message.CloseOutput();
-   end
-   else
-      Result := inherited;
 end;
 
 initialization

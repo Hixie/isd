@@ -94,6 +94,7 @@ class classid {
   feature: TMessageBoardFeatureClass spawns classid;
   feature: TMessageFeatureClass;
   feature: TMiningFeatureClass max throughput 1kg/s;
+  feature: TOnOffFeatureClass;
   feature: TOrePileFeatureClass max mass 1kg;
   feature: TParameterizedGridFeatureClass 3x3, 4m, land; // or spacedock
   feature: TPopulationFeatureClass;

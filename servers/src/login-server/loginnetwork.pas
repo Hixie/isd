@@ -70,8 +70,14 @@ type
       FUserDatabase: TUserDatabase;
       FDynastyServerDatabase, FSystemServerDatabase: TServerDatabase;
       function CreateNetworkSocket(AListenerSocket: TListenerSocket): TNetworkSocket; override;
+   {$IFDEF TESTSUITE}
+   private
+      FDebugScoresReceived: Cardinal;
+      FDebugAwaitScores: TInternalConversationHandle;
+   {$ENDIF}
    public
       constructor Create(APort: Word; AInternalPassword: UTF8String; AClock: TClock; ADataDirectory: UTF8String; AUserDatabase: TUserDatabase; ADynastyServerDatabase, ASystemServerDatabase: TServerDatabase; AGalaxyManager: TGalaxyManager);
+      destructor Destroy(); override;
       procedure AddHighScoreDynasties(const DynastyIDs: TDynastyIDHashSet);
       property DataDirectory: UTF8String read FDataDirectory;
       property UserDatabase: TUserDatabase read FUserDatabase;
@@ -421,6 +427,10 @@ var
    DynastyID: Cardinal;
    ScoreRecord: TScoreRecord; // {BOGUS Note: Local variable "ScoreRecord" is assigned but never used}
    ScoreFile: File of TScoreRecord;
+   {$IFDEF TESTSUITE}
+   ExpectedScores: Cardinal;
+   AwaitScores: TInternalConversationHandle;
+   {$ENDIF}
 begin
    if (Command = icAddScoreDatum) then
    begin
@@ -442,7 +452,40 @@ begin
       Close(ScoreFile);
       Write(#$01);
       FServer.UserDatabase.RegisterScoreUpdate(DynastyID, ScoreRecord.Score);
+      {$IFDEF TESTSUITE}
+      Inc(FServer.FDebugScoresReceived);
+      if (Assigned(FServer.FDebugAwaitScores)) then
+      begin
+         FServer.FDebugAwaitScores.RemoveHold();
+         if (not FServer.FDebugAwaitScores.HasHolds) then
+         begin
+            FreeAndNil(FServer.FDebugAwaitScores);
+         end;
+      end;
+      {$ENDIF}
    end
+   {$IFDEF TESTSUITE}
+   else
+   if (Command = icAwaitScores) then
+   begin
+      if (Assigned(FServer.FDebugAwaitScores)) then
+      begin
+         Writeln('received multiple simultaneous score holds');
+         Disconnect();
+         exit;
+      end;
+      ExpectedScores := Arguments.ReadCardinal();
+      if (ExpectedScores <= FServer.FDebugScoresReceived) then
+      begin
+         Write(#$01);
+         exit;
+      end;
+      AwaitScores := TInternalConversationHandle.Create(Self);
+      AwaitScores.AddHold(ExpectedScores);
+      AwaitScores.RemoveHold(FServer.FDebugScoresReceived); 
+      FServer.FDebugAwaitScores := AwaitScores;
+   end
+   {$ENDIF}
    else
       inherited;
 end;
@@ -569,6 +612,14 @@ end;
 function TServer.CreateNetworkSocket(AListenerSocket: TListenerSocket): TNetworkSocket;
 begin
    Result := TConnection.Create(AListenerSocket, Self);
+end;
+
+destructor TServer.Destroy();
+begin
+   {$IFDEF TESTSUITE}
+   FreeAndNil(FDebugAwaitScores);
+   {$ENDIF}
+   inherited;
 end;
 
 procedure TServer.AddHighScoreDynasties(const DynastyIDs: TDynastyIDHashSet);

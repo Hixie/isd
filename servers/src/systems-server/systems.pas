@@ -289,8 +289,8 @@ type
    );
 
    TBusMessage = class abstract(TDebugObject) end;
-   TPhysicalConnectionBusMessage = class abstract(TBusMessage) end;
-   TAssetManagementBusMessage = class abstract(TBusMessage) end;
+   TPhysicalConnectionBusMessage = class abstract(TBusMessage) end; // orbits don't propagate these up
+   TAssetManagementBusMessage = class abstract(TBusMessage) end; // automatically handled by root node
 
    TAssetGoingAway = class(TAssetManagementBusMessage)
    private
@@ -299,7 +299,7 @@ type
       constructor Create(AAsset: TAssetNode);
       property Asset: TAssetNode read FAsset;
    end;
-
+   
    // The pre-walk callback is called for each asset in a depth-first
    // pre-order traversal of the asset/feature tree, and skips
    // children of nodes for which the callback returns false. The
@@ -1464,6 +1464,7 @@ end;
 
 function TFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
 begin
+   // TODO: should this use Walk and subclasses call this, instead of subclasses having to duplicate walk logic?
    Result := False;
 end;
 
@@ -1474,6 +1475,8 @@ end;
 
 function TFeatureNode.ManageBusMessage(Message: TBusMessage): TBusMessageResult;
 begin
+   // InjectBusMessage calls this on each feature until it finds one that doesn't defer.
+   // If they all defer, it goes up to the parent asset and tries again.
    Result := mrDeferred;
 end;
 

@@ -456,7 +456,7 @@ increase.
 > TODO: Currently the structural integrity values have no effect.
 
 
-### `fcSpaceSensor` (0x05)
+#### `fcSpaceSensor` (0x05)
 
 ```bnf
 <featuredata>       ::= <reach> <up> <down> <resolution> [<feature>]
@@ -477,7 +477,7 @@ The trailing `<feature>`, if present, is a `fcSpaceSensorStatus`
 feature, documented next.
 
 
-### `fcSpaceSensorStatus` (0x06)
+#### `fcSpaceSensorStatus` (0x06)
 
 ```bnf
 <featuredata>       ::= <nearest-orbit>
@@ -518,7 +518,7 @@ The seed determines the planet's geological features.
 > TODO: define how
 
 
-### `fcPlotControl` (0x08)
+#### `fcPlotControl` (0x08)
 
 ```bnf
 <featuredata>       ::= <uint32>
@@ -540,7 +540,7 @@ feature's data, which will be one of the following:
     associated asset.
 
 
-### `fcSurface` (0x09)
+#### `fcSurface` (0x09)
 
 ```bnf
 <featuredata>       ::= <region>* <zero32>
@@ -555,7 +555,7 @@ The assets in regions of a planetary surface are expected to have the
 `fcRegion` and `fcGrid` features, but this is not guaranteed.
 
 
-### `fcGrid` (0x0A)
+#### `fcGrid` (0x0A)
 
 ```bnf
 <featuredata>       ::= <cellsize> <width> <height> <cell>* <zero32>
@@ -599,7 +599,7 @@ This feature supports the following commands:
    No data is returned.
 
 
-### `fcPopulation` (0x0B)
+#### `fcPopulation` (0x0B)
 
 ```bnf
 <featuredata>       ::= <uint64> <double>
@@ -610,7 +610,7 @@ double is their mean happiness. It might be a NaN, if the happiness
 cannot be determined.
 
 
-### `fcMessageBoard` (0x0C)
+#### `fcMessageBoard` (0x0C)
 
 ```bnf
 <featuredata>       ::= <messages>* <zero32>
@@ -627,7 +627,7 @@ It is an error if the server sends a physical asset, or an asset with
 any other feature, as a child of an `fcMessageBoard`.
 
 
-### `fcMessage` (0x0D)
+#### `fcMessage` (0x0D)
 
 ```bnf
 <featuredata>       ::= <source> <timestamp> <flags> <body>
@@ -682,7 +682,7 @@ This feature supports the following commands:
  * `mark-unread`: no additional fields. Sets the "read" bit to 0x00.
 
 
-### `fcRubblePile` (0x0E)
+#### `fcRubblePile` (0x0E)
 
 ```bnf
 <featuredata>       ::= [ <materialid> <quantity> ]* <zero32> <quantity>
@@ -700,7 +700,7 @@ given at the end of the list, paired with the material ID zero.
 > ores into ore piles
 
 
-### `fcProxy` (0x0F)
+#### `fcProxy` (0x0F)
 
 ```bnf
 <featuredata>       ::= <assetid>
@@ -712,7 +712,7 @@ example, a crater with a ship in the middle consists of an
 proxy feature.
 
 
-### `fcKnowledge` (0x10)
+#### `fcKnowledge` (0x10)
 
 ```bnf
 <featuredata>       ::= [ <assetclass> | <material> ]* <zero8>
@@ -772,7 +772,7 @@ For asset classes and materials, names never end with punctuation,
 descriptions always do.
 
 
-### `fcResearch` (0x11)
+#### `fcResearch` (0x11)
 
 ```bnf
 <featuredata>       ::= <topic>
@@ -798,10 +798,10 @@ asset owner):
    string is a valid selection (that has no effect).
 
 
-### `fcMining` (0x12)
+#### `fcMining` (0x12)
 
 ```bnf
-<featuredata>       ::= <maxrate> <flags> <currentrate>
+<featuredata>       ::= <maxrate> <disabled> <flags> <currentrate>
 <maxrate>           ::= <double> // kg/ms
 <flags>             ::= <byte> ; see below
 <currentrate>       ::= <double> // kg/ms
@@ -812,15 +812,16 @@ with an `fcRegion` feature (the source). The ores are put into assets
 with an `fcOrePile` feature that are descendants of the same
 `fcRegion` (the targets).
 
+The `<disabled>` bit field has bits that specify why the feature is
+not mining, if applicable. It is defined in its own section below.
+
 The `<flags>` bit field has eight bits interpreted as follows:
 
-   0 (LSB): The mining feature is enabled. (If set, `<currentrate>`
-            is zero, bit 1 is false, and bits 2 and 3 are true.)
-   1      : The mining feature is active. (If not set, `<currentrate>`
-            is zero, and bits 2 and 3 are true.)
-   2      : There is no more to mine in the source. (If set,
+   0 (LSB): There is no more to mine in the source. (If set,
             `<currentrate> is zero.)
-   3      : The mining is being rate-limited by the targets.
+   1      : The mining is being rate-limited by the targets.
+   2      : reserved, always zero
+   3      : reserved, always zero
    4      : reserved, always zero
    5      : reserved, always zero
    6      : reserved, always zero
@@ -831,46 +832,24 @@ The `<maxrate>` is the maximum rate of mining for this feature. The
 the availability of resources (see `fcRegion`) and capacity in piles
 (see `fcOrePile`).
 
-A mining feature is _active_ if it is in a region (`fcRegion`) and
-enabled.
+A mining feature is _active_ if it is in a region (`fcRegion`), not
+disabled, and there's more to mine.
 
-Bit 1 of the `<flags>` is never set if bit 0 of the `<flags>` is not
-set. The `<currentrate>` is always zero, and bits 2 and 3 are always
-set, if bit 1 of the `<flags>` is not set. If bit 2 of `<flags>` is
-set, then the `<currentrate>` will be zero. If bit 3 of `<flags>` is
-set, then `<currentrate>` will be less than `<maxrate>` (but not
-necessarily zero).
+When the miner is labeled as rate-limited by the targets, the actual
+useful mining rate is determined by the consumers (refineries,
+`fcRefining`) but the given rate is the maximum rate; excess mining
+product that could not be refined is returned to the ground (where it
+may be mined again).
 
-Bit 1 of the `<flags>` being set does not mean that the
-`<currentrate>` is non-zero; if either of bits 2 and 3 are set, then
-it's possible for the `<currentrate>` to be zero even though the
-mining feature is active.
-
-Currently, only one of bits 2 and 3 can be set. Once a region runs out
-of minable materials, the targets are no longer considered to be a
-limiting factor, even if the ore piles are full. When the miner is
-labeled as rate-limited by the targets, the actual useful mining rate
-is determined by the consumers (refineries, `fcRefining`) but the
-given rate is the maximum rate; excess mining product that could not
-be refined is returned to the ground (where it may be mined again).
-
-> TODO: all the stuff about bits 2 and 3 above is self-contradictory
+Once a region runs out of minable materials, the targets are no longer
+considered to be a limiting factor, even if the ore piles are full.
 
 The materials mined will be evident in assets with an `fcOrePile`
 feature (which will have a non-zero mass flow rate while the materials
 are being mined).
 
-This feature supports the following commands (only allowed from the
-asset owner):
 
- * `enable`: No fields. Enables the miner. Returns a boolean
-   indicating if anything changed.
- 
- * `disable`: No fields. Disables the miner. Returns a boolean
-   indicating if anything changed.
-
-
-### `fcOrePile` (0x13)
+#### `fcOrePile` (0x13)
 
 ```bnf
 <featuredata>       ::= <pilemass> <pilemassflowrate> <capacity> <materials>
@@ -904,7 +883,7 @@ that can detect the pile):
    ores.) These numbers are quantities, not masses.
 
 
-### `fcRegion` (0x14)
+#### `fcRegion` (0x14)
 
 ```bnf
 <featuredata>       ::= <flags>
@@ -927,10 +906,10 @@ This represents the region being on the verge of complete structural
 collapse.
 
 
-### `fcRefining` (0x15)
+#### `fcRefining` (0x15)
 
 ```bnf
-<featuredata>       ::= <ore> <maxrate> <flags> <currentrate>
+<featuredata>       ::= <ore> <maxrate> <disabled> <flags> <currentrate>
 <ore>               ::= <materialid> | <zero32>
 <maxrate>           ::= <double> // kg/ms
 <flags>             ::= <byte> ; see below
@@ -943,12 +922,15 @@ same region (the targets).
 
 The `<ore>` will be zero if it is not known.
 
+The `<disabled>` bit field has bits that specify why the feature is
+not mining, if applicable. It is defined in its own section below.
+
 The `<flags>` bit field has eight bits interpreted as follows:
 
-   0 (LSB): The refining feature is enabled.
-   1      : The refining feature is active.
-   2      : The refining is being rate-limited by the sources.
-   3      : The refining is being rate-limited by the targets.
+   0 (LSB): The refining is being rate-limited by the sources.
+   1      : The refining is being rate-limited by the targets.
+   2      : reserved, always zero
+   3      : reserved, always zero
    4      : reserved, always zero
    5      : reserved, always zero
    6      : reserved, always zero
@@ -957,33 +939,15 @@ The `<flags>` bit field has eight bits interpreted as follows:
 The `<maxrate>` is the maximum rate of refining for this feature. The
 `<currentrate>` is the current rate of refining. This is affected by
 the availability of resources (see `fcMining`, `fcOrePile`) and
-capacity of the target piles (see `fcMaterialPile`).
+capacity of the target piles (see `fcMaterialPile`). If it is less
+than `<maxrate>` then one of the first two bits of `<flags>` will be
+set, explaining why.
 
-A refining feature is _active_ if it is in a region (`fcRegion`) and
-enabled.
-
-Bit 1 of the `<flags>` is never set if bit 0 of the `<flags>` is not
-set. The `<currentrate>` is always zero, and bits 2 and 3 are always
-set, if bit 1 of the `<flags>` is not set. If either bits 2 or 3 of
-`<flags>` are set, then `<currentrate>` will be less than `<maxrate>`
-(possibly zero, but not necessarily so).
-
-Bit 1 of the `<flags>` being set does not mean that the
-`<currentrate>` is non-zero; if either of bits 2 and 3 are set, then
-it's possible for the `<currentrate>` to be zero even though the
-refining feature is active.
-
-This feature supports the following commands (only allowed from the
-asset owner):
-
- * `enable`: No fields. Enables refining. Returns a boolean indicating
-   if anything changed.
- 
- * `disable`: No fields. Disables refining. Returns a boolean
-   indicating if anything changed.
+A refining feature is _active_ if it is in a region (`fcRegion`), and
+not disabled.
 
 
-### `fcMaterialPile` (0x16)
+#### `fcMaterialPile` (0x16)
 
 ```bnf
 <featuredata>       ::= <mass> <massflowrate> <capacity> <material>
@@ -1000,7 +964,7 @@ The `<flowrate>` gives the mass per millisecond being added (or
 removed, if negative) from the pile.
 
 
-### `fcMaterialStack` (0x17)
+#### `fcMaterialStack` (0x17)
 
 ```bnf
 <featuredata>       ::= <quantity> <flowrate> <capacity> <material>
@@ -1018,7 +982,7 @@ The `<flowrate>` gives a number of items per millisecond being added
 (or removed, if negative) from the pile.
 
 
-### `fcGridSensor` (0x18)
+#### `fcGridSensor` (0x18)
 
 ```bnf
 <featuredata>       ::= [<feature>]
@@ -1033,7 +997,7 @@ The trailing `<feature>`, if present, is a `fcGridSensorStatus`
 feature, documented next.
 
 
-### `fcGridSensorStatus` (0x19)
+#### `fcGridSensorStatus` (0x19)
 
 ```bnf
 <featuredata>       ::= <grid> <count>
@@ -1050,7 +1014,7 @@ there are multiple sensors, they may each have a trailing
 preceding sensor.
 
 
-### `fcBuilder` (0x1A)
+#### `fcBuilder` (0x1A)
 
 ```bnf
 <featuredata>       ::= <capacity> <rate> <structure>* <zero32>
@@ -1077,7 +1041,7 @@ This feature is only sent to the client if the dynasty has access to
 the asset's internals.
 
 
-### `fcInternalSensor` (0x1B)
+#### `fcInternalSensor` (0x1B)
 
 ```bnf
 <featuredata>       ::= [<feature>]
@@ -1092,7 +1056,7 @@ The trailing `<feature>`, if present, is a `fcInternalSensorStatus`
 feature, documented next.
 
 
-### `fcInternalSensorStatus` (0x1C)
+#### `fcInternalSensorStatus` (0x1C)
 
 ```bnf
 <featuredata>       ::= <count>
@@ -1105,6 +1069,41 @@ This feature, if present, always follows a `fcInternalSensor` feature.
 If there are multiple sensors, they may each have a trailing
 `fcInternalSensorStatus`; each status applies to the immediately
 preceding sensor.
+
+
+#### `fcOnOff` (0x1D)
+
+```bnf
+<featuredata>       ::= <status>
+<status>            ::= <byte> ; enabled (0x01) or not (0x00)
+```
+
+Represents an on/off switch on the asset.
+
+This feature supports the following commands (only allowed from the
+asset owner):
+
+ * `enable`: No fields. Enables the asset. Returns a boolean
+   indicating if anything changed.
+ 
+ * `disable`: No fields. Disables the asset. Returns a boolean
+   indicating if anything changed.
+
+
+### `<disabled>`
+
+Some features can be disabled, either manually or because they're out
+of resources or for some other reason. Such features often have a
+`<disabled>` bit field, which is 32 bits wide. The bits are defined as
+follows; the features given in parentheses are the features that
+contribute the bit:
+
+   0 (LSB) : The asset was manually disabled (`fcOnOff` feature).
+   1       : The asset's structural integrity has not yet reached the
+             minimum functional threshold (`fcStructure` feature).
+   2       : reserved, always zero
+   ...
+   31 (MSB): reserved, always zero
 
 
 # Systems Server Internal Protocol

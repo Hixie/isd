@@ -7,19 +7,24 @@ interface
 {$DEFINE VERBOSE}
 
 uses
-   systems, serverstream, techtree, materials, time, providers, hashsettight;
+   systems, serverstream, techtree, materials, time, providers, isdprotocol, plasticarrays, genericutils;
 
 type
    TRegionFeatureNode = class;
 
    TRegionClientMode = (rcIdle, rcPending, rcActive, rcNoRegion);
    TRegionClientFields = packed record
+   strict private
+      function GetEnabled(): Boolean; inline;
+   public
       Region: TRegionFeatureNode; // 8 bytes
       Rate: TRate; // 8 bytes
-      Enabled: Boolean;
+      DisabledReasons: TDisabledReasons;
       SourceLimiting, TargetLimiting: Boolean;
       Mode: TRegionClientMode;
-      procedure Disable();
+      procedure Enable();
+      procedure Disable(Reasons: TDisabledReasons);
+      property Enabled: Boolean read GetEnabled;
    end;
    {$IF SIZEOF(TRegionClientMode) > 3*8} {$FATAL} {$ENDIF}
 
@@ -31,7 +36,7 @@ type
       procedure StopMiner();
    end;
    TRegisterMinerBusMessage = specialize TRegisterProviderBusMessage<TPhysicalConnectionBusMessage, IMiner>;
-   TMinerHashSet = specialize TInterfaceSet<IMiner>;
+   TMinerList = specialize PlasticArray<IMiner, PointerUtils>;
 
    IOrePile = interface ['IOrePile']
       function GetOrePileCapacity(): Double; // kg
@@ -40,7 +45,7 @@ type
       procedure StopOrePile();
    end;
    TRegisterOrePileBusMessage = specialize TRegisterProviderBusMessage<TPhysicalConnectionBusMessage, IOrePile>;
-   TOrePileHashSet = specialize TInterfaceSet<IOrePile>;
+   TOrePileList = specialize PlasticArray<IOrePile, PointerUtils>;
 
    IRefinery = interface ['IRefinery']
       function GetRefineryOre(): TOres;
@@ -51,7 +56,7 @@ type
       procedure StopRefinery();
    end;
    TRegisterRefineryBusMessage = specialize TRegisterProviderBusMessage<TPhysicalConnectionBusMessage, IRefinery>;
-   TRefineryHashSet = specialize TInterfaceSet<IRefinery>;
+   TRefineryList = specialize PlasticArray<IRefinery, PointerUtils>;
 
    IMaterialPile = interface ['IMaterialPile']
       function GetMaterialPileMaterial(): TMaterial;
@@ -61,7 +66,7 @@ type
       procedure StopMaterialPile();
    end;
    TRegisterMaterialPileBusMessage = specialize TRegisterProviderBusMessage<TPhysicalConnectionBusMessage, IMaterialPile>;
-   TMaterialPileHashSet = specialize TInterfaceSet<IMaterialPile>;
+   TMaterialPileList = specialize PlasticArray<IMaterialPile, PointerUtils>;
 
    // TODO: factories
 
@@ -77,7 +82,7 @@ type
       procedure StopMaterialConsumer(); // region is going away
    end;
    TRegisterMaterialConsumerBusMessage = specialize TRegisterProviderBusMessage<TPhysicalConnectionBusMessage, IMaterialConsumer>;
-   TMaterialConsumerHashSet = specialize TInterfaceSet<IMaterialConsumer>;
+   TMaterialConsumerList = specialize PlasticArray<IMaterialConsumer, PointerUtils>;
 
    TObtainMaterialBusMessage = class(TPhysicalConnectionBusMessage)
    strict private
@@ -128,11 +133,11 @@ type
       // Runtime admin variables:
       {$IFOPT C+} Busy: Boolean; {$ENDIF} // set to true while running our algorithms, to make sure nobody calls us reentrantly
       FFeatureClass: TRegionFeatureClass;
-      FMiners: TMinerHashSet;
-      FOrePiles: TOrePileHashSet;
-      FRefineries: TRefineryHashSet;
-      FMaterialPiles: TMaterialPileHashSet;
-      FMaterialConsumers: TMaterialConsumerHashSet;
+      FMiners: TMinerList;
+      FOrePiles: TOrePileList;
+      FRefineries: TRefineryList;
+      FMaterialPiles: TMaterialPileList;
+      FMaterialConsumers: TMaterialConsumerList;
       FNextEvent: TSystemEvent; // set only when mass is moving
       FActive: Boolean; // set to true when transfers are set up, set to false when transfers need to be set up
       FDynamic: Boolean; // set to true when the situation is dynamic (i.e. Sync() would do something)
@@ -190,16 +195,26 @@ type
 implementation
 
 uses
-   sysutils, planetary, exceptions, messages, isdprotocol, isdnumbers, math, hashfunctions;
+   sysutils, planetary, exceptions, messages, isdnumbers, math, hashfunctions;
 
-procedure TRegionClientFields.Disable();
+procedure TRegionClientFields.Disable(Reasons: TDisabledReasons);
 begin
    Region := nil;
    Rate := TRate.Zero;
-   Enabled := False;
+   DisabledReasons := Reasons;
    SourceLimiting := False;
    TargetLimiting := False;
    Mode := rcIdle;
+end;
+
+procedure TRegionClientFields.Enable();
+begin
+   DisabledReasons := [];
+end;
+
+function TRegionClientFields.GetEnabled(): Boolean;
+begin
+   Result := DisabledReasons = [];
 end;
 
 
@@ -319,12 +334,7 @@ begin
       FDynamic := False;
       Reset();
    end;
-   FMiners.Free();
-   FOrePiles.Free();
-   FRefineries.Free();
-   FMaterialPiles.Free();
    FMaterialPileComposition.Free();
-   FMaterialConsumers.Free();
    inherited;
 end;
 
@@ -351,9 +361,9 @@ var
    Miner: IMiner;
 begin
    Result := TRate.Zero;
-   if (FDynamic and Assigned(FMiners)) then
+   if (FDynamic and FMiners.IsNotEmpty) then
    begin
-      for Miner in FMiners do
+      for Miner in FMiners.Without(nil) do
       begin
          Result := Result - Miner.GetMinerCurrentRate();
       end;
@@ -367,9 +377,9 @@ var
    OrePile: IOrePile;
 begin
    Result := 0.0;
-   if (Assigned(FOrePiles)) then
+   if (FOrePiles.IsNotEmpty) then
    begin
-      for OrePile in FOrePiles do
+      for OrePile in FOrePiles.Without(nil) do
          Result := Result + OrePile.GetOrePileCapacity();
    end;
 end;
@@ -405,14 +415,14 @@ begin
    Result := TRate.Zero;
    if (FDynamic) then
    begin
-      if (Assigned(FMiners)) then
+      if (FMiners.IsNotEmpty) then
       begin
-         for Miner in FMiners do
+         for Miner in FMiners.Without(nil) do
             Result := Result + Miner.GetMinerCurrentRate();
       end;
-      if (Assigned(FRefineries)) then
+      if (FRefineries.IsNotEmpty) then
       begin
-         for Refinery in FRefineries do
+         for Refinery in FRefineries.Without(nil) do
             Result := Result - Refinery.GetRefineryCurrentRate();
       end;
    end;
@@ -492,18 +502,18 @@ var
    Consumer: IMaterialConsumer;
 begin
    Result := TRate.Zero;
-   if (Assigned(FRefineries) and Material.IsOre) then
+   if (FRefineries.IsNotEmpty and Material.IsOre) then
    begin
-      for Refinery in FRefineries do
+      for Refinery in FRefineries.Without(nil) do
       begin
          if (Refinery.GetRefineryOre() = Material.ID) then
             Result := Result + Refinery.GetRefineryCurrentRate() / Material.MassPerUnit;
       end;
    end;
    // TODO: factories (consumption, generation)
-   if (Assigned(FMaterialConsumers)) then
+   if (FMaterialConsumers.IsNotEmpty) then
    begin
-      for Consumer in FMaterialConsumers do
+      for Consumer in FMaterialConsumers.Without(nil) do
       begin
          if (Consumer.GetMaterialConsumerMaterial() = Material) then
             Result := Result - Consumer.GetMaterialConsumerCurrentRate();
@@ -516,9 +526,9 @@ var
    Pile: IMaterialPile;
 begin
    Result := 0;
-   if (Assigned(FMaterialPiles)) then
+   if (FMaterialPiles.IsNotEmpty) then
    begin
-      for Pile in FMaterialPiles do
+      for Pile in FMaterialPiles.Without(nil) do
       begin
          if (Pile.GetMaterialPileMaterial() = Material) then
             Inc(Result, Pile.GetMaterialPileCapacity());
@@ -553,18 +563,18 @@ var
    Consumer: IMaterialConsumer;
 begin
    Result := TRate.Zero;
-   if (Assigned(FRefineries) and Material.IsOre) then
+   if (FRefineries.IsNotEmpty and Material.IsOre) then
    begin
-      for Refinery in FRefineries do
+      for Refinery in FRefineries.Without(nil) do
       begin
          if (Refinery.GetRefineryOre() = Material.ID) then
             Result := Result + Refinery.GetRefineryCurrentRate();
       end;
    end;
    // TODO: factories (consumption, generation)
-   if (Assigned(FMaterialConsumers)) then
+   if (FMaterialConsumers.IsNotEmpty) then
    begin
-      for Consumer in FMaterialConsumers do
+      for Consumer in FMaterialConsumers.Without(nil) do
       begin
          if (Consumer.GetMaterialConsumerMaterial() = Material) then
             Result := Result - Consumer.GetMaterialConsumerCurrentRate() * Material.MassPerUnit;
@@ -645,13 +655,11 @@ begin
       if (FActive) then
          PrepareClientsForRenegotiation();
       MinerMessage := Message as TRegisterMinerBusMessage;
-      if (not Assigned(FMiners)) then
-         FMiners := TMinerHashSet.Create();
-      Assert(not FMiners.Has(MinerMessage.Provider));
-      FMiners.Add(MinerMessage.Provider);
+      Assert(not FMiners.Contains(MinerMessage.Provider));
+      FMiners.Push(MinerMessage.Provider);
       MarkAsDirty([dkNeedsHandleChanges]);
       Result := mrHandled;
-      Writeln(DebugName, ': Registered a new miner, now ', FMiners.Count, ' miners');
+      Writeln(DebugName, ': Registered a new miner, now ', FMiners.Length, ' miners');
    end
    else
    if (Message is TRegisterOrePileBusMessage) then
@@ -659,13 +667,11 @@ begin
       if (FActive) then
          PrepareClientsForRenegotiation();
       OrePileMessage := Message as TRegisterOrePileBusMessage;
-      if (not Assigned(FOrePiles)) then
-         FOrePiles := TOrePileHashSet.Create();
-      Assert(not FOrePiles.Has(OrePileMessage.Provider));
-      FOrePiles.Add(OrePileMessage.Provider);
+      Assert(not FOrePiles.Contains(OrePileMessage.Provider));
+      FOrePiles.Push(OrePileMessage.Provider);
       MarkAsDirty([dkNeedsHandleChanges]);
       Result := mrHandled;
-      Writeln(DebugName, ': Registered a new ore pile, now ', FOrePiles.Count, ' ore piles');
+      Writeln(DebugName, ': Registered a new ore pile, now ', FOrePiles.Length, ' ore piles');
    end
    else
    if (Message is TRegisterRefineryBusMessage) then
@@ -673,13 +679,11 @@ begin
       if (FActive) then
          PrepareClientsForRenegotiation();
       RefineryMessage := Message as TRegisterRefineryBusMessage;
-      if (not Assigned(FRefineries)) then
-         FRefineries := TRefineryHashSet.Create();
-      Assert(not FRefineries.Has(RefineryMessage.Provider));
-      FRefineries.Add(RefineryMessage.Provider);
+      Assert(not FRefineries.Contains(RefineryMessage.Provider));
+      FRefineries.Push(RefineryMessage.Provider);
       MarkAsDirty([dkNeedsHandleChanges]);
       Result := mrHandled;
-      Writeln(DebugName, ': Registered a new refinery, now ', FRefineries.Count, ' refineries');
+      Writeln(DebugName, ': Registered a new refinery, now ', FRefineries.Length, ' refineries');
    end
    else
    if (Message is TRegisterMaterialPileBusMessage) then
@@ -687,13 +691,11 @@ begin
       if (FActive) then
          PrepareClientsForRenegotiation();
       MaterialPileMessage := Message as TRegisterMaterialPileBusMessage;
-      if (not Assigned(FMaterialPiles)) then
-         FMaterialPiles := TMaterialPileHashSet.Create();
-      Assert(not FMaterialPiles.Has(MaterialPileMessage.Provider));
-      FMaterialPiles.Add(MaterialPileMessage.Provider);
+      Assert(not FMaterialPiles.Contains(MaterialPileMessage.Provider));
+      FMaterialPiles.Push(MaterialPileMessage.Provider);
       MarkAsDirty([dkNeedsHandleChanges]);
       Result := mrHandled;
-      Writeln(DebugName, ': Registered a new material pile, now ', FMaterialPiles.Count, ' material piles');
+      Writeln(DebugName, ': Registered a new material pile, now ', FMaterialPiles.Length, ' material piles');
    end
    // TODO: factories
    else
@@ -702,13 +704,11 @@ begin
       if (FActive) then
          PrepareClientsForRenegotiation();
       MaterialConsumerMessage := Message as TRegisterMaterialConsumerBusMessage;
-      if (not Assigned(FMaterialConsumers)) then
-         FMaterialConsumers := TMaterialConsumerHashSet.Create();
-      Assert(not FMaterialConsumers.Has(MaterialConsumerMessage.Provider));
-      FMaterialConsumers.Add(MaterialConsumerMessage.Provider);
+      Assert(not FMaterialConsumers.Contains(MaterialConsumerMessage.Provider));
+      FMaterialConsumers.Push(MaterialConsumerMessage.Provider);
       MarkAsDirty([dkNeedsHandleChanges]);
       Result := mrHandled;
-      Writeln(DebugName, ': Registered a new material consumer, now ', FMaterialConsumers.Count, ' material consumers');
+      Writeln(DebugName, ': Registered a new material consumer, now ', FMaterialConsumers.Length, ' material consumers');
    end
    else
    if (Message is TObtainMaterialBusMessage) then
@@ -799,16 +799,16 @@ begin
    GroundWasMinable := IsMinable;
 
    OrePileCapacity := 0.0;
-   if (Assigned(FOrePiles)) then
+   if (FOrePiles.IsNotEmpty) then
    begin
-      for OrePile in FOrePiles do
+      for OrePile in FOrePiles.Without(nil) do
       begin
          OrePileCapacity := OrePileCapacity + OrePile.GetOrePileCapacity();
       end;
    end;
 
    {$IFDEF DEBUG}
-   if (Assigned(FOrePiles)) then
+   if (FOrePiles.IsNotEmpty) then
    begin
       FlowRate := GetTotalOrePileMassFlowRate();
       CurrentOrePileMass := GetTotalOrePileMass();
@@ -818,20 +818,20 @@ begin
          begin
             OrePileRecordedMass := OrePileRecordedMass + Encyclopedia.Materials[Ore].MassPerUnit * FOrePileComposition[Ore];
          end;
-      Writeln('    we started with ', OrePileCapacity:0:1, 'kg ore pile capacity and ', CurrentOrePileMass:0:1, 'kg in ', FOrePiles.Count, ' ore piles (of which ', OrePileRecordedMass:0:1, 'kg is recorded)');
+      Writeln('    we started with ', OrePileCapacity:0:1, 'kg ore pile capacity and ', CurrentOrePileMass:0:1, 'kg in ', FOrePiles.Length, ' ore piles (of which ', OrePileRecordedMass:0:1, 'kg is recorded)');
       Assert(CurrentOrePileMass <= OrePileCapacity + 0.00001, 'already over capacity');
       Writeln('    we get to that by multiplying the total ore pile mass flow rate, ', FlowRate.ToString('kg'), ', by the elapsed time, ', SyncDuration.ToString());
    end;
    {$ENDIF}
 
-   if (Assigned(FMiners)) then
+   if (FMiners.IsNotEmpty) then
    begin
       TotalCompositionMass := 0.0;
       Assert(Length(FGroundComposition) > 0);
       for Ore := Low(FGroundComposition) to High(FGroundComposition) do // $R-
          TotalCompositionMass := TotalCompositionMass + Encyclopedia.Materials[Ore].MassPerUnit * FGroundComposition[Ore];
       TotalTransferMass := 0.0;
-      for Miner in FMiners do
+      for Miner in FMiners.Without(nil) do
       begin
          Rate := Miner.GetMinerMaxRate(); // Not the current rate; the difference is handled by us dumping excess back into the ground.
          TotalTransferMass := TotalTransferMass + SyncDuration * Rate;
@@ -887,12 +887,12 @@ begin
       end;
       Writeln('    total actual mass transfer: ', ActualTransfer:0:1, 'kg');
    end;
-   if (Assigned(FRefineries)) then
+   if (FRefineries.IsNotEmpty) then
    begin
       Writeln('    refineries:');
       for Ore in TOres do
          RefinedOreMasses[Ore] := 0.0;
-      for Refinery in FRefineries do
+      for Refinery in FRefineries.Without(nil) do
       begin
          Rate := Refinery.GetRefineryCurrentRate();
          Ore := Refinery.GetRefineryOre();
@@ -934,10 +934,10 @@ begin
          end;
       end;
    end;
-   if (Assigned(FMaterialConsumers)) then
+   if (FMaterialConsumers.IsNotEmpty) then
    begin
       Writeln('    consumers:');
-      for Consumer in FMaterialConsumers do
+      for Consumer in FMaterialConsumers.Without(nil) do
       begin
          Rate := Consumer.GetMaterialConsumerCurrentRate();
          Material := Consumer.GetMaterialConsumerMaterial();
@@ -1035,10 +1035,10 @@ begin
    Writeln('    Sync() reset FAnchorTime to ', FAnchorTime.ToString());
 
    {$IFDEF DEBUG}
-   if (Assigned(FOrePiles)) then
+   if (FOrePiles.IsNotEmpty) then
    begin
       CurrentOrePileMass := GetTotalOrePileMass();
-      Writeln('    we ended with ', OrePileCapacity:0:1, 'kg ore pile capacity and ', CurrentOrePileMass:0:1, 'kg in ', FOrePiles.Count, ' ore piles');
+      Writeln('    we ended with ', OrePileCapacity:0:1, 'kg ore pile capacity and ', CurrentOrePileMass:0:1, 'kg in ', FOrePiles.Length, ' ore piles');
       Assert(CurrentOrePileMass <= OrePileCapacity, 'now over capacity');
    end;
    {$ENDIF}
@@ -1058,30 +1058,30 @@ begin
    Assert(not Assigned(FNextEvent));
    if (FActive) then
    begin
-      if (Assigned(FMiners)) then
+      if (FMiners).IsNotEmpty then
       begin
-         for Miner in FMiners do
+         for Miner in FMiners.Without(nil) do
             Miner.PauseMiner();
       end;
-      if (Assigned(FOrePiles)) then
+      if (FOrePiles).IsNotEmpty then
       begin
-         for OrePile in FOrePiles do
+         for OrePile in FOrePiles.Without(nil) do
             OrePile.PauseOrePile();
       end;
-      if (Assigned(FRefineries)) then
+      if (FRefineries).IsNotEmpty then
       begin
-         for Refinery in FRefineries do
+         for Refinery in FRefineries.Without(nil) do
             Refinery.PauseRefinery();
       end;
-      if (Assigned(FMaterialPiles)) then
+      if (FMaterialPiles).IsNotEmpty then
       begin
-         for MaterialPile in FMaterialPiles do
+         for MaterialPile in FMaterialPiles.Without(nil) do
             MaterialPile.PauseMaterialPile();
       end;
       // TODO: factories
-      if (Assigned(FMaterialConsumers)) then
+      if (FMaterialConsumers).IsNotEmpty then
       begin
-         for MaterialConsumer in FMaterialConsumers do
+         for MaterialConsumer in FMaterialConsumers.Without(nil) do
             MaterialConsumer.PauseMaterialConsumer();
       end;
       FActive := False;
@@ -1128,36 +1128,36 @@ begin
    Assert(not Assigned(FNextEvent));
    Assert(not FDynamic);
    Assert(FActive);
-   if (Assigned(FMiners)) then
+   if (FMiners).IsNotEmpty then
    begin
-      for Miner in FMiners do
+      for Miner in FMiners.Without(nil) do
          Miner.StopMiner();
-      FMiners.Reset();
+      FMiners.Empty();
    end;
-   if (Assigned(FOrePiles)) then
+   if (FOrePiles).IsNotEmpty then
    begin
-      for OrePile in FOrePiles do
+      for OrePile in FOrePiles.Without(nil) do
          OrePile.StopOrePile();
-      FOrePiles.Reset();
+      FOrePiles.Empty();
    end;
-   if (Assigned(FRefineries)) then
+   if (FRefineries).IsNotEmpty then
    begin
-      for Refinery in FRefineries do
+      for Refinery in FRefineries.Without(nil) do
          Refinery.StopRefinery();
-      FRefineries.Reset();
+      FRefineries.Empty();
    end;
-   if (Assigned(FMaterialPiles)) then
+   if (FMaterialPiles).IsNotEmpty then
    begin
-      for MaterialPile in FMaterialPiles do
+      for MaterialPile in FMaterialPiles.Without(nil) do
          MaterialPile.StopMaterialPile();
-      FMaterialPiles.Reset();
+      FMaterialPiles.Empty();
    end;
    // TODO: factories
-   if (Assigned(FMaterialConsumers)) then
+   if (FMaterialConsumers).IsNotEmpty then
    begin
-      for MaterialConsumer in FMaterialConsumers do
+      for MaterialConsumer in FMaterialConsumers.Without(nil) do
          MaterialConsumer.StopMaterialConsumer();
-      FMaterialConsumers.Reset();
+      FMaterialConsumers.Empty();
    end;
    FActive := False;
    FAnchorTime := TTimeInMilliseconds.NegInfinity;
@@ -1208,6 +1208,11 @@ begin
    Writeln('==', Parent.DebugName, ': Region considering next move.');
    if (not FActive) then
    begin
+      FMiners.RemoveAll(nil);
+      FOrePiles.RemoveAll(nil);
+      FRefineries.RemoveAll(nil);
+      FMaterialPiles.RemoveAll(nil);
+      FMaterialConsumers.RemoveAll(nil);
       Assert(not Assigned(FNextEvent));
       Assert(not FDynamic); // so all the "get current mass" etc getters won't be affected by mass flow
       Encyclopedia := CachedSystem.Encyclopedia;
@@ -1221,11 +1226,11 @@ begin
       // COMPUTE MAX RATES AND CAPACITIES
       // Total mining rate
       TotalMinerMaxRate := TRate.Zero;
-      if (Assigned(FMiners)) then
+      if (FMiners).IsNotEmpty then
       begin
-         for Miner in FMiners do
+         for Miner in FMiners.Without(nil) do
             TotalMinerMaxRate := TotalMinerMaxRate + Miner.GetMinerMaxRate();
-         Writeln('    ', FMiners.Count, ' miners, total mining rate ', TotalMinerMaxRate.ToString('kg'));
+         Writeln('    ', FMiners.Length, ' miners, total mining rate ', TotalMinerMaxRate.ToString('kg'));
          Assert(FMiners.IsEmpty or TotalMinerMaxRate.IsPositive);
       end;
       // Per-ore mining rates
@@ -1243,10 +1248,10 @@ begin
       end;
       // Ore pile capacities
       OrePileCapacity := 0.0;
-      if (Assigned(FOrePiles)) then
+      if (FOrePiles).IsNotEmpty then
       begin
-         Writeln('    ', FOrePiles.Count, ' ore piles');
-         for OrePile in FOrePiles do
+         Writeln('    ', FOrePiles.Length, ' ore piles');
+         for OrePile in FOrePiles.Without(nil) do
          begin
             OrePileCapacity := OrePileCapacity + OrePile.GetOrePileCapacity();
             OrePile.StartOrePile(Self);
@@ -1261,10 +1266,10 @@ begin
          end;
       {$ENDIF}
       // Refinery rates
-      if (Assigned(FRefineries)) then
+      if (FRefineries).IsNotEmpty then
       begin
-         Writeln('    ', FRefineries.Count, ' refineries');
-         for Refinery in FRefineries do
+         Writeln('    ', FRefineries.Length, ' refineries');
+         for Refinery in FRefineries.Without(nil) do
          begin
             Ore := Refinery.GetRefineryOre();
             Rate := Refinery.GetRefineryMaxRate();
@@ -1284,14 +1289,14 @@ begin
          Writeln('    ', Encyclopedia.Materials[Ore].Name:20, ' mining at ', OreMiningRates[Ore].ToString('kg'), ', refining at max ', OreRefiningRates[Ore].ToString('kg'), ', ', FGroundComposition[Ore], '/', FOrePileComposition[Ore], '/', Composition);
       end;
       // Material pile capacity
-      if (Assigned(FMaterialPiles)) then
+      if (FMaterialPiles).IsNotEmpty then
       begin
-         Writeln('    ', FMaterialPiles.Count, ' material piles');
-         Count := FMaterialPiles.Count;
+         Writeln('    ', FMaterialPiles.Length, ' material piles');
+         Count := FMaterialPiles.Length;
          if (Count < 1) then
             Count := 1;
          MaterialCapacities := TMaterialQuantityHashTable.Create(Count);
-         for Pile in FMaterialPiles do
+         for Pile in FMaterialPiles.Without(nil) do
          begin
             MaterialCapacities.Inc(Pile.GetMaterialPileMaterial(), Pile.GetMaterialPileCapacity());
             Pile.StartMaterialPile(Self);
@@ -1305,23 +1310,23 @@ begin
 
       // Factories
       // TODO: factories
-      // if (Assigned(FFactories)) then
+      // if (FFactories).IsNotEmpty then
       // begin
-      //    Count := FFactories.Count;
+      //    Count := FFactories.Length;
       //    if (Count < 1) then
       //       Count := 1;
       //    MaterialFactoryRates := TMaterialRateHashTable.Create(Count);
       // end;
       // TODO: factories need to affect MaterialFactoryRates
 
-      if (Assigned(FMaterialConsumers)) then
+      if (FMaterialConsumers).IsNotEmpty then
       begin
-         Writeln('    Consumers: ', FMaterialConsumers.Count);
-         Count := FMaterialConsumers.Count;
+         Writeln('    Consumers: ', FMaterialConsumers.Length);
+         Count := FMaterialConsumers.Length;
          if (Count < 1) then
             Count := 1;
          MaterialConsumerCounts := TMaterialQuantityHashTable.Create(Count);
-         for MaterialConsumer in FMaterialConsumers do
+         for MaterialConsumer in FMaterialConsumers.Without(nil) do
          begin
             Material := MaterialConsumer.GetMaterialConsumerMaterial();
             if (Assigned(Material)) then
@@ -1352,9 +1357,9 @@ begin
          if (RefiningRate.IsZero) then
          begin
             // TODO: handle factories when relevant material pile is not empty
-            if (Assigned(FMaterialConsumers)) then
+            if (FMaterialConsumers).IsNotEmpty then
             begin
-               for MaterialConsumer in FMaterialConsumers do
+               for MaterialConsumer in FMaterialConsumers.Without(nil) do
                begin
                   if (MaterialConsumer.GetMaterialConsumerMaterial() = Material) then
                   begin
@@ -1472,7 +1477,7 @@ begin
                TimeUntilThisOrePileEmpty := TMillisecondsDuration.Infinity;
          end;
          Writeln('      Refining ratio: ', Ratio:0:5, ' (i.e. ', Refinery.GetRefineryMaxRate().ToString('kg'), ' * ', Ratio:0:5, ' => ', (Refinery.GetRefineryMaxRate() * Ratio).ToString('kg'), ')');
-         for Refinery in FRefineries do
+         for Refinery in FRefineries.Without(nil) do
          begin
             if (Refinery.GetRefineryOre() = Ore) then
             begin
@@ -1494,7 +1499,7 @@ begin
             MaterialConsumptionRate := ((RefiningRate / Material.MassPerUnit) * Ratio - MaterialConsumptionRate) / MaterialConsumerCounts[Material];
             Writeln('     consumer rate: ', MaterialConsumptionRate.ToString('units'));
             Assert(MaterialConsumptionRate.IsZero or MaterialConsumptionRate.IsPositive);
-            for MaterialConsumer in FMaterialConsumers do
+            for MaterialConsumer in FMaterialConsumers.Without(nil) do
             begin
                if (MaterialConsumer.GetMaterialConsumerMaterial() = Material) then
                begin
@@ -1544,9 +1549,9 @@ begin
             TimeUntilGroundEmpty := CurrentGroundMass / TotalMinerMaxRate;
             Assert(TimeUntilGroundEmpty.IsPositive);
             // ready to go, start the miners!
-            if (Assigned(FMiners)) then
+            if (FMiners.IsNotEmpty) then
             begin
-               for Miner in FMiners do
+               for Miner in FMiners.Without(nil) do
                   Miner.StartMiner(Self, Miner.GetMinerMaxRate(), False, False);
             end;
             FDynamic := True;
@@ -1560,9 +1565,9 @@ begin
             Writeln('        TotalMinerMaxRate: ', TotalMinerMaxRate.ToString('kg'));
             Writeln('        TotalMiningToRefineryRate: ', TotalMiningToRefineryRate.ToString('kg'));
             Assert(TotalMiningToRefineryRate < TotalMinerMaxRate);
-            if (Assigned(FMiners)) then
+            if (FMiners.IsNotEmpty) then
             begin
-               for Miner in FMiners do
+               for Miner in FMiners.Without(nil) do
                   Miner.StartMiner(Self, TotalMiningToRefineryRate * (Miner.GetMinerMaxRate() / TotalMinerMaxRate), False, True);
             end;
             TimeUntilGroundEmpty := CurrentGroundMass / TotalMiningToRefineryRate;
@@ -1576,9 +1581,9 @@ begin
             Writeln('      Not mining; nowhere to mine to.');
             Writeln('        TotalMinerMaxRate: ', TotalMinerMaxRate.ToString('kg'));
             Writeln('        TotalMiningToRefineryRate: ', TotalMiningToRefineryRate.ToString('kg'));
-            if (Assigned(FMiners)) then
+            if (FMiners.IsNotEmpty) then
             begin
-               for Miner in FMiners do
+               for Miner in FMiners.Without(nil) do
                   Miner.StartMiner(Self, TRate.Zero, False, True);
             end;
          end;
@@ -1587,9 +1592,9 @@ begin
       begin
          // ground is empty, stop the miners
          Writeln('    Ground is empty; no mining.');
-         if (Assigned(FMiners)) then
+         if (FMiners.IsNotEmpty) then
          begin
-            for Miner in FMiners do
+            for Miner in FMiners.Without(nil) do
                Miner.StartMiner(Self, TRate.Zero, True, False);
          end;
       end;
@@ -1675,7 +1680,7 @@ begin
          CancelEvent(FNextEvent);
    end;
    Assert(not Assigned(FNextEvent));
-   FMiners.Remove(Miner);
+   FMiners.Replace(Miner, nil);
    Pause();
    Assert(not FActive);
    Assert(not FDynamic);
@@ -1691,7 +1696,7 @@ begin
          CancelEvent(FNextEvent);
    end;
    Assert(not Assigned(FNextEvent));
-   FOrePiles.Remove(OrePile);
+   FOrePiles.Replace(OrePile, nil);
    Pause();
    Assert(not FActive);
    Assert(not FDynamic);
@@ -1707,7 +1712,7 @@ begin
          CancelEvent(FNextEvent);
    end;
    Assert(not Assigned(FNextEvent));
-   FRefineries.Remove(Refinery);
+   FRefineries.Replace(Refinery, nil);
    Pause();
    Assert(not FActive);
    Assert(not FDynamic);
@@ -1723,7 +1728,7 @@ begin
          CancelEvent(FNextEvent);
    end;
    Assert(not Assigned(FNextEvent));
-   FMaterialPiles.Remove(MaterialPile);
+   FMaterialPiles.Replace(MaterialPile, nil);
    Pause();
    Assert(not FActive);
    Assert(not FDynamic);
@@ -1742,7 +1747,7 @@ begin
          CancelEvent(FNextEvent);
    end;
    Assert(not Assigned(FNextEvent));
-   FMaterialConsumers.Remove(MaterialConsumer);
+   FMaterialConsumers.Replace(MaterialConsumer, nil);
    Pause();
    Assert(not FActive);
    Assert(not FDynamic);
@@ -1766,7 +1771,7 @@ end;
 procedure TRegionFeatureNode.ReconsiderMaterialConsumer(MaterialConsumer: IMaterialConsumer);
 begin
    Writeln(DebugName, ' :: ReconsiderMaterialConsumer(', HexStr(MaterialConsumer), ')');
-   Assert(FMaterialConsumers.Has(MaterialConsumer));
+   Assert(FMaterialConsumers.Contains(MaterialConsumer));
    if (FDynamic) then
    begin
       Sync();
@@ -1798,8 +1803,7 @@ var
    Ore: TOres;
    TotalCapacity: Double;
 begin
-   Assert(Assigned(FOrePiles));
-   Assert(FOrePiles.Has(Pile));
+   Assert(FOrePiles.Contains(Pile));
    if (FDynamic) then
       Sync(); // TODO: mark all the assets as needing client updates
    TotalCapacity := GetTotalOrePileCapacity();

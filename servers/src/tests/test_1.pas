@@ -203,22 +203,24 @@ begin
    Verify(Assigned(Result));
 end;
 
-function GetAssetClassFromBuildingsList(List: TStringStreamReader; Target: UTF8String): Int32;
+function GetAssetClassFromBuildingsList(Response: TStringStreamReader; Target: UTF8String): Int32;
 begin
-   while (List.CanReadMore) do
+   Response.Rewind();
+   VerifyPositiveResponse(Response);
+   while (Response.CanReadMore) do
    begin
-      Result := List.ReadLongint();
-      List.ReadString(); // icon
-      if (List.ReadString() = Target) then // name
+      Result := Response.ReadLongint();
+      Response.ReadString(); // icon
+      if (Response.ReadString() = Target) then // name
       begin
          // found building, exit
-         List.Bail();
+         Response.Bail();
          exit;
       end;
-      List.ReadString(); // description
+      Response.ReadString(); // description
    end;
    Result := 0;
-   raise Exception.CreateFmt('could not find "%s" in server buildings list (%s)', [Target, List.DebugMessage]);
+   raise Exception.CreateFmt('could not find "%s" in server buildings list (%s)', [Target, Response.DebugMessage]);
 end;
 
 procedure TTest.RunTestBody();
@@ -250,7 +252,7 @@ var
    ColonyShip, HomeRegion, Miner: TModelAsset;
    DrillBit: TModelMiningFeature;
    Grid: TModelGridFeature;
-   AssetClass: Int32;
+   AssetClass, AssetClass2: Int32;
    Scores: TBinaryStreamReader;
 begin
    // Check high scores with no players.
@@ -273,21 +275,6 @@ begin
    DynastyServerURL := Response.ReadString();
    Token := Response.ReadString();
    Verify(DynastyServerURL = 'wss://127.0.0.1:40001/');
-   VerifyEndOfResponse(Response);
-
-   // Check high scores.
-   LoginServer.SendWebSocketStringMessage('0'#00'get-high-scores'#00);
-   Scores := LoginServer.GetStreamReader(LoginServer.ReadWebSocketBinaryMessage());
-   Verify(Scores.ReadCardinal() = 0); // high score marker
-   Verify(Scores.ReadCardinal() = 1); // dynasty
-   Verify(Scores.ReadCardinal() = 1); // last data point
-   Verify(Scores.ReadCardinal() = 1); // number of data points
-   Verify(Scores.ReadInt64() = 0); // system start time
-   Verify(Scores.ReadDouble() = 100.0); // default happiness
-   Scores.ReadEnd();
-   FreeAndNil(Scores);
-   Response := TStringStreamReader.Create(LoginServer.ReadWebSocketStringMessage());
-   VerifyPositiveResponse(Response);
    VerifyEndOfResponse(Response);
 
    // Check with dynasty server.
@@ -313,6 +300,23 @@ begin
 
    SystemsServerIPC := FSystemsServers[0].ConnectIPCSocket();
    LoginServerIPC := FLoginServer.ConnectIPCSocket();
+
+   LoginServerIPC.AwaitScores(1);
+   
+   // Check high scores.
+   LoginServer.SendWebSocketStringMessage('0'#00'get-high-scores'#00);
+   Scores := LoginServer.GetStreamReader(LoginServer.ReadWebSocketBinaryMessage());
+   Verify(Scores.ReadCardinal() = 0); // high score marker
+   Verify(Scores.ReadCardinal() = 1); // dynasty
+   Verify(Scores.ReadCardinal() = 1); // last data point
+   Verify(Scores.ReadCardinal() = 1); // number of data points
+   Verify(Scores.ReadInt64() = 0); // system start time
+   Verify(Scores.ReadDouble() = 100.0); // default happiness
+   Scores.ReadEnd();
+   FreeAndNil(Scores);
+   Response := TStringStreamReader.Create(LoginServer.ReadWebSocketStringMessage());
+   VerifyPositiveResponse(Response);
+   VerifyEndOfResponse(Response);
 
    ModelSystem := TModelSystem.Create();
    MinTime := 0;
@@ -381,7 +385,8 @@ begin
    with (specialize GetUpdatedFeature<TModelMiningFeature>(ModelSystem)) do
    begin
       Verify(CurrentRate = Double(0.001));
-      Verify(Flags = %00000011); // enabled, active
+      Verify(DisabledReasons = %00000000);
+      Verify(Flags = %00000000);
    end;
    with (specialize GetUpdatedFeature<TModelOrePileFeature>(ModelSystem)) do
    begin
@@ -395,7 +400,8 @@ begin
    with (specialize GetUpdatedFeature<TModelMiningFeature>(ModelSystem)) do
    begin
       Verify(CurrentRate = 0.0);
-      Verify(Flags = %00001011); // enabled, active, but rate limited by target
+      Verify(DisabledReasons = %00000000);
+      Verify(Flags = %00000010); // rate limited by target
    end;
    with (specialize GetUpdatedFeature<TModelOrePileFeature>(ModelSystem)) do
    begin
@@ -431,7 +437,8 @@ begin
    with (specialize GetUpdatedFeature<TModelMiningFeature>(ModelSystem)) do
    begin
       Verify(CurrentRate = Double(0.001));
-      Verify(Flags = %00000011); // enabled, active
+      Verify(DisabledReasons = %00000000);
+      Verify(Flags = %00000000);
    end;
    with (specialize GetUpdatedFeature<TModelOrePileFeature>(ModelSystem, 0)) do
    begin
@@ -453,7 +460,8 @@ begin
    begin
       Miner := ModelSystem.Assets[Parent.ID];
       Verify(CurrentRate = 0.0);
-      Verify(Flags = %00001011); // enabled, active, but rate limited by target
+      Verify(DisabledReasons = %00000000);
+      Verify(Flags = %00000010); // rate limited by target
    end;
    with (specialize GetUpdatedFeature<TModelOrePileFeature>(ModelSystem, 0)) do
    begin
@@ -478,7 +486,8 @@ begin
    with (specialize GetUpdatedFeature<TModelMiningFeature>(ModelSystem)) do
    begin
       Verify(CurrentRate = 0.0);
-      Verify(Flags = %00000000); // disabled, inactive
+      Verify(DisabledReasons = %00000001); // this is the miner we disabled
+      Verify(Flags = %00000000);
    end;
    with (specialize GetUpdatedFeature<TModelOrePileFeature>(ModelSystem, 0)) do
    begin
@@ -509,6 +518,7 @@ begin
    with (specialize GetUpdatedFeature<TModelMiningFeature>(ModelSystem)) do
    begin
       Verify(CurrentRate = 0.0);
+      Verify(DisabledReasons = %00000001); // still disabled
       Verify(Flags = %00000000);
    end;
    with (specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem)) do
@@ -523,7 +533,8 @@ begin
    begin
       Verify(Ore = 12);
       Verify(MaxRate = Double(1000 / 3.6e6));
-      Verify(Flags = %0011);
+      Verify(DisabledReasons = %00000000);
+      Verify(Flags = %00000000);
       Verify(CurrentRate = Double(1000 / 3.6e6));
    end;
    with (specialize GetUpdatedFeature<TModelOrePileFeature>(ModelSystem, 0)) do
@@ -545,7 +556,7 @@ begin
    ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 3);
    Verify(ModelSystem.CurrentTime < MaxTime);
    Verify(Miner = ModelSystem.GetUpdatedAssets()[0]);
-   Verify(Miner.FeatureCount = 2);
+   Verify(Miner.FeatureCount = 3);
    with (Miner) do
    begin
       Verify(Owner = 1);
@@ -559,7 +570,8 @@ begin
    begin
       Verify(Parent = Miner);
       Verify(CurrentRate = 0.0);
-      Verify(Flags = %00000000); // still disabled
+      Verify(DisabledReasons = %00000001); // still disabled
+      Verify(Flags = %00000000);
    end;
    with (specialize GetUpdatedFeature<TModelOrePileFeature>(ModelSystem, 0)) do
    begin
@@ -585,7 +597,7 @@ begin
       Verify(Capacity = 3000000.0);
       Verify(PileMassFlowRate = 0.0);
    end;
-   Verify(ModelSystem.GetUpdatedAssets()[2].FeatureCount = 2);
+   Verify(ModelSystem.GetUpdatedAssets()[2].FeatureCount = 3);
    with (ModelSystem.GetUpdatedAssets()[2]) do
    begin
       Verify(Owner = 1);
@@ -599,7 +611,8 @@ begin
    begin
       Verify(Parent = ModelSystem.GetUpdatedAssets()[2]);
       Verify(Ore = 12);
-      Verify(Flags = %00001011);
+      Verify(DisabledReasons = %00000000);
+      Verify(Flags = %00000010);
       Verify(CurrentRate = 0.0);
    end;
    with (specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem)) do
@@ -640,13 +653,14 @@ begin
    VerifyPositiveResponse(Response);
    TimePinned := True;
    AssetClass := GetAssetClassFromBuildingsList(Response, 'Silicon Table');
+   AssetClass2 := GetAssetClassFromBuildingsList(Response, 'Builder rally point');
    FreeAndNil(Response);
    SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.ID) + #00'build'#00'2'#00'1'#00 + IntToStr(AssetClass) + #00);
    Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
    VerifyPositiveResponse(Response);
-   TimePinned := True;
    FreeAndNil(Response);
-   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 5); // the grid, the piles, and the new table (not the drill)
+   TimePinned := True;
+   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 5); // the grid, the piles, the new table; not the drill
    Verify(ModelSystem.CurrentTime = MaxTime);
    with (specialize GetUpdatedFeature<TModelStructureFeature>(ModelSystem)) do
    begin
@@ -664,13 +678,59 @@ begin
    with (specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem, 1)) do
    begin
       Verify(PileMass = 0);
-      Verify(PileMassFlowRate > 0);
+      Verify(PileMassFlowRate = 0);
       Verify(MaterialName = 'Silicon');
+   end;
+   with (specialize GetUpdatedFeature<TModelBuilderFeature>(ModelSystem, 0)) do
+   begin
+      Verify(Structures.Length = 1);
+      Verify(Capacity = 1);
+      Verify(Rate = 100.0 / (60.0 * 60.0 * 1000.0));
+   end;
+   
+   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.ID) + #00'build'#00'0'#00'2'#00 + IntToStr(AssetClass2) + #00);
+   Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
+   VerifyPositiveResponse(Response);
+   FreeAndNil(Response);
+   
+   TimePinned := True;
+   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 6); // the grid, the piles, the new table, the new rally point; still not the drill
+   Verify(ModelSystem.CurrentTime = MaxTime);
+   with (specialize GetUpdatedFeature<TModelStructureFeature>(ModelSystem)) do
+   begin
+      Verify(Hp = 0);
+      Verify(HpRate > 0);
+      Verify(Quantity = 1); // instant fill from iron table
+      Verify(QuantityRate > 0);
+   end;
+   with (specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem, 0)) do
+   begin
+      Verify(PileMass = 0); // it all went into the silicon table
+      Verify(PileMassFlowRate = 0); // we're using it all right away
+      Verify(MaterialName = 'Iron');
+   end;
+   with (specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem, 1)) do
+   begin
+      Verify(PileMass = 0);
+      Verify(PileMassFlowRate = 0);
+      Verify(MaterialName = 'Silicon');
+   end;
+   with (specialize GetUpdatedFeature<TModelBuilderFeature>(ModelSystem, 0)) do
+   begin
+      Verify(Structures.Length = 1);
+      Verify(Capacity = 1);
+      Verify(Rate = 100.0 / (60.0 * 60.0 * 1000.0));
+   end;
+   with (specialize GetUpdatedFeature<TModelBuilderFeature>(ModelSystem, 1)) do
+   begin
+      Verify(Structures.Length = 0);
+      Verify(Capacity = 1);
+      Verify(Rate = 100.0 / (60.0 * 60.0 * 1000.0));
    end;
 
    // One day later.
    AdvanceTime(1 * Days div TimeFactor);
-   // This is when the table is fully built.
+   // This is when the table turns on.
    ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 4); // the piles and the structure
    Verify(DrillBit <> specialize GetUpdatedFeature<TModelMiningFeature>(ModelSystem));
    with (specialize GetUpdatedFeature<TModelMiningFeature>(ModelSystem)) do
@@ -687,20 +747,31 @@ begin
    begin
       Verify(PileMassFlowRate = Parent.MassFlowRate);
    end;
+   with (specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem, 0)) do
+   begin
+      Verify(PileMassFlowRate = Parent.MassFlowRate);
+   end;
+   with (specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem, 1)) do
+   begin
+      Verify(PileMassFlowRate = 0.0);
+      Verify(Parent.MassFlowRate > 0.0);
+   end;
    with (specialize GetUpdatedFeature<TModelStructureFeature>(ModelSystem)) do
    begin
       Verify(Hp = 2);
       Verify(HpRate > 0);
-      Verify(Quantity = 3);
-      Verify(QuantityRate = 0);
+      Verify(Quantity = 2);
+      Verify(QuantityRate > 0);
+      Verify(Parent.MassFlowRate > 0.0);
    end;
+   Verify(specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem, 1).Parent = specialize GetUpdatedFeature<TModelStructureFeature>(ModelSystem).Parent);
    Verify(specialize GetUpdatedFeature<TModelOrePileFeature>(ModelSystem, 0).PileMassFlowRate
         + specialize GetUpdatedFeature<TModelOrePileFeature>(ModelSystem, 1).PileMassFlowRate
         + specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem, 0).PileMassFlowRate
-        + specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem, 1).PileMassFlowRate
+        + specialize GetUpdatedFeature<TModelStructureFeature>(ModelSystem, 0).Parent.MassFlowRate
         - DrillBit.CurrentRate = 0.0);
 
-   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 1); // structure completes building
+   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 4); // structure completes building
    with (specialize GetUpdatedFeature<TModelStructureFeature>(ModelSystem)) do
    begin
       Verify(Hp = 3);
