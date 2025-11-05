@@ -249,7 +249,7 @@ begin
    Assert(Rate.IsZero);
    Assert(not SourceLimiting);
    Assert(not TargetLimiting);
-   Include(FDisabledReasons, drNoRegion);
+   Include(FDisabledReasons, drNoBus);
 end;
 
 procedure TRegionClientFields.Reset();
@@ -258,7 +258,7 @@ begin
    FRate := TRate.Zero;
    FSourceLimiting := False;
    FTargetLimiting := False;
-   Exclude(FDisabledReasons, drNoRegion);
+   Exclude(FDisabledReasons, drNoBus);
 end;
 
 

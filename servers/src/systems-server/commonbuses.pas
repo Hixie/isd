@@ -11,7 +11,7 @@ type
    TDisabledReason = (
       drManuallyDisabled, // Manually disabled.
       drStructuralIntegrity, // Structural integrity has not yet reached minimum functional threshold.
-      drNoRegion // not usually used with TCheckDisabledBusMessage, but indicates no TRegionFeatureNode could be reached.
+      drNoBus // not usually used with TCheckDisabledBusMessage, but indicates no appropriate bus could be reached (e.g. TRegionFeatureNode for mining/refining, or TBuilderBusFeatureNode for builders).
    );
    TDisabledReasons = set of TDisabledReason;
    

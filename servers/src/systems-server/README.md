@@ -1017,7 +1017,7 @@ preceding sensor.
 #### `fcBuilder` (0x1A)
 
 ```bnf
-<featuredata>       ::= <capacity> <rate> <structure>* <zero32>
+<featuredata>       ::= <capacity> <rate> <disabled> <structure>* <zero32>
 <capacity>          ::= <uint32>
 <rate>              ::= <double> ; units per millisecond
 <structure>         ::= <assetid>
@@ -1034,8 +1034,11 @@ build) structures (this rate may be limited by available resources).
 It specifies the number of `<hp>` that the builder can increase a
 structure by, per millisecond.
 
+The `<disabled>` bit field has bits that specify why the feature is
+not building, if applicable. It is defined in its own section below.
+
 The list of `<structure>`s is the assets currently being built by this
-asset.
+asset. It is empty if `<disabled>` is non-zero.
 
 This feature is only sent to the client if the dynasty has access to
 the asset's internals.
@@ -1100,7 +1103,12 @@ follows.
    0 (LSB) : The asset was manually disabled (see `fcOnOff` feature).
    1       : The asset's structural integrity has not yet reached the
              minimum functional threshold (see `fcStructure` feature).
-   2       : The asset expects to be in an `fcRegion`, but is not.
+   2       : The asset could not find a coordinating asset. For
+             example, `fcMining` and `fcRefining` features need an
+             ancestor asset with an `fcRegion` feature. This can also
+             be reported by `fcBuilder` (there is no feature in the
+             protocol that corresponds to the one builders need, but
+             it is often also present on features with `fcRegion`).
    3       : reserved, always zero
    ...
    31 (MSB): reserved, always zero

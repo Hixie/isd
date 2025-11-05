@@ -352,6 +352,8 @@ begin
    ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 'Iron team'#10);
    ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 'Silicon'#10);
 
+   LoginServerIPC.AwaitScores(2);
+
    // Check high scores.
    LoginServer.SendWebSocketStringMessage('0'#00'get-high-scores'#00);
    Scores := LoginServer.GetStreamReader(LoginServer.ReadWebSocketBinaryMessage());
@@ -665,14 +667,14 @@ begin
    with (specialize GetUpdatedFeature<TModelStructureFeature>(ModelSystem)) do
    begin
       Verify(Hp = 0);
-      Verify(HpRate > 0);
-      Verify(Quantity = 1); // instant fill from iron table
-      Verify(QuantityRate > 0);
+      Verify(HpRate = 0);
+      Verify(Quantity = 0);
+      Verify(QuantityRate = 0);
    end;
    with (specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem, 0)) do
    begin
-      Verify(PileMass = 0); // it all went into the silicon table
-      Verify(PileMassFlowRate = 0); // we're using it all right away
+      Verify(PileMass = 1000.0);
+      Verify(PileMassFlowRate = 0);
       Verify(MaterialName = 'Iron');
    end;
    with (specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem, 1)) do
@@ -683,9 +685,10 @@ begin
    end;
    with (specialize GetUpdatedFeature<TModelBuilderFeature>(ModelSystem, 0)) do
    begin
-      Verify(Structures.Length = 1);
+      Verify(Structures.Length = 0);
       Verify(Capacity = 1);
       Verify(Rate = 100.0 / (60.0 * 60.0 * 1000.0));
+      Verify(DisabledReasons = %00000010); // not built yet
    end;
    
    SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.ID) + #00'build'#00'0'#00'2'#00 + IntToStr(AssetClass2) + #00);
@@ -717,15 +720,17 @@ begin
    end;
    with (specialize GetUpdatedFeature<TModelBuilderFeature>(ModelSystem, 0)) do
    begin
-      Verify(Structures.Length = 1);
-      Verify(Capacity = 1);
-      Verify(Rate = 100.0 / (60.0 * 60.0 * 1000.0));
-   end;
-   with (specialize GetUpdatedFeature<TModelBuilderFeature>(ModelSystem, 1)) do
-   begin
       Verify(Structures.Length = 0);
       Verify(Capacity = 1);
       Verify(Rate = 100.0 / (60.0 * 60.0 * 1000.0));
+      Verify(DisabledReasons = %00000010); // not built yet
+   end;
+   with (specialize GetUpdatedFeature<TModelBuilderFeature>(ModelSystem, 1)) do
+   begin
+      Verify(Structures.Length = 1);
+      Verify(Capacity = 1);
+      Verify(Rate = 100.0 / (60.0 * 60.0 * 1000.0));
+      Verify(DisabledReasons = %00000000);
    end;
 
    // One day later.

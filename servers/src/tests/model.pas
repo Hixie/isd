@@ -510,11 +510,13 @@ type
    strict private
       FCapacity: UInt32;
       FRate: Double;
+      FDisabledReasons: Cardinal;
    public
       Structures: specialize PlasticArray <UInt32, specialize IncomparableUtils<UInt32>>;
    published
       property Capacity: UInt32 read FCapacity write FCapacity;
       property Rate: Double read FRate write FRate;
+      property DisabledReasons: Cardinal read FDisabledReasons write FDisabledReasons;
    end;
 
    TModelInternalSensorFeature = class (TModelFeature)
@@ -1464,6 +1466,7 @@ var
 begin
    Capacity := Stream.ReadCardinal();
    Rate := Stream.ReadDouble();
+   DisabledReasons := Stream.ReadCardinal();
    Structures.Empty();
    while True do
    begin

@@ -6,7 +6,8 @@ interface
 
 uses
    sysutils, systems, systemdynasty, serverstream, materials,
-   techtree, tttokenizer, time, hashsettight, hashtable, genericutils;
+   techtree, tttokenizer, time, hashsettight, hashtable, genericutils,
+   commonbuses;
 
 type
    EInvalidMaterialProvision = class(Exception) end;
@@ -176,14 +177,12 @@ type
 
    // TODO: handle our ancestor chain changing - we need to disconnect structures, for example
 
-   TBuilderMode = (bmIdle, bmConnecting, bmConnected, bmNoBus);
-
    TBuilderFeatureNode = class(TFeatureNode)
    strict private
       FFeatureClass: TBuilderFeatureClass;
+      FDisabledReasons: TDisabledReasons;
       FBus: TBuilderBusFeatureNode;
       FStructures: TStructureHashSet;
-      FMode: TBuilderMode; // TODO: this could be merged with FBus by using a special value like PtrUInt(-1) to mean "no bus"
       FPriority: TPriority; // TODO: must be reset to zero whenever the bus changes (including to/from nil)
       function GetCapacity(): Cardinal; inline;
    protected
@@ -1017,7 +1016,6 @@ begin
    begin
       FBus.RemoveBuilder(Self);
       FBus := nil;
-      FMode := bmIdle;
    end;
    FStructures.Free();
    inherited;
@@ -1032,16 +1030,17 @@ procedure TBuilderFeatureNode.HandleChanges(CachedSystem: TSystem);
 var
    Message: TRegisterBuilderMessage;
 begin
-   if (FMode = bmIdle) then
+   FDisabledReasons := CheckDisabled(Parent);
+   if ((FDisabledReasons <> []) and (Assigned(FBus))) then
    begin
-      Assert(not Assigned(FBus));
-      FMode := bmConnecting;
+      FBus.RemoveBuilder(Self);
+      FBus := nil;
+   end;
+   if ((FDisabledReasons = []) and (not Assigned(FBus))) then
+   begin
       Message := TRegisterBuilderMessage.Create(Self);
       if (InjectBusMessage(Message) <> mrHandled) then
-      begin
-         Assert(not Assigned(FBus));
-         FMode := bmNoBus;
-      end;
+         Include(FDisabledReasons, drNoBus);
       FreeAndNil(Message);
    end;
    inherited;
@@ -1058,6 +1057,7 @@ begin
       Writer.WriteCardinal(fcBuilder);
       Writer.WriteCardinal(Capacity);
       Writer.WriteDouble(FFeatureClass.BuildRate.AsDouble);
+      Writer.WriteCardinal(Cardinal(FDisabledReasons));
       if (Assigned(FStructures)) then
          for Structure in FStructures do
             Writer.WriteCardinal(Structure.GetAsset().ID(CachedSystem, DynastyIndex));
@@ -1079,7 +1079,6 @@ procedure TBuilderFeatureNode.BuilderBusConnected(Bus: TBuilderBusFeatureNode); 
 begin
    Writeln(DebugName, ' :: BuilderBusConnected(', Bus.DebugName, ')');
    FBus := Bus;
-   FMode := bmConnected;
    if (not Assigned(FStructures)) then
       FStructures := TStructureHashSet.Create();
    Assert(FStructures.IsEmpty);
@@ -1118,7 +1117,6 @@ begin
    Assert(Assigned(FStructures));
    Writeln(DebugName, ' @ ', HexStr(Self), ' :: BuilderBusReset from ', FBus.ClassName, ' ', FBus.DebugName);
    FBus := nil;
-   FMode := bmIdle;
    for Structure in FStructures do
       Structure.StopBuilding();
    FreeAndNil(FStructures);
