@@ -35,7 +35,7 @@ type
       constructor Create(AProvider: IProvider);
       property Provider: IProvider read FProvider;
    end;
-
+   
 implementation
 
 constructor TRegisterProviderBusMessage.Create(AProvider: IProvider);

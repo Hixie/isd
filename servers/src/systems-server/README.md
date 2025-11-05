@@ -1095,13 +1095,13 @@ asset owner):
 Some features can be disabled, either manually or because they're out
 of resources or for some other reason. Such features often have a
 `<disabled>` bit field, which is 32 bits wide. The bits are defined as
-follows; the features given in parentheses are the features that
-contribute the bit:
+follows.
 
-   0 (LSB) : The asset was manually disabled (`fcOnOff` feature).
+   0 (LSB) : The asset was manually disabled (see `fcOnOff` feature).
    1       : The asset's structural integrity has not yet reached the
-             minimum functional threshold (`fcStructure` feature).
-   2       : reserved, always zero
+             minimum functional threshold (see `fcStructure` feature).
+   2       : The asset expects to be in an `fcRegion`, but is not.
+   3       : reserved, always zero
    ...
    31 (MSB): reserved, always zero
 

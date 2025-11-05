@@ -117,7 +117,7 @@ type
 implementation
 
 uses
-   sysutils, isdprotocol, exceptions, rubble, plasticarrays, genericutils, math, onoff;
+   sysutils, isdprotocol, exceptions, rubble, plasticarrays, genericutils, math, commonbuses;
 
 constructor TMaterialLineItem.Create(AComponentName: UTF8String; AMaterial: TMaterial; AQuantity: Cardinal);
 begin
@@ -416,11 +416,10 @@ var
    Index: Cardinal;
    LineItem: TMaterialLineItem;
 begin
-   if (Message is TEnableCheckBusMessage) then
+   if (Message is TCheckDisabledBusMessage) then
    begin
-      Result := Assigned(FBuildingState) and (FBuildingState^.StructuralIntegrity < FFeatureClass.MinimumFunctionalQuantity);
-      if (Result) then
-         (Message as TEnableCheckBusMessage).AddReason(drStructuralIntegrity);
+      if (Assigned(FBuildingState) and (FBuildingState^.StructuralIntegrity < FFeatureClass.MinimumFunctionalQuantity)) then
+         (Message as TCheckDisabledBusMessage).AddReason(drStructuralIntegrity);
    end
    else
    if (Message is TRubbleCollectionMessage) then

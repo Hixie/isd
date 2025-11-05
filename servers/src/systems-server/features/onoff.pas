@@ -30,18 +30,11 @@ type
       function HandleCommand(Command: UTF8String; var Message: TMessage): Boolean; override;
    end;
 
-   TEnableCheckBusMessage = class(TBusMessage)
-   strict private
-      FReasons: TDisabledReasons;
-   public
-      procedure AddReason(Reason: TDisabledReason);
-      property Reasons: TDisabledReasons read FReasons;
-   end; // should be injected using Parent.HandleBusMessage; mark as handled to indicate asset is disabled
-   
 implementation
 
 uses
-   exceptions, sysutils, systemnetwork, systemdynasty, isderrors, knowledge, messages, typedump;
+   exceptions, sysutils, systemnetwork, systemdynasty, isderrors,
+   knowledge, messages, typedump, commonbuses;
 
 constructor TOnOffFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
 begin
@@ -67,11 +60,10 @@ end;
 
 function TOnOffFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
 begin
-   if (Message is TEnableCheckBusMessage) then
+   if (Message is TCheckDisabledBusMessage) then
    begin
-      Result := not FEnabled;
-      if (Result) then
-         (Message as TEnableCheckBusMessage).AddReason(drManuallyDisabled);
+      if (not FEnabled) then
+         (Message as TCheckDisabledBusMessage).AddReason(drManuallyDisabled);
    end
    else
       Result := inherited;
@@ -154,12 +146,6 @@ begin
    end
    else
       Result := inherited;
-end;
-
-
-procedure TEnableCheckBusMessage.AddReason(Reason: TDisabledReason);
-begin
-   Include(FReasons, Reason);
 end;
 
 initialization

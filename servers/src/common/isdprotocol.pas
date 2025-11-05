@@ -59,13 +59,6 @@ const
    fcInternalSensorStatus = $1C;
    fcOnOff = $1D;
    fcHighestKnownFeatureCode = fcOnOff;
-
-type
-   TDisabledReason = (
-      drManuallyDisabled, // Manually disabled.
-      drStructuralIntegrity // Structural integrity has not yet reached minimum functional threshold.
-   );
-   TDisabledReasons = set of TDisabledReason;
    
 {$IFOPT C+}
 // Stdout control codes for tests.

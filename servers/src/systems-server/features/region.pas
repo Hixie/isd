@@ -7,26 +7,35 @@ interface
 {$DEFINE VERBOSE}
 
 uses
-   systems, serverstream, techtree, materials, time, providers, isdprotocol, plasticarrays, genericutils;
+   systems, serverstream, techtree, materials, time, providers,
+   isdprotocol, plasticarrays, genericutils, commonbuses;
 
 type
    TRegionFeatureNode = class;
 
-   TRegionClientMode = (rcIdle, rcPending, rcActive, rcNoRegion);
    TRegionClientFields = packed record
    strict private
-      function GetEnabled(): Boolean; inline;
+      FRegion: TRegionFeatureNode; // 8 bytes
+      FDisabledReasons: TDisabledReasons; // 4 bytes
+      FRate: TRate; // 8 bytes
+      FSourceLimiting, FTargetLimiting: Boolean; // 1 byte
+      function GetNeedsConnection(): Boolean; inline;
+      function GetConnected(): Boolean; inline;
    public
-      Region: TRegionFeatureNode; // 8 bytes
-      Rate: TRate; // 8 bytes
-      DisabledReasons: TDisabledReasons;
-      SourceLimiting, TargetLimiting: Boolean;
-      Mode: TRegionClientMode;
-      procedure Enable();
-      procedure Disable(Reasons: TDisabledReasons);
-      property Enabled: Boolean read GetEnabled;
-   end;
-   {$IF SIZEOF(TRegionClientMode) > 3*8} {$FATAL} {$ENDIF}
+      property DisabledReasons: TDisabledReasons read FDisabledReasons;
+      property NeedsConnection: Boolean read GetNeedsConnection;
+      property Connected: Boolean read GetConnected;
+      property Region: TRegionFeatureNode read FRegion;
+      property Rate: TRate read FRate;
+      property SourceLimiting: Boolean read FSourceLimiting;
+      property TargetLimiting: Boolean read FTargetLimiting;
+   public
+      procedure SetDisabledReasons(Value: TDisabledReasons);
+      function Update(ARegion: TRegionFeatureNode; ARate: TRate; ASourceLimiting, ATargetLimiting: Boolean): Boolean; // returns whether anything changed
+      procedure SetNoRegion(); inline;
+      procedure Reset();
+   end; 
+   {$IF SIZEOF(TRegionClientFields) > 3*8} {$FATAL} {$ENDIF}
 
    IMiner = interface ['IMiner']
       function GetMinerMaxRate(): TRate; // kg per second
@@ -197,24 +206,59 @@ implementation
 uses
    sysutils, planetary, exceptions, messages, isdnumbers, math, hashfunctions;
 
-procedure TRegionClientFields.Disable(Reasons: TDisabledReasons);
+   
+function TRegionClientFields.GetNeedsConnection(): Boolean;
 begin
-   Region := nil;
-   Rate := TRate.Zero;
-   DisabledReasons := Reasons;
-   SourceLimiting := False;
-   TargetLimiting := False;
-   Mode := rcIdle;
+   Result := (not Assigned(FRegion)) and (FDisabledReasons = []);
 end;
 
-procedure TRegionClientFields.Enable();
+function TRegionClientFields.GetConnected(): Boolean;
 begin
-   DisabledReasons := [];
+   Result := Assigned(FRegion);
 end;
 
-function TRegionClientFields.GetEnabled(): Boolean;
+procedure TRegionClientFields.SetDisabledReasons(Value: TDisabledReasons);
 begin
-   Result := DisabledReasons = [];
+   FDisabledReasons := Value;
+   FRegion := nil;
+   FRate := TRate.Zero;
+   FSourceLimiting := False;
+   FTargetLimiting := False;
+end;
+
+function TRegionClientFields.Update(ARegion: TRegionFeatureNode; ARate: TRate; ASourceLimiting, ATargetLimiting: Boolean): Boolean;
+begin
+   Assert(Assigned(ARegion));
+   Assert(FDisabledReasons = []);
+   Result := (FRegion <> ARegion) or
+             (FRate <> ARate) or
+             (FSourceLimiting <> ASourceLimiting) or
+             (FTargetLimiting <> ATargetLimiting);
+   if (Result) then
+   begin
+      FRegion := ARegion;
+      FRate := ARate;
+      FSourceLimiting := ASourceLimiting;
+      FTargetLimiting := ATargetLimiting;
+   end;
+end;
+
+procedure TRegionClientFields.SetNoRegion();
+begin
+   Assert(FDisabledReasons = []);
+   Assert(Rate.IsZero);
+   Assert(not SourceLimiting);
+   Assert(not TargetLimiting);
+   Include(FDisabledReasons, drNoRegion);
+end;
+
+procedure TRegionClientFields.Reset();
+begin
+   FRegion := nil;
+   FRate := TRate.Zero;
+   FSourceLimiting := False;
+   FTargetLimiting := False;
+   Exclude(FDisabledReasons, drNoRegion);
 end;
 
 

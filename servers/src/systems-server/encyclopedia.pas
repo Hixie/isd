@@ -81,9 +81,9 @@ uses
    protoplanetary, time,
    // this must import every feature, so they get registered:
    builders, food, grid, gridsensor, internalsensor, knowledge,
-   materialpile, messages, mining, name, orbit, orepile, planetary,
-   plot, population, proxy, refining, region, research, rubble, size,
-   spacesensor, stellar, structure, surface;
+   materialpile, messages, mining, name, onoff, orbit, orepile,
+   planetary, plot, population, proxy, refining, region, research,
+   rubble, size, spacesensor, stellar, structure, surface;
 
 var
    InstructionManualText: UTF8String =

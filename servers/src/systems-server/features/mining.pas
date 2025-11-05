@@ -47,7 +47,7 @@ type
 implementation
 
 uses
-   exceptions, sysutils, isdprotocol, knowledge, messages, typedump, onoff;
+   exceptions, sysutils, isdprotocol, knowledge, messages, typedump, commonbuses;
 
 constructor TMiningFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
 begin
@@ -72,7 +72,6 @@ constructor TMiningFeatureNode.Create(AFeatureClass: TMiningFeatureClass);
 begin
    inherited Create();
    FFeatureClass := AFeatureClass;
-   FStatus.Enable();
 end;
 
 constructor TMiningFeatureNode.CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem);
@@ -101,81 +100,37 @@ procedure TMiningFeatureNode.StartMiner(Region: TRegionFeatureNode; Rate: TRate;
 begin
    Assert(Assigned(Region));
    Writeln('StartMiner(', Region.Parent.DebugName, ', ', Rate.ToString('kg'), ', ', SourceLimiting, ', ', TargetLimiting, ')');
-   Writeln('  FStatus.Region = ', HexStr(FStatus.Region));
-   Writeln('  FStatus.Mode = ', specialize EnumToString<TRegionClientMode>(FStatus.Mode));
-   Assert(FStatus.Enabled);
-   if ((FStatus.Region <> Region) or
-       (FStatus.Rate <> Rate) or
-       (FStatus.SourceLimiting <> SourceLimiting) or
-       (FStatus.TargetLimiting <> TargetLimiting)) then
+   if (FStatus.Update(Region, Rate, SourceLimiting, TargetLimiting)) then
       MarkAsDirty([dkUpdateClients]);
-   FStatus.Region := Region;
-   FStatus.Rate := Rate;
-   FStatus.SourceLimiting := SourceLimiting;
-   FStatus.TargetLimiting := TargetLimiting;
-   FStatus.Mode := rcActive;
 end;
 
 procedure TMiningFeatureNode.PauseMiner();
 begin
    Writeln('PauseMiner(', FStatus.Region.Parent.DebugName, ')');
-   FStatus.Mode := rcPending;
 end;
 
 procedure TMiningFeatureNode.StopMiner();
 begin
    Writeln('StopMiner(', FStatus.Region.Parent.DebugName, ')');
-   FStatus.Region := nil;
-   FStatus.Rate := TRate.Zero;
-   FStatus.SourceLimiting := False;
-   FStatus.TargetLimiting := False;
-   FStatus.Mode := rcIdle;
+   FStatus.Reset();
    MarkAsDirty([dkUpdateClients, dkNeedsHandleChanges]);
 end;
 
 procedure TMiningFeatureNode.HandleChanges(CachedSystem: TSystem);
 var
-   OnOffMessage: TEnableCheckBusMessage;
-   NewEnabled: Boolean;
+   DisabledReasons: TDisabledReasons;
    Message: TRegisterMinerBusMessage;
 begin
-   // check if we can turn on
-   OnOffMessage := TEnableCheckBusMessage.Create();
-   NewEnabled := not Parent.HandleBusMessage(OnOffMessage);
-   if (NewEnabled <> FStatus.Enabled) then
-   begin
-      if (NewEnabled) then
-      begin
-         Assert(FStatus.Mode = rcIdle);
-         FStatus.Enable();
-      end
-      else
-      begin
-         if (FStatus.Mode in [rcPending, rcActive]) then
-         begin
-            Assert(Assigned(FStatus.Region));
-            FStatus.Region.RemoveMiner(Self);
-         end;
-         FStatus.Disable(OnOffMessage.Reasons);
-         Assert(not Assigned(FStatus.Region));
-      end;
-   end;
-   FreeAndNil(OnOffMessage);
-
-   // register if necessary
-   if ((FStatus.Enabled) and (FStatus.Mode = rcIdle)) then
+   DisabledReasons := CheckDisabled(Parent);
+   if ((DisabledReasons <> []) and (FStatus.Connected)) then
+      FStatus.Region.RemoveMiner(Self);
+   if (DisabledReasons <> FStatus.DisabledReasons) then
+      FStatus.SetDisabledReasons(DisabledReasons);
+   if (FStatus.NeedsConnection) then
    begin
       Message := TRegisterMinerBusMessage.Create(Self);
-      if (InjectBusMessage(Message) = mrHandled) then
-      begin
-         Assert(FStatus.Mode = rcIdle);
-         FStatus.Mode := rcPending;
-      end
-      else
-      begin
-         Assert(FStatus.Mode = rcIdle);
-         FStatus.Mode := rcNoRegion;
-      end;
+      if (InjectBusMessage(Message) <> mrHandled) then
+         FStatus.SetNoRegion();
       FreeAndNil(Message);
    end;
    inherited;
@@ -189,8 +144,6 @@ begin
    Visibility := Parent.ReadVisibilityFor(DynastyIndex, CachedSystem);
    if ((dmDetectable * Visibility <> []) and (dmClassKnown in Visibility)) then
    begin
-      Assert(FStatus.Mode <> rcPending);
-      Assert((not FStatus.Enabled) or (FStatus.Mode <> rcIdle));
       Writer.WriteCardinal(fcMining);
       Writer.WriteDouble(FFeatureClass.FBandwidth.AsDouble);
       Writer.WriteCardinal(Cardinal(FStatus.DisabledReasons));
