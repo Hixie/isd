@@ -23,18 +23,14 @@ procedure Verify(Condition: Boolean);
 implementation
 
 uses
-   hashsettight, fileutils;
-
-type
-   TTestHashSet = specialize TObjectSet<TIsdTest>;
+   plasticarrays, genericutils, fileutils;
 
 var
-   Tests: TTestHashSet;
+   Tests: specialize PlasticArray<TIsdTest, PointerUtils>;
 
 procedure RegisterTest(Test: TIsdTest);
 begin
-   Assert(Assigned(Tests));
-   Tests.Add(Test);
+   Tests.Push(Test);
 end;
 
 procedure RunTests(BaseDirectory: UTF8String);
@@ -68,9 +64,8 @@ end;
 var
    Test: TIsdTest;
 initialization
-   Tests := TTestHashSet.Create();
+   Tests.Init();
 finalization
    for Test in Tests do
       Test.Free();
-   FreeAndNil(Tests);
 end.

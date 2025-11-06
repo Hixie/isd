@@ -393,16 +393,11 @@ end;
 function TStructureFeatureNode.GetMassFlowRate(): TRate;
 begin
    Result := TRate.Zero;
-   Writeln(DebugName, ' considering mass flow rate.');
    if (Assigned(FBuildingState) and FBuildingState^.MaterialsQuantityRate.IsNotZero) then
    begin
-      Writeln('  we are building, using ', FBuildingState^.PendingMaterial.Name);
-      Writeln('  quantity rate: ', FBuildingState^.MaterialsQuantityRate.ToString('units'));
-      Writeln('  mass per unit: ', FBuildingState^.PendingMaterial.MassPerUnit);
       Assert(Assigned(FBuildingState^.PendingMaterial));
       Result := FBuildingState^.MaterialsQuantityRate * FBuildingState^.PendingMaterial.MassPerUnit;
    end;
-   Writeln('  result: ', Result.ToString('kg'));
 end;
 
 function TStructureFeatureNode.GetSize(): Double;
@@ -418,6 +413,7 @@ var
 begin
    if (Message is TCheckDisabledBusMessage) then
    begin
+      Result := False;
       if (Assigned(FBuildingState) and (FBuildingState^.StructuralIntegrity < FFeatureClass.MinimumFunctionalQuantity)) then
          (Message as TCheckDisabledBusMessage).AddReason(drStructuralIntegrity);
    end
@@ -1021,8 +1017,29 @@ begin
    end;
    if (FBuildingState^.StructuralIntegrity < FFeatureClass.MinimumFunctionalQuantity) then
    begin
-      TimeUntilMaterialFunctional := (FBuildingState^.MaterialsQuantity - FFeatureClass.MinimumFunctionalQuantity) / FBuildingState^.MaterialsQuantityRate;
-      TimeUntilIntegrityFunctional := (FBuildingState^.StructuralIntegrity - FFeatureClass.MinimumFunctionalQuantity) / FBuildingState^.MaterialsQuantityRate;
+      if (FBuildingState^.MaterialsQuantity < FFeatureClass.MinimumFunctionalQuantity) then
+      begin
+         if (FBuildingState^.MaterialsQuantityRate.IsZero) then
+         begin
+            TimeUntilMaterialFunctional := TMillisecondsDuration.Infinity;
+         end
+         else
+         begin
+            TimeUntilMaterialFunctional := (FBuildingState^.MaterialsQuantity - FFeatureClass.MinimumFunctionalQuantity) / FBuildingState^.MaterialsQuantityRate;
+         end;
+      end
+      else
+      begin
+         TimeUntilMaterialFunctional := TMillisecondsDuration.Zero;
+      end;
+      if (FBuildingState^.StructuralIntegrityRate.IsZero) then
+      begin
+         TimeUntilMaterialFunctional := TMillisecondsDuration.Infinity;
+      end
+      else
+      begin
+         TimeUntilIntegrityFunctional := (FBuildingState^.StructuralIntegrity - FFeatureClass.MinimumFunctionalQuantity) / FBuildingState^.StructuralIntegrityRate;
+      end;
       if (TimeUntilMaterialFunctional > TimeUntilIntegrityFunctional) then
          TimeUntilIntegrityFunctional := TimeUntilMaterialFunctional;
       if ((TimeUntilIntegrityFunctional.IsPositive) and (TimeUntilIntegrityFunctional < RemainingTime)) then
@@ -1096,7 +1113,7 @@ begin
       else
       if (not Assigned(FBuildingState^.PendingMaterial)) then
       begin
-         Writeln(DebugName, ' HandleEvent - have pending material!');
+         Writeln(DebugName, ' HandleEvent - no pending material!');
          // we still have materials to get, but we don't yet know what is next
          Assert(FBuildingState^.PendingQuantity = 0); // reset by DeliverMaterialConsumer
          FBuildingState^.Region.ReconsiderMaterialConsumer(Self);
@@ -1113,7 +1130,6 @@ begin
          Writeln(DebugName, '   quantity: ', FBuildingState^.PendingQuantity);
          Writeln(DebugName, '   rate: ', FBuildingState^.MaterialsQuantityRate.ToString('units'));
          Assert(FBuildingState^.PendingQuantity > 0);
-         Assert(FBuildingState^.MaterialsQuantityRate.IsNotZero);
          Assert(FBuildingState^.StructuralIntegrity < FFeatureClass.TotalQuantity);
          Assert(FBuildingState^.StructuralIntegrityRate.IsNotZero);
          {$IFOPT C+} FBuildingState^.AnchorTime := TTimeInMilliseconds.NegInfinity; {$ENDIF}

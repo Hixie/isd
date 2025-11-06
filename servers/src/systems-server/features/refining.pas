@@ -144,7 +144,10 @@ begin
    if ((DisabledReasons <> []) and (FStatus.Connected)) then
       FStatus.Region.RemoveRefinery(Self);
    if (DisabledReasons <> FStatus.DisabledReasons) then
+   begin
       FStatus.SetDisabledReasons(DisabledReasons);
+      MarkAsDirty([dkUpdateClients]);
+   end;
    if (FStatus.NeedsConnection) then
    begin
       Message := TRegisterRefineryBusMessage.Create(Self);

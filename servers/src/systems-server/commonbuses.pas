@@ -27,7 +27,8 @@ function CheckDisabled(Asset: TAssetNode): TDisabledReasons;
 
 implementation
 
-uses sysutils;
+uses
+   sysutils;
 
 procedure TCheckDisabledBusMessage.AddReason(Reason: TDisabledReason);
 begin

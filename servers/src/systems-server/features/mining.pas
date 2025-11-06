@@ -125,7 +125,10 @@ begin
    if ((DisabledReasons <> []) and (FStatus.Connected)) then
       FStatus.Region.RemoveMiner(Self);
    if (DisabledReasons <> FStatus.DisabledReasons) then
+   begin
       FStatus.SetDisabledReasons(DisabledReasons);
+      MarkAsDirty([dkUpdateClients]);
+   end;
    if (FStatus.NeedsConnection) then
    begin
       Message := TRegisterMinerBusMessage.Create(Self);

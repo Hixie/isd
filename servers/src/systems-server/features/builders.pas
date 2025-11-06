@@ -1028,9 +1028,15 @@ end;
 
 procedure TBuilderFeatureNode.HandleChanges(CachedSystem: TSystem);
 var
+   NewDisabledReasons: TDisabledReasons;
    Message: TRegisterBuilderMessage;
 begin
-   FDisabledReasons := CheckDisabled(Parent);
+   NewDisabledReasons := CheckDisabled(Parent);
+   if (NewDisabledReasons <> FDisabledReasons) then
+   begin
+      FDisabledReasons := NewDisabledReasons;
+      MarkAsDirty([dkUpdateClients]);
+   end;
    if ((FDisabledReasons <> []) and (Assigned(FBus))) then
    begin
       FBus.RemoveBuilder(Self);

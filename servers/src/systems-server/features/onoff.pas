@@ -62,6 +62,7 @@ function TOnOffFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
 begin
    if (Message is TCheckDisabledBusMessage) then
    begin
+      Result := False;
       if (not FEnabled) then
          (Message as TCheckDisabledBusMessage).AddReason(drManuallyDisabled);
    end
