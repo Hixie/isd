@@ -14,8 +14,6 @@ type
       procedure RunTestBody(); override;
    end;
 
-{$INCLUDE utils.inc}
-
 procedure TTest.RunTestBody();
 var
    ModelSystem: TModelSystem;
