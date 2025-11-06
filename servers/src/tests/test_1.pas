@@ -7,7 +7,7 @@ interface
 implementation
 
 uses
-   sysutils, harness, endtoend, stringstream, isdprotocol, model, binarystream, plasticarrays, stringutils, utils;
+   sysutils, harness, endtoend, stringstream, isdprotocol, model, binarystream, stringutils, utils;
 
 type
    TTest = class(TIsdServerTest)

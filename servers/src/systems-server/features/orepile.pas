@@ -287,7 +287,6 @@ end;
 
 procedure TOrePileFeatureNode.StartOrePile(Region: TRegionFeatureNode);
 begin
-   Writeln(DebugName, ' StartOrePile(', Region.Parent.DebugName, ')');
    Assert((not FRegion.Assigned) or (FRegion.Unwrap() = Region));
    FRegion := Region;
    MarkAsDirty([dkUpdateClients]); // the mass flow rate and contents may have changed
@@ -295,14 +294,12 @@ end;
 
 procedure TOrePileFeatureNode.PauseOrePile();
 begin
-   Writeln(DebugName, ' PauseOrePile(', FRegion.Unwrap().Parent.DebugName, ')');
    Assert(FRegion.Assigned);
    MarkAsDirty([dkUpdateClients]); // the mass flow rate and contents may have changed
 end;
 
 procedure TOrePileFeatureNode.StopOrePile();
 begin
-   Writeln(DebugName, ' StopOrePile(', FRegion.Unwrap().Parent.DebugName, ')');
    Assert(FRegion.Assigned);
    FRegion.Clear();
    MarkAsDirty([dkUpdateClients, dkNeedsHandleChanges]); // the mass flow rate and contents may have changed

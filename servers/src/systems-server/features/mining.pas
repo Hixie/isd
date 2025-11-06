@@ -99,19 +99,16 @@ end;
 procedure TMiningFeatureNode.StartMiner(Region: TRegionFeatureNode; Rate: TRate; SourceLimiting, TargetLimiting: Boolean); // kg per second
 begin
    Assert(Assigned(Region));
-   Writeln('StartMiner(', Region.Parent.DebugName, ', ', Rate.ToString('kg'), ', ', SourceLimiting, ', ', TargetLimiting, ')');
    if (FStatus.Update(Region, Rate, SourceLimiting, TargetLimiting)) then
       MarkAsDirty([dkUpdateClients]);
 end;
 
 procedure TMiningFeatureNode.PauseMiner();
 begin
-   Writeln('PauseMiner(', FStatus.Region.Parent.DebugName, ')');
 end;
 
 procedure TMiningFeatureNode.StopMiner();
 begin
-   Writeln('StopMiner(', FStatus.Region.Parent.DebugName, ')');
    FStatus.Reset();
    MarkAsDirty([dkUpdateClients, dkNeedsHandleChanges]);
 end;

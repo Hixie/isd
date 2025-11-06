@@ -692,7 +692,6 @@ var
    MaterialPileMessage: TRegisterMaterialPileBusMessage;
    MaterialConsumerMessage: TRegisterMaterialConsumerBusMessage;
 begin
-   Writeln(DebugName, ' received ', Message.ClassName);
    {$IFOPT C+} Assert(not Busy); {$ENDIF}
    if (Message is TRegisterMinerBusMessage) then
    begin
@@ -703,7 +702,6 @@ begin
       FMiners.Push(MinerMessage.Provider);
       MarkAsDirty([dkNeedsHandleChanges]);
       Result := mrHandled;
-      Writeln(DebugName, ': Registered a new miner, now ', FMiners.Length, ' miners');
    end
    else
    if (Message is TRegisterOrePileBusMessage) then
@@ -715,7 +713,6 @@ begin
       FOrePiles.Push(OrePileMessage.Provider);
       MarkAsDirty([dkNeedsHandleChanges]);
       Result := mrHandled;
-      Writeln(DebugName, ': Registered a new ore pile, now ', FOrePiles.Length, ' ore piles');
    end
    else
    if (Message is TRegisterRefineryBusMessage) then
@@ -727,7 +724,6 @@ begin
       FRefineries.Push(RefineryMessage.Provider);
       MarkAsDirty([dkNeedsHandleChanges]);
       Result := mrHandled;
-      Writeln(DebugName, ': Registered a new refinery, now ', FRefineries.Length, ' refineries');
    end
    else
    if (Message is TRegisterMaterialPileBusMessage) then
@@ -739,7 +735,6 @@ begin
       FMaterialPiles.Push(MaterialPileMessage.Provider);
       MarkAsDirty([dkNeedsHandleChanges]);
       Result := mrHandled;
-      Writeln(DebugName, ': Registered a new material pile, now ', FMaterialPiles.Length, ' material piles');
    end
    // TODO: factories
    else
@@ -752,7 +747,6 @@ begin
       FMaterialConsumers.Push(MaterialConsumerMessage.Provider);
       MarkAsDirty([dkNeedsHandleChanges]);
       Result := mrHandled;
-      Writeln(DebugName, ': Registered a new material consumer, now ', FMaterialConsumers.Length, ' material consumers');
    end
    else
    if (Message is TObtainMaterialBusMessage) then
@@ -1098,7 +1092,6 @@ var
    MaterialPile: IMaterialPile;
    MaterialConsumer: IMaterialConsumer;
 begin
-   Writeln(DebugName, ': Pause for ', Parent.DebugName);
    Assert(not Assigned(FNextEvent));
    if (FActive) then
    begin
@@ -1132,7 +1125,6 @@ begin
    end;
    FDynamic := False;
    FAnchorTime := TTimeInMilliseconds.NegInfinity;
-   Writeln('    Pause() reset FAnchorTime to ', FAnchorTime.ToString());
 end;
 
 procedure TRegionFeatureNode.PrepareClientsForRenegotiation();
@@ -1150,7 +1142,6 @@ end;
 
 procedure TRegionFeatureNode.ReconsiderEverything(var Data);
 begin
-   Writeln(DebugName, ': Reconsidering everything for ', Parent.DebugName, '...');
    Assert(Assigned(FNextEvent));
    Assert(FDynamic);
    FNextEvent := nil; // important to do this before anything that might crash, otherwise we try to free it on exit
@@ -1168,7 +1159,6 @@ var
    MaterialPile: IMaterialPile;
    MaterialConsumer: IMaterialConsumer;
 begin
-   Writeln(DebugName, ': Reset for ', Parent.DebugName);
    Assert(not Assigned(FNextEvent));
    Assert(not FDynamic);
    Assert(FActive);
@@ -1205,7 +1195,6 @@ begin
    end;
    FActive := False;
    FAnchorTime := TTimeInMilliseconds.NegInfinity;
-   Writeln('    Reset() reset FAnchorTime to ', FAnchorTime.ToString());
 end;
 
 procedure TRegionFeatureNode.HandleChanges(CachedSystem: TSystem);
@@ -1783,7 +1772,6 @@ end;
 
 procedure TRegionFeatureNode.RemoveMaterialConsumer(MaterialConsumer: IMaterialConsumer);
 begin
-   Writeln(DebugName, ' :: RemoveMaterialConsumer(', HexStr(MaterialConsumer), ')');
    if (FDynamic) then
    begin
       Sync();
@@ -1804,7 +1792,6 @@ var
    HadEvent: Boolean;
 {$ENDIF}
 begin
-   Writeln(DebugName, ' :: SyncForMaterialConsumer()');
    {$IFOPT C+} HadEvent := Assigned(FNextEvent); {$ENDIF}
    Assert(FDynamic);
    Sync();
@@ -1814,7 +1801,6 @@ end;
 
 procedure TRegionFeatureNode.ReconsiderMaterialConsumer(MaterialConsumer: IMaterialConsumer);
 begin
-   Writeln(DebugName, ' :: ReconsiderMaterialConsumer(', HexStr(MaterialConsumer), ')');
    Assert(FMaterialConsumers.Contains(MaterialConsumer));
    if (FDynamic) then
    begin

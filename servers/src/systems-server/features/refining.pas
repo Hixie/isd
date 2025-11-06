@@ -120,17 +120,14 @@ begin
    Assert(Assigned(Region));
    if (FStatus.Update(Region, Rate, SourceLimiting, TargetLimiting)) then
       MarkAsDirty([dkUpdateClients]);
-   Writeln(DebugName, 'StartRefinery(', FStatus.Region.Parent.DebugName, ', ', Rate.ToString('kg'), ', ', SourceLimiting, ', ', TargetLimiting, ')');
 end;
 
 procedure TRefiningFeatureNode.PauseRefinery();
 begin
-   Writeln(DebugName, 'PauseRefinery(', FStatus.Region.Parent.DebugName, ')');
 end;
 
 procedure TRefiningFeatureNode.StopRefinery();
 begin
-   Writeln(DebugName, 'StopRefinery(', FStatus.Region.Parent.DebugName, ')');
    FStatus.Reset();
    MarkAsDirty([dkUpdateClients, dkUpdateJournal, dkNeedsHandleChanges]);
 end;

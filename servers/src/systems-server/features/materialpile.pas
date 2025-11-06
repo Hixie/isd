@@ -107,7 +107,6 @@ end;
 
 procedure TMaterialPileFeatureNode.StartMaterialPile(Region: TRegionFeatureNode);
 begin
-   Writeln(DebugName, ' StartMaterialPile(', Region.Parent.DebugName, ')');
    Assert((not Assigned(FRegion)) or (FRegion = Region));
    FRegion := Region;
    MarkAsDirty([dkUpdateClients]);
@@ -115,14 +114,12 @@ end;
 
 procedure TMaterialPileFeatureNode.PauseMaterialPile();
 begin
-   Writeln(DebugName, ' PauseMaterialPile(', FRegion.Parent.DebugName, ')');
    Assert(Assigned(FRegion));
    MarkAsDirty([dkUpdateClients]);
 end;
 
 procedure TMaterialPileFeatureNode.StopMaterialPile();
 begin
-   Writeln(DebugName, ' StopMaterialPile(', FRegion.Parent.DebugName, ')');
    Assert(Assigned(FRegion));
    FRegion := nil;
    MarkAsDirty([dkUpdateClients, dkNeedsHandleChanges]);
@@ -230,7 +227,6 @@ end;
 
 procedure TMaterialPileFeatureNode.HandleKnowledge(const DynastyIndex: Cardinal; const VisibilityHelper: TVisibilityHelper; const Sensors: ISensorsProvider);
 begin
-   Writeln(Parent.DebugName, ' ', ClassName, ' :: HandleKnowledge(', DynastyIndex, ') knows ', FFeatureClass.FMaterial.Name, ': ', Sensors.Knows(FFeatureClass.FMaterial));
    FMaterialKnowledge.SetEntry(DynastyIndex, Sensors.Knows(FFeatureClass.FMaterial));
 end;
 

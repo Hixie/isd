@@ -1011,13 +1011,20 @@ begin
 end;
 
 destructor TBuilderFeatureNode.Destroy();
+var
+   Structure: IStructure;
 begin
    if (Assigned(FBus)) then
    begin
       FBus.RemoveBuilder(Self);
       FBus := nil;
    end;
-   FStructures.Free();
+   if (Assigned(FStructures)) then
+   begin
+      for Structure in FStructures do
+         Structure.StopBuilding();
+      FreeAndNil(FStructures);
+   end;
    inherited;
 end;
 
@@ -1083,7 +1090,6 @@ end;
 
 procedure TBuilderFeatureNode.BuilderBusConnected(Bus: TBuilderBusFeatureNode); // must come from builder bus
 begin
-   Writeln(DebugName, ' :: BuilderBusConnected(', Bus.DebugName, ')');
    FBus := Bus;
    if (not Assigned(FStructures)) then
       FStructures := TStructureHashSet.Create();
@@ -1092,7 +1098,6 @@ end;
 
 procedure TBuilderFeatureNode.BuilderBusStartBuilding(Structure: IStructure); // must come from builder bus
 begin
-   Writeln(DebugName, ' :: BuilderBusStartBuilding(', HexStr(Structure), ')');
    FStructures.Add(Structure);
    Structure.StartBuilding(Self, FFeatureClass.BuildRate);
 end;
@@ -1101,7 +1106,6 @@ procedure TBuilderFeatureNode.BuilderBusSync(); // must come from builder bus
 var
    Structure: IStructure;
 begin
-   Writeln(DebugName, ' :: BuilderBusSync()');
    Assert(Assigned(FBus));
    Assert(Assigned(FStructures));
    for Structure in FStructures do
@@ -1111,7 +1115,6 @@ end;
 
 procedure TBuilderFeatureNode.StopBuilding(Structure: IStructure); // must come from structure!
 begin
-   Writeln(DebugName, ' :: StopBuilding(', HexStr(Structure), ')');
    FStructures.Remove(Structure);
 end;
 
@@ -1121,7 +1124,6 @@ var
 begin
    Assert(Assigned(FBus));
    Assert(Assigned(FStructures));
-   Writeln(DebugName, ' @ ', HexStr(Self), ' :: BuilderBusReset from ', FBus.ClassName, ' ', FBus.DebugName);
    FBus := nil;
    for Structure in FStructures do
       Structure.StopBuilding();

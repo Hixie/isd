@@ -857,11 +857,11 @@ var
    LoginServers: TServerProcessList;
 begin
    LoginServers := [];
-   LaunchServers(LoginServersListFilename, 'bin/login-server', LoginServers, 0);
+   LaunchServers(LoginServersListFilename, 'bin-tests/login-server', LoginServers, 0);
    Assert(Length(LoginServers) = 1);
    FLoginServer := LoginServers[0];
-   LaunchServers(DynastiesServersListFilename, 'bin/dynasties-server', FDynastiesServers);
-   LaunchServers(SystemsServersListFilename, 'bin/systems-server', FSystemsServers);
+   LaunchServers(DynastiesServersListFilename, 'bin-tests/dynasties-server', FDynastiesServers);
+   LaunchServers(SystemsServersListFilename, 'bin-tests/systems-server', FSystemsServers);
 end;
 
 procedure TIsdServerTest.CloseServers(const Success: Boolean);

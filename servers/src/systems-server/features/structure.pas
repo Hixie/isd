@@ -290,7 +290,6 @@ destructor TStructureFeatureNode.Destroy();
 var
    Index: Cardinal;
 begin
-   Writeln(DebugName, ' Destroy()');
    if (Assigned(FBuildingState)) then
    begin
       if (Assigned(FBuildingState^.Region)) then
@@ -646,7 +645,6 @@ end;
 
 procedure TStructureFeatureNode.StartBuilding(Builder: TBuilderFeatureNode; BuildRate: TRate); // called by builder
 begin
-   Writeln(DebugName, ' StartBuilding(', Builder.DebugName, ', ', BuildRate.ToString('units'), ')');
    Assert(Assigned(FBuildingState));
    Assert((not Assigned(FBuildingState^.NextEvent)) or (FBuildingState^.AnchorTime = System.Now));
    Assert(not Assigned(FBuildingState^.PendingMaterial));
@@ -661,7 +659,6 @@ var
    Injected: TBusMessageResult;
    Message: TRegisterMaterialConsumerBusMessage;
 begin
-   Writeln(DebugName, ' TriggerBuilding()');
    Assert(not (bsTriggered in FBuildingState^.Flags));
    FetchMaterials();
    if (Assigned(FBuildingState^.PendingMaterial)) then
@@ -669,11 +666,9 @@ begin
       if (not Assigned(FBuildingState^.Region)) then
       begin
          Message := TRegisterMaterialConsumerBusMessage.Create(Self);
-         Writeln(DebugName, '   -- sending ', Message.ClassName);
          Injected := InjectBusMessage(Message);
          if (Injected <> mrHandled) then
          begin
-            Writeln(DebugName, '   -- failed');
             Include(FBuildingState^.Flags, bsNoRegion);
             Assert(FBuildingState^.StructuralIntegrityRate.IsZero);
          end;
@@ -735,7 +730,6 @@ var
    Obtain: TObtainMaterialBusMessage;
    ObtainedMaterial: TMaterialQuantity;
 begin
-   Writeln(DebugName, ' FetchMaterials');
    Changes := [];
    Assert(Assigned(FBuildingState));
    Assert(not Assigned(FBuildingState^.NextEvent));
@@ -781,23 +775,17 @@ begin
    end;
    FBuildingState^.PendingMaterial := NextMaterial;
    FBuildingState^.PendingQuantity := NextQuantity;
-   if (Assigned(NextMaterial)) then
-      Writeln(DebugName, ' FetchMaterials concluded: ', NextQuantity, ' units wanted of ', NextMaterial.Name)
-   else
-      Writeln(DebugName, ' FetchMaterials concluded: ', NextQuantity, ' units wanted of nil');
    Assert((FBuildingState^.PendingQuantity > 0) = (Assigned(FBuildingState^.PendingMaterial)));
    MarkAsDirty(Changes);
 end;
 
 procedure TStructureFeatureNode.StopBuilding(); // called by builder
 begin
-   Writeln(DebugName, ' StopBuilding()');
    Assert(Assigned(FBuildingState));
    Assert(FBuildingState^.StructuralIntegrityRate.IsNotZero);
    FBuildingState^.Builder := nil;
    if (Assigned(FBuildingState^.Region)) then
    begin
-      Writeln(DebugName, ' resetting region and removing material consumer from region');
       if (FBuildingState^.MaterialsQuantityRate.IsPositive) then
       begin
          Assert(Assigned(FBuildingState^.PendingMaterial));
@@ -870,7 +858,6 @@ end;
 
 procedure TStructureFeatureNode.StartMaterialConsumer(Region: TRegionFeatureNode; ActualRate: TRate); // quantity per second
 begin
-   Writeln(DebugName, ' StartMaterialConsumer(', Region.DebugName, ', ', ActualRate.ToString('units'), ')');
    Assert(Assigned(FBuildingState));
    Assert((not Assigned(FBuildingState^.Region)) or (FBuildingState^.Region = Region));
    Assert(FBuildingState^.MaterialsQuantityRate.IsZero);
@@ -897,7 +884,6 @@ var
    end;
 
 begin
-   Writeln(DebugName, ' DeliverMaterialConsumer(', Delivery, ')');
    Assert(Assigned(FBuildingState));
    Assert(Assigned(FBuildingState^.PendingMaterial));
    Assert(Assigned(FBuildingState^.Region));
@@ -910,20 +896,15 @@ begin
    if (Delivery > 0) then
    begin
       MeasureDuration();
-      Writeln('   Elapsed time: ', Duration.ToString());
-      Writeln('   Expected delivery: ', (Duration * FBuildingState^.MaterialsQuantityRate):0:5);
-      Writeln('   Rounded: ', Round(Duration * FBuildingState^.MaterialsQuantityRate));
       Assert(Delivery <= Ceil(Duration * FBuildingState^.MaterialsQuantityRate));
       Inc(FBuildingState^.MaterialsQuantity, Delivery);
       Dec(FBuildingState^.PendingQuantity, Delivery);
       if (FBuildingState^.PendingQuantity = 0) then
       begin
-         Writeln('   Finished our ', FBuildingState^.PendingMaterial.Name, ' needs!');
          FBuildingState^.PendingMaterial := nil;
          FBuildingState^.MaterialsQuantityRate := TRate.Zero;
          if (Assigned(FBuildingState^.NextEvent)) then
          begin
-            Writeln('   Canceling next event in DeliverMaterialConsumer');
             CancelEvent(FBuildingState^.NextEvent);
             {$IFOPT C+} FBuildingState^.AnchorTime := TTimeInMilliseconds.NegInfinity; {$ENDIF}
          end;
@@ -935,27 +916,19 @@ begin
    if (FBuildingState^.StructuralIntegrityRate.IsNotZero and (FBuildingState^.StructuralIntegrity < FBuildingState^.MaterialsQuantity)) then
    begin
       MeasureDuration();
-      Writeln('   Elapsed time: ', Duration.ToString());
-      Writeln('   Expected increase in structural integrity: ', (Duration * FBuildingState^.StructuralIntegrityRate):0:5);
-      Writeln('   Current structural integrity: ', FBuildingState^.StructuralIntegrity);
-      Writeln('   100% structural integrity: ', FFeatureClass.TotalQuantity);
-      Writeln('   Max current structural integrity: ', FBuildingState^.MaterialsQuantity);
       FBuildingState^.IncStructuralIntegrity(Duration * FBuildingState^.StructuralIntegrityRate);
-      Writeln('   New structural integrity: ', FBuildingState^.StructuralIntegrity);
       Assert((FBuildingState^.PendingQuantity > 0) = (Assigned(FBuildingState^.PendingMaterial)));
    end;
 end;
 
 procedure TStructureFeatureNode.PauseMaterialConsumer();
 begin
-   Writeln(DebugName, ' PauseMaterialConsumer()');
    // DeliverMaterialConsumer will be called first
    Assert(Assigned(FBuildingState));
    Assert(Assigned(FBuildingState^.Region));
    FBuildingState^.MaterialsQuantityRate := TRate.Zero;
    if (Assigned(FBuildingState^.NextEvent)) then
    begin
-      Writeln('   Canceling next event in PauseMaterialConsumer');
       CancelEvent(FBuildingState^.NextEvent);
       {$IFOPT C+} FBuildingState^.AnchorTime := TTimeInMilliseconds.NegInfinity; {$ENDIF}
    end;
@@ -965,16 +938,13 @@ end;
 
 procedure TStructureFeatureNode.StopMaterialConsumer();
 begin
-   Writeln(DebugName, ' StopMaterialConsumer()');
    // DeliverMaterialConsumer will be called first
    Assert(Assigned(FBuildingState));
    Assert(Assigned(FBuildingState^.Region));
-   Writeln(DebugName, ' resetting region');
    FBuildingState^.Region := nil;
    FBuildingState^.MaterialsQuantityRate := TRate.Zero;
    if (Assigned(FBuildingState^.NextEvent)) then
    begin
-      Writeln('   Canceling next event in StopMaterialConsumer');
       CancelEvent(FBuildingState^.NextEvent);
       {$IFOPT C+} FBuildingState^.AnchorTime := TTimeInMilliseconds.NegInfinity; {$ENDIF}
    end;
@@ -988,7 +958,6 @@ var
    RemainingTime: TMillisecondsDuration;
    TimeUntilMaterialFunctional, TimeUntilIntegrityFunctional: TMillisecondsDuration;
 begin
-   Writeln(DebugName, ' scheduling next event...');
    Assert(Assigned(FBuildingState));
    Assert(not Assigned(FBuildingState^.NextEvent));
    if (Assigned(FBuildingState^.Region) and FBuildingState^.MaterialsQuantityRate.IsNotZero) then
@@ -996,22 +965,15 @@ begin
       Assert(FBuildingState^.PendingQuantity > 0);
       Assert(FBuildingState^.AnchorTime.IsInfinite);
       RemainingTime := FBuildingState^.PendingQuantity / FBuildingState^.MaterialsQuantityRate;
-      Writeln('  RemainingTime until material filled: ', RemainingTime.ToString());
    end
    else
    if (FBuildingState^.StructuralIntegrityRate.IsNotZero and (FBuildingState^.MaterialsQuantity > FBuildingState^.StructuralIntegrity)) then
    begin
       Assert((FBuildingState^.PendingQuantity > 0) xor (FBuildingState^.MaterialsQuantity = FFeatureClass.TotalQuantity));
       RemainingTime := (FBuildingState^.MaterialsQuantity - FBuildingState^.StructuralIntegrity) / FBuildingState^.StructuralIntegrityRate;
-      Writeln('  FBuildingState^.PendingQuantity=', FBuildingState^.PendingQuantity);
-      Writeln('  FBuildingState^.MaterialsQuantity', FBuildingState^.MaterialsQuantity);
-      Writeln('  FFeatureClass.TotalQuantity=', FFeatureClass.TotalQuantity);
-      Writeln('  FBuildingState^.StructuralIntegrity=', FBuildingState^.StructuralIntegrity);
-      Writeln('  RemainingTime until current structural integrity max reached: ', RemainingTime.ToString());
    end
    else
    begin
-      Writeln('  We are doing nothing; no schedulable event.');
       // nothing to wait for
       exit;
    end;
@@ -1045,19 +1007,16 @@ begin
       if ((TimeUntilIntegrityFunctional.IsPositive) and (TimeUntilIntegrityFunctional < RemainingTime)) then
       begin
          RemainingTime := TimeUntilIntegrityFunctional;
-         Writeln('  RemainingTime until structural integrity functional: ', RemainingTime.ToString());
       end;
    end;
    FBuildingState^.NextEvent := CachedSystem.ScheduleEvent(RemainingTime, @HandleEvent, Self);
    FBuildingState^.AnchorTime := CachedSystem.Now;
-   Writeln(DebugName, ' rescheduled next event for ', FBuildingState^.AnchorTime.ToString());
 end;
 
 procedure TStructureFeatureNode.HandleEvent(var Data);
 var
    Duration: TMillisecondsDuration;
 begin
-   Writeln(DebugName, ' HandleEvent');
    // if we get here, we're in one of these states:
    //   - we were hoping to build ourselves, and we have waited long enough that we should have all the materials we need
    //       - and that worked out and we are entirely done
@@ -1068,20 +1027,16 @@ begin
    //       - and that means we're done
    //       - and we're now blocked on materials
    Assert(Assigned(FBuildingState));
-   if (Assigned(FBuildingState^.PendingMaterial)) then
-      Writeln('  getting ',  FBuildingState^.PendingMaterial.Name, ' at rate ', FBuildingState^.MaterialsQuantityRate.ToString('units'));
    Assert(Assigned(FBuildingState^.NextEvent));
    FBuildingState^.NextEvent := nil; // this must be done early because the pointer is no longer valid so we don't want to risk canceling it
    // Do not reset anchor time until after DeliverMaterialConsumer might have been called.
    if (Assigned(FBuildingState^.Region)) then
    begin
-      Writeln(DebugName, ' HandleEvent - with region, calling sync for material consumer');
       Assert(Assigned(FBuildingState^.PendingMaterial));
       FBuildingState^.Region.SyncForMaterialConsumer();
       // DeliverMaterialConsumer() will be called here, and it handles the structural integrity stuff
       if (FBuildingState^.StructuralIntegrity = FFeatureClass.TotalQuantity) then
       begin
-         Writeln(DebugName, ' HandleEvent - done!');
          // we're done!
          Assert(FBuildingState^.MaterialsQuantity = FFeatureClass.TotalQuantity);
          Assert(Assigned(FBuildingState^.Region));
@@ -1097,7 +1052,6 @@ begin
       else
       if (FBuildingState^.MaterialsQuantity = FFeatureClass.TotalQuantity) then
       begin
-         Writeln(DebugName, ' HandleEvent - need structural integrity!');
          // we're done with materials, not structural integrity
          FBuildingState^.Region.RemoveMaterialConsumer(Self);
          FBuildingState^.Region := nil;
@@ -1113,7 +1067,6 @@ begin
       else
       if (not Assigned(FBuildingState^.PendingMaterial)) then
       begin
-         Writeln(DebugName, ' HandleEvent - no pending material!');
          // we still have materials to get, but we don't yet know what is next
          Assert(FBuildingState^.PendingQuantity = 0); // reset by DeliverMaterialConsumer
          FBuildingState^.Region.ReconsiderMaterialConsumer(Self);
@@ -1125,10 +1078,6 @@ begin
       end
       else
       begin
-         Writeln(DebugName, ' HandleEvent result: still building same thing');
-         Writeln(DebugName, '   material: ', FBuildingState^.PendingMaterial.Name);
-         Writeln(DebugName, '   quantity: ', FBuildingState^.PendingQuantity);
-         Writeln(DebugName, '   rate: ', FBuildingState^.MaterialsQuantityRate.ToString('units'));
          Assert(FBuildingState^.PendingQuantity > 0);
          Assert(FBuildingState^.StructuralIntegrity < FFeatureClass.TotalQuantity);
          Assert(FBuildingState^.StructuralIntegrityRate.IsNotZero);
@@ -1140,14 +1089,12 @@ begin
    else
    if (FBuildingState^.StructuralIntegrityRate.IsNotZero and (FBuildingState^.MaterialsQuantity > FBuildingState^.StructuralIntegrity)) then
    begin
-      Writeln(DebugName, ' HandleEvent - only structural integrity');
       Duration := System.Now - FBuildingState^.AnchorTime;
       Assert(Duration.IsNotZero and Duration.IsPositive);
       FBuildingState^.IncStructuralIntegrity(Duration * FBuildingState^.StructuralIntegrityRate);
       MarkAsDirty([dkUpdateClients, dkUpdateJournal]);
       if (FBuildingState^.StructuralIntegrity = FFeatureClass.TotalQuantity) then
       begin
-         Writeln(DebugName, ' HandleEvent - done done!');
          // we're done!
          Assert(not Assigned(FBuildingState^.Region));
          Assert(FBuildingState^.MaterialsQuantityRate.IsZero);
@@ -1163,7 +1110,6 @@ begin
       end
       else
       begin
-         Writeln(DebugName, ' HandleEvent - trying harder!');
          // we're not yet done, so retrigger ourselves to figure out why
          {$IFOPT C+} FBuildingState^.AnchorTime := TTimeInMilliseconds.NegInfinity; {$ENDIF}
          Assert(FBuildingState^.MaterialsQuantityRate.IsZero);
