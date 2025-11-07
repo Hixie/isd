@@ -888,7 +888,6 @@ begin
    Assert(Assigned(FBuildingState^.PendingMaterial));
    Assert(Assigned(FBuildingState^.Region));
    Assert(FBuildingState^.PendingQuantity > 0);
-   Assert(Delivery >= 0);
    Assert(Delivery <= FBuildingState^.PendingQuantity);
    Assert((Delivery = 0) or (not FBuildingState^.AnchorTime.IsInfinite)); // nextevent might be nil already but even then we must not have reset the anchor time yet
    Assert((Delivery = 0) or (FBuildingState^.MaterialsQuantityRate.IsNotZero));
@@ -1032,9 +1031,16 @@ begin
    // Do not reset anchor time until after DeliverMaterialConsumer might have been called.
    if (Assigned(FBuildingState^.Region)) then
    begin
-      Assert(Assigned(FBuildingState^.PendingMaterial));
-      FBuildingState^.Region.SyncForMaterialConsumer();
-      // DeliverMaterialConsumer() will be called here, and it handles the structural integrity stuff
+      if (FBuildingState^.MaterialsQuantityRate.IsNotZero) then
+      begin
+         Assert(Assigned(FBuildingState^.PendingMaterial));
+         FBuildingState^.Region.SyncForMaterialConsumer();
+         // DeliverMaterialConsumer() will be called here, and it handles the structural integrity stuff
+      end
+      else
+      begin
+         DeliverMaterialConsumer(0); // update structural integrity
+      end;
       if (FBuildingState^.StructuralIntegrity = FFeatureClass.TotalQuantity) then
       begin
          // we're done!

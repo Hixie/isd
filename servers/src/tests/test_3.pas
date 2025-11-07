@@ -1,6 +1,6 @@
 {$MODE OBJFPC} { -*- delphi -*- }
 {$INCLUDE settings.inc}
-unit test_2;
+unit test_3;
 
 interface
 
@@ -38,7 +38,7 @@ var
    SystemsServerCount: QWord;
    Index: QWord;
    LoginServer, DynastyServer, SystemsServer: TServerWebSocket;
-   HomeRegion: TModelAsset;
+   HomeRegion, Asset: TModelAsset;
    AssetClass1, AssetClass2, AssetClass3, AssetClass4: Integer;
 begin
    LoginServer := FLoginServer.ConnectWebSocket();
@@ -102,10 +102,10 @@ begin
    SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.ID) + #00'get-buildings'#00'1'#00'1'#00);
    Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
    VerifyPositiveResponse(Response);
-   AssetClass1 := GetAssetClassFromBuildingsList(Response, 'Iron team table');
-   AssetClass2 := GetAssetClassFromBuildingsList(Response, 'Drilling Hole');
-   AssetClass3 := GetAssetClassFromBuildingsList(Response, 'Silicon Table');
-   AssetClass4 := GetAssetClassFromBuildingsList(Response, 'Builder rally point');
+   AssetClass1 := GetAssetClassFromBuildingsList(Response, 'Builder rally point');
+   AssetClass2 := GetAssetClassFromBuildingsList(Response, 'Silicon Table');
+   AssetClass3 := GetAssetClassFromBuildingsList(Response, 'Drilling Hole');
+   AssetClass4 := GetAssetClassFromBuildingsList(Response, 'Iron team table');
    FreeAndNil(Response);
    SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.ID) + #00'build'#00'0'#00'0'#00 + IntToStr(AssetClass1) + #00);
    Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
@@ -114,13 +114,6 @@ begin
 
    TimePinned := True;
    ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 2);
-   Verify(ModelSystem.CurrentTime = MaxTime);
-   with (specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem)) do
-   begin
-      Verify(PileMass = 0.0);
-      Verify(PileMassFlowRate = 0);
-      Verify(MaterialName = 'Iron');
-   end;
 
    TimePinned := True;
    SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.ID) + #00'build'#00'0'#00'1'#00 + IntToStr(AssetClass2) + #00);
@@ -128,24 +121,7 @@ begin
    VerifyPositiveResponse(Response);
    FreeAndNil(Response);
    
-   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 3);
-   Verify(ModelSystem.CurrentTime = MaxTime);
-   with (specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem)) do
-   begin
-      Verify(PileMass = 0.0);
-      Verify(PileMassFlowRate > 0);
-      Verify(MaterialName = 'Iron');
-   end;
-
-   AdvanceTime(1000 * Days); // fill the pile
-
    ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 2);
-   with (specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem)) do
-   begin
-      Verify(PileMass = 1000.0);
-      Verify(PileMassFlowRate = 0);
-      Verify(MaterialName = 'Iron');
-   end;
 
    TimePinned := True;
    SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.ID) + #00'build'#00'0'#00'2'#00 + IntToStr(AssetClass3) + #00);
@@ -154,19 +130,6 @@ begin
    FreeAndNil(Response);
    
    ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 3);
-   Verify(ModelSystem.CurrentTime = MaxTime);
-   with (specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem, 0)) do
-   begin
-      Verify(PileMass = 1000.0);
-      Verify(PileMassFlowRate = 0);
-      Verify(MaterialName = 'Iron');
-   end;
-   with (specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem, 1)) do
-   begin
-      Verify(PileMass = 0.0);
-      Verify(PileMassFlowRate = 0);
-      Verify(MaterialName = 'Silicon');
-   end;
 
    TimePinned := True;
    SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.ID) + #00'build'#00'1'#00'0'#00 + IntToStr(AssetClass4) + #00);
@@ -174,20 +137,20 @@ begin
    VerifyPositiveResponse(Response);
    FreeAndNil(Response);
    
-   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 5);
-   Verify(ModelSystem.CurrentTime = MaxTime);
-   with (specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem, 0)) do
-   begin
-      Verify(PileMass = 0.0);
-      Verify(PileMassFlowRate > 0);
-      Verify(MaterialName = 'Iron');
-   end;
-   with (specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem, 1)) do
-   begin
-      Verify(PileMass = 0.0);
-      Verify(PileMassFlowRate = 0);
-      Verify(MaterialName = 'Silicon');
-   end;
+   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 4);
+   Asset := specialize GetUpdatedFeature<TModelRefiningFeature>(ModelSystem, 0).Parent;
+
+   TimePinned := True;
+   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(Asset.ID) + #00'disable'#00);
+   Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
+   VerifyPositiveResponse(Response);
+   FreeAndNil(Response);
+   
+   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 1);
+
+   AdvanceTime(1000 * Days); // build the silicon table
+   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 2);
+   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 3);
    
    FreeAndNil(ModelSystem);
 

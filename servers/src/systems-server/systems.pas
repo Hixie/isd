@@ -732,7 +732,7 @@ type
       FScheduledEvents: TSystemEventSet;
       FNextEvent: TSystemEvent;
       FNextEventHandle: PEvent;
-      FCurrentEventTime: TTimeInMilliseconds;
+      FCurrentEventTime, FLastTime: TTimeInMilliseconds;
       FDynastyDatabase: TDynastyDatabase;
       FDynasties: array of TDynasty; // in index order
       FEncyclopedia: TEncyclopediaView;
@@ -2494,6 +2494,7 @@ begin
    FDynastyIndices := TDynastyIndexHashTable.Create();
    FScheduledEvents := TSystemEventSet.Create();
    FCurrentEventTime := TTimeInMilliseconds.Infinity;
+   FLastTime := TTimeInMilliseconds.NegInfinity;
    FEncyclopedia := AEncyclopedia;
    FOnScoreDirty := AOnScoreDirty;
    FRoot := TRootAssetNode.Create(ARootClass, Self, ARootClass.SpawnFeatureNodes());
@@ -2681,6 +2682,7 @@ begin
    Journal.WriteDouble(FServer.Clock.Now() - FTimeOrigin); // age of server
    Journal.WriteUInt64(FRandomNumberGenerator.State);
    Journal.WriteDouble(FTimeFactor.AsDouble);
+   // TODO: consider tracking FLastTime as well
    FRoot.Walk(@SkipCleanChildren, @RecordDirtyAsset);
    if (dkAffectsDynastyCount in FChanges) then
    begin
@@ -2732,6 +2734,7 @@ var
    end;
 
 begin
+   // This is what we send to clients in a binary frame when there's an update.
    FoundASelfDirty := False;
    Assert(FDynastyIndices.Has(Dynasty));
    CachedDynastyIndex := DynastyIndex[Dynasty];
@@ -3010,6 +3013,8 @@ begin
    FNextEvent := SelectNextEvent();
    FNextEventHandle := nil;
    FCurrentEventTime := Event.FTime;
+   Assert(FCurrentEventTime >= FLastTime);
+   FLastTime := FCurrentEventTime;
    Event.FCallback(Event.FData); // (could call ScheduleEvent and thus set FNextEvent)
    FCurrentEventTime := TTimeInMilliseconds.Infinity;
    FreeAndNil(Event);
@@ -3129,8 +3134,15 @@ begin
       // We do this because otherwise FTimeFactor introduces an error into the current time and we
       // end up running events at slightly the wrong time, which can affect computations.
       Result := FCurrentEventTime;
-      Assert(Result <= TTimeInMilliseconds.FromDurationSinceOrigin(TWallMillisecondsDuration.FromDateTimes(FServer.Clock.Now(), FTimeOrigin) * FTimeFactor));
    end;
+   // Ensure that we never go backwards in time.
+   // This is not usually a risk but every now and then floating point
+   // errors in computing the current time would take us a few
+   // milliseconds back from the last event time. (Basically, this is
+   // the flip side of why we use FCurrentEventTime, see just above.)
+   if (Result < FLastTime) then
+      Result := FLastTime;
+   FLastTime := Result;
 end;
 
 function TSystem.FindCommandTarget(Dynasty: TDynasty; AssetID: TAssetID): TAssetNode;
