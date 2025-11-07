@@ -164,7 +164,6 @@ end;
 
 procedure TCollectKnownMaterialsMessage.AddKnownMaterial(Material: TMaterial);
 begin
-   Writeln('collecting material knowledge: ', Material.Name);
    FKnownMaterials.Add(Material);
 end;
 

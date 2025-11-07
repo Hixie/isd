@@ -795,7 +795,6 @@ begin
          Select(NextTime); // $R-
       while (Assigned(FNextEvent) and EventIsDueBefore(FNextEvent, FClock.Now())) do
       begin
-         Writeln('Running event for ', PrettyTime(FNextEvent^.FTime));
          RunEvent(FNextEvent);
       end;
       ReportChanges();

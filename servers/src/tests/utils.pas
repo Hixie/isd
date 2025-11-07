@@ -122,7 +122,7 @@ begin
             begin
                Description.Init();
                UpdatedNodes := ModelSystem.GetUpdatedAssets();
-               // TODO: refactor so the following code isn't duplicated here and above
+               // TODO: refactor so the following code isn't duplicated here and below
                Writeln('-- detected multiple messages (expected one) --');
                for InnerAsset in UpdatedNodes do
                begin

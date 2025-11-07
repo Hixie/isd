@@ -68,13 +68,10 @@ var
           (not Assigned(Asset.Owner)) or // we see unowned ghosts // TODO: this should be redundant, assert instead?
           Asset.IsReal()) then // and we see non-ghosts regardless of who owns them
       begin
-         Writeln('  - ', Asset.DebugName);
          Visibility := FFeatureClass.FSensorKind;
          Asset.HandleVisibility(OwnerIndex, Visibility, VisibilityHelper);
          if (Visibility <> []) then
-            Inc(FLastCountDetected)
-         else
-            Writeln('    DENIED');
+            Inc(FLastCountDetected);
          Result := True;
       end
       else
@@ -82,7 +79,6 @@ var
    end;
 
 begin
-   Writeln('Grid Sensor for ', Parent.DebugName);
    Assert(not Assigned(FKnownMaterials));
    Assert(not Assigned(FKnownAssetClasses));
    FGrid := Parent;
@@ -133,7 +129,6 @@ begin
       OwnerIndex := VisibilityHelper.GetDynastyIndex(Parent.Owner);
       FGrid.Walk(@SenseDown, nil);
    end;
-   Writeln('Freeing FKnownMaterials and FKnownAssetClasses for ', DebugName);
    FreeAndNil(FKnownMaterials);
    FreeAndNil(FKnownAssetClasses);
 end;
