@@ -68,6 +68,9 @@ abstract class Feature {
     print('warning: $runtimeType has no buildDialog');
      return null;
   }
+
+  @override
+  String toString() => '$runtimeType@${hashCode.toRadixString(16)}';
 }
 
 const EdgeInsets dialogPadding = EdgeInsets.only(left: 12.0, right: 12.0, top: 8.0);
@@ -103,7 +106,6 @@ class AssetNode extends WorldNode {
 
   @override
   void notifyListeners() {
-    //print(StackTrace.current);
     super.notifyListeners();
   }
 
@@ -214,9 +216,9 @@ class AssetNode extends WorldNode {
       Feature? oldFeature;
       if (index < _features.length) {
         oldFeature = _features[index];
+        if (_container == oldFeature)
+          _container = null;
         if (oldFeature.runtimeType != newFeature.runtimeType) {
-          if (_container == oldFeature)
-            _container = null;
           oldFeature.detach();
           oldFeature = null;
         }
