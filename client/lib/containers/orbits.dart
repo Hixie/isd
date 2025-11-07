@@ -94,7 +94,7 @@ class OrbitFeature extends ContainerFeature {
       node: parent,
       diameter: radius * 2.0,
       spaceTime: spaceTime,
-      drawPrimaryOnTop: originChild.featureTypes.contains(StarFeature), // TODO: this is a hack
+      drawPrimaryOnTop: originChild.features.isNotEmpty && originChild.features.first is StarFeature, // TODO: this is a hack
       children: childList,
     );
   }

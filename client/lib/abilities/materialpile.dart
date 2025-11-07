@@ -71,7 +71,7 @@ class MaterialPileFeature extends AbilityFeature {
     final double mass = math.min(pileMass + duration * pileMassFlowRate, capacity);
     return ListBody(
       children: <Widget>[
-        Text('${prettyMass(mass)} out of ${prettyMass(capacity)}'),
+        Text('${prettyMass(mass)} out of ${prettyMass(capacity)}.'),
         if (mass == capacity)
           const Text('Storage is full.')
         else if (mass == 0.0)

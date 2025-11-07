@@ -219,7 +219,7 @@ class PieChart extends StatelessWidget {
                   style: bold,
                   children: <InlineSpan>[
                     node!.describe(context, icons, iconSize: fontSize),
-                    TextSpan(text: ' contents analysis as of ${prettyTime(time!)}'),
+                    TextSpan(text: ' contents analysis\n${prettyTime(time!)}'),
                   ],
                 ),
                 textAlign: TextAlign.center,

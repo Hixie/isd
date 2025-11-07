@@ -38,9 +38,13 @@ abstract class Feature {
 
   /// Current host for this feature.
   ///
-  /// Only valid when attached.
+  /// Only valid after init() is called.
   AssetNode get parent => _parent!;
   AssetNode? _parent;
+
+  void init(Feature? oldFeature) {
+    assert(oldFeature == null || oldFeature.runtimeType == runtimeType);
+  }
 
   void attach(AssetNode parent) {
     assert(_parent == null);
@@ -53,6 +57,8 @@ abstract class Feature {
   }
 
   RendererType get rendererType;
+
+  String? get status => null;
 
   Widget buildRenderer(BuildContext context); // this one is abstract; containers always need to build something
 
@@ -196,45 +202,46 @@ class AssetNode extends WorldNode {
     }
   }
 
-  // TODO: this should be a list, not a map
-  // when updating, if the types match then the new feature can just be updated
-  // if the types don't match, then delete all remaining features and make new ones
-  final Map<Type, Feature> _features = <Type, Feature>{};
+  Iterable<Feature> get features => _features;
+  final List<Feature> _features = <Feature>[];
   ContainerFeature? _container;
 
-  Type setFeature(Feature feature) {
-    final Type type = feature.runtimeType;
-    _features[type]?.detach();
-    _features[type] = feature;
-    feature.attach(this);
-    if (feature is ContainerFeature)
-      _container = feature;
-    notifyListeners();
-    return type;
-  }
-
-  Set<Type> get featureTypes => _features.keys.toSet();
-
-  void removeFeatures(Set<Type> features) {
-    if (features.isNotEmpty) {
-      for (Type type in features) {
-        if (features.runtimeType == _container.runtimeType) {
-          _container = null;
+  void updateFeatures(List<Feature> newFeatures) {
+    ContainerFeature? newContainer;
+    int index = 0;
+    for (index = 0; index < newFeatures.length; index += 1) {
+      final Feature newFeature = newFeatures[index];
+      Feature? oldFeature;
+      if (index < _features.length) {
+        oldFeature = _features[index];
+        if (oldFeature.runtimeType != newFeature.runtimeType) {
+          if (_container == oldFeature)
+            _container = null;
+          oldFeature.detach();
+          oldFeature = null;
         }
-        _features.remove(type);
+        _features[index] = newFeature;
+      } else {
+        oldFeature = null;
+        _features.add(newFeature);
       }
-      notifyListeners();
+      newFeature.init(oldFeature);
+      newFeature.attach(this);
+      if (newFeature is ContainerFeature) {
+        assert(newContainer == null);
+        newContainer = newFeature;
+      }
     }
-    assert(() {
-      int containerCount = 0;
-      for (Feature feature in _features.values) {
-        if (feature is ContainerFeature) {
-          containerCount += 1;
-        }
-      }
-      assert(containerCount <= 1);
-      return true;
-    }());
+    for (index = newFeatures.length; index < _features.length; index += 1) {
+      final Feature oldFeature = _features[index];
+      if (_container == oldFeature)
+        _container = null;
+      oldFeature.detach();
+    }
+    _features.length = newFeatures.length;
+    assert(_container == null);
+    _container = newContainer;
+    notifyListeners();
   }
 
   @override
@@ -310,7 +317,7 @@ class AssetNode extends WorldNode {
     List<Widget>? overlays;
     List<Widget>? boxes;
     BoxShape? shape;
-    for (Feature feature in _features.values) {
+    for (Feature feature in _features) {
       switch (feature.rendererType) {
         case RendererType.none:
           ;
@@ -395,7 +402,7 @@ class AssetNode extends WorldNode {
   }
 
   Widget? buildHeader(BuildContext context) {
-    for (Feature feature in _features.values) {
+    for (Feature feature in _features) {
       final Widget? result = feature.buildHeader(context);
       if (result != null)
         return result;
@@ -585,7 +592,7 @@ class AssetInspector extends StatelessWidget {
             );
           }
         }
-        for (Feature feature in node._features.values) {
+        for (Feature feature in node._features) {
           final Widget? section = feature.buildDialog(context);
           if (section != null) {
             details.add(Padding(

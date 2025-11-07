@@ -23,7 +23,7 @@ class BinaryStreamReader {
     return result == 0x01;
   }
 
-  int readInt8() {
+  int readUInt8() {
     final int result = _source.getUint8(_position);
     _position += 1;
     return result;

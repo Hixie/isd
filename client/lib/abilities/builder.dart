@@ -3,21 +3,31 @@ import 'package:flutter/widgets.dart';
 import '../assets.dart';
 import '../icons.dart';
 import '../prettifiers.dart';
+import '../types.dart';
 import '../widgets.dart';
 
 class BuilderFeature extends AbilityFeature {
   BuilderFeature({
     required this.capacity,
     required this.buildRate,
+    required this.disabledReason,
     required this.assignedStructures,
  });
 
   final int capacity;
   final double buildRate;
+  final DisabledReason disabledReason;
   final List<AssetNode> assignedStructures;
 
   @override
   RendererType get rendererType => RendererType.none;
+
+  @override
+  String get status {
+    if (!disabledReason.enabled)
+      return disabledReason.description;
+    return 'Ready';
+  }
 
   @override
   Widget buildDialog(BuildContext context) {
@@ -31,6 +41,7 @@ class BuilderFeature extends AbilityFeature {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
+              Text('Status: $status'),
               Text('Projects: ${assignedStructures.length} out of $capacity'),
               for (int index = 0; index < capacity; index += 1)
                 Text.rich(
@@ -43,7 +54,7 @@ class BuilderFeature extends AbilityFeature {
                     ],
                   ),
                 ),
-              Text('Maximum build rate: ${prettyHp(buildRate* 1000 * 60 * 60)} hp per hour'),
+              Text('Maximum build rate: ${prettyHp(buildRate* 1000 * 60 * 60)} hp per hour.'),
             ],
           ),
         ),

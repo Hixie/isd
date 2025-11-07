@@ -238,8 +238,13 @@ class _ScoresDialogState extends State<ScoresDialog> {
         final HighScores scores = await _game!.getHighScores();
         if (mounted) {
           setState(() {
-            _scores = scores;
-            _error = null;
+            if (scores.dynasties.isEmpty) {
+              _scores = null;
+              _error = 'No dynasties.';
+            } else {
+              _scores = scores;
+              _error = null;
+            }
           });
         }
       } on NetworkError catch (e) {
