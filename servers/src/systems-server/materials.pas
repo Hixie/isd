@@ -444,6 +444,7 @@ type
       class function Equals(const A, B: TMaterial): Boolean; static; inline;
       class function LessThan(const A, B: TMaterial): Boolean; static; inline;
       class function GreaterThan(const A, B: TMaterial): Boolean; static; inline;
+      class function Compare(const A, B: TMaterial): Int64; static; inline;
    end;
 
 class function MaterialUtils.Equals(const A, B: TMaterial): Boolean;
@@ -459,6 +460,11 @@ end;
 class function MaterialUtils.GreaterThan(const A, B: TMaterial): Boolean;
 begin
    Result := A.ID > B.ID;
+end;
+
+class function MaterialUtils.Compare(const A, B: TMaterial): Int64;
+begin
+   Result := A.ID - B.ID;
 end;
 
 

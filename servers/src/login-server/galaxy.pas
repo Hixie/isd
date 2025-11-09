@@ -39,10 +39,11 @@ type
             property ID: TStarID read GetID write SetID;
             property Occupied: Boolean read GetOccupied write SetOccupied;
          end;
-         TStarIDUtils = record
-            class function Equals(const A, B: TStarID): Boolean; static; inline;
-            class function LessThan(const A, B: TStarID): Boolean; static; inline;
-            class function GreaterThan(const A, B: TStarID): Boolean; static; inline;
+         THomeStarUtils = record
+            class function Equals(const A, B: THomeStar): Boolean; static; inline;
+            class function LessThan(const A, B: THomeStar): Boolean; static; inline;
+            class function GreaterThan(const A, B: THomeStar): Boolean; static; inline;
+            class function Compare(const A, B: THomeStar): Int64; static; inline;
          end;
          PExtraStars = ^TExtraStars;
          TExtraStars = array of TStarID;
@@ -52,11 +53,6 @@ type
          TServersHashTable = class(specialize THashTable<TStarID, Cardinal, TStarIDUtils>)
            constructor Create();
          end;
-         TStarUtils = record
-            class function Equals(const A, B: THomeStar): Boolean; static; inline;
-            class function LessThan(const A, B: THomeStar): Boolean; static; inline;
-            class function GreaterThan(const A, B: THomeStar): Boolean; static; inline;
-         end;
       var
          FGalaxyData, FSystemsData: TBinaryFile;
          FSettings: PSettings;
@@ -65,7 +61,7 @@ type
          FCategoryStartIndices: array of Cardinal;
          FExtraStars: TSystemsHashTable;
          FServers: TServersHashTable;
-         FHomeCandidates: specialize PlasticArray<THomeStar, TStarUtils>;
+         FHomeCandidates: specialize PlasticArray<THomeStar, THomeStarUtils>;
          FNextHomeCandidate: Cardinal;
          FMetersPerDWordUnit: Double;
       function IsStar(ID: TStarID): Boolean;
@@ -107,21 +103,6 @@ const
 function TStarIDHash(const Value: TStarID): DWord;
 begin
    Result := Integer32Hash32(DWord(Value));
-end;
-
-class function TGalaxyManager.TStarIDUtils.Equals(const A, B: TStarID): Boolean;
-begin
-   Result := A = B;
-end;
-
-class function TGalaxyManager.TStarIDUtils.LessThan(const A, B: TStarID): Boolean;
-begin
-   Result := A < B;
-end;
-
-class function TGalaxyManager.TStarIDUtils.GreaterThan(const A, B: TStarID): Boolean;
-begin
-   Result := A > B;
 end;
 
 
@@ -168,19 +149,24 @@ begin
 end;
 
 
-class function TGalaxyManager.TStarUtils.Equals(const A, B: THomeStar): Boolean;
+class function TGalaxyManager.THomeStarUtils.Equals(const A, B: THomeStar): Boolean;
 begin
    Result := A.ID = B.ID;
 end;
 
-class function TGalaxyManager.TStarUtils.LessThan(const A, B: THomeStar): Boolean;
+class function TGalaxyManager.THomeStarUtils.LessThan(const A, B: THomeStar): Boolean;
 begin
    Result := A.DistanceSquared < B.DistanceSquared;
 end;
 
-class function TGalaxyManager.TStarUtils.GreaterThan(const A, B: THomeStar): Boolean;
+class function TGalaxyManager.THomeStarUtils.GreaterThan(const A, B: THomeStar): Boolean;
 begin
    Result := A.DistanceSquared > B.DistanceSquared;
+end;
+
+class function TGalaxyManager.THomeStarUtils.Compare(const A, B: THomeStar): Int64;
+begin
+   Result := Sign(A.DistanceSquared - B.DistanceSquared);
 end;
 
 
@@ -410,7 +396,7 @@ end;
 
 function TGalaxyManager.CanonicalStarOf(ID: TStarID): TStarID;
 
-   function Search(const Index: Integer): Integer;
+   function Search(const Index: Integer): Int64;
    begin
       Result := Sign(ID - FSystemsData.Cardinals[Index * 2]); // $R-
    end;
@@ -450,7 +436,7 @@ var
    HomePosition: TPosition;
    MinDistance, MaxDistance: Double;
 
-   function SearchMin(const Index: Integer): Integer;
+   function SearchMin(const Index: Integer): Int64;
    var
       Position: TPosition;
       DX, DY: Double;
@@ -461,7 +447,7 @@ var
       Result := Sign(Sqrt(DX * DX + DY * DY) - MinDistance);
    end;
 
-   function SearchMax(const Index: Integer): Integer;
+   function SearchMax(const Index: Integer): Int64;
    var
       Position: TPosition;
       DX, DY: Double;

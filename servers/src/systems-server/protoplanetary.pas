@@ -35,6 +35,7 @@ type
       class function Equals(const A, B: TBody): Boolean; static; inline;
       class function LessThan(const A, B: TBody): Boolean; static; inline;
       class function GreaterThan(const A, B: TBody): Boolean; static; inline;
+      class function Compare(const A, B: TBody): Int64; static; inline;
    end;
 
    TBodyArray = specialize PlasticArray<TBody, TBodyDistanceUtils>;
@@ -128,6 +129,11 @@ end;
 class function TBodyDistanceUtils.GreaterThan(const A, B: TBody): Boolean;
 begin
    Result := A.Distance > B.Distance;
+end;
+
+class function TBodyDistanceUtils.Compare(const A, B: TBody): Int64;
+begin
+   Result := Sign(A.Distance - B.Distance);
 end;
 
 function TBody.GetAverageDistance(): Double;

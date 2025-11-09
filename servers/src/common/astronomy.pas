@@ -4,6 +4,9 @@ unit astronomy;
 
 interface
 
+uses
+   genericutils;
+
 type
    TStarCategory = 0..31;
    TStarCategories = set of TStarCategory;
@@ -13,6 +16,8 @@ type
    {$IF SizeOf(TStarID) <> SizeOf(Cardinal)}
       {$ERROR TStarID is not 32 bits}
    {$ENDIF}
+
+   TStarIDUtils = specialize DefaultNumericUtils<TStarID>;
 
 const
    CategoryShift = 20;
