@@ -379,7 +379,7 @@ begin
 
    if (Child.Parent = Self) then
    begin
-      Assert(Child.Mass = 0.0, 'unexpectedly, the crashed child has mass ' + FloatToStr(Child.Mass));
+      Assert(Child.Mass = 0.0, 'unexpectedly, the crashed child still has mass ' + FloatToStr(Child.Mass) + ' after being handled');
       Child.ReportPermanentlyGone();
       DropChild(Child);
       Child.Free();

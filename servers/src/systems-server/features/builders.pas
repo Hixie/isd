@@ -15,10 +15,6 @@ type
    TBuilderBusFeatureNode = class;
    TBuilderFeatureNode = class;
    TBuilderHashSet = specialize TObjectSet<TBuilderFeatureNode>;
-
-   TPriority = 0..2147483647;
-   TManualPriority = 1..1073741823;
-   TAutoPriority = 1073741824..2147483647;
    
    IStructure = interface ['IStructure']
       procedure BuilderBusConnected(Bus: TBuilderBusFeatureNode); // must come from builder bus
@@ -1035,6 +1031,7 @@ end;
 
 procedure TBuilderFeatureNode.HandleChanges(CachedSystem: TSystem);
 var
+   Structure: IStructure;
    NewDisabledReasons: TDisabledReasons;
    Message: TRegisterBuilderMessage;
 begin
@@ -1048,6 +1045,12 @@ begin
    begin
       FBus.RemoveBuilder(Self);
       FBus := nil;
+      if (Assigned(FStructures)) then
+      begin
+         for Structure in FStructures do
+            Structure.StopBuilding();
+         FreeAndNil(FStructures);
+      end;
    end;
    if ((FDisabledReasons = []) and (not Assigned(FBus))) then
    begin

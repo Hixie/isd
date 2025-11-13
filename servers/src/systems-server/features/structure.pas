@@ -5,7 +5,7 @@ unit structure;
 interface
 
 uses
-   systems, serverstream, materials, techtree, builders, region, time;
+   systems, serverstream, materials, techtree, builders, region, time, commonbuses;
 
 type
    TStructureFeatureClass = class;
@@ -117,7 +117,7 @@ type
 implementation
 
 uses
-   sysutils, isdprotocol, exceptions, rubble, plasticarrays, genericutils, math, commonbuses;
+   sysutils, isdprotocol, exceptions, rubble, plasticarrays, genericutils, math;
 
 constructor TMaterialLineItem.Create(AComponentName: UTF8String; AMaterial: TMaterial; AQuantity: Cardinal);
 begin
@@ -166,7 +166,7 @@ begin
    //    "Logic": "Circuit Board" x 5,
    //    "Shell": "Iron" x 300,
    // ), minimum 805;
-   MaterialsList.Init(2);
+   MaterialsList.Prepare(2);
    Reader.Tokens.ReadIdentifier('size');
    FDefaultSize := ReadLength(Reader.Tokens);
    Reader.Tokens.ReadComma();
@@ -917,6 +917,7 @@ begin
       MeasureDuration();
       FBuildingState^.IncStructuralIntegrity(Duration * FBuildingState^.StructuralIntegrityRate);
       Assert((FBuildingState^.PendingQuantity > 0) = (Assigned(FBuildingState^.PendingMaterial)));
+      MarkAsDirty([dkUpdateClients, dkUpdateJournal, dkNeedsHandleChanges]);
    end;
 end;
 
@@ -995,7 +996,7 @@ begin
       end;
       if (FBuildingState^.StructuralIntegrityRate.IsZero) then
       begin
-         TimeUntilMaterialFunctional := TMillisecondsDuration.Infinity;
+         TimeUntilIntegrityFunctional := TMillisecondsDuration.Infinity;
       end
       else
       begin
@@ -1008,6 +1009,7 @@ begin
          RemainingTime := TimeUntilIntegrityFunctional;
       end;
    end;
+   Assert(RemainingTime.IsNotZero);
    FBuildingState^.NextEvent := CachedSystem.ScheduleEvent(RemainingTime, @HandleEvent, Self);
    FBuildingState^.AnchorTime := CachedSystem.Now;
 end;

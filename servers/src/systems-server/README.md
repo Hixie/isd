@@ -453,8 +453,6 @@ known). The current structural integrity can't be greater than the
 amount of material present, regardless of the indicated rate of
 increase.
 
-> TODO: Currently the structural integrity values have no effect.
-
 
 #### `fcSpaceSensor` (0x05)
 
@@ -602,12 +600,16 @@ This feature supports the following commands:
 #### `fcPopulation` (0x0B)
 
 ```bnf
-<featuredata>       ::= <uint64> <double>
+<featuredata>       ::= <count> <jobs> <happiness>
+<count>             ::= <uint32>
+<jobs>              ::= <uint32>
+<happiness>         ::= <double>
 ```
 
-The integer is the number of people at this population center. The
-double is their mean happiness. It might be a NaN, if the happiness
-cannot be determined.
+The `<count>` is the number of people at this population center. The
+`<jobs>` is the number of people who are working at some `fcStaffing`
+feature. The `<happiness>` is their mean happiness; it might be a NaN,
+if the happiness cannot be determined.
 
 
 #### `fcMessageBoard` (0x0C)
@@ -1093,6 +1095,25 @@ asset owner):
    indicating if anything changed.
 
 
+#### `fcStaffing` (0x1E)
+
+```bnf
+<featuredata>       ::= <jobs> <staff>
+<jobs>              ::= <uint32>
+<staff>             ::= <uint32>
+```
+
+Represents whether staff are operating the asset. The `<jobs>`
+specifies how many people are needed, the `<staff>` specifies how many
+people are working it.
+
+Staff comes from `fcPopulation` centers.
+
+The `<jobs>` is zero if the dynasty does not have access to the
+asset's internals and does not know about the asset class. Otherwise,
+it is non-zero.
+
+
 ### `<disabled>`
 
 Some features can be disabled, either manually or because they're out
@@ -1109,7 +1130,9 @@ follows.
              be reported by `fcBuilder` (there is no feature in the
              protocol that corresponds to the one builders need, but
              it is often also present on features with `fcRegion`).
-   3       : reserved, always zero
+   3       : The number of staff assigned to the asset is below the
+             required number (see `fcStaffing` feature).
+   4       : reserved, always zero
    ...
    31 (MSB): reserved, always zero
 

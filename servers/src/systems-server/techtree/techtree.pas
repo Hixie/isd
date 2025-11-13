@@ -778,7 +778,7 @@ begin
          MaterialNames[Material.Name] := Material;
          MaterialIDs[Material.ID] := Material;
       end;
-      NewMaterials.Init(16);
+      NewMaterials.Prepare(16);
       try
          while (not Tokens.IsEOF()) do
          begin

@@ -299,10 +299,12 @@ type
    public
       procedure UpdateFrom(Stream: TServerStreamReader); override;
    strict private
-      FTotal: UInt64;
+      FTotal: Cardinal;
+      FJobs: Cardinal;
       FHappiness: Double;
    published
-      property Total: UInt64 read FTotal write FTotal;
+      property Total: Cardinal read FTotal write FTotal;
+      property Jobs: Cardinal read FJobs write FJobs;
       property Happiness: Double read FHappiness write FHappiness;
    end;
 
@@ -543,6 +545,16 @@ type
       property Enabled: Boolean read FEnabled write FEnabled;
    end;
 
+   TModelStaffingFeature = class (TModelFeature)
+   public
+      procedure UpdateFrom(Stream: TServerStreamReader); override;
+   strict private
+      FJobs, FWorkers: Cardinal;
+   published
+      property Jobs: Cardinal read FJobs write FJobs;
+      property Workers: Cardinal read FWorkers write FWorkers;
+   end;
+
 const
    ModelFeatureClasses: array[1..fcHighestKnownFeatureCode] of TModelFeatureClass = (
      TModelStarFeature,
@@ -573,7 +585,8 @@ const
      TModelBuilderFeature,
      TModelInternalSensorFeature,
      TModelInternalSensorStatusFeature,
-     TModelOnOffFeature
+     TModelOnOffFeature,
+     TModelStaffingFeature
    );
 
 implementation
@@ -726,7 +739,6 @@ var
    Index: Cardinal;
    S: UTF8String;
 begin
-   Lines.Init();
    GetDescription(FAssets[RootAsset]);
    Assert(Lines.Length > 0);
    Size := 0;
@@ -803,7 +815,7 @@ var
 var
    Root: TModelAsset;
 begin
-   Results.Init(8);
+   Results.Prepare(8);
    Root := Assets[RootAsset];
    Root.WalkChildren(@Search);
    Result := Results.Distill();
@@ -1238,7 +1250,8 @@ end;
 
 procedure TModelPopulationFeature.UpdateFrom(Stream: TServerStreamReader);
 begin
-   Total := Stream.ReadUInt64();
+   Total := Stream.ReadCardinal();
+   Jobs := Stream.ReadCardinal();
    Happiness := Stream.ReadDouble();
 end;
 
@@ -1492,6 +1505,13 @@ end;
 procedure TModelOnOffFeature.UpdateFrom(Stream: TServerStreamReader);
 begin
    Enabled := Stream.ReadBoolean();
+end;
+
+
+procedure TModelStaffingFeature.UpdateFrom(Stream: TServerStreamReader);
+begin
+   FJobs := Stream.ReadCardinal();
+   FWorkers := Stream.ReadCardinal();
 end;
 
 initialization

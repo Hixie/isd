@@ -10,13 +10,13 @@ uses
 type
    IFoodConsumer = interface ['IFoodConsumer']
       function GetOwner(): TDynasty;
-      procedure SetFoodUsage(Quantity: Int64);
+      procedure SetFoodUsage(Quantity: Cardinal);
       property Owner: TDynasty read GetOwner;
    end;
 
    IFoodGenerator = interface ['IFoodGenerator']
       function GetOwner(): TDynasty;
-      procedure SetFoodConsumption(Quantity: Int64);
+      procedure SetFoodConsumption(Quantity: Cardinal);
       property Owner: TDynasty read GetOwner;
    end;
 
@@ -28,11 +28,11 @@ type
       type
          PGeneratorReport = ^TGeneratorReport;
          TGeneratorReport = record
-            Quantity: Int64;
+            Quantity: Cardinal;
          end;
          PConsumerReport = ^TConsumerReport;
          TConsumerReport = record
-            Quantity: Int64;
+            Quantity: Cardinal;
          end;
          TGenerators = specialize THashTable<IFoodGenerator, PGeneratorReport, PointerUtils>;
          TConsumers = specialize THashTable<IFoodConsumer, PConsumerReport, PointerUtils>;
@@ -49,8 +49,8 @@ type
    public
       constructor Create();
       destructor Destroy(); override;
-      procedure RequestFoodToEat(Target: IFoodConsumer; Quantity: Int64);
-      procedure ReportFoodGenerationCapacity(Target: IFoodGenerator; Quantity: Int64);
+      procedure RequestFoodToEat(Target: IFoodConsumer; Quantity: Cardinal);
+      procedure ReportFoodGenerationCapacity(Target: IFoodGenerator; Quantity: Cardinal);
    end;
 
    TFoodBusFeatureClass = class(TFeatureClass)
@@ -75,22 +75,22 @@ type
 type
    TFoodGenerationFeatureClass = class(TFeatureClass)
    strict private
-      FSize: Int64;
+      FSize: Cardinal;
    strict protected
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
-      constructor Create(ASize: Int64);
+      constructor Create(ASize: Cardinal);
       constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
       function InitFeatureNode(): TFeatureNode; override;
-      property Size: Int64 read FSize;
+      property Size: Cardinal read FSize;
    end;
 
    TFoodGenerationFeatureNode = class(TFeatureNode, IFoodGenerator)
    strict private
       FFeatureClass: TFoodGenerationFeatureClass;
-      FFoodConsumption: Int64;
+      FFoodConsumption: Cardinal;
       function GetOwner(): TDynasty;
-      procedure SetFoodConsumption(Quantity: Int64);
+      procedure SetFoodConsumption(Quantity: Cardinal);
    protected
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
@@ -155,7 +155,7 @@ begin
    end;
 end;
 
-procedure TInitFoodMessage.RequestFoodToEat(Target: IFoodConsumer; Quantity: Int64);
+procedure TInitFoodMessage.RequestFoodToEat(Target: IFoodConsumer; Quantity: Cardinal);
 var
    FoodReport: PFoodReport;
    ConsumerReport: PConsumerReport;
@@ -166,7 +166,7 @@ begin
    FoodReport^.Consumers[Target] := ConsumerReport;
 end;
 
-procedure TInitFoodMessage.ReportFoodGenerationCapacity(Target: IFoodGenerator; Quantity: Int64);
+procedure TInitFoodMessage.ReportFoodGenerationCapacity(Target: IFoodGenerator; Quantity: Cardinal);
 var
    FoodReport: PFoodReport;
    GeneratorReport: PGeneratorReport;
@@ -178,6 +178,20 @@ begin
 end;
 
 procedure TInitFoodMessage.Process();
+
+   function SaturatingTrunc(Value: Double): Cardinal;
+   begin
+      Assert(Value >= 0);
+      if (Value > High(Result)) then
+      begin
+         Value := High(Result);
+      end
+      else
+      begin
+         Result := Trunc(Value); // $R-
+      end;
+   end;
+   
 var
    Dynasty: TDynasty;
    FoodReport: PFoodReport;
@@ -216,12 +230,12 @@ begin
       for Generator in FoodReport^.Generators do
       begin
          GeneratorReport := FoodReport^.Generators[Generator];
-         Generator.SetFoodConsumption(Trunc(GeneratorReport^.Quantity * GeneratorFactor));
+         Generator.SetFoodConsumption(SaturatingTrunc(GeneratorReport^.Quantity * GeneratorFactor));
       end;
       for Consumer in FoodReport^.Consumers do
       begin
          ConsumerReport := FoodReport^.Consumers[Consumer];
-         Consumer.SetFoodUsage(Trunc(ConsumerReport^.Quantity * ConsumerFactor));
+         Consumer.SetFoodUsage(SaturatingTrunc(ConsumerReport^.Quantity * ConsumerFactor));
       end;
    end;
 end;
@@ -286,7 +300,7 @@ begin
 end;
 
 
-constructor TFoodGenerationFeatureClass.Create(ASize: Int64);
+constructor TFoodGenerationFeatureClass.Create(ASize: Cardinal);
 begin
    inherited Create();
    FSize := ASize;
@@ -296,9 +310,7 @@ constructor TFoodGenerationFeatureClass.CreateFromTechnologyTree(Reader: TTechTr
 begin
    inherited Create();
    Reader.Tokens.ReadIdentifier('size');
-   FSize := Reader.Tokens.ReadNumber();
-   if (FSize <= 0) then
-      Reader.Tokens.Error('Size must be positive and non-zero', []);
+   FSize := ReadNumber(Reader.Tokens, 1, High(FSize)); // $R-
 end;
 
 function TFoodGenerationFeatureClass.GetFeatureNodeClass(): FeatureNodeReference;
@@ -354,7 +366,7 @@ begin
    Result := Parent.Owner;
 end;
 
-procedure TFoodGenerationFeatureNode.SetFoodConsumption(Quantity: Int64);
+procedure TFoodGenerationFeatureNode.SetFoodConsumption(Quantity: Cardinal);
 begin
    FFoodConsumption := Quantity;
 end;

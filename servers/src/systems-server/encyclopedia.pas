@@ -82,8 +82,9 @@ uses
    // this must import every feature, so they get registered:
    builders, food, grid, gridsensor, internalsensor, knowledge,
    materialpile, messages, mining, name, onoff, orbit, orepile,
-   planetary, plot, population, proxy, refining, region, research,
-   rubble, size, spacesensor, stellar, structure, surface;
+   peoplebus, planetary, plot, population, proxy, refining, region,
+   research, rubble, size, spacesensor, staffing, stellar, structure,
+   surface;
 
 var
    InstructionManualText: UTF8String =
@@ -249,10 +250,11 @@ begin
       'An area of a planetary body.',
       [
          TRegionFeatureClass.Create(1, 10, High(UInt64)),
-         TGenericGridFeatureClass.Create(),
          TKnowledgeBusFeatureClass.Create(),
          TFoodBusFeatureClass.Create(),
-         TBuilderBusFeatureClass.Create()
+         TBuilderBusFeatureClass.Create(),
+         TPeopleBusFeatureClass.Create(),
+         TGenericGridFeatureClass.Create() // must be after the busses, so that they don't defer to something in the grid
       ],
       PlanetRegionIcon,
       []
@@ -286,6 +288,7 @@ begin
          TKnowledgeBusFeatureClass.Create(),
          TFoodBusFeatureClass.Create(),
          TFoodGenerationFeatureClass.Create(100),
+         TPeopleBusFeatureClass.Create(),
          TResearchFeatureClass.Create(),
          TInternalSensorFeatureClass.Create([dmVisibleSpectrum]),
          TKnowledgeFeatureClass.Create() // the instruction manual, ziptied to the ship
@@ -541,7 +544,7 @@ begin
       StarHillDiameter := Space.GetHillDiameter(StarOrbit, Star.Mass);
       if (StarHillDiameter > Star.Size) then
       begin
-         Planets := CondenseProtoplanetaryDisk(Star.Mass, Star.Size / 2.0, StarHillDiameter / 2.0, StarFeature.Temperature, FProtoplanetaryMaterials, System);
+         CondenseProtoplanetaryDisk(Star.Mass, Star.Size / 2.0, StarHillDiameter / 2.0, StarFeature.Temperature, FProtoplanetaryMaterials, System, Planets);
          for Body in Planets do
          begin
             AddBody(Body, StarOrbitFeature);
@@ -556,10 +559,11 @@ begin
       nil, // no owner
       [
          TRegionFeatureNode.Create(FRegion.Features[0] as TRegionFeatureClass),
-         TGridFeatureNode.Create(bePlanetRegion, CellSize, Dimension),
          TKnowledgeBusFeatureNode.Create(),
          TFoodBusFeatureNode.Create(),
-         TBuilderBusFeatureNode.Create()
+         TBuilderBusFeatureNode.Create(),
+         TPeopleBusFeatureNode.Create(),
+         TGridFeatureNode.Create(bePlanetRegion, CellSize, Dimension)
       ]
    );
 end;
@@ -691,8 +695,9 @@ begin
             TKnowledgeBusFeatureNode.Create(),
             TFoodBusFeatureNode.Create(),
             TFoodGenerationFeatureNode.Create(PlaceholderShip.Features[8] as TFoodGenerationFeatureClass),
-            TResearchFeatureNode.Create(PlaceholderShip.Features[9] as TResearchFeatureClass),
-            TInternalSensorFeatureNode.Create(PlaceholderShip.Features[10] as TInternalSensorFeatureClass),
+            TPeopleBusFeatureNode.Create(),
+            TResearchFeatureNode.Create(PlaceholderShip.Features[10] as TResearchFeatureClass),
+            TInternalSensorFeatureNode.Create(PlaceholderShip.Features[11] as TInternalSensorFeatureClass),
             TKnowledgeFeatureNode.Create(PlaceholderShipInstructionManual)
          ]
       )),

@@ -193,8 +193,8 @@ begin
       if (PollResult = 0) then
          raise Exception.Create('timed out waiting for message from server');
       Assert(PollResult = 1);
-      if (FileDescriptors^.REvents <> POLLIN) then
-         raise Exception.Create('unexpected activity on socket');
+      if ((FileDescriptors^.REvents and POLLIN) <> POLLIN) then
+         raise Exception.CreateFmt('unexpected activity on socket (events=%d)', [FileDescriptors^.REvents]);
    finally
       Dispose(FileDescriptors);
    end;
@@ -795,8 +795,18 @@ begin
 end;
 
 procedure TIsdServerTest.CopyTemplate(const BaseDirectory, TestDirectory, FileName: UTF8String);
+var
+   Alt: UTF8String;
 begin
-   CopyFile(BaseDirectory + 'templates/' + FileName, TestDirectory + FileName);
+   Alt := BaseDirectory + UnitName + '/' + FileName;
+   if (FileExists(Alt)) then
+   begin
+      CopyFile(Alt, TestDirectory + FileName);
+   end
+   else
+   begin
+      CopyFile(BaseDirectory + 'defaults/' + FileName, TestDirectory + FileName);
+   end;
 end;
 
 procedure TIsdServerTest.PrepareConfiguration(const BaseDirectory, TestDirectory: UTF8String);

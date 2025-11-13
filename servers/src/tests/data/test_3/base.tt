@@ -1,0 +1,36 @@
+research nothing {
+  id: 0 (root);
+}
+
+class jobs1000 {
+  id: 1000;
+  name: "1000 jobs" ("Unknown 1000 jobs");
+  description: "Test for TStaffingFeatureClass 1000 jobs";
+  icon: "test";
+  build: land;
+  feature: TSizeFeatureClass 10m;
+  feature: TStaffingFeatureClass 1000 jobs;
+  feature: TOnOffFeatureClass;
+}
+
+class jobs2000 {
+  id: 1001;
+  name: "2000 jobs" ("Unknown 2000 jobs");
+  description: "Test for TStaffingFeatureClass 2000 jobs";
+  icon: "test";
+  build: land;
+  feature: TSizeFeatureClass 10m;
+  feature: TStaffingFeatureClass 2000 jobs;
+  feature: TOnOffFeatureClass;
+}
+
+research unlock {
+  id: 1;
+  requires nothing;
+  takes 1 hour;
+  rewards asset jobs1000;
+  rewards asset jobs2000;
+  rewards [
+    Technology unlocked.
+  ];
+}

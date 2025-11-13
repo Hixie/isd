@@ -136,7 +136,7 @@ end;
 procedure TResearchFeatureNode.ScheduleUpdateResearch();
 begin
    FUpdateResearchScheduled := True;
-   MarkAsDirty([dkUpdateClients, dkUpdateJournal, dkNeedsHandleChanges]);
+   MarkAsDirty([dkNeedsHandleChanges]);
 end;
 
 procedure TResearchFeatureNode.HandleChanges(CachedSystem: TSystem);
@@ -361,6 +361,7 @@ begin
          begin
             FTopic := Topic;
             ScheduleUpdateResearch();
+            MarkAsDirty([dkUpdateClients, dkUpdateJournal]);
          end;
          Message.CloseOutput();
       end;
@@ -435,22 +436,22 @@ begin
    KnowledgeBase := TGetKnownResearchesMessage.Create(Parent.Owner);
    WeightedCandidates := TWeightedResearchHashTable.Create();
    TotalWeight := 0;
-   {$IFDEF VERBOSE} Writeln('  ', Parent.DebugName, ': Enumerating researches for dynasty ', Parent.Owner.DynastyID, '.'); {$ENDIF}
+   {$IFDEF VERBOSE} Writeln(Parent.DebugName, ': Enumerating researches for dynasty ', Parent.Owner.DynastyID, '.'); {$ENDIF}
    try
       Injected := InjectBusMessage(KnowledgeBase);
       Assert(Injected = mrHandled);
       KnowledgeBase.Subscribe(@ScheduleUpdateResearch); // TODO: how do we know this isn't leaking memory by adding infinite callbacks
       for Research in KnowledgeBase do
       begin
-         {$IFDEF VERBOSE} Writeln('   - ', Research.ID, ' is known'); {$ENDIF}
+         {$IFDEF VERBOSE} Writeln(' - ', Research.ID, ' is known'); {$ENDIF}
          for Node in Research.Unlocks do
          begin
             if (Node is TResearch) then // we don't care about which topics we unlock here, as we're just making a list of researches that have been unlocked
             begin
                Candidate := Node as TResearch;
-               {$IFDEF VERBOSE} Writeln('     - ', Candidate.ID, ' is unlocked by ', Research.ID); {$ENDIF}
-               {$IFDEF VERBOSE} Writeln('       already known = ', KnowledgeBase.Knows(Candidate)); {$ENDIF}
-               {$IFDEF VERBOSE} Writeln('       weighted = ', WeightedCandidates.Has(Candidate)); {$ENDIF}
+               {$IFDEF VERBOSE} Writeln('   - ', Candidate.ID, ' is unlocked by ', Research.ID); {$ENDIF}
+               {$IFDEF VERBOSE} Writeln('     already known = ', KnowledgeBase.Knows(Candidate)); {$ENDIF}
+               {$IFDEF VERBOSE} Writeln('     weighted = ', WeightedCandidates.Has(Candidate)); {$ENDIF}
                if ((not KnowledgeBase.Knows(Candidate)) and
                    (not WeightedCandidates.Has(Candidate))) then
                begin
@@ -479,7 +480,7 @@ begin
                         Assert(False);
                      end;
                   end;
-                  {$IFDEF VERBOSE} Writeln('       requirements met = ', RequirementsMet); {$ENDIF}
+                  {$IFDEF VERBOSE} Writeln('     requirements met = ', RequirementsMet); {$ENDIF}
                   if (RequirementsMet) then
                   begin
                      Weight := Candidate.DefaultWeight;
@@ -508,7 +509,7 @@ begin
                         if (RequirementsMet) then
                            Inc(Weight, Bonus.WeightDelta);
                      end;
-                     {$IFDEF VERBOSE} Writeln('       weight = ', Weight); {$ENDIF}
+                     {$IFDEF VERBOSE} Writeln('     weight = ', Weight); {$ENDIF}
                      if (Weight > 0) then
                      begin
                         WeightedCandidates[Candidate] := Weight;
@@ -619,14 +620,14 @@ begin
 
       if (Duration.IsNegative) then
          Duration := TMillisecondsDuration.FromMilliseconds(0);
-      Writeln('  ', Parent.DebugName, ': Scheduled research ', FCurrentResearch.ID, '; T-', Duration.ToString());
+      Writeln(Parent.DebugName, ': Scheduled research ', FCurrentResearch.ID, '; T-', Duration.ToString());
 
       FResearchEvent := CachedSystem.ScheduleEvent(Duration, @TriggerResearch, Self);
    finally
       WeightedCandidates.Free();
       KnowledgeBase.Free();
    end;
-   MarkAsDirty([dkUpdateClients, dkUpdateJournal]); // save new situation (but don't update research)
+   MarkAsDirty([dkUpdateJournal]); // save new situation (but don't update research)
 end;
 
 procedure TResearchFeatureNode.TriggerResearch(var Data);
@@ -636,7 +637,7 @@ var
    Injected: TBusMessageResult;
    Body: UTF8String;
 begin
-   Writeln('  ', Parent.DebugName, ': Triggering research ', FCurrentResearch.ID);
+   Writeln(Parent.DebugName, ': Triggering research ', FCurrentResearch.ID);
    FResearchEvent := nil;
    Assert(not FBankedResearch.Has(FCurrentResearch));
    Assert(Length(FCurrentResearch.Rewards) > 0);
@@ -652,7 +653,7 @@ begin
    RewardMessage := TNotificationMessage.Create(Parent, Body, FCurrentResearch);
    Injected := InjectBusMessage(RewardMessage);
    if (Injected <> mrHandled) then
-      Writeln('  ', Parent.DebugName, ': Discarding message from research feature ("', RewardMessage.Body, '")');
+      Writeln(Parent.DebugName, ': Discarding message from research feature ("', RewardMessage.Body, '")');
    FreeAndNil(RewardMessage);
    SetLength(FSpecialties, Length(FSpecialties) + 1);
    FSpecialties[High(FSpecialties)] := FCurrentResearch;

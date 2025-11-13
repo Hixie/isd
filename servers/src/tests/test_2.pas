@@ -38,7 +38,8 @@ var
    SystemsServerCount: QWord;
    Index: QWord;
    LoginServer, DynastyServer, SystemsServer: TServerWebSocket;
-   HomeRegion: TModelAsset;
+   Grid: TModelGridFeature;
+   ColonyShip, HomeRegion: TModelAsset;
    AssetClass1, AssetClass2, AssetClass3, AssetClass4: Integer;
 begin
    LoginServer := FLoginServer.ConnectWebSocket();
@@ -79,27 +80,19 @@ begin
    ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 127);
 
    AdvanceTime(1000 * Days); // crash the colony ship, get lots of technologies
-   ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 'Don''t mind the holes');
-   ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 'Apologies please don''t evict us');
+   ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 'Technology unlocked.');
+
    ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 10); // crash
-   HomeRegion := specialize GetUpdatedFeature<TModelGridFeature>(ModelSystem).Parent;
-   ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 'Drill!'#10);
-   ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 'Iron team'#10);
-   ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 'Silicon'#10);
-   ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 'Congratulations'#10);
-   ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 'Breakthrough in City Planning'#10);
-   ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 'Congratulations'#10);
-   ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 'Mining'#10);
-   ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 'Storage for mining'#10);
-   ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 'Stuff in holes'#10);
-   ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 'Where we come from'#10);
-   ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 'Communicating with our creator'#10);
-   ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, '"Powerful Being" nonsense'#10);
-   ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 'The Impact of Religion on Society'#10);
-   ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 'Reorganisation'#10);
+   Grid := specialize GetUpdatedFeature<TModelGridFeature>(ModelSystem);
+   HomeRegion := Grid.Parent;
+   ColonyShip := FindColonyShip(ModelSystem);   
+   Verify(Grid.Children.Length = 1);
+   Verify(Grid.Children[0].X = 0);
+   Verify(Grid.Children[0].Y = 3);
+   Verify(ModelSystem.Assets[(ModelSystem.Assets[Grid.Children[0].AssetID].Features[TModelProxyFeature] as TModelProxyFeature).Child] = ColonyShip);
    
-   // Build a drill
-   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.ID) + #00'get-buildings'#00'1'#00'1'#00);
+   // some digging and building tests
+   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.ID) + #00'get-buildings'#00'0'#00'0'#00);
    Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
    VerifyPositiveResponse(Response);
    AssetClass1 := GetAssetClassFromBuildingsList(Response, 'Iron team table');

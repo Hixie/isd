@@ -258,7 +258,7 @@ begin
    if (Message is TReceiveCrashingAssetMessage) then
    begin
       RandomNumberGenerator := System.RandomNumberGenerator;
-      // hat tip to Andreas Lundblad
+      // hat tip to Andreas Lundblad for the algorithm for picking a point from a uniform distribution of points on a circle
       Assert(FSize > 0.0);
       Assert(FFeatureClass.FCellSize > 0.0);
       Assert(FFeatureClass.FMaxRegionSize > 0);

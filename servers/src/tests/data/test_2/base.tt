@@ -1,0 +1,191 @@
+research nothing {
+  id: 0 (root);
+}
+
+material {
+  id: 100001;
+  name: "Brick" ("Square rock");
+  description: "A piece of rock, fashioned into a stackable component, useful for creating buildings.";
+  icon: "brick";
+  
+  metrics: component 10cm weighs 1kg;
+  // metrics: fluid 1m weighs 1kg;
+  // metrics: bulk 1m weighs 1kg;
+}
+
+topic "Church support" requires nothing;
+
+class church {
+  id: 1;
+  name: "Church" ("Tall building");
+  description: "This tall building is intended for communicating with the purported creator being.";
+  icon: "church";
+  build: land;
+  feature: TStructureFeatureClass size 100m, materials (
+    "Frame": "Iron" * 100,
+    "Facing": "Silicon" * 50,
+    "Decorations": "Iron" * 10,
+  ), minimum 140;
+  feature: TResearchFeatureClass provides "Church support";
+}
+
+class city {
+  id: 2;
+  name: "City" ("Settlement");
+  description: "A collection of buildings and infrastructure for people to live at.";
+  icon: "city";
+  build: land;
+  feature: TParameterizedGridFeatureClass 6*6, 100m, land;
+  feature: TKnowledgeBusFeatureClass;
+  feature: TFoodBusFeatureClass;
+}
+
+class mining-big-hole {
+  id: 3;
+  name: "Big mining hole" ("Large hole in the ground");
+  description: "This is a hole used for mining dirt from the ground.";
+  icon: "mining-big-hole";
+  build: land;
+  feature: TSizeFeatureClass 100m;
+  feature: TMiningFeatureClass max throughput 10kg/s;
+  feature: TOrePileFeatureClass max mass 30000kg;
+  feature: TOnOffFeatureClass;
+}
+
+class pile {
+  id: 4;
+  name: "Big ore pile" ("Big pile of dirt");
+  description: "This is where we put resources we have mined from the ground.";
+  icon: "empty-land";
+  build: land;
+  feature: TSizeFeatureClass 100m;
+  feature: TOrePileFeatureClass max mass 3000000kg;
+}
+
+class mining-hole {
+  id: 5000;
+  name: "Mining hole" ("Hole in the ground");
+  description: "This is a hole used to dig in the ground and get dirt and rocks and stuff.";
+  icon: "mining-hole";
+  build: land;
+  feature: TSizeFeatureClass 50m;
+  feature: TMiningFeatureClass max throughput 1kg/s;
+  feature: TOrePileFeatureClass max mass 30000kg;
+  feature: TOnOffFeatureClass;
+}
+
+class giant-mining-hole {
+  id: 5001;
+  name: "Mining hole with more help" ("Hole in the ground");
+  description: "This is a hole used to dig in the ground and get dirt and rocks and stuff, with lots of people helping.";
+  icon: "mining-hole";
+  build: land;
+  feature: TSizeFeatureClass 100m;
+  feature: TMiningFeatureClass max throughput 10kg/s;
+  feature: TOrePileFeatureClass max mass 300000kg;
+  feature: TOnOffFeatureClass;
+}
+
+class research-hole {
+  id: 5;
+  name: "Archeological hole" ("Hole in the ground");
+  description: "This is a hole used to dig in the ground for artifacts.";
+  icon: "mining-hole";
+  build: land;
+  feature: TSizeFeatureClass 100m;
+  feature: TMiningFeatureClass max throughput 1kg/s;
+  feature: TResearchFeatureClass;
+  feature: TOnOffFeatureClass;
+}
+
+class iron-team {
+  id: 6;
+  name: "Iron team table" ("Table");
+  description: "This is a table used by a small team of people to go through unsorted ores and pluck out bits of iron.";
+  icon: "table";
+  build: land;
+  feature: TSizeFeatureClass 10m;
+  feature: TRefiningFeatureClass for "Iron", max throughput 1000kg/h;
+  feature: TMaterialPileFeatureClass for "Iron", capacity 1000kg;
+  feature: TOnOffFeatureClass;
+}
+
+class iron-pile {
+  id: 7;
+  name: "Iron pile" ("Pile");
+  description: "This is a pile used for storing iron.";
+  icon: "empty-land";
+  build: land;
+  feature: TSizeFeatureClass 500m;
+  feature: TMaterialPileFeatureClass for "Iron", capacity 100000kg;
+}
+
+class drill {
+  id: 8;
+  name: "Drilling Hole" ("Hole");
+  description: "This is a drilling hole used for obtaining large quantities of ore.";
+  icon: "drill";
+  build: land;
+  feature: TSizeFeatureClass 500m;
+  feature: TMiningFeatureClass max throughput 1000kg/h;
+  feature: TOnOffFeatureClass;
+}
+
+class hack-builders {
+  id: 11;
+  name: "Builder rally point" ("Meeting point");
+  description: "This is the designated point for some builders to get together when planning building projects.";
+  icon: "rally-point";
+  build: land;
+  feature: TBuilderFeatureClass capacity 1, build 100 hp/h;
+}
+
+class silicon-table {
+  id: 9;
+  name: "Silicon Table" ("Table");
+  description: "This is a table used for sorting out silicon.";
+  icon: "table";
+  build: land;
+  feature: TRefiningFeatureClass for "Silicon", max throughput 1000kg/h;
+  feature: TMaterialPileFeatureClass for "Silicon", capacity 1000kg;
+  feature: TStructureFeatureClass size 10m, materials (
+    "Table": "Iron" * 2,
+    "Covering": "Silicon" * 1,
+  ), minimum 1;
+  feature: TBuilderFeatureClass capacity 1, build 100 hp/h;
+  feature: TOnOffFeatureClass;
+}
+
+class silicon-pile {
+  id: 10;
+  name: "Silicon pile" ("Pile");
+  description: "This is a pile used for storing silicon.";
+  icon: "empty-land";
+  build: land;
+  feature: TSizeFeatureClass 500m;
+  feature: TMaterialPileFeatureClass for "Silicon", capacity 100000kg;
+}
+
+research unlock {
+  id: 1;
+  requires nothing;
+  takes 1 hour;
+  rewards asset church;
+  rewards asset city;
+  rewards asset drill;
+  rewards asset giant-mining-hole;
+  rewards asset hack-builders;
+  rewards asset iron-pile;
+  rewards asset iron-team;
+  rewards asset mining-big-hole;
+  rewards asset mining-hole;
+  rewards asset pile;
+  rewards asset research-hole;
+  rewards asset silicon-pile;
+  rewards asset silicon-table;
+  rewards material "Iron";
+  rewards material "Silicon";
+  rewards [
+    Technology unlocked.
+  ];
+}

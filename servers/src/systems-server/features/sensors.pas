@@ -116,7 +116,7 @@ end;
 function TSensorFeatureNode.Knows(AssetClass: TAssetClass): Boolean;
 begin
    SyncKnowledge();
-   // If something crashes here, it probably means that someone's HandleKnowledge is calling MarkAsDirty
+   // If something fails here, it probably means that someone's HandleKnowledge is calling MarkAsDirty
    // and the knowledge feature we're relying on is blowing away its cache.
    Result := FKnownAssetClasses.Knows(AssetClass);
 end;
@@ -124,7 +124,7 @@ end;
 function TSensorFeatureNode.Knows(Material: TMaterial): Boolean;
 begin
    SyncKnowledge();
-   // If something crashes here, it probably means that someone's HandleKnowledge is calling MarkAsDirty
+   // If something fails here, it probably means that someone's HandleKnowledge is calling MarkAsDirty
    // and the knowledge feature we're relying on is blowing away its cache.
    Result := FKnownMaterials.Knows(Material);
 end;

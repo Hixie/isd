@@ -204,7 +204,7 @@ type
 implementation
 
 uses
-   sysutils, planetary, exceptions, messages, isdnumbers, math, hashfunctions;
+   sysutils, planetary, exceptions, isdnumbers, math, hashfunctions;
 
    
 function TRegionClientFields.GetNeedsConnection(): Boolean;
@@ -693,6 +693,7 @@ var
    MaterialConsumerMessage: TRegisterMaterialConsumerBusMessage;
 begin
    {$IFOPT C+} Assert(not Busy); {$ENDIF}
+   // TODO: shouldn't most of these be DeferOrManageBusMessage'd, then handled in HandleBusMessage?
    if (Message is TRegisterMinerBusMessage) then
    begin
       if (FActive) then
@@ -1144,7 +1145,7 @@ procedure TRegionFeatureNode.ReconsiderEverything(var Data);
 begin
    Assert(Assigned(FNextEvent));
    Assert(FDynamic);
-   FNextEvent := nil; // important to do this before anything that might crash, otherwise we try to free it on exit
+   FNextEvent := nil; // important to do this before anything that might raise an exception, otherwise we try to free it on exit
    Sync();
    Pause();
    Assert(not FDynamic);

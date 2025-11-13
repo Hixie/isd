@@ -435,7 +435,7 @@ begin
                else
                   if (ExpectedIndent = 0) then
                      Error('Missing indent in multiline string', []);
-                  StringSegments.Init(4);
+                  StringSegments.Prepare(4);
                   SegmentStart := FPosition;
                   Mode := tmMultilineStringBody;
                   continue;

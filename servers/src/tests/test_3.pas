@@ -38,8 +38,7 @@ var
    SystemsServerCount: QWord;
    Index: QWord;
    LoginServer, DynastyServer, SystemsServer: TServerWebSocket;
-   HomeRegion, Asset: TModelAsset;
-   AssetClass1, AssetClass2, AssetClass3, AssetClass4: Integer;
+   HomeRegion, Jobs1, Jobs2: TModelAsset;
 begin
    LoginServer := FLoginServer.ConnectWebSocket();
    LoginServer.SendWebSocketStringMessage('0'#00'new'#00);
@@ -78,79 +77,117 @@ begin
 
    ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 127);
 
-   AdvanceTime(1000 * Days); // crash the colony ship, get lots of technologies
-   ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 'Don''t mind the holes');
-   ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 'Apologies please don''t evict us');
+   AdvanceTime(1000 * Days); // crash the colony ship, unlock technologies
+   ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 'Technology unlocked.');
    ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 10); // crash
    HomeRegion := specialize GetUpdatedFeature<TModelGridFeature>(ModelSystem).Parent;
-   ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 'Drill!'#10);
-   ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 'Iron team'#10);
-   ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 'Silicon'#10);
-   ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 'Congratulations'#10);
-   ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 'Breakthrough in City Planning'#10);
-   ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 'Congratulations'#10);
-   ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 'Mining'#10);
-   ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 'Storage for mining'#10);
-   ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 'Stuff in holes'#10);
-   ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 'Where we come from'#10);
-   ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 'Communicating with our creator'#10);
-   ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, '"Powerful Being" nonsense'#10);
-   ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 'The Impact of Religion on Society'#10);
-   ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 'Reorganisation'#10);
-   
-   // Build a drill
-   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.ID) + #00'get-buildings'#00'1'#00'1'#00);
-   Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
-   VerifyPositiveResponse(Response);
-   AssetClass1 := GetAssetClassFromBuildingsList(Response, 'Builder rally point');
-   AssetClass2 := GetAssetClassFromBuildingsList(Response, 'Silicon Table');
-   AssetClass3 := GetAssetClassFromBuildingsList(Response, 'Drilling Hole');
-   AssetClass4 := GetAssetClassFromBuildingsList(Response, 'Iron team table');
-   FreeAndNil(Response);
-   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.ID) + #00'build'#00'0'#00'0'#00 + IntToStr(AssetClass1) + #00);
+   with (specialize GetUpdatedFeature<TModelPopulationFeature>(ModelSystem)) do
+   begin
+      Verify(Total = 2000);
+      Verify(Jobs = 0);
+   end;
+
+   // add 1000 jobs
+   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.ID) + #00'build'#00'0'#00'0'#00'1000'#00);
    Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
    VerifyPositiveResponse(Response);
    FreeAndNil(Response);
 
    TimePinned := True;
-   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 2);
-
-   TimePinned := True;
-   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.ID) + #00'build'#00'0'#00'1'#00 + IntToStr(AssetClass2) + #00);
-   Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
-   VerifyPositiveResponse(Response);
-   FreeAndNil(Response);
-   
-   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 2);
-
-   TimePinned := True;
-   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.ID) + #00'build'#00'0'#00'2'#00 + IntToStr(AssetClass3) + #00);
-   Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
-   VerifyPositiveResponse(Response);
-   FreeAndNil(Response);
-   
    ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 3);
+   with (specialize GetUpdatedFeature<TModelPopulationFeature>(ModelSystem)) do
+   begin
+      Verify(Total = 2000);
+      Verify(Jobs = 1000);
+   end;
+   with (specialize GetUpdatedFeature<TModelStaffingFeature>(ModelSystem)) do
+   begin
+      Verify(Jobs = 1000);
+      Verify(Workers = 1000);
+      Jobs1 := Parent;
+   end;
 
-   TimePinned := True;
-   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.ID) + #00'build'#00'1'#00'0'#00 + IntToStr(AssetClass4) + #00);
+   // add 2000 jobs
+   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.ID) + #00'build'#00'1'#00'0'#00'1001'#00);
    Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
    VerifyPositiveResponse(Response);
    FreeAndNil(Response);
-   
-   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 4);
-   Asset := specialize GetUpdatedFeature<TModelRefiningFeature>(ModelSystem, 0).Parent;
 
    TimePinned := True;
-   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(Asset.ID) + #00'disable'#00);
-   Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
-   VerifyPositiveResponse(Response);
-   FreeAndNil(Response);
-   
-   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 1);
-
-   AdvanceTime(1000 * Days); // build the silicon table
    ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 2);
+   with (specialize GetUpdatedFeature<TModelStaffingFeature>(ModelSystem)) do
+   begin
+      Verify(Jobs = 2000);
+      Verify(Workers = 0);
+      Jobs2 := Parent;
+   end;
+
+   // add 1000 jobs
+   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.ID) + #00'build'#00'2'#00'0'#00'1000'#00);
+   Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
+   VerifyPositiveResponse(Response);
+   FreeAndNil(Response);
+
+   TimePinned := True;
    ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 3);
+   with (specialize GetUpdatedFeature<TModelPopulationFeature>(ModelSystem)) do
+   begin
+      Verify(Total = 2000);
+      Verify(Jobs = 2000);
+   end;
+   with (specialize GetUpdatedFeature<TModelStaffingFeature>(ModelSystem)) do
+   begin
+      Verify(Jobs = 1000);
+      Verify(Workers = 1000);
+   end;
+
+   // disable the first one
+   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(Jobs1.ID) + #00'disable'#00);
+   Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
+   VerifyPositiveResponse(Response);
+   FreeAndNil(Response);
+
+   TimePinned := True;
+   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 3);
+   with (specialize GetUpdatedFeature<TModelStaffingFeature>(ModelSystem, 0)) do
+   begin
+      Verify(Jobs = 1000);
+      Verify(Workers = 0);
+   end;
+   with (specialize GetUpdatedFeature<TModelStaffingFeature>(ModelSystem, 1)) do
+   begin
+      Verify(Jobs = 2000);
+      Verify(Workers = 2000);
+   end;
+   with (specialize GetUpdatedFeature<TModelStaffingFeature>(ModelSystem, 2)) do
+   begin
+      Verify(Jobs = 1000);
+      Verify(Workers = 0);
+   end;
+
+   // disable the first one
+   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(Jobs2.ID) + #00'disable'#00);
+   Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
+   VerifyPositiveResponse(Response);
+   FreeAndNil(Response);
+
+   TimePinned := True;
+   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 3);
+   with (specialize GetUpdatedFeature<TModelPopulationFeature>(ModelSystem)) do
+   begin
+      Verify(Total = 2000);
+      Verify(Jobs = 1000);
+   end;
+   with (specialize GetUpdatedFeature<TModelStaffingFeature>(ModelSystem, 0)) do
+   begin
+      Verify(Jobs = 2000);
+      Verify(Workers = 0);
+   end;
+   with (specialize GetUpdatedFeature<TModelStaffingFeature>(ModelSystem, 1)) do
+   begin
+      Verify(Jobs = 1000);
+      Verify(Workers = 1000);
+   end;
    
    FreeAndNil(ModelSystem);
 

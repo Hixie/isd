@@ -327,7 +327,6 @@ begin
       if (not Message.CloseInput()) then
          exit;
       Message.Reply();
-      OpenFiles.Init();
       BinaryStream := TBinaryStreamWriter.Create();
       try
          BinaryStream.WriteCardinal(0);
@@ -372,8 +371,6 @@ var
    BinaryBits: RawByteString;
    Scores: TFileData;
 begin
-   DynastyIDs.Init();
-   DynastyOffsets.Init();
    while (Message.Input.CanReadMore) do
    begin
       DynastyID := Message.Input.ReadCardinal();
@@ -393,7 +390,6 @@ begin
    if (not Message.CloseInput()) then
       exit;
    Message.Reply();
-   OpenFiles.Init();
    BinaryStream := TBinaryStreamWriter.Create();
    try
       BinaryStream.WriteCardinal(0);

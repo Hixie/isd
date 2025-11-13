@@ -536,7 +536,7 @@ type
    protected
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); virtual;
       procedure AssetCreated(); virtual; // called when we are associated with an asset after the asset is created; Parent is still nil
-      procedure Attached(); virtual; // called when we are newly in a subtree rooted in a system
+      procedure Attaching(); virtual; // called when we are newly in a subtree rooted in a system
       procedure Detaching(); virtual; // called when an ancestor is about to lose its Parent
       procedure AdoptChild(Child: TAssetNode); virtual;
       procedure DropChild(Child: TAssetNode); virtual;
@@ -1388,7 +1388,7 @@ procedure TFeatureNode.AssetCreated();
 begin
 end;
 
-procedure TFeatureNode.Attached();
+procedure TFeatureNode.Attaching();
 begin
 end;
 
@@ -1407,7 +1407,6 @@ begin
    DirtyKinds := dkAffectsTreeStructure + UpdateDirtyKindsForAncestor(Child.Dirty);
    Include(DirtyKinds, dkAffectsDynastyCount); // TODO: only do this if new subtree contains any dynasties that aren't in the rest of the system
    MarkAsDirty(DirtyKinds);
-   // TODO: if the node moved (and wasn't just created), notify subtree that it is in a new position in the tree
 end;
 
 procedure TFeatureNode.DropChild(Child: TAssetNode);
@@ -1591,7 +1590,7 @@ var
 begin
    if (Length(FFeatures) > 0) then
       for Index := Low(FFeatures) to High(FFeatures) do // $R-
-         FFeatures[Index].Free();
+         FreeAndNil(FFeatures[Index]);
    inherited;
 end;
 
@@ -1816,7 +1815,7 @@ begin
    SetLength(FFeatures, 0);
    for Feature in OldFeatures do
       Feature.Free();
-   if (Assigned(Parent)) then
+   if (Assigned(Parent)) then // TODO: should move this above the features getting destroyed, then move all features' Destroy logic into Detaching
       Parent.DropChild(Self);
    inherited;
 end;
@@ -2249,9 +2248,9 @@ procedure TAssetNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSyste
 var
    Feature: TFeatureNode;
 begin
-   if (dkNew in FDirty) then
+   if (dkNew in Dirty) then
    begin
-      Assert(dkUpdateJournal in FDirty);
+      Assert(dkUpdateJournal in Dirty);
       Journal.WriteCardinal(jcNewAsset);
    end
    else
@@ -2334,7 +2333,7 @@ procedure TAssetNode.SetParent(AParent: TFeatureNode);
    begin
       Asset.FParent := Asset.FParent or AttachedBit;
       for Feature in Asset.FFeatures do
-         Feature.Attached();
+         Feature.Attaching();
       if (Asset.Dirty <> []) then
       begin
          Asset.Parent.MarkAsDirty(UpdateDirtyKindsForAncestor(Asset.Dirty));

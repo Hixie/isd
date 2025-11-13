@@ -354,7 +354,8 @@ begin
    begin
       FreeCaches();
       Subscriptions := FSubscriptions.Distill();
-      FSubscriptions.Init(Length(Subscriptions)); // $R-
+      if (Length(Subscriptions) > 0) then
+         FSubscriptions.Prepare(Length(Subscriptions)); // $R-
       for Callback in Subscriptions do
          Callback();
    end;
@@ -398,7 +399,6 @@ begin
          Injected := InjectBusMessage(CollectMaterialsMessage);
          Assert(Injected = mrInjected); // we are a bus for this message!
          FKnownMaterials[Dynasty] := KnownMaterialsForDynasty;
-         Writeln(Parent.DebugName, ' handled ', Message.ClassName, ' and found ', KnownMaterialsForDynasty.Count, ' materials');
          FreeAndNil(CollectMaterialsMessage);
       end;
       (Message as TGetKnownMaterialsMessage).SetKnownMaterials(Self, FKnownMaterials[Dynasty]);
@@ -419,7 +419,6 @@ begin
          Injected := InjectBusMessage(CollectAssetClassesMessage);
          Assert(Injected = mrInjected); // we are a bus for this message!
          FKnownAssetClasses[Dynasty] := KnownAssetClassesForDynasty;
-         Writeln(Parent.DebugName, ' handled ', Message.ClassName, ' and found ', KnownAssetClassesForDynasty.Count, ' asset classes');
          FreeAndNil(CollectAssetClassesMessage);
       end;
       (Message as TGetKnownAssetClassesMessage).SetKnownAssetClasses(Self, FKnownAssetClasses[Dynasty]);

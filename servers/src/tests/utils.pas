@@ -32,7 +32,6 @@ var
    S: UTF8String;
    Description: specialize PlasticArray<UTF8String, UTF8StringUtils>;
 begin
-   Description.Init();
    UpdatedNodes := ModelSystem.GetUpdatedAssets();
    Writeln('-- ', Length(UpdatedNodes), ' nodes updated -- system ID ', ModelSystem.SystemID, ' --');
    for Asset in UpdatedNodes do
@@ -120,7 +119,6 @@ begin
          begin
             if (FoundMessage) then
             begin
-               Description.Init();
                UpdatedNodes := ModelSystem.GetUpdatedAssets();
                // TODO: refactor so the following code isn't duplicated here and below
                Writeln('-- detected multiple messages (expected one) --');

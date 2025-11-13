@@ -58,7 +58,8 @@ const
    fcInternalSensor = $1B;
    fcInternalSensorStatus = $1C;
    fcOnOff = $1D;
-   fcHighestKnownFeatureCode = fcOnOff;
+   fcStaffing = $1E;
+   fcHighestKnownFeatureCode = fcStaffing;
    
 {$IFOPT C+}
 // Stdout control codes for tests.

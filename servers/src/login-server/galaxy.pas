@@ -495,7 +495,6 @@ begin
          Assert(Min <= Max);
          if (Min <= Max - FSettings^.MaxStarsPerHomeSystem) then
          begin
-            NearbyStars.Init();
             for Index := Min to Max - 1 do // $R-
             begin
                if ((Index <> FNextHomeCandidate) and (not FHomeCandidates[Index].Occupied)) then

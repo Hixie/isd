@@ -75,7 +75,8 @@ begin
    inherited Create();
    FDatabase := ADatabase;
    Count := FileSize(FDatabase); // $R-
-   FAccounts.Init(Count);
+   if (Count > 0) then
+      FAccounts.Prepare(Count);
    FAccountsByUsername := TDynastyHashTable.Create(Count);
    Seek(FDatabase, 0);
    NextID := 1;

@@ -41,7 +41,7 @@ type
    TBodyArray = specialize PlasticArray<TBody, TBodyDistanceUtils>;
 
 // TODO: have different logic for home systems, support systems, and other random systems
-function CondenseProtoplanetaryDisk(StarMass, StarRadius, HillRadius, StarTemperature: Double; const Materials: TMaterial.TArray; System: TSystem): TBodyArray;
+procedure CondenseProtoplanetaryDisk(StarMass, StarRadius, HillRadius, StarTemperature: Double; const Materials: TMaterial.TArray; System: TSystem; out Planets: TBodyArray);
 
 {$IFDEF DEBUG}
 function WeighBody(const Body: TBody): Double;
@@ -321,7 +321,7 @@ begin
    Result := SecondaryRadius * ((2.0 * PrimaryMass / SecondaryMass) ** (1.0 / 3.0)); // $R-
 end;
 
-function CondenseProtoplanetaryDisk(StarMass, StarRadius, HillRadius, StarTemperature: Double; const Materials: TMaterial.TArray; System: TSystem): TBodyArray;
+procedure CondenseProtoplanetaryDisk(StarMass, StarRadius, HillRadius, StarTemperature: Double; const Materials: TMaterial.TArray; System: TSystem; out Planets: TBodyArray);
 var
    Randomizer: TRandomNumberGenerator;
    Index, PlanetIndex, GenerationStart: Cardinal;
@@ -329,12 +329,11 @@ var
    PlanetProbability, ProtoplanetaryDiscHeight, LocalProtoplanetaryDiscHeight, PlanetMass, ProtoplanetaryDiscRadius,
    MoonSize, PlanetHillRadius, CumulativeMoonMasses: Double;
    Clockwise, DidAddPlanet: Boolean;
-   Planets: TBodyArray;
    Planet, Moon: TBody;
 begin
    Randomizer := System.RandomNumberGenerator;
    // PLANETS
-   Planets.Init(MinPlanetCount);
+   Planets.Prepare(MinPlanetCount);
    Clockwise := True;
    GenerationStart := 0; // so we know which bodies need to be given mass from a protoplanetary disc
    while (NeedsMorePlanets(Planets)) do
@@ -460,7 +459,6 @@ begin
                         if (not Assigned(Planet.Moons)) then
                         begin
                            Planet.Moons := New(PBodyArray);
-                           Planet.Moons^.Init();
                         end;
                         CumulativeMoonMasses := CumulativeMoonMasses + Moon.Mass;
                         Moon.Eccentricity := Randomizer.Perturb(DefaultEccentricity, EccentricityPerturbationParameters);
@@ -487,7 +485,6 @@ begin
       GenerationStart := Planets.Length;
    end;
    Planets.Sort();
-   Result := Planets;
 end;
 
 end.

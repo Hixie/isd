@@ -493,7 +493,7 @@ var
    Material: TMaterial;
    MaterialList: specialize PlasticArray<TMaterial, MaterialUtils>;
 begin
-   MaterialList.Init(High(TOres) + 1);
+   MaterialList.Prepare(High(TOres) + 1);
    Assign(F, Filename);
    Reset(F);
    while (not EOF(F)) do

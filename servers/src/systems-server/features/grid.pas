@@ -396,6 +396,7 @@ begin
       Y := Message.Input.ReadCardinal();
       if ((X >= FDimension) or (Y >= FDimension)) then
       begin
+         Writeln('Client requested buildings for a cell out of range: ', X, ',', Y);
          Message.Error(ieInvalidCommand);
          exit;
       end;
@@ -403,6 +404,7 @@ begin
       // TODO: check if PlayerDynasty can see this grid
       if (Assigned(GetChild(X, Y, PlayerDynasty))) then
       begin
+         Writeln('Client requested buildings for that already has a child: ', X, ',', Y);
          Message.Error(ieInvalidCommand);
          exit;
       end;
@@ -431,6 +433,7 @@ begin
       Y := Message.Input.ReadCardinal();
       if ((X >= FDimension) or (Y >= FDimension)) then
       begin
+         Writeln('Client requested a build for a cell out of range: ', X, ',', Y);
          Message.Error(ieInvalidCommand);
          exit;
       end;
@@ -438,6 +441,7 @@ begin
       // TODO: check if PlayerDynasty can see this grid
       if (Assigned(GetChild(X, Y, PlayerDynasty))) then
       begin
+         Writeln('Client requested a build for that already has a child: ', X, ',', Y);
          Message.Error(ieInvalidCommand);
          exit;
       end;
@@ -446,6 +450,7 @@ begin
       AssetClass := CachedSystem.Encyclopedia.AssetClasses[AssetClassID];
       if (not Assigned(AssetClass)) then
       begin
+         Writeln('Client requested a build for an unknown asset class ID: ', AssetClassID);
          Message.Error(ieInvalidCommand);
          exit;
       end;
@@ -454,11 +459,13 @@ begin
          InjectBusMessage(KnownAssetClasses); // we ignore the result - it doesn't matter if it wasn't handled
          if (not KnownAssetClasses.Knows(AssetClass)) then
          begin
+            Writeln('Client requested a build for an asset class ID they do not know: ', AssetClassID);
             Message.Error(ieInvalidCommand);
             exit;
          end;
          if (not AssetClass.CanBuild(FBuildEnvironment)) then
          begin
+            Writeln('Client requested a build with a non-matching build environment.');
             Message.Error(ieInvalidCommand);
             exit;
          end;

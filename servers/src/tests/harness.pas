@@ -38,18 +38,16 @@ var
    Test: TIsdTest;
    TestDirectory: UTF8String;
 begin
-   if ((not DirectoryExists(BaseDirectory + 'templates')) or
-       (not DirectoryExists(BaseDirectory + 'tests')) or
-       (not DirectoryExists(BaseDirectory + 'temp'))) then
+   if ((not DirectoryExists(BaseDirectory + 'defaults')) or
+       (not DirectoryExists(BaseDirectory + 'runtime'))) then
       raise Exception.Create('Specified directory is not fully configured for tests.');
    for Test in Tests do
    begin
-      TestDirectory := GetTempFileName(BaseDirectory + 'temp', 'isd' + '-' + Test.UnitName + '-') + '/';
+      TestDirectory := GetTempFileName(BaseDirectory + 'runtime', 'isd' + '-' + Test.UnitName + '-') + '/';
       CreateDir(TestDirectory);
       try
          Test.RunTest(BaseDirectory, TestDirectory);
       finally
-         //Sleep(60000);
          DeleteDirectoryRecursively(TestDirectory);
       end;
    end;
@@ -63,8 +61,6 @@ end;
 
 var
    Test: TIsdTest;
-initialization
-   Tests.Init();
 finalization
    for Test in Tests do
       Test.Free();

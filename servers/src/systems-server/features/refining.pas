@@ -53,7 +53,7 @@ type
 implementation
 
 uses
-   exceptions, sysutils, isdprotocol, knowledge, messages, typedump, commonbuses;
+   exceptions, sysutils, isdprotocol, knowledge, typedump, commonbuses;
 
 constructor TRefiningFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
 var
