@@ -28,9 +28,9 @@ type
    private // IMiner
       function GetMinerMaxRate(): TRate; // kg per second
       function GetMinerCurrentRate(): TRate; // kg per second
-      procedure StartMiner(Region: TRegionFeatureNode; Rate: TRate; SourceLimiting, TargetLimiting: Boolean);
-      procedure PauseMiner();
-      procedure StopMiner();
+      procedure SetMinerRegion(Region: TRegionFeatureNode);
+      procedure StartMiner(Rate: TRate; SourceLimiting, TargetLimiting: Boolean);
+      procedure DisconnectMiner();
    protected
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
       procedure HandleChanges(CachedSystem: TSystem); override;
@@ -96,18 +96,18 @@ begin
    Result := FStatus.Rate;
 end;
 
-procedure TMiningFeatureNode.StartMiner(Region: TRegionFeatureNode; Rate: TRate; SourceLimiting, TargetLimiting: Boolean); // kg per second
+procedure TMiningFeatureNode.SetMinerRegion(Region: TRegionFeatureNode);
 begin
-   Assert(Assigned(Region));
-   if (FStatus.Update(Region, Rate, SourceLimiting, TargetLimiting)) then
+   FStatus.SetRegion(Region);
+end;
+
+procedure TMiningFeatureNode.StartMiner(Rate: TRate; SourceLimiting, TargetLimiting: Boolean); // kg per second
+begin
+   if (FStatus.Update(Rate, SourceLimiting, TargetLimiting)) then
       MarkAsDirty([dkUpdateClients]);
 end;
 
-procedure TMiningFeatureNode.PauseMiner();
-begin
-end;
-
-procedure TMiningFeatureNode.StopMiner();
+procedure TMiningFeatureNode.DisconnectMiner();
 begin
    FStatus.Reset();
    MarkAsDirty([dkUpdateClients, dkNeedsHandleChanges]);

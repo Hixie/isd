@@ -130,6 +130,7 @@ type
       function GetActive(): Boolean; inline;
       function GetOres(Index: TOres): Boolean; inline;
       function GetIsFiltered(): Boolean; inline;
+      function GetIsClear(): Boolean; inline;
       function GetEnabledCount(): Cardinal;
    public
       procedure Clear(); inline; // sets all flags to disabled
@@ -144,12 +145,13 @@ type
       class operator xor(A, B: TOreFilter): TOreFilter;
       class operator not(A: TOreFilter): TOreFilter;
       property Ores[Index: TOres]: Boolean read GetOres; default;
-      property IsFiltered: Boolean read GetIsFiltered; // if false, every bit is true
+      property IsFiltered: Boolean read GetIsFiltered; // if true, at least one bit is false; if false, every bit is true
+      property IsClear: Boolean read GetIsClear; // if true, all bits (but the zeroth) are false; if false, at least one bit is true
       property EnabledCount: Cardinal read GetEnabledCount; // number of bits that are set (from 0 to the number of values in TOres)
-      property Active: Boolean read GetActive; // whether the first bit is set (it is always set, unless the memory is location is actually a pointer)
+      property Active: Boolean read GetActive; // whether the first bit is set (it is always set, unless the memory at this location is actually a pointer)
    strict private
       case Integer of
-         0: (FFilterArray: bitpacked array[0..63] of Boolean); // slot 0 is reserved (and must always be set)
+         0: (FFilterArray: bitpacked array[0..63] of Boolean); // slot 0 is reserved (and must always be set); allows this record to share memory with a pointer
          1: (FFilterQuad: QWord);
    end;
    {$IF SIZEOF(TOreFilter) <> SIZEOF(Pointer)} {$FATAL This platform is not yet supported.} {$ENDIF}
@@ -424,6 +426,11 @@ end;
 function TOreFilter.GetIsFiltered(): Boolean;
 begin
    Result := FFilterQuad = kAllEnabled;
+end;
+
+function TOreFilter.GetIsClear(): Boolean;
+begin
+   Result := FFilterQuad = kAllDisabled;
 end;
 
 function TOreFilter.GetEnabledCount(): Cardinal;

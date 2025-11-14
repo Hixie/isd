@@ -94,7 +94,7 @@ procedure TStaffingFeatureNode.Attaching();
 begin
    Assert(not Assigned(FBus));
    Assert(FWorkers = 0);
-   Assert(FPriority = 0);
+   // FPriority could be non-zero if coming from journal
    MarkAsDirty([dkNeedsHandleChanges]);
 end;
 

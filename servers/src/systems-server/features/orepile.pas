@@ -50,9 +50,9 @@ type
       FRegion: specialize TAnnotatedPointer<TRegionFeatureNode, TRegionFlag>; // TODO: either use TAnnotatedPointer more widely, or remove the use here
    private // IOrePile
       function GetOrePileCapacity(): Double; // kg
-      procedure StartOrePile(Region: TRegionFeatureNode);
-      procedure PauseOrePile();
-      procedure StopOrePile();
+      procedure SetOrePileRegion(Region: TRegionFeatureNode);
+      procedure RegionAdjustedOrePiles();
+      procedure DisconnectOrePile();
    protected
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
       function GetMass(): Double; override;
@@ -109,6 +109,7 @@ begin
       if (NewAllocSize > SizeOf(FSingleData)) then
       begin
          GetMem(FArrayData, NewAllocSize);
+         TOreFilter.ClearArray(FArrayData, DynastyCount);
       end
       else
       if (NewAllocSize = SizeOf(FSingleData)) then
@@ -285,20 +286,19 @@ begin
    Result := FFeatureClass.FCapacityMass;
 end;
 
-procedure TOrePileFeatureNode.StartOrePile(Region: TRegionFeatureNode);
+procedure TOrePileFeatureNode.SetOrePileRegion(Region: TRegionFeatureNode);
 begin
-   Assert((not FRegion.Assigned) or (FRegion.Unwrap() = Region));
+   Assert(not FRegion.Assigned);
    FRegion := Region;
-   MarkAsDirty([dkUpdateClients]); // the mass flow rate and contents may have changed
 end;
 
-procedure TOrePileFeatureNode.PauseOrePile();
+procedure TOrePileFeatureNode.RegionAdjustedOrePiles();
 begin
    Assert(FRegion.Assigned);
    MarkAsDirty([dkUpdateClients]); // the mass flow rate and contents may have changed
 end;
 
-procedure TOrePileFeatureNode.StopOrePile();
+procedure TOrePileFeatureNode.DisconnectOrePile();
 begin
    Assert(FRegion.Assigned);
    FRegion.Clear();

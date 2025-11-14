@@ -108,10 +108,10 @@ type
       function GetMaterialConsumerMaterial(): TMaterial;
       function GetMaterialConsumerMaxDelivery(): UInt64;
       function GetMaterialConsumerCurrentRate(): TRate; // quantity per second, cannot be infinite
-      procedure StartMaterialConsumer(Region: TRegionFeatureNode; ActualRate: TRate); // quantity per second
+      procedure SetMaterialConsumerRegion(Region: TRegionFeatureNode);
+      procedure StartMaterialConsumer(ActualRate: TRate); // quantity per second
       procedure DeliverMaterialConsumer(Delivery: UInt64);
-      procedure PauseMaterialConsumer();
-      procedure StopMaterialConsumer();
+      procedure DisconnectMaterialConsumer();
    end;
 
 implementation
@@ -856,14 +856,22 @@ begin
    Result := FBuildingState^.MaterialsQuantityRate;
 end;
 
-procedure TStructureFeatureNode.StartMaterialConsumer(Region: TRegionFeatureNode; ActualRate: TRate); // quantity per second
+procedure TStructureFeatureNode.SetMaterialConsumerRegion(Region: TRegionFeatureNode);
 begin
    Assert(Assigned(FBuildingState));
-   Assert((not Assigned(FBuildingState^.Region)) or (FBuildingState^.Region = Region));
+   Assert(not Assigned(FBuildingState^.Region));
    Assert(FBuildingState^.MaterialsQuantityRate.IsZero);
    Assert(Assigned(FBuildingState^.PendingMaterial));
    Assert(FBuildingState^.PendingQuantity > 0);
    FBuildingState^.Region := Region;
+end;
+
+procedure TStructureFeatureNode.StartMaterialConsumer(ActualRate: TRate); // quantity per second
+begin
+   Assert(Assigned(FBuildingState));
+   Assert(Assigned(FBuildingState^.Region));
+   Assert(Assigned(FBuildingState^.PendingMaterial));
+   Assert(FBuildingState^.PendingQuantity > 0);
    FBuildingState^.MaterialsQuantityRate := ActualRate;
    RescheduleNextEvent(System);
    MarkAsDirty([dkUpdateClients]);
@@ -921,22 +929,7 @@ begin
    end;
 end;
 
-procedure TStructureFeatureNode.PauseMaterialConsumer();
-begin
-   // DeliverMaterialConsumer will be called first
-   Assert(Assigned(FBuildingState));
-   Assert(Assigned(FBuildingState^.Region));
-   FBuildingState^.MaterialsQuantityRate := TRate.Zero;
-   if (Assigned(FBuildingState^.NextEvent)) then
-   begin
-      CancelEvent(FBuildingState^.NextEvent);
-      {$IFOPT C+} FBuildingState^.AnchorTime := TTimeInMilliseconds.NegInfinity; {$ENDIF}
-   end;
-   // Either StartMaterialConsumer will be called again, or we're going to reset ourselves because
-   // we discovered we don't have any more material to get or something.
-end;
-
-procedure TStructureFeatureNode.StopMaterialConsumer();
+procedure TStructureFeatureNode.DisconnectMaterialConsumer();
 begin
    // DeliverMaterialConsumer will be called first
    Assert(Assigned(FBuildingState));
@@ -959,7 +952,11 @@ var
    TimeUntilMaterialFunctional, TimeUntilIntegrityFunctional: TMillisecondsDuration;
 begin
    Assert(Assigned(FBuildingState));
-   Assert(not Assigned(FBuildingState^.NextEvent));
+   if (Assigned(FBuildingState^.NextEvent)) then
+   begin
+      CancelEvent(FBuildingState^.NextEvent);
+      {$IFOPT C+} FBuildingState^.AnchorTime := TTimeInMilliseconds.NegInfinity; {$ENDIF}
+   end;
    if (Assigned(FBuildingState^.Region) and FBuildingState^.MaterialsQuantityRate.IsNotZero) then
    begin
       Assert(FBuildingState^.PendingQuantity > 0);
@@ -1077,7 +1074,7 @@ begin
       begin
          // we still have materials to get, but we don't yet know what is next
          Assert(FBuildingState^.PendingQuantity = 0); // reset by DeliverMaterialConsumer
-         FBuildingState^.Region.ReconsiderMaterialConsumer(Self);
+         FBuildingState^.Region.SyncForMaterialConsumer();
          Assert(FBuildingState^.MaterialsQuantityRate.IsZero); // reset by ReconsiderMaterialConsumer calling PauseMaterialConsumer
          Assert(FBuildingState^.StructuralIntegrity < FFeatureClass.TotalQuantity);
          Assert(FBuildingState^.StructuralIntegrityRate.IsNotZero);

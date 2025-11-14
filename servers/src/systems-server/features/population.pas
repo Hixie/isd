@@ -98,7 +98,7 @@ procedure TPopulationFeatureNode.Attaching();
 begin
    Assert(not Assigned(FPeopleBus));
    Assert(FWorkers = 0);
-   Assert(FPriority = 0);
+   // FPriority can be non-zero here if we were just brought in from the journal
    System.ReportScoreChanged(Parent.Owner);
    MarkAsDirty([dkNeedsHandleChanges]);
 end;

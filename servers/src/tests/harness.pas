@@ -38,9 +38,9 @@ var
    Test: TIsdTest;
    TestDirectory: UTF8String;
 begin
-   if ((not DirectoryExists(BaseDirectory + 'defaults')) or
-       (not DirectoryExists(BaseDirectory + 'runtime'))) then
+   if (not DirectoryExists(BaseDirectory + 'defaults')) then
       raise Exception.Create('Specified directory is not fully configured for tests.');
+   CreateDir(BaseDirectory + 'runtime');
    for Test in Tests do
    begin
       TestDirectory := GetTempFileName(BaseDirectory + 'runtime', 'isd' + '-' + Test.UnitName + '-') + '/';

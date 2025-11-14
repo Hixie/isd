@@ -28,9 +28,9 @@ type
    private // IMaterialPile
       function GetMaterialPileMaterial(): TMaterial;
       function GetMaterialPileCapacity(): UInt64; // quantity
-      procedure StartMaterialPile(Region: TRegionFeatureNode);
-      procedure PauseMaterialPile();
-      procedure StopMaterialPile();
+      procedure SetMaterialPileRegion(Region: TRegionFeatureNode);
+      procedure RegionAdjustedMaterialPiles();
+      procedure DisconnectMaterialPile();
    protected
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
       function GetMass(): Double; override;
@@ -105,20 +105,19 @@ begin
    Result := FFeatureClass.FMaxQuantity; // $R-
 end;
 
-procedure TMaterialPileFeatureNode.StartMaterialPile(Region: TRegionFeatureNode);
+procedure TMaterialPileFeatureNode.SetMaterialPileRegion(Region: TRegionFeatureNode);
 begin
-   Assert((not Assigned(FRegion)) or (FRegion = Region));
+   Assert(not Assigned(FRegion));
    FRegion := Region;
-   MarkAsDirty([dkUpdateClients]);
 end;
 
-procedure TMaterialPileFeatureNode.PauseMaterialPile();
+procedure TMaterialPileFeatureNode.RegionAdjustedMaterialPiles();
 begin
    Assert(Assigned(FRegion));
    MarkAsDirty([dkUpdateClients]);
 end;
 
-procedure TMaterialPileFeatureNode.StopMaterialPile();
+procedure TMaterialPileFeatureNode.DisconnectMaterialPile();
 begin
    Assert(Assigned(FRegion));
    FRegion := nil;

@@ -31,9 +31,9 @@ type
       function GetRefineryOre(): TOres;
       function GetRefineryMaxRate(): TRate; // kg per second
       function GetRefineryCurrentRate(): TRate; // kg per second
-      procedure StartRefinery(Region: TRegionFeatureNode; Rate: TRate; SourceLimiting, TargetLimiting: Boolean); // kg per second
-      procedure PauseRefinery();
-      procedure StopRefinery();
+      procedure SetRefineryRegion(Region: TRegionFeatureNode);
+      procedure StartRefinery(Rate: TRate; SourceLimiting, TargetLimiting: Boolean); // kg per second
+      procedure DisconnectRefinery();
    protected
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
       procedure HandleChanges(CachedSystem: TSystem); override;
@@ -115,21 +115,22 @@ begin
    Result := FStatus.Rate;
 end;
 
-procedure TRefiningFeatureNode.StartRefinery(Region: TRegionFeatureNode; Rate: TRate; SourceLimiting, TargetLimiting: Boolean); // kg per second
+procedure TRefiningFeatureNode.SetRefineryRegion(Region: TRegionFeatureNode);
 begin
-   Assert(Assigned(Region));
-   if (FStatus.Update(Region, Rate, SourceLimiting, TargetLimiting)) then
+   FStatus.SetRegion(Region);
+end;
+
+procedure TRefiningFeatureNode.StartRefinery(Rate: TRate; SourceLimiting, TargetLimiting: Boolean); // kg per second
+begin
+   Assert(Assigned(FStatus.Region));
+   if (FStatus.Update(Rate, SourceLimiting, TargetLimiting)) then
       MarkAsDirty([dkUpdateClients]);
 end;
 
-procedure TRefiningFeatureNode.PauseRefinery();
-begin
-end;
-
-procedure TRefiningFeatureNode.StopRefinery();
+procedure TRefiningFeatureNode.DisconnectRefinery();
 begin
    FStatus.Reset();
-   MarkAsDirty([dkUpdateClients, dkUpdateJournal, dkNeedsHandleChanges]);
+   MarkAsDirty([dkUpdateClients, dkNeedsHandleChanges]);
 end;
 
 procedure TRefiningFeatureNode.HandleChanges(CachedSystem: TSystem);

@@ -274,7 +274,7 @@ begin
    VerifyPositiveResponse(Response);
    TimePinned := True;
    FreeAndNil(Response);
-   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 2); // the second is the second pile, which isn't clever enough to know it didn't change
+   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 2);
    with (specialize GetUpdatedFeature<TModelMiningFeature>(ModelSystem)) do
    begin
       Verify(CurrentRate = 0.0);
@@ -287,7 +287,7 @@ begin
       Verify(Capacity = 30000.0);
       Verify(PileMassFlowRate = 0.0);
    end;
-   with (specialize GetUpdatedFeature<TModelOrePileFeature>(ModelSystem, 1)) do
+   with (specialize GetUpdatedFeature<TModelOrePileFeature>(ModelSystem, 1)) do // this pile isn't clever enough to know nothing changed
    begin
       Verify(PileMass = 3000000.0);
       Verify(Capacity = 3000000.0);
