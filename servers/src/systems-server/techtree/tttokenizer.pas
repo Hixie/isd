@@ -206,7 +206,7 @@ var
    Current, ExpectedIndent, CurrentIndent: Cardinal;
    Negative: Boolean;
    Number: UInt64;
-   SegmentStart: QWord;
+   SegmentStart, SegmentCheckpoint: QWord;
 begin
    Mode := tmTop;
    repeat
@@ -437,6 +437,7 @@ begin
                      Error('Missing indent in multiline string', []);
                   StringSegments.Prepare(4);
                   SegmentStart := FPosition;
+                  SegmentCheckpoint := SegmentStart;
                   Mode := tmMultilineStringBody;
                   continue;
                end;
@@ -460,6 +461,7 @@ begin
                         if (CurrentIndent = ExpectedIndent) then
                         begin
                            SegmentStart := FPosition;
+                           SegmentCheckpoint := SegmentStart;
                            Mode := tmMultilineStringBodyStart;
                         end;
                      end;
@@ -496,10 +498,15 @@ begin
                      begin
                         Error('Unterminated string', []);
                      end;
+                  $20: // strip trailing spaces
+                     begin
+                        Advance();
+                        // do not update SegmentCheckpoint
+                     end;
                   $0A: // newline
                      begin
-                        if (SegmentStart < FPosition) then
-                           StringSegments.Push(TSegment.From(FBuffer + SegmentStart, FBuffer + FPosition));
+                        if (SegmentStart < SegmentCheckpoint) then
+                           StringSegments.Push(TSegment.From(FBuffer + SegmentStart, FBuffer + SegmentCheckpoint));
                         StringSegments.Push(TSegment.From(kSpace));
                         AdvanceLine();
                         Mode := tmMultilineStringPrefix;
@@ -507,6 +514,7 @@ begin
                      end;
                else
                   Advance();
+                  SegmentCheckpoint := FPosition;
                end;
             tmSlash:
                case (Current) of
