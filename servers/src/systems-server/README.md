@@ -457,12 +457,14 @@ increase.
 #### `fcSpaceSensor` (0x05)
 
 ```bnf
-<featuredata>       ::= <reach> <up> <down> <resolution> [<feature>]
+<featuredata>       ::= <disabled> <reach> <up> <down> <resolution> [<feature>]
 <reach>             ::= <uint32> ; max steps up tree to nearest orbit
 <up>                ::= <uint32> ; distance that the sensors reach up the tree from the nearest orbit
 <down>              ::= <uint32> ; distance down the tree that the sensors reach
 <resolution>        ::= <double> ; the minimum size of assets that these sensors can detect (meters)
 ```
+
+For the `<disabled>` field, see below.
 
 Space sensors work by walking up the tree from the sensor up to the
 nearest orbit (going a max of `<reach>` steps), then going a further
@@ -600,16 +602,20 @@ This feature supports the following commands:
 #### `fcPopulation` (0x0B)
 
 ```bnf
-<featuredata>       ::= <count> <jobs> <happiness>
+<featuredata>       ::= <disabled> <count> <max> <jobs> <happiness>
 <count>             ::= <uint32>
+<max>               ::= <uint32>
 <jobs>              ::= <uint32>
 <happiness>         ::= <double>
 ```
 
+For the `<disabled>` field, see below.
+
 The `<count>` is the number of people at this population center. The
-`<jobs>` is the number of people who are working at some `fcStaffing`
-feature. The `<happiness>` is their mean happiness; it might be a NaN,
-if the happiness cannot be determined.
+`<max>` is the maximum number of people that can be housed at this
+population center. The `<jobs>` is the number of people who are
+working at some `fcStaffing` feature. The `<happiness>` is their mean
+happiness; it might be a NaN, if the happiness cannot be determined.
 
 
 #### `fcMessageBoard` (0x0C)
@@ -777,9 +783,11 @@ descriptions always do.
 #### `fcResearch` (0x11)
 
 ```bnf
-<featuredata>       ::= <topic>
+<featuredata>       ::= <disabled> <topic>
 <topic>             ::= <string>
 ```
+
+For the `<disabled>` field, see below.
 
 The `<topic>` is the currently selected area of research for the
 research facility. It defaults to the empty string (undirected
@@ -987,8 +995,10 @@ The `<flowrate>` gives a number of items per millisecond being added
 #### `fcGridSensor` (0x18)
 
 ```bnf
-<featuredata>       ::= [<feature>]
+<featuredata>       ::= <disabled> [<feature>]
 ```
+
+For the `<disabled>` field, see below.
 
 Grid sensors work by walking down the tree from the nearest `fcGrid`
 ancestor of the sensor. Sensors can detect any asset, regardless of
@@ -1049,8 +1059,10 @@ the asset's internals.
 #### `fcInternalSensor` (0x1B)
 
 ```bnf
-<featuredata>       ::= [<feature>]
+<featuredata>       ::= <disabled> [<feature>]
 ```
+
+For the `<disabled>` field, see below.
 
 Internal sensors work by walking down the tree from the node itself.
 Internal sensors can detect any asset, regardless of size, unless it

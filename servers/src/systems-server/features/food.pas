@@ -5,7 +5,8 @@ unit food;
 interface
 
 uses
-   systems, systemdynasty, serverstream, materials, hashtable, genericutils, techtree, tttokenizer;
+   systems, systemdynasty, serverstream, materials, hashtable,
+   genericutils, techtree, tttokenizer, commonbuses;
 
 type
    IFoodConsumer = interface ['IFoodConsumer']
@@ -88,11 +89,13 @@ type
    TFoodGenerationFeatureNode = class(TFeatureNode, IFoodGenerator)
    strict private
       FFeatureClass: TFoodGenerationFeatureClass;
+      FDisabledReasons: TDisabledReasons;
       FFoodConsumption: Cardinal;
       function GetOwner(): TDynasty;
       procedure SetFoodConsumption(Quantity: Cardinal);
    protected
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
+      procedure HandleChanges(CachedSystem: TSystem); override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
    public
@@ -338,6 +341,18 @@ begin
    inherited CreateFromJournal(Journal, AFeatureClass, ASystem);
 end;
 
+procedure TFoodGenerationFeatureNode.HandleChanges(CachedSystem: TSystem);
+var
+   NewDisabledReasons: TDisabledReasons;
+begin
+   NewDisabledReasons := CheckDisabled(Parent);
+   if (NewDisabledReasons <> FDisabledReasons) then
+   begin
+      FDisabledReasons := NewDisabledReasons;
+      MarkAsDirty([dkUpdateClients]);
+   end;
+end;
+
 function TFoodGenerationFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
 begin
    if (Message is TInitFoodMessage) then
@@ -351,6 +366,7 @@ end;
 procedure TFoodGenerationFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
 begin
    //Writer.WriteCardinal(fcFoodGeneration);
+   //also send FDisabledReasons
 end;
 
 procedure TFoodGenerationFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);

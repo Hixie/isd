@@ -961,8 +961,6 @@ begin
    FBuildRate := TRate.FromPerSecond(1.0 / (60.0 * 60.0)); // 1 HP per hour
    Seen := [];
    repeat
-      if (Reader.Tokens.IsComma()) then
-         Reader.Tokens.ReadComma();
       Keyword := Reader.Tokens.ReadIdentifier();
       case Keyword of
          'capacity':
@@ -978,7 +976,7 @@ begin
       else
          Reader.Tokens.Error('Unexpected keyword "%s"', [Keyword]);
       end;
-   until not Reader.Tokens.IsComma();
+   until not ReadComma(Reader.Tokens);
 end;
 
 function TBuilderFeatureClass.GetFeatureNodeClass(): FeatureNodeReference;

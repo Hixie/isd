@@ -126,7 +126,7 @@ begin
    FLastTop := nil;
    FActualStepsUp := 0;
    FLastCountDetected := 0;
-   if (not Assigned(Parent.Owner)) then
+   if ((not Enabled) or not Assigned(Parent.Owner)) then
       exit; // no dynasty owns this sensor, nothing to apply
    OwnerIndex := VisibilityHelper.GetDynastyIndex(Parent.Owner);
    Feature := Self;
@@ -201,6 +201,7 @@ begin
    Assert(not Assigned(FKnownAssetClasses));
    if (not Assigned(FLastBottom)) then
       exit;
+   Assert(Enabled);
    Assert(Assigned(FLastTop));
    OwnerIndex := VisibilityHelper.GetDynastyIndex(Parent.Owner);
    Depth := 0;
@@ -230,9 +231,10 @@ var
    Visibility: TVisibility;
 begin
    Visibility := Parent.ReadVisibilityFor(DynastyIndex, CachedSystem);
-   if ((dmDetectable * Visibility <> []) and (dmClassKnown in Visibility)) then
+   if (Enabled and (dmDetectable * Visibility <> []) and (dmClassKnown in Visibility)) then
    begin
       Writer.WriteCardinal(fcSpaceSensor);
+      Writer.WriteCardinal(Cardinal(FDisabledReasons));
       Writer.WriteCardinal(FFeatureClass.FMaxStepsToOrbit);
       Writer.WriteCardinal(FFeatureClass.FStepsUpFromOrbit);
       Writer.WriteCardinal(FFeatureClass.FStepsDownFromTop);

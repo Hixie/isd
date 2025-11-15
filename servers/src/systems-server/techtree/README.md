@@ -98,7 +98,7 @@ class classid {
   feature: TOrePileFeatureClass max mass 1kg;
   feature: TParameterizedGridFeatureClass 3x3, 4m, land; // or spacedock
   feature: TPeopleBusFeatureClass;
-  feature: TPopulationFeatureClass;
+  feature: TPopulationFeatureClass max 1, hidden;
   feature: TProxyFeatureClass;
   feature: TRefiningFeatureClass for "Iron", max throughput 1kg/s;
   feature: TRegionFeatureClass at depth 2, 5 materials of quantity 1000000000000000; // (a thousand trillion units) ("of quantity ..." is optional, defaults to max)

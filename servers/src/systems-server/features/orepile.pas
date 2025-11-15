@@ -226,8 +226,6 @@ begin
    inherited Create();
    SeenMaxMass := False;
    repeat
-      if (Reader.Tokens.IsComma()) then
-         Reader.Tokens.ReadComma();
       Keyword := Reader.Tokens.ReadIdentifier();
       case Keyword of
          'max':
@@ -248,7 +246,7 @@ begin
       else
          Reader.Tokens.Error('Unexpected keyword "%s"', [Keyword]);
       end;
-   until not Reader.Tokens.IsComma();
+   until not ReadComma(Reader.Tokens);
    if (not SeenMaxMass) then
       Reader.Tokens.Error('Expected "max mass" parameter', []);
 end;

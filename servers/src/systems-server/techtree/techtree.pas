@@ -44,6 +44,7 @@ function ReadMass(Tokens: TTokenizer): Double;
 function ReadMassPerTime(Tokens: TTokenizer): TRate;
 function ReadQuantity(Tokens: TTokenizer; Material: TMaterial): Int64;
 function ReadKeywordPerTime(Tokens: TTokenizer; Keyword: UTF8String; Min, Max: Int64): TRate;
+function ReadComma(Tokens: TTokenizer): Boolean;
 
 implementation
 
@@ -988,6 +989,13 @@ begin
    Value := ReadNumber(Tokens, Min, Max);
    Tokens.ReadIdentifier(Keyword);
    Result := ConvertValueToRate(Tokens, Value);
+end;
+
+function ReadComma(Tokens: TTokenizer): Boolean;
+begin
+   Result := Tokens.IsComma();
+   if (Result) then
+      Tokens.ReadComma();
 end;
 
 initialization

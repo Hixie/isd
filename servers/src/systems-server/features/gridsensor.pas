@@ -94,7 +94,7 @@ begin
       FGrid := FGrid.Parent.Parent;
    end;
    FLastCountDetected := 0;
-   if (Assigned(FGrid)) then
+   if (Enabled and Assigned(FGrid)) then
    begin
       OwnerIndex := VisibilityHelper.GetDynastyIndex(Parent.Owner);
       FGrid.Walk(@SenseDown, nil);
@@ -124,7 +124,7 @@ var
 begin
    Assert(not Assigned(FKnownMaterials));
    Assert(not Assigned(FKnownAssetClasses));
-   if (Assigned(FGrid)) then
+   if (Enabled and Assigned(FGrid)) then
    begin
       OwnerIndex := VisibilityHelper.GetDynastyIndex(Parent.Owner);
       FGrid.Walk(@SenseDown, nil);
@@ -141,7 +141,8 @@ begin
    if ((dmDetectable * Visibility <> []) and (dmClassKnown in Visibility)) then
    begin
       Writer.WriteCardinal(fcGridSensor);
-      if (dmInternals in Visibility) then
+      Writer.WriteCardinal(Cardinal(FDisabledReasons));
+      if (Enabled and (dmInternals in Visibility)) then
       begin
          Writer.WriteCardinal(fcGridSensorStatus);
          if (Assigned(FGrid)) then

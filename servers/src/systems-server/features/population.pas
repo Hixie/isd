@@ -8,14 +8,20 @@ uses
    systems, serverstream, materials, food, systemdynasty, techtree,
    peoplebus, commonbuses;
 
+// TODO: people need to actually join the population center presumably
+
 type
    TPopulationFeatureClass = class(TFeatureClass)
    strict protected
-      // TODO: max population?
+      FHiddenIfEmpty: Boolean;
+      FMaxPopulation: Cardinal;
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
+      constructor Create(AHiddenIfEmpty: Boolean; AMaxPopulation: Cardinal);
       constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
       function InitFeatureNode(): TFeatureNode; override;
+      property HiddenIfEmpty: Boolean read FHiddenIfEmpty;
+      property MaxPopulation: Cardinal read FMaxPopulation;
    end;
 
    TPopulationFeatureNode = class(TFeatureNode, IFoodConsumer, IHousing)
@@ -23,8 +29,10 @@ type
       // source of truth
       FPopulation: Cardinal; // TODO: if this changes, call FPeopleBus.ClientChanged
       FPriority: TPriority; // TODO: if ancestor chain changes, and priority is NoPriority, reset it to zero and mark as dirty
+      FDisabledReasons: TDisabledReasons;
       FMeanHappiness: Double;
       // cached status
+      FFeatureClass: TPopulationFeatureClass;
       FFoodAvailable: Cardinal;
       FWorkers: Cardinal;
       FPeopleBus: TPeopleBusFeatureNode;
@@ -38,7 +46,9 @@ type
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
    public
-      constructor CreatePopulated(APopulation: Cardinal; AMeanHappiness: Double); // only for use in plot-generated population centers
+      constructor Create(AFeatureClass: TPopulationFeatureClass);
+      constructor CreatePopulated(AFeatureClass: TPopulationFeatureClass; APopulation: Cardinal; AMeanHappiness: Double); // only for use in plot-generated population centers
+      constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
       destructor Destroy(); override;
       procedure HandleChanges(CachedSystem: TSystem); override;
       procedure UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem); override;
@@ -63,9 +73,49 @@ const
    MeanIndividualMass = 70; // kg // TODO: allow species to diverge and such, with different demographics, etc
 
 
-constructor TPopulationFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
+constructor TPopulationFeatureClass.Create(AHiddenIfEmpty: Boolean; AMaxPopulation: Cardinal);
 begin
    inherited Create();
+   FHiddenIfEmpty := AHiddenIfEmpty;
+   FMaxPopulation := AMaxPopulation;
+end;
+
+constructor TPopulationFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
+type
+   TPopulationKeyword = (pkMax, pkHidden);
+var
+   Seen: set of TPopulationKeyword;
+
+   procedure Acknowledge(Keyword: TPopulationKeyword);
+   begin
+      if (Keyword in Seen) then
+         Reader.Tokens.Error('Duplicate parameter', []);
+      Include(Seen, Keyword);
+   end;
+
+var
+   Keyword: UTF8String;
+begin
+   inherited Create();
+   FMaxPopulation := 1;
+   Seen := [];
+   repeat
+      Keyword := Reader.Tokens.ReadIdentifier();
+      case Keyword of
+         'max':
+            begin
+               Acknowledge(pkMax);
+               FMaxPopulation := ReadNumber(Reader.Tokens, Low(FMaxPopulation), High(FMaxPopulation)); // $R-
+            end;
+         'hidden':
+            begin
+               Acknowledge(pkHidden);
+               FHiddenIfEmpty := True;
+            end;
+      else
+         Reader.Tokens.Error('Unexpected keyword "%s"', [Keyword]);
+      end;
+   until not ReadComma(Reader.Tokens);
 end;
 
 function TPopulationFeatureClass.GetFeatureNodeClass(): FeatureNodeReference;
@@ -75,16 +125,31 @@ end;
 
 function TPopulationFeatureClass.InitFeatureNode(): TFeatureNode;
 begin
-   Result := TPopulationFeatureNode.Create();
-   // TODO: people need to actually join the population center presumably
+   Result := TPopulationFeatureNode.Create(Self);
 end;
 
 
-constructor TPopulationFeatureNode.CreatePopulated(APopulation: Cardinal; AMeanHappiness: Double);
+constructor TPopulationFeatureNode.Create(AFeatureClass: TPopulationFeatureClass);
 begin
    inherited Create();
+   Assert(Assigned(AFeatureClass));
+   FFeatureClass := AFeatureClass;
+end;
+
+constructor TPopulationFeatureNode.CreatePopulated(AFeatureClass: TPopulationFeatureClass; APopulation: Cardinal; AMeanHappiness: Double);
+begin
+   inherited Create();
+   Assert(Assigned(AFeatureClass));
+   FFeatureClass := AFeatureClass;
    FPopulation := APopulation;
    FMeanHappiness := AMeanHappiness;
+end;
+
+constructor TPopulationFeatureNode.CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem);
+begin
+   Assert(Assigned(AFeatureClass));
+   FFeatureClass := AFeatureClass as TPopulationFeatureClass;
+   inherited CreateFromJournal(Journal, AFeatureClass, ASystem);
 end;
 
 destructor TPopulationFeatureNode.Destroy();
@@ -161,11 +226,15 @@ procedure TPopulationFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServ
 var
    Visibility: TVisibility;
 begin
+   if (FFeatureClass.HiddenIfEmpty and (FPopulation = 0)) then
+      exit;
    Visibility := Parent.ReadVisibilityFor(DynastyIndex, CachedSystem);
    if (dmDetectable * Visibility <> []) then
    begin
       Writer.WriteCardinal(fcPopulation);
+      Writer.WriteCardinal(Cardinal(FDisabledReasons));
       Writer.WriteCardinal(FPopulation);
+      Writer.WriteCardinal(FFeatureClass.MaxPopulation);
       Writer.WriteCardinal(FWorkers);
       // TODO: if we send the priority, we have to update the clients any time FPriority changes
       if (dmInternals in Visibility) then
@@ -177,8 +246,16 @@ end;
 
 procedure TPopulationFeatureNode.HandleChanges(CachedSystem: TSystem);
 var
+   NewDisabledReasons: TDisabledReasons;
    Message: TRegisterHousingMessage;
 begin
+   NewDisabledReasons := CheckDisabled(Parent);
+   if (NewDisabledReasons <> FDisabledReasons) then
+   begin
+      FDisabledReasons := NewDisabledReasons;
+      MarkAsDirty([dkUpdateClients]);
+   end;
+   // TODO: people try to move to the "best" houses, but if they can't, they get unhappy
    Assert((FPopulation = 0) or Assigned(Parent.Owner));
    if ((FPopulation > 0) and (not Assigned(FPeopleBus)) and (FPriority <> NoPriority)) then
    begin

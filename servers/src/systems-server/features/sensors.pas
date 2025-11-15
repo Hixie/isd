@@ -5,7 +5,7 @@ unit sensors;
 interface
 
 uses
-   systems, materials, knowledge, techtree, tttokenizer;
+   systems, materials, knowledge, techtree, tttokenizer, commonbuses;
 
 type
    TSensorFeatureClass = class abstract (TFeatureClass)
@@ -17,21 +17,26 @@ type
    end;
 
    TSensorFeatureNode = class abstract (TFeatureNode, ISensorsProvider)
-   private
+   strict private
       procedure SyncKnowledge();
-      function GetDebugName(): UTF8String;
+      function GetEnabled(): Boolean; inline;
    protected
       FKnownMaterials: TGetKnownMaterialsMessage;
       FKnownAssetClasses: TGetKnownAssetClassesMessage;
+      FDisabledReasons: TDisabledReasons;
       FLastCountDetected: Cardinal;
       procedure ResetVisibility(CachedSystem: TSystem); override;
+      procedure HandleChanges(CachedSystem: TSystem); override;
+      property Enabled: Boolean read GetEnabled;
    public
       destructor Destroy(); override;
       procedure UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem); override;
       procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
+   public // ISensorsProvider
       function Knows(AssetClass: TAssetClass): Boolean;
       function Knows(Material: TMaterial): Boolean;
       function GetOreKnowledge(): TOreFilter;
+      function GetDebugName(): UTF8String;
    end;
 
 implementation
@@ -56,13 +61,6 @@ var
       Include(FSensorKind, Mechanism);
    end;
 
-   function HasComma(): Boolean;
-   begin
-      Result := Reader.Tokens.IsComma();
-      if (Result) then
-         Reader.Tokens.ReadComma();
-   end;
-
 begin
    inherited Create();
    repeat
@@ -75,7 +73,7 @@ begin
       else
          Reader.Tokens.Error('Invalid sensor type "%s", supported sensor types are "light", "internals", "class", "inference"', []);
       end;
-   until not HasComma();
+   until not ReadComma(Reader.Tokens);
 end;
 
 
@@ -95,6 +93,24 @@ procedure TSensorFeatureNode.ResetVisibility(CachedSystem: TSystem);
 begin
    Assert(not Assigned(FKnownMaterials));
    Assert(not Assigned(FKnownAssetClasses));
+end;
+
+procedure TSensorFeatureNode.HandleChanges(CachedSystem: TSystem);
+var
+   NewDisabledReasons: TDisabledReasons;
+begin
+   NewDisabledReasons := CheckDisabled(Parent);
+   if (NewDisabledReasons <> FDisabledReasons) then
+   begin
+      FDisabledReasons := NewDisabledReasons;
+      MarkAsDirty([dkUpdateClients]);
+   end;
+   inherited;
+end;
+
+function TSensorFeatureNode.GetEnabled(): Boolean;
+begin
+   Result := FDisabledReasons = [];
 end;
 
 procedure TSensorFeatureNode.SyncKnowledge();

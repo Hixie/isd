@@ -55,7 +55,7 @@ type
 implementation
 
 uses
-   isdprotocol, sysutils, exceptions, knowledge;
+   isdprotocol, sysutils, exceptions, knowledge, commonbuses;
 
 constructor TRubbleCompositionEntry.Create(AMaterial: TMaterial; AQuantity: UInt64);
 begin
@@ -131,13 +131,17 @@ var
    Entry: TRubbleCompositionEntry;
 begin
    Result := False;
+   if (Message is TCheckDisabledBusMessage) then
+   begin
+      (Message as TCheckDisabledBusMessage).AddReason(drStructuralIntegrity);
+   end
+   else
    if (Message is TRubbleCollectionMessage) then
    begin
       RubbleMessage := Message as TRubbleCollectionMessage;
       RubbleMessage.Grow(Length(FComposition)); // $R-
       for Entry in FComposition do
          RubbleMessage.AddMaterial(Entry.Material, Entry.Quantity);
-      exit;
    end;
 end;
 

@@ -7,7 +7,9 @@ interface
 //{$DEFINE VERBOSE}
 
 uses
-   hashtable, genericutils, basenetwork, systemnetwork, systems, serverstream, systemdynasty, materials, techtree, time;
+   hashtable, genericutils, basenetwork, systemnetwork, systems,
+   serverstream, systemdynasty, materials, techtree, time,
+   commonbuses;
 
 type
    TResearchTimeHashTable = class(specialize THashTable<TResearch, TMillisecondsDuration, TObjectUtils>)
@@ -27,6 +29,7 @@ type
    TResearchFeatureNode = class(TFeatureNode)
    strict private
       FUpdateResearchScheduled: Boolean;
+      FDisabledReasons: TDisabledReasons;
       FFeatureClass: TResearchFeatureClass;
       FSeed: Int64;
       FTopic: TTopic;
@@ -66,8 +69,6 @@ constructor TResearchFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeRead
 begin
    inherited Create();
    repeat
-      if (Reader.Tokens.IsComma()) then
-         Reader.Tokens.ReadComma();
       if (Reader.Tokens.IsIdentifier('provides')) then
       begin
          Reader.Tokens.ReadIdentifier('provides');
@@ -75,7 +76,7 @@ begin
          FFacilities[High(FFacilities)] := ReadTopic(Reader);
          Assert(Length(FFacilities) < 8); // TODO: if we start having a lot of FFacilities, consider using a set instead, or a set/array adaptive hybrid...
       end;
-   until not Reader.Tokens.IsComma();
+   until not ReadComma(Reader.Tokens);
 end;
 
 function TResearchFeatureClass.GetFeatureNodeClass(): FeatureNodeReference;
@@ -122,6 +123,7 @@ begin
    if ((dmDetectable * Visibility <> []) and (dmClassKnown in Visibility)) then
    begin
       Writer.WriteCardinal(fcResearch);
+      Writer.WriteCardinal(Cardinal(FDisabledReasons));
       if (Assigned(FTopic) and (dmInternals in Visibility)) then
       begin
          Writer.WriteStringReference(FTopic.Value);
@@ -140,8 +142,16 @@ begin
 end;
 
 procedure TResearchFeatureNode.HandleChanges(CachedSystem: TSystem);
+var
+   NewDisabledReasons: TDisabledReasons;
 begin
-   if (FUpdateResearchScheduled) then
+   NewDisabledReasons := CheckDisabled(Parent);
+   if (NewDisabledReasons <> FDisabledReasons) then
+   begin
+      FDisabledReasons := NewDisabledReasons;
+      MarkAsDirty([dkUpdateClients]);
+   end;
+   if ((FDisabledReasons = []) and FUpdateResearchScheduled) then
    begin
       FUpdateResearchScheduled := False;
       UpdateResearch(CachedSystem);
@@ -426,6 +436,7 @@ var
    Index: Cardinal;
    Duration, BankedTime: TMillisecondsDuration;
 begin
+   Assert(FDisabledReasons = []);
    while (FSeed < 0) do
       FSeed := System.RandomNumberGenerator.GetUInt32();
    if (Assigned(FResearchEvent)) then

@@ -217,9 +217,11 @@ type
    public
       procedure UpdateFrom(Stream: TServerStreamReader); override;
    strict private
+      FDisabledReasons: Cardinal;
       FReach, FUp, FDown: UInt32;
       FResolution: Double;
    published
+      property DisabledReasons: Cardinal read FDisabledReasons write FDisabledReasons;
       property Reach: UInt32 read FReach write FReach;
       property Up: UInt32 read FUp write FUp;
       property Down: UInt32 read FDown write FDown;
@@ -299,11 +301,14 @@ type
    public
       procedure UpdateFrom(Stream: TServerStreamReader); override;
    strict private
-      FTotal: Cardinal;
+      FDisabledReasons: Cardinal;
+      FTotal, FMax: Cardinal;
       FJobs: Cardinal;
       FHappiness: Double;
    published
+      property DisabledReasons: Cardinal read FDisabledReasons write FDisabledReasons;
       property Total: Cardinal read FTotal write FTotal;
+      property Max: Cardinal read FMax write FMax;
       property Jobs: Cardinal read FJobs write FJobs;
       property Happiness: Double read FHappiness write FHappiness;
    end;
@@ -394,8 +399,10 @@ type
    public
       procedure UpdateFrom(Stream: TServerStreamReader); override;
    strict private
+      FDisabledReasons: Cardinal;
       FTopic: UTF8String;
    published
+      property DisabledReasons: Cardinal read FDisabledReasons write FDisabledReasons;
       property Topic: UTF8String read FTopic write FTopic;
    end;
 
@@ -493,6 +500,9 @@ type
    public
       procedure UpdateFrom(Stream: TServerStreamReader); override;
    strict private
+      FDisabledReasons: Cardinal;
+   published
+      property DisabledReasons: Cardinal read FDisabledReasons write FDisabledReasons;
    end;
 
    TModelGridSensorStatusFeature = class (TModelFeature)
@@ -525,6 +535,9 @@ type
    public
       procedure UpdateFrom(Stream: TServerStreamReader); override;
    strict private
+      FDisabledReasons: Cardinal;
+   published
+      property DisabledReasons: Cardinal read FDisabledReasons write FDisabledReasons;
    end;
 
    TModelInternalSensorStatusFeature = class (TModelFeature)
@@ -1148,6 +1161,7 @@ end;
 
 procedure TModelSpaceSensorFeature.UpdateFrom(Stream: TServerStreamReader);
 begin
+   DisabledReasons := Stream.ReadCardinal();
    Reach := Stream.ReadCardinal();
    Up := Stream.ReadCardinal();
    Down := Stream.ReadCardinal();
@@ -1250,7 +1264,9 @@ end;
 
 procedure TModelPopulationFeature.UpdateFrom(Stream: TServerStreamReader);
 begin
+   DisabledReasons := Stream.ReadCardinal();
    Total := Stream.ReadCardinal();
+   Max := Stream.ReadCardinal();
    Jobs := Stream.ReadCardinal();
    Happiness := Stream.ReadDouble();
 end;
@@ -1394,6 +1410,7 @@ end;
 
 procedure TModelResearchFeature.UpdateFrom(Stream: TServerStreamReader);
 begin
+   DisabledReasons := Stream.ReadCardinal();
    Topic := Stream.ReadStringReference();
 end;
 
@@ -1463,6 +1480,7 @@ end;
 
 procedure TModelGridSensorFeature.UpdateFrom(Stream: TServerStreamReader);
 begin
+   DisabledReasons := Stream.ReadCardinal();
 end;
 
 
@@ -1493,6 +1511,7 @@ end;
 
 procedure TModelInternalSensorFeature.UpdateFrom(Stream: TServerStreamReader);
 begin
+   DisabledReasons := Stream.ReadCardinal();
 end;
 
 

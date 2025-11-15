@@ -81,8 +81,11 @@ begin
    Assert(not Assigned(FKnownMaterials));
    Assert(not Assigned(FKnownAssetClasses));
    FLastCountDetected := 0;
-   OwnerIndex := VisibilityHelper.GetDynastyIndex(Parent.Owner);
-   Parent.Walk(@SenseDown, nil);
+   if (Enabled) then
+   begin
+      OwnerIndex := VisibilityHelper.GetDynastyIndex(Parent.Owner);
+      Parent.Walk(@SenseDown, nil);
+   end;
    Assert(not Assigned(FKnownMaterials));
    Assert(not Assigned(FKnownAssetClasses));
 end;
@@ -108,8 +111,11 @@ var
 begin
    Assert(not Assigned(FKnownMaterials));
    Assert(not Assigned(FKnownAssetClasses));
-   OwnerIndex := VisibilityHelper.GetDynastyIndex(Parent.Owner);
-   Parent.Walk(@SenseDown, nil);
+   if (Enabled) then
+   begin
+      OwnerIndex := VisibilityHelper.GetDynastyIndex(Parent.Owner);
+      Parent.Walk(@SenseDown, nil);
+   end;
    FreeAndNil(FKnownMaterials);
    FreeAndNil(FKnownAssetClasses);
 end;
@@ -122,7 +128,8 @@ begin
    if ((dmDetectable * Visibility <> []) and (dmClassKnown in Visibility)) then
    begin
       Writer.WriteCardinal(fcInternalSensor);
-      if (dmInternals in Visibility) then
+      Writer.WriteCardinal(Cardinal(FDisabledReasons));
+      if (Enabled and (dmInternals in Visibility)) then
       begin
          Writer.WriteCardinal(fcInternalSensorStatus);
          Writer.WriteCardinal(FLastCountDetected);
