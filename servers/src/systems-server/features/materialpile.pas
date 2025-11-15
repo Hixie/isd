@@ -6,7 +6,7 @@ interface
 
 uses
    basenetwork, systems, serverstream, materials, techtree,
-   messageport, region, time;
+   messageport, region, time, systemdynasty;
 
 type
    TMaterialPileFeatureClass = class(TFeatureClass)
@@ -31,6 +31,7 @@ type
       procedure SetMaterialPileRegion(Region: TRegionFeatureNode);
       procedure RegionAdjustedMaterialPiles();
       procedure DisconnectMaterialPile();
+      function GetDynasty(): TDynasty;
    protected
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
       function GetMass(): Double; override;
@@ -124,14 +125,19 @@ begin
    MarkAsDirty([dkUpdateClients, dkNeedsHandleChanges]);
 end;
 
+function TMaterialPileFeatureNode.GetDynasty(): TDynasty;
+begin
+   Result := Parent.Owner;
+end;
+
 procedure TMaterialPileFeatureNode.HandleChanges(CachedSystem: TSystem);
 var
    Message: TRegisterMaterialPileBusMessage;
 begin
-   if (not Assigned(FRegion)) then
+   if (Assigned(Parent.Owner) and not Assigned(FRegion)) then
    begin
       Message := TRegisterMaterialPileBusMessage.Create(Self);
-      InjectBusMessage(Message); // TODO: report if we found a region
+      InjectBusMessage(Message); // TODO: if we didn't find a region, we shouldn't do this again until our ancestor chain changed
       FreeAndNil(Message);
    end;
    inherited;

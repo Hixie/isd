@@ -8,7 +8,7 @@ interface
 
 uses
    basenetwork, systems, serverstream, materials, techtree,
-   messageport, region, time;
+   messageport, region, time, systemdynasty;
 
 type
    TMiningFeatureClass = class(TFeatureClass)
@@ -31,6 +31,7 @@ type
       procedure SetMinerRegion(Region: TRegionFeatureNode);
       procedure StartMiner(Rate: TRate; SourceLimiting, TargetLimiting: Boolean);
       procedure DisconnectMiner();
+      function GetDynasty(): TDynasty;
    protected
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
       procedure HandleChanges(CachedSystem: TSystem); override;
@@ -111,6 +112,11 @@ procedure TMiningFeatureNode.DisconnectMiner();
 begin
    FStatus.Reset();
    MarkAsDirty([dkUpdateClients, dkNeedsHandleChanges]);
+end;
+
+function TMiningFeatureNode.GetDynasty(): TDynasty;
+begin
+   Result := Parent.Owner;
 end;
 
 procedure TMiningFeatureNode.HandleChanges(CachedSystem: TSystem);

@@ -1132,9 +1132,21 @@ follows.
              it is often also present on features with `fcRegion`).
    3       : The number of staff assigned to the asset is below the
              required number (see `fcStaffing` feature).
-   4       : reserved, always zero
+   4       : The asset requires a dynasty to own it, and does not
+             have one.
+   5       : reserved, always zero
    ...
    31 (MSB): reserved, always zero
+
+If any bit is set, the other bits not being set does not mean their
+condition does not apply. For example, an abandoned, broken, unstaffed
+gun tower may be flagged as only not having a dynasty (bit 4).
+Similarly, a broken mining drill floating in space, turned off, and
+unstaffed, may be flagged as only disabled (0), broken (1), and
+missing its coordinating asset (2), despite also missing staff. This
+is caused by server-side optimizations; once one or more reasons to
+consider an asset disabled are found, the logic to determine other
+reasons may be skipped.
 
 
 # Systems Server Internal Protocol

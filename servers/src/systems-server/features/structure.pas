@@ -5,7 +5,7 @@ unit structure;
 interface
 
 uses
-   systems, serverstream, materials, techtree, builders, region, time, commonbuses;
+   systems, serverstream, materials, techtree, builders, region, time, commonbuses, systemdynasty;
 
 type
    TStructureFeatureClass = class;
@@ -104,6 +104,7 @@ type
       function GetAsset(): TAssetNode;
       function GetPriority(): TPriority;
       procedure SetAutoPriority(Value: TAutoPriority);
+      function GetDynasty(): TDynasty;
    private // IMaterialConsumer
       function GetMaterialConsumerMaterial(): TMaterial;
       function GetMaterialConsumerMaxDelivery(): UInt64;
@@ -615,18 +616,21 @@ procedure TStructureFeatureNode.HandleChanges(CachedSystem: TSystem);
 var
    Message: TRegisterStructureMessage;
 begin
-   if (Assigned(FBuildingState) and (not Assigned(FBuildingState^.BuilderBus)) and (not (bsNoBuilderBus in FBuildingState^.Flags))) then
+   if (Assigned(Parent.Owner)) then
    begin
-      Message := TRegisterStructureMessage.Create(Self);
-      if (InjectBusMessage(Message) <> mrHandled) then
+      if (Assigned(FBuildingState) and (not Assigned(FBuildingState^.BuilderBus)) and (not (bsNoBuilderBus in FBuildingState^.Flags))) then
       begin
-         Include(FBuildingState^.Flags, bsNoBuilderBus); // TODO: remove this when the parent changes
+         Message := TRegisterStructureMessage.Create(Self);
+         if (InjectBusMessage(Message) <> mrHandled) then
+         begin
+            Include(FBuildingState^.Flags, bsNoBuilderBus); // TODO: remove this when the parent changes
+         end;
+         FreeAndNil(Message);
       end;
-      FreeAndNil(Message);
-   end;
-   if (Assigned(FBuildingState) and Assigned(FBuildingState^.Builder) and (not (bsTriggered in FBuildingState^.Flags))) then
-   begin
-      TriggerBuilding();
+      if (Assigned(FBuildingState) and Assigned(FBuildingState^.Builder) and (not (bsTriggered in FBuildingState^.Flags))) then
+      begin
+         TriggerBuilding();
+      end;
    end;
    inherited;
 end;
@@ -659,6 +663,7 @@ var
    Injected: TBusMessageResult;
    Message: TRegisterMaterialConsumerBusMessage;
 begin
+   Assert(Assigned(Parent.Owner));
    Assert(not (bsTriggered in FBuildingState^.Flags));
    FetchMaterials();
    if (Assigned(FBuildingState^.PendingMaterial)) then
@@ -730,6 +735,7 @@ var
    Obtain: TObtainMaterialBusMessage;
    ObtainedMaterial: TMaterialQuantity;
 begin
+   Assert(Assigned(Parent.Owner));
    Changes := [];
    Assert(Assigned(FBuildingState));
    Assert(not Assigned(FBuildingState^.NextEvent));
@@ -751,7 +757,7 @@ begin
          NextMaterial := FFeatureClass.BillOfMaterials[Index].Material;
          NextQuantity := Level - FBuildingState^.MaterialsQuantity; // $R-
          Assert(NextQuantity > 0);
-         Obtain := TObtainMaterialBusMessage.Create(NextMaterial, NextQuantity);
+         Obtain := TObtainMaterialBusMessage.Create(Parent.Owner, NextMaterial, NextQuantity);
          InjectBusMessage(Obtain);
          ObtainedMaterial := Obtain.TransferredManifest;
          if (Assigned(ObtainedMaterial.Material)) then
@@ -836,6 +842,11 @@ begin
    Assert(Assigned(FBuildingState));
    FBuildingState^.Priority := Value;
    MarkAsDirty([dkUpdateJournal]);
+end;
+
+function TStructureFeatureNode.GetDynasty(): TDynasty;
+begin
+   Result := Parent.Owner;
 end;
 
 function TStructureFeatureNode.GetMaterialConsumerMaterial(): TMaterial;

@@ -8,7 +8,7 @@ interface
 
 uses
    basenetwork, systems, serverstream, materials, techtree,
-   messageport, region, time;
+   messageport, region, time, systemdynasty;
 
 type
    TRefiningFeatureClass = class(TFeatureClass)
@@ -34,6 +34,7 @@ type
       procedure SetRefineryRegion(Region: TRegionFeatureNode);
       procedure StartRefinery(Rate: TRate; SourceLimiting, TargetLimiting: Boolean); // kg per second
       procedure DisconnectRefinery();
+      function GetDynasty(): TDynasty;
    protected
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
       procedure HandleChanges(CachedSystem: TSystem); override;
@@ -131,6 +132,11 @@ procedure TRefiningFeatureNode.DisconnectRefinery();
 begin
    FStatus.Reset();
    MarkAsDirty([dkUpdateClients, dkNeedsHandleChanges]);
+end;
+
+function TRefiningFeatureNode.GetDynasty(): TDynasty;
+begin
+   Result := Parent.Owner;
 end;
 
 procedure TRefiningFeatureNode.HandleChanges(CachedSystem: TSystem);

@@ -6,7 +6,7 @@ interface
 
 uses
    basenetwork, systems, serverstream, materials, techtree,
-   messageport, region, time, annotatedpointer;
+   messageport, region, time, annotatedpointer, systemdynasty;
 
 type
    TOreMaterialKnowledgePackage = record
@@ -43,7 +43,7 @@ type
    TOrePileFeatureNode = class(TFeatureNode, IOrePile)
    strict private
       type
-         TRegionFlag = (rfNoRegion);
+         TRegionFlag = (rfSearchedForRegion);
       var
       FFeatureClass: TOrePileFeatureClass;
       FDynastyKnowledge: TOreMaterialKnowledgePackage; // per dynasty bits for each ore
@@ -53,8 +53,10 @@ type
       procedure SetOrePileRegion(Region: TRegionFeatureNode);
       procedure RegionAdjustedOrePiles();
       procedure DisconnectOrePile();
+      function GetDynasty(): TDynasty;
    protected
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
+      procedure Detaching(); override;
       function GetMass(): Double; override;
       function GetMassFlowRate(): TRate; override;
       procedure HandleChanges(CachedSystem: TSystem); override;
@@ -75,7 +77,7 @@ type
 implementation
 
 uses
-   exceptions, sysutils, systemnetwork, systemdynasty, knowledge, messages, isdprotocol;
+   exceptions, sysutils, systemnetwork, knowledge, messages, isdprotocol;
 
 function TOreMaterialKnowledgePackage.GetIsPointer(): Boolean;
 begin
@@ -305,17 +307,32 @@ begin
    MarkAsDirty([dkUpdateClients, dkNeedsHandleChanges]); // the mass flow rate and contents may have changed
 end;
 
+function TOrePileFeatureNode.GetDynasty(): TDynasty;
+begin
+   Result := Parent.Owner;
+end;
+
 procedure TOrePileFeatureNode.HandleChanges(CachedSystem: TSystem);
 var
    Message: TRegisterOrePileBusMessage;
 begin
-   if (not FRegion.Assigned) then
+   if (Assigned(Parent.Owner) and FRegion.IsFlagClear(rfSearchedForRegion)) then
    begin
       Message := TRegisterOrePileBusMessage.Create(Self);
-      InjectBusMessage(Message); // TODO: report if we found a region
+      InjectBusMessage(Message);
       FreeAndNil(Message);
+      FRegion.SetFlag(rfSearchedForRegion);
    end;
    inherited;
+end;
+
+procedure TOrePileFeatureNode.Detaching();
+begin
+   if (FRegion.Assigned) then
+   begin
+      FRegion.Unwrap().RemoveOrePile(Self);
+      FRegion.Clear();
+   end;
 end;
 
 function TOrePileFeatureNode.GetMass(): Double;
@@ -358,7 +375,7 @@ begin
       Writer.WriteDouble(FFeatureClass.FCapacityMass);
       if (FRegion.Assigned) then
       begin
-         Ores := FRegion.Unwrap().GetOresPresent() and FDynastyKnowledge[DynastyIndex];
+         Ores := FRegion.Unwrap().GetOresPresentForPile(Self) and FDynastyKnowledge[DynastyIndex];
          for Ore in TOres do
          begin
             if (Ores[Ore]) then
@@ -417,7 +434,7 @@ begin
          Message.Reply();
          if (FRegion.Assigned) then
          begin
-            OreKnowledge := FRegion.Unwrap().GetOresPresent() and FDynastyKnowledge[DynastyIndex];
+            OreKnowledge := FRegion.Unwrap().GetOresPresentForPile(Self) and FDynastyKnowledge[DynastyIndex];
             OreQuantities := FRegion.Unwrap().GetOresForPile(Self);
             Total := 0.0;
             for Ore in TOres do

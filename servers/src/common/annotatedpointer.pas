@@ -14,7 +14,7 @@ type
       class operator := (Value: PType): specialize TAnnotatedPointer<PType, TFlags>; inline;
       procedure Clear(); inline;
       function Unwrap(): PType; inline;
-      procedure MarkFlag(Flag: TFlags); inline;
+      procedure SetFlag(Flag: TFlags); inline;
       procedure ClearFlag(Flag: TFlags); inline;
       function IsFlagSet(Flag: TFlags): Boolean; inline;
       function IsFlagClear(Flag: TFlags): Boolean; inline;
@@ -47,7 +47,7 @@ begin
    Result := system.Assigned(PType(FValue and not $07));
 end;
 
-procedure TAnnotatedPointer.MarkFlag(Flag: TFlags);
+procedure TAnnotatedPointer.SetFlag(Flag: TFlags);
 begin
    Assert(PtrUInt(Flag) <= 3);
    FValue := FValue or PtrUInt(1 shl Ord(Flag));
@@ -87,7 +87,7 @@ begin
    Assert(P.IsFlagClear(tfA));
    Assert(P.IsFlagClear(tfB));
    Assert(P.IsFlagClear(tfC));
-   P.MarkFlag(tfB);
+   P.SetFlag(tfB);
    Assert(P.IsFlagClear(tfA));
    Assert(P.IsFlagSet(tfB));
    Assert(P.IsFlagClear(tfC));
@@ -95,7 +95,7 @@ begin
    Assert(P.IsFlagClear(tfA));
    Assert(P.IsFlagClear(tfB));
    Assert(P.IsFlagClear(tfC));
-   P.MarkFlag(tfA);
+   P.SetFlag(tfA);
    Assert(P.IsFlagSet(tfA));
    Assert(P.IsFlagClear(tfB));
    Assert(P.IsFlagClear(tfC));
@@ -103,15 +103,15 @@ begin
    Assert(P.IsFlagClear(tfA));
    Assert(P.IsFlagClear(tfB));
    Assert(P.IsFlagClear(tfC));
-   P.MarkFlag(tfC);
+   P.SetFlag(tfC);
    Assert(P.IsFlagClear(tfA));
    Assert(P.IsFlagClear(tfB));
    Assert(P.IsFlagSet(tfC));
-   P.MarkFlag(tfA);
+   P.SetFlag(tfA);
    Assert(P.IsFlagSet(tfA));
    Assert(P.IsFlagClear(tfB));
    Assert(P.IsFlagSet(tfC));
-   P.MarkFlag(tfB);
+   P.SetFlag(tfB);
    Assert(P.IsFlagSet(tfA));
    Assert(P.IsFlagSet(tfB));
    Assert(P.IsFlagSet(tfC));

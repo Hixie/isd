@@ -15,6 +15,7 @@ type
       function GetIsNotZero(): Boolean; inline;
       function GetIsNegative(): Boolean; inline;
       function GetIsPositive(): Boolean; inline;
+      function GetIsFinite(): Boolean; inline;
       function GetIsInfinite(): Boolean; inline;
       class function GetNegInfinity(): TMillisecondsDuration; inline; static;
       class function GetInfinity(): TMillisecondsDuration; inline; static;
@@ -29,6 +30,7 @@ type
       property IsNotZero: Boolean read GetIsNotZero; // <> 0
       property IsNegative: Boolean read GetIsNegative; // < 0
       property IsPositive: Boolean read GetIsPositive; // > 0
+      property IsFinite: Boolean read GetIsFinite;
       property IsInfinite: Boolean read GetIsInfinite;
       property AsInt64: Int64 read Value; // for storage, restore with FromMilliseconds(Int64)
       class property NegInfinity: TMillisecondsDuration read GetNegInfinity;
@@ -201,6 +203,11 @@ end;
 function TMillisecondsDuration.GetIsPositive(): Boolean;
 begin
    Result := Value > 0;
+end;
+
+function TMillisecondsDuration.GetIsFinite(): Boolean;
+begin
+   Result := (Value <> High(Value)) and (Value <> Low(Value));
 end;
 
 function TMillisecondsDuration.GetIsInfinite(): Boolean;

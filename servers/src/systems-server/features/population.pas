@@ -179,7 +179,8 @@ procedure TPopulationFeatureNode.HandleChanges(CachedSystem: TSystem);
 var
    Message: TRegisterHousingMessage;
 begin
-   if ((not Assigned(FPeopleBus)) and (FPriority <> NoPriority)) then
+   Assert((FPopulation = 0) or Assigned(Parent.Owner));
+   if ((FPopulation > 0) and (not Assigned(FPeopleBus)) and (FPriority <> NoPriority)) then
    begin
       Message := TRegisterHousingMessage.Create(Self);
       if (InjectBusMessage(Message) <> mrHandled) then
