@@ -15,7 +15,7 @@ type
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
       constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
-      function InitFeatureNode(): TFeatureNode; override;
+      function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
       property Jobs: Cardinal read FJobs;
    end;
 
@@ -28,15 +28,15 @@ type
    protected
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
-      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
+      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
-      constructor Create(AFeatureClass: TStaffingFeatureClass);
+      constructor Create(ASystem: TSystem; AFeatureClass: TStaffingFeatureClass);
       destructor Destroy(); override;
       procedure Attaching(); override;
       procedure Detaching(); override;
-      procedure HandleChanges(CachedSystem: TSystem); override;
-      procedure UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem); override;
-      procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
+      procedure HandleChanges(); override;
+      procedure UpdateJournal(Journal: TJournalWriter); override;
+      procedure ApplyJournal(Journal: TJournalReader); override;
    public // IEmployer
       procedure PeopleBusConnected(Bus: TPeopleBusFeatureNode);
       procedure PeopleBusAssignWorkers(Count: Cardinal);
@@ -64,15 +64,15 @@ begin
    Result := TStaffingFeatureNode;
 end;
 
-function TStaffingFeatureClass.InitFeatureNode(): TFeatureNode;
+function TStaffingFeatureClass.InitFeatureNode(ASystem: TSystem): TFeatureNode;
 begin
-   Result := TStaffingFeatureNode.Create(Self);
+   Result := TStaffingFeatureNode.Create(ASystem, Self);
 end;
 
 
-constructor TStaffingFeatureNode.Create(AFeatureClass: TStaffingFeatureClass);
+constructor TStaffingFeatureNode.Create(ASystem: TSystem; AFeatureClass: TStaffingFeatureClass);
 begin
-   inherited Create();
+   inherited Create(ASystem);
    FFeatureClass := AFeatureClass;
 end;
 
@@ -80,7 +80,7 @@ constructor TStaffingFeatureNode.CreateFromJournal(Journal: TJournalReader; AFea
 begin
    Assert(Assigned(AFeatureClass));
    FFeatureClass := AFeatureClass as TStaffingFeatureClass;
-   inherited CreateFromJournal(Journal, AFeatureClass, ASystem);
+   inherited;
 end;
 
 destructor TStaffingFeatureNode.Destroy();
@@ -109,7 +109,7 @@ begin
    end;
 end;
 
-procedure TStaffingFeatureNode.HandleChanges(CachedSystem: TSystem);
+procedure TStaffingFeatureNode.HandleChanges();
 var
    DisabledReasons: TDisabledReasons;
    Message: TRegisterEmployerMessage;
@@ -158,11 +158,11 @@ begin
       Result := inherited;
 end;
 
-procedure TStaffingFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
+procedure TStaffingFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);
 var
    Visibility: TVisibility;
 begin
-   Visibility := Parent.ReadVisibilityFor(DynastyIndex, CachedSystem);
+   Visibility := Parent.ReadVisibilityFor(DynastyIndex);
    if (dmDetectable * Visibility <> []) then
    begin
       Writer.WriteCardinal(fcStaffing);
@@ -178,12 +178,12 @@ begin
    end;
 end;
 
-procedure TStaffingFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
+procedure TStaffingFeatureNode.UpdateJournal(Journal: TJournalWriter);
 begin
    Journal.WriteCardinal(FPriority);
 end;
 
-procedure TStaffingFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
+procedure TStaffingFeatureNode.ApplyJournal(Journal: TJournalReader);
 begin
    FPriority := TPriority(Journal.ReadCardinal());
 end;

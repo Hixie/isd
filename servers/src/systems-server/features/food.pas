@@ -59,18 +59,19 @@ type
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
       constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
-      function InitFeatureNode(): TFeatureNode; override;
+      function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
    end;
 
    TFoodBusFeatureNode = class(TFeatureNode)
    protected
+      procedure ParentMarkedAsDirty(ParentDirtyKinds, NewDirtyKinds: TDirtyKinds); override;
       function ManageBusMessage(Message: TBusMessage): TBusMessageResult; override;
-      procedure HandleChanges(CachedSystem: TSystem); override;
-      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
+      procedure HandleChanges(); override;
+      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
       destructor Destroy(); override;
-      procedure UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem); override;
-      procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
+      procedure UpdateJournal(Journal: TJournalWriter); override;
+      procedure ApplyJournal(Journal: TJournalReader); override;
    end;
 
 type
@@ -82,7 +83,7 @@ type
    public
       constructor Create(ASize: Cardinal);
       constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
-      function InitFeatureNode(): TFeatureNode; override;
+      function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
       property Size: Cardinal read FSize;
    end;
 
@@ -95,13 +96,13 @@ type
       procedure SetFoodConsumption(Quantity: Cardinal);
    protected
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
-      procedure HandleChanges(CachedSystem: TSystem); override;
+      procedure HandleChanges(); override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
-      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
+      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
-      constructor Create(AFeatureClass: TFoodGenerationFeatureClass);
-      procedure UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem); override;
-      procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
+      constructor Create(ASystem: TSystem; AFeatureClass: TFoodGenerationFeatureClass);
+      procedure UpdateJournal(Journal: TJournalWriter); override;
+      procedure ApplyJournal(Journal: TJournalReader); override;
    end;
 
 implementation
@@ -254,14 +255,23 @@ begin
    Result := TFoodBusFeatureNode;
 end;
 
-function TFoodBusFeatureClass.InitFeatureNode(): TFeatureNode;
+function TFoodBusFeatureClass.InitFeatureNode(ASystem: TSystem): TFeatureNode;
 begin
-   Result := TFoodBusFeatureNode.Create();
+   Result := TFoodBusFeatureNode.Create(ASystem);
 end;
 
 
 destructor TFoodBusFeatureNode.Destroy();
 begin
+   inherited;
+end;
+
+procedure TFoodBusFeatureNode.ParentMarkedAsDirty(ParentDirtyKinds, NewDirtyKinds: TDirtyKinds);
+begin
+   if (dkVisibilityDidChange in NewDirtyKinds) then
+   begin
+      MarkAsDirty([dkNeedsHandleChanges]);
+   end;
    inherited;
 end;
 
@@ -276,12 +286,11 @@ begin
       Result := inherited;
 end;
 
-procedure TFoodBusFeatureNode.HandleChanges(CachedSystem: TSystem);
+procedure TFoodBusFeatureNode.HandleChanges();
 var
    InitFoodMessage: TInitFoodMessage;
    Injected: TBusMessageResult;
 begin
-   // TODO: we should call MarkAsDirty with dkNeedsHandleChanges somewhere, instead of relying on the asset doing that whenever visibility changes
    InitFoodMessage := TInitFoodMessage.Create();
    Injected := InjectBusMessage(InitFoodMessage);
    Assert(Injected = mrInjected);
@@ -290,15 +299,15 @@ begin
    inherited;
 end;
 
-procedure TFoodBusFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
+procedure TFoodBusFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);
 begin
 end;
 
-procedure TFoodBusFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
+procedure TFoodBusFeatureNode.UpdateJournal(Journal: TJournalWriter);
 begin
 end;
 
-procedure TFoodBusFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
+procedure TFoodBusFeatureNode.ApplyJournal(Journal: TJournalReader);
 begin
 end;
 
@@ -321,15 +330,15 @@ begin
    Result := TFoodGenerationFeatureNode;
 end;
 
-function TFoodGenerationFeatureClass.InitFeatureNode(): TFeatureNode;
+function TFoodGenerationFeatureClass.InitFeatureNode(ASystem: TSystem): TFeatureNode;
 begin
-   Result := TFoodGenerationFeatureNode.Create(Self);
+   Result := TFoodGenerationFeatureNode.Create(ASystem, Self);
 end;
 
 
-constructor TFoodGenerationFeatureNode.Create(AFeatureClass: TFoodGenerationFeatureClass);
+constructor TFoodGenerationFeatureNode.Create(ASystem: TSystem; AFeatureClass: TFoodGenerationFeatureClass);
 begin
-   inherited Create();
+   inherited Create(ASystem);
    Assert(Assigned(AFeatureClass));
    FFeatureClass := AFeatureClass;
 end;
@@ -338,10 +347,10 @@ constructor TFoodGenerationFeatureNode.CreateFromJournal(Journal: TJournalReader
 begin
    Assert(Assigned(AFeatureClass));
    FFeatureClass := AFeatureClass as TFoodGenerationFeatureClass;
-   inherited CreateFromJournal(Journal, AFeatureClass, ASystem);
+   inherited;
 end;
 
-procedure TFoodGenerationFeatureNode.HandleChanges(CachedSystem: TSystem);
+procedure TFoodGenerationFeatureNode.HandleChanges();
 var
    NewDisabledReasons: TDisabledReasons;
 begin
@@ -363,17 +372,17 @@ begin
    Result := False;
 end;
 
-procedure TFoodGenerationFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
+procedure TFoodGenerationFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);
 begin
    //Writer.WriteCardinal(fcFoodGeneration);
    //also send FDisabledReasons
 end;
 
-procedure TFoodGenerationFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
+procedure TFoodGenerationFeatureNode.UpdateJournal(Journal: TJournalWriter);
 begin
 end;
 
-procedure TFoodGenerationFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
+procedure TFoodGenerationFeatureNode.ApplyJournal(Journal: TJournalReader);
 begin
 end;
 

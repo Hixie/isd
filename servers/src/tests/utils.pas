@@ -9,6 +9,7 @@ uses
 
 const
    TimeFactor = 500;
+   Seconds = 1000;
    Minutes = 60 * 1000;
    Hours = 60 * Minutes;
    Days = 24 * Hours;

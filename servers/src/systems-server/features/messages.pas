@@ -29,7 +29,7 @@ type
    public
       constructor Create(AMessageAssetClass: TAssetClass);
       constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
-      function InitFeatureNode(): TFeatureNode; override;
+      function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
    end;
 
    TMessageBoardFeatureNode = class(TFeatureNode)
@@ -43,12 +43,12 @@ type
       function GetFeatureName(): UTF8String; override;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
-      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
+      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
-      constructor Create(AFeatureClass: TMessageBoardFeatureClass);
+      constructor Create(ASystem: TSystem; AFeatureClass: TMessageBoardFeatureClass);
       destructor Destroy(); override;
-      procedure UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem); override;
-      procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
+      procedure UpdateJournal(Journal: TJournalWriter); override;
+      procedure ApplyJournal(Journal: TJournalReader); override;
    end;
 
 type
@@ -57,7 +57,7 @@ type
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
       constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
-      function InitFeatureNode(): TFeatureNode; override;
+      function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
    end;
 
    TMessageFeatureNode = class(TFeatureNode)
@@ -67,13 +67,13 @@ type
       FIsRead: Boolean;
       FBody: UTF8String;
    protected
-      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
+      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
-      constructor Create();
-      constructor Create(ASourceSystemID: Cardinal; ATimestamp: TTimeInMilliseconds; AIsRead: Boolean; ABody: UTF8String);
+      constructor Create(ASystem: TSystem);
+      constructor Create(ASystem: TSystem; ASourceSystemID: Cardinal; ATimestamp: TTimeInMilliseconds; AIsRead: Boolean; ABody: UTF8String);
       procedure SetMessage(ASourceSystemID: Cardinal; ATimestamp: TTimeInMilliseconds; ABody: UTF8String);
-      procedure UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem); override;
-      procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
+      procedure UpdateJournal(Journal: TJournalWriter); override;
+      procedure ApplyJournal(Journal: TJournalReader); override;
       function HandleCommand(Command: UTF8String; var Message: TMessage): Boolean; override;
       procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); override;
    end;
@@ -118,15 +118,15 @@ begin
    Result := TMessageBoardFeatureNode;
 end;
 
-function TMessageBoardFeatureClass.InitFeatureNode(): TFeatureNode;
+function TMessageBoardFeatureClass.InitFeatureNode(ASystem: TSystem): TFeatureNode;
 begin
-   Result := TMessageBoardFeatureNode.Create(Self);
+   Result := TMessageBoardFeatureNode.Create(ASystem, Self);
 end;
 
 
-constructor TMessageBoardFeatureNode.Create(AFeatureClass: TMessageBoardFeatureClass);
+constructor TMessageBoardFeatureNode.Create(ASystem: TSystem; AFeatureClass: TMessageBoardFeatureClass);
 begin
-   inherited Create();
+   inherited Create(ASystem);
    FFeatureClass := AFeatureClass;
 end;
 
@@ -134,7 +134,7 @@ constructor TMessageBoardFeatureNode.CreateFromJournal(Journal: TJournalReader; 
 begin
    Assert(Assigned(AFeatureClass));
    FFeatureClass := AFeatureClass as TMessageBoardFeatureClass;
-   inherited CreateFromJournal(Journal, AFeatureClass, ASystem);
+   inherited;
 end;
 
 destructor TMessageBoardFeatureNode.Destroy();
@@ -197,7 +197,7 @@ begin
       if (Notification.Source.Owner = Parent.Owner) then
       begin
          CachedSystem := System;
-         Child := FFeatureClass.FMessageAssetClass.Spawn(Parent.Owner);
+         Child := FFeatureClass.FMessageAssetClass.Spawn(Parent.Owner, System);
          MessageFeature := Child.GetFeatureByClass(TMessageFeatureClass) as TMessageFeatureNode;
          MessageFeature.SetMessage(CachedSystem.SystemID, CachedSystem.Now, Notification.Body);
          KnowledgeFeature := Child.GetFeatureByClass(TKnowledgeFeatureClass) as TKnowledgeFeatureNode;
@@ -216,12 +216,12 @@ begin
    Result := False;
 end;
 
-procedure TMessageBoardFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
+procedure TMessageBoardFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);
 var
    Child: TAssetNode;
    Visibility: TVisibility;
 begin
-   Visibility := Parent.ReadVisibilityFor(DynastyIndex, CachedSystem);
+   Visibility := Parent.ReadVisibilityFor(DynastyIndex);
    if ((dmDetectable * Visibility <> []) and (dmClassKnown in Visibility)) then
    begin
       Writer.WriteCardinal(fcMessageBoard);
@@ -229,15 +229,15 @@ begin
       begin
          for Child in FChildren do
          begin
-            if (Child.IsVisibleFor(DynastyIndex, CachedSystem)) then
-               Writer.WriteCardinal(Child.ID(CachedSystem, DynastyIndex));
+            if (Child.IsVisibleFor(DynastyIndex)) then
+               Writer.WriteCardinal(Child.ID(DynastyIndex));
          end;
       end;
       Writer.WriteCardinal(0);
    end;
 end;
 
-procedure TMessageBoardFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
+procedure TMessageBoardFeatureNode.UpdateJournal(Journal: TJournalWriter);
 var
    Child: TAssetNode;
 begin
@@ -265,7 +265,7 @@ begin
    Journal.WriteAssetChangeKind(ckEndOfList);
 end;
 
-procedure TMessageBoardFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
+procedure TMessageBoardFeatureNode.ApplyJournal(Journal: TJournalReader);
 
    procedure AddChild();
    var
@@ -309,31 +309,31 @@ begin
    Result := TMessageFeatureNode;
 end;
 
-function TMessageFeatureClass.InitFeatureNode(): TFeatureNode;
+function TMessageFeatureClass.InitFeatureNode(ASystem: TSystem): TFeatureNode;
 begin
-   Result := TMessageFeatureNode.Create();
+   Result := TMessageFeatureNode.Create(ASystem);
 end;
 
 
-constructor TMessageFeatureNode.Create();
+constructor TMessageFeatureNode.Create(ASystem: TSystem);
 begin
-   inherited Create();
+   inherited Create(ASystem);
 end;
 
-constructor TMessageFeatureNode.Create(ASourceSystemID: Cardinal; ATimestamp: TTimeInMilliseconds; AIsRead: Boolean; ABody: UTF8String);
+constructor TMessageFeatureNode.Create(ASystem: TSystem; ASourceSystemID: Cardinal; ATimestamp: TTimeInMilliseconds; AIsRead: Boolean; ABody: UTF8String);
 begin
-   inherited Create();
+   inherited Create(ASystem);
    FSourceSystemID := ASourceSystemID;
    FTimestamp := ATimestamp;
    FIsRead := AIsRead;
    FBody := ABody;
 end;
 
-procedure TMessageFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
+procedure TMessageFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);
 var
    Visibility: TVisibility;
 begin
-   Visibility := Parent.ReadVisibilityFor(DynastyIndex, CachedSystem);
+   Visibility := Parent.ReadVisibilityFor(DynastyIndex);
    if ((dmDetectable * Visibility <> []) and (dmClassKnown in Visibility)) then
    begin
       Writer.WriteCardinal(fcMessage);
@@ -344,7 +344,7 @@ begin
    end;
 end;
 
-procedure TMessageFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
+procedure TMessageFeatureNode.UpdateJournal(Journal: TJournalWriter);
 begin
    Journal.WriteCardinal(FSourceSystemID);
    Journal.WriteInt64(FTimestamp.AsInt64);
@@ -352,7 +352,7 @@ begin
    Journal.WriteString(FBody);
 end;
 
-procedure TMessageFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
+procedure TMessageFeatureNode.ApplyJournal(Journal: TJournalReader);
 begin
    FSourceSystemID := Journal.ReadCardinal();
    FTimestamp := TTimeInMilliseconds.FromMilliseconds(Journal.ReadInt64());

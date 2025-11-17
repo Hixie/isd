@@ -11,6 +11,7 @@ type
    TDynasty = class(TBaseDynasty)
    public
       type
+         TArray = array of TDynasty;
          TDynastyCallback = procedure(Dynasty: TDynasty) of object;
    strict private
       type

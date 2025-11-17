@@ -19,7 +19,7 @@ type
    public
       constructor Create(AHiddenIfEmpty: Boolean; AMaxPopulation: Cardinal);
       constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
-      function InitFeatureNode(): TFeatureNode; override;
+      function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
       property HiddenIfEmpty: Boolean read FHiddenIfEmpty;
       property MaxPopulation: Cardinal read FMaxPopulation;
    end;
@@ -44,15 +44,15 @@ type
       function GetMass(): Double; override;
       function GetHappiness(): Double; override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
-      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
+      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
-      constructor Create(AFeatureClass: TPopulationFeatureClass);
-      constructor CreatePopulated(AFeatureClass: TPopulationFeatureClass; APopulation: Cardinal; AMeanHappiness: Double); // only for use in plot-generated population centers
+      constructor Create(ASystem: TSystem; AFeatureClass: TPopulationFeatureClass);
+      constructor CreatePopulated(ASystem: TSystem; AFeatureClass: TPopulationFeatureClass; APopulation: Cardinal; AMeanHappiness: Double); // only for use in plot-generated population centers
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
       destructor Destroy(); override;
-      procedure HandleChanges(CachedSystem: TSystem); override;
-      procedure UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem); override;
-      procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
+      procedure HandleChanges(); override;
+      procedure UpdateJournal(Journal: TJournalWriter); override;
+      procedure ApplyJournal(Journal: TJournalReader); override;
       procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); override;
    public // IHousing
       procedure PeopleBusConnected(Bus: TPeopleBusFeatureNode);
@@ -123,22 +123,22 @@ begin
    Result := TPopulationFeatureNode;
 end;
 
-function TPopulationFeatureClass.InitFeatureNode(): TFeatureNode;
+function TPopulationFeatureClass.InitFeatureNode(ASystem: TSystem): TFeatureNode;
 begin
-   Result := TPopulationFeatureNode.Create(Self);
+   Result := TPopulationFeatureNode.Create(ASystem, Self);
 end;
 
 
-constructor TPopulationFeatureNode.Create(AFeatureClass: TPopulationFeatureClass);
+constructor TPopulationFeatureNode.Create(ASystem: TSystem; AFeatureClass: TPopulationFeatureClass);
 begin
-   inherited Create();
+   inherited Create(ASystem);
    Assert(Assigned(AFeatureClass));
    FFeatureClass := AFeatureClass;
 end;
 
-constructor TPopulationFeatureNode.CreatePopulated(AFeatureClass: TPopulationFeatureClass; APopulation: Cardinal; AMeanHappiness: Double);
+constructor TPopulationFeatureNode.CreatePopulated(ASystem: TSystem; AFeatureClass: TPopulationFeatureClass; APopulation: Cardinal; AMeanHappiness: Double);
 begin
-   inherited Create();
+   inherited Create(ASystem);
    Assert(Assigned(AFeatureClass));
    FFeatureClass := AFeatureClass;
    FPopulation := APopulation;
@@ -149,7 +149,7 @@ constructor TPopulationFeatureNode.CreateFromJournal(Journal: TJournalReader; AF
 begin
    Assert(Assigned(AFeatureClass));
    FFeatureClass := AFeatureClass as TPopulationFeatureClass;
-   inherited CreateFromJournal(Journal, AFeatureClass, ASystem);
+   inherited;
 end;
 
 destructor TPopulationFeatureNode.Destroy();
@@ -222,13 +222,13 @@ begin
       Result := False;
 end;
 
-procedure TPopulationFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
+procedure TPopulationFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);
 var
    Visibility: TVisibility;
 begin
    if (FFeatureClass.HiddenIfEmpty and (FPopulation = 0)) then
       exit;
-   Visibility := Parent.ReadVisibilityFor(DynastyIndex, CachedSystem);
+   Visibility := Parent.ReadVisibilityFor(DynastyIndex);
    if (dmDetectable * Visibility <> []) then
    begin
       Writer.WriteCardinal(fcPopulation);
@@ -244,7 +244,7 @@ begin
    end;
 end;
 
-procedure TPopulationFeatureNode.HandleChanges(CachedSystem: TSystem);
+procedure TPopulationFeatureNode.HandleChanges();
 var
    NewDisabledReasons: TDisabledReasons;
    Message: TRegisterHousingMessage;
@@ -273,14 +273,14 @@ begin
    inherited;
 end;
 
-procedure TPopulationFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
+procedure TPopulationFeatureNode.UpdateJournal(Journal: TJournalWriter);
 begin
    Journal.WriteCardinal(FPopulation);
    Journal.WriteCardinal(FPriority);
    Journal.WriteDouble(FMeanHappiness);
 end;
 
-procedure TPopulationFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
+procedure TPopulationFeatureNode.ApplyJournal(Journal: TJournalReader);
 begin
    FPopulation := Journal.ReadCardinal();
    FPriority := TPriority(Journal.ReadCardinal());

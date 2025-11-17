@@ -102,7 +102,7 @@ type
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
       constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
-      function InitFeatureNode(): TFeatureNode; override;
+      function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
    end;
 
    TCachedKnownMaterialsHashMap = specialize THashTable<TDynasty, TMaterialHashSet, TObjectUtils>;
@@ -120,11 +120,11 @@ type
       procedure ParentMarkedAsDirty(ParentDirtyKinds, NewDirtyKinds: TDirtyKinds); override;
       function ManageBusMessage(Message: TBusMessage): TBusMessageResult; override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
-      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
+      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
       destructor Destroy(); override;
-      procedure UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem); override;
-      procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
+      procedure UpdateJournal(Journal: TJournalWriter); override;
+      procedure ApplyJournal(Journal: TJournalReader); override;
    end;
 
    TKnowledgeFeatureClass = class(TFeatureClass)
@@ -132,7 +132,7 @@ type
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
       constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
-      function InitFeatureNode(): TFeatureNode; override;
+      function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
    end;
 
    TKnowledgeFeatureNode = class(TFeatureNode)
@@ -140,12 +140,12 @@ type
       FResearch: TResearch;
    protected
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
-      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
+      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
-      constructor Create(AResearch: TResearch);
+      constructor Create(ASystem: TSystem; AResearch: TResearch);
       procedure SetKnowledge(AResearch: TResearch);
-      procedure UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem); override;
-      procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
+      procedure UpdateJournal(Journal: TJournalWriter); override;
+      procedure ApplyJournal(Journal: TJournalReader); override;
       procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); override;
    end;
 
@@ -308,9 +308,9 @@ begin
    Result := TKnowledgeBusFeatureNode;
 end;
 
-function TKnowledgeBusFeatureClass.InitFeatureNode(): TFeatureNode;
+function TKnowledgeBusFeatureClass.InitFeatureNode(ASystem: TSystem): TFeatureNode;
 begin
-   Result := TKnowledgeBusFeatureNode.Create();
+   Result := TKnowledgeBusFeatureNode.Create(ASystem);
 end;
 
 procedure TKnowledgeBusFeatureNode.FreeCaches();
@@ -448,15 +448,15 @@ begin
       Result := False;
 end;
 
-procedure TKnowledgeBusFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
+procedure TKnowledgeBusFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);
 begin
 end;
 
-procedure TKnowledgeBusFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
+procedure TKnowledgeBusFeatureNode.UpdateJournal(Journal: TJournalWriter);
 begin
 end;
 
-procedure TKnowledgeBusFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
+procedure TKnowledgeBusFeatureNode.ApplyJournal(Journal: TJournalReader);
 begin
 end;
 
@@ -471,15 +471,15 @@ begin
    Result := TKnowledgeFeatureNode;
 end;
 
-function TKnowledgeFeatureClass.InitFeatureNode(): TFeatureNode;
+function TKnowledgeFeatureClass.InitFeatureNode(ASystem: TSystem): TFeatureNode;
 begin
-   Result := TKnowledgeFeatureNode.Create(nil);
+   Result := TKnowledgeFeatureNode.Create(ASystem, nil);
 end;
 
 
-constructor TKnowledgeFeatureNode.Create(AResearch: TResearch);
+constructor TKnowledgeFeatureNode.Create(ASystem: TSystem; AResearch: TResearch);
 begin
-   inherited Create;
+   inherited Create(ASystem);
    FResearch := AResearch;
 end;
 
@@ -502,7 +502,7 @@ function TKnowledgeFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
          exit;
       end;
       CachedSystem := System;
-      Visibility := Parent.ReadVisibilityFor(CachedSystem.DynastyIndex[Target], CachedSystem);
+      Visibility := Parent.ReadVisibilityFor(CachedSystem.DynastyIndex[Target]);
       Result := dmInternals in Visibility;
    end;
 
@@ -543,14 +543,14 @@ begin
    Result := False;
 end;
 
-procedure TKnowledgeFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
+procedure TKnowledgeFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);
 var
    Visibility: TVisibility;
    Reward: TReward;
    Material: TMaterial;
    Flags: UInt64;
 begin
-   Visibility := Parent.ReadVisibilityFor(DynastyIndex, CachedSystem);
+   Visibility := Parent.ReadVisibilityFor(DynastyIndex);
    if ((dmDetectable * Visibility <> []) and (dmClassKnown in Visibility)) then
    begin
       Writer.WriteCardinal(fcKnowledge);
@@ -593,7 +593,7 @@ begin
    end;
 end;
 
-procedure TKnowledgeFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
+procedure TKnowledgeFeatureNode.UpdateJournal(Journal: TJournalWriter);
 begin
    if (Assigned(FResearch)) then
    begin
@@ -605,7 +605,7 @@ begin
    end;
 end;
 
-procedure TKnowledgeFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
+procedure TKnowledgeFeatureNode.ApplyJournal(Journal: TJournalReader);
 var
    ID: TResearchID;
 begin
@@ -614,7 +614,7 @@ begin
    begin
       Assert(ID >= Low(TResearchID));
       Assert(ID <= High(TResearchID));
-      FResearch := CachedSystem.Encyclopedia.Researches[ID]; // $R-
+      FResearch := System.Encyclopedia.Researches[ID]; // $R-
    end;
 end;
 

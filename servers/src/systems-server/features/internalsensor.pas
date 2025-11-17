@@ -12,18 +12,18 @@ type
    protected
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
-      function InitFeatureNode(): TFeatureNode; override;
+      function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
    end;
 
    TInternalSensorFeatureNode = class(TSensorFeatureNode)
    protected
       FFeatureClass: TInternalSensorFeatureClass;
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
-      procedure ApplyVisibility(const VisibilityHelper: TVisibilityHelper); override;
-      procedure ApplyKnowledge(const VisibilityHelper: TVisibilityHelper); override;
-      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
+      procedure ApplyVisibility(); override;
+      procedure ApplyKnowledge(); override;
+      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
-      constructor Create(AFeatureClass: TInternalSensorFeatureClass);
+      constructor Create(ASystem: TSystem; AFeatureClass: TInternalSensorFeatureClass);
    end;
 
 implementation
@@ -36,15 +36,15 @@ begin
    Result := TInternalSensorFeatureNode;
 end;
 
-function TInternalSensorFeatureClass.InitFeatureNode(): TFeatureNode;
+function TInternalSensorFeatureClass.InitFeatureNode(ASystem: TSystem): TFeatureNode;
 begin
-   Result := TInternalSensorFeatureNode.Create(Self);
+   Result := TInternalSensorFeatureNode.Create(ASystem, Self);
 end;
 
 
-constructor TInternalSensorFeatureNode.Create(AFeatureClass: TInternalSensorFeatureClass);
+constructor TInternalSensorFeatureNode.Create(ASystem: TSystem; AFeatureClass: TInternalSensorFeatureClass);
 begin
-   inherited Create();
+   inherited Create(ASystem);
    FFeatureClass := AFeatureClass;
 end;
 
@@ -52,10 +52,10 @@ constructor TInternalSensorFeatureNode.CreateFromJournal(Journal: TJournalReader
 begin
    Assert(Assigned(AFeatureClass));
    FFeatureClass := AFeatureClass as TInternalSensorFeatureClass;
-   inherited CreateFromJournal(Journal, AFeatureClass, ASystem);
+   inherited;
 end;
 
-procedure TInternalSensorFeatureNode.ApplyVisibility(const VisibilityHelper: TVisibilityHelper);
+procedure TInternalSensorFeatureNode.ApplyVisibility();
 var
    OwnerIndex: Cardinal;
 
@@ -68,7 +68,7 @@ var
           Asset.IsReal()) then // and we see non-ghosts regardless of who owns them
       begin
          Visibility := FFeatureClass.FSensorKind;
-         Asset.HandleVisibility(OwnerIndex, Visibility, VisibilityHelper);
+         Asset.HandleVisibility(OwnerIndex, Visibility);
          if (Visibility <> []) then
             Inc(FLastCountDetected);
          Result := True;
@@ -83,14 +83,14 @@ begin
    FLastCountDetected := 0;
    if (Enabled) then
    begin
-      OwnerIndex := VisibilityHelper.GetDynastyIndex(Parent.Owner);
+      OwnerIndex := System.DynastyIndex[Parent.Owner];
       Parent.Walk(@SenseDown, nil);
    end;
    Assert(not Assigned(FKnownMaterials));
    Assert(not Assigned(FKnownAssetClasses));
 end;
 
-procedure TInternalSensorFeatureNode.ApplyKnowledge(const VisibilityHelper: TVisibilityHelper);
+procedure TInternalSensorFeatureNode.ApplyKnowledge();
 var
    OwnerIndex: Cardinal;
 
@@ -100,8 +100,8 @@ var
            (not Assigned(Asset.Owner)) or // we see unowned ghosts // TODO: this should be redundant, assert instead?
            Asset.IsReal())) then // and we see non-ghosts regardless of who owns them
       begin
-         if (Asset.IsVisibleFor(OwnerIndex, VisibilityHelper.System)) then
-            Asset.HandleKnowledge(OwnerIndex, VisibilityHelper, Self);
+         if (Asset.IsVisibleFor(OwnerIndex)) then
+            Asset.HandleKnowledge(OwnerIndex, Self);
          Result := True;
       end
       else
@@ -113,18 +113,18 @@ begin
    Assert(not Assigned(FKnownAssetClasses));
    if (Enabled) then
    begin
-      OwnerIndex := VisibilityHelper.GetDynastyIndex(Parent.Owner);
+      OwnerIndex := System.DynastyIndex[Parent.Owner];
       Parent.Walk(@SenseDown, nil);
    end;
    FreeAndNil(FKnownMaterials);
    FreeAndNil(FKnownAssetClasses);
 end;
 
-procedure TInternalSensorFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
+procedure TInternalSensorFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);
 var
    Visibility: TVisibility;
 begin
-   Visibility := Parent.ReadVisibilityFor(DynastyIndex, CachedSystem);
+   Visibility := Parent.ReadVisibilityFor(DynastyIndex);
    if ((dmDetectable * Visibility <> []) and (dmClassKnown in Visibility)) then
    begin
       Writer.WriteCardinal(fcInternalSensor);

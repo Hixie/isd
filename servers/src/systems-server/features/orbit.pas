@@ -39,7 +39,7 @@ type
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
       constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
-      function InitFeatureNode(): TFeatureNode; override;
+      function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
    end;
 
    TOrbitFeatureNode = class(TFeatureNode, IHillDiameterProvider, IAssetNameProvider)
@@ -57,23 +57,24 @@ type
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
       function ManageBusMessage(Message: TBusMessage): TBusMessageResult; override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
-      procedure HandleVisibility(const DynastyIndex: Cardinal; var Visibility: TVisibility; const VisibilityHelper: TVisibilityHelper); override;
-      procedure CheckVisibilityChanged(VisibilityHelper: TVisibilityHelper); override;
-      procedure HandleKnowledge(const DynastyIndex: Cardinal; const VisibilityHelper: TVisibilityHelper; const Sensors: ISensorsProvider); override;
-      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
-      procedure HandleChanges(CachedSystem: TSystem); override;
+      procedure HandleVisibility(const DynastyIndex: Cardinal; var Visibility: TVisibility); override;
+      procedure CheckVisibilityChanged(); override;
+      procedure HandleKnowledge(const DynastyIndex: Cardinal; const Sensors: ISensorsProvider); override;
+      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
+      procedure HandleChanges(); override;
       procedure HandleCrash(var Data);
    public
-      constructor Create(APrimaryChild: TAssetNode);
+      constructor Create(ASystem: TSystem);
       destructor Destroy(); override;
-      procedure UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem); override;
-      procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
+      procedure UpdateJournal(Journal: TJournalWriter); override;
+      procedure ApplyJournal(Journal: TJournalReader); override;
       function GetHillDiameter(Child: TAssetNode; ChildPrimaryMass: Double): Double;
       function GetRocheLimit(ChildRadius, ChildMass: Double): Double; // returns minimum semi-major axis for a hypothetical child planetary body orbitting our primary
       function GetAverageDistance(Child: TAssetNode): Double;
+      procedure SetPrimaryChild(APrimaryChild: TAssetNode); // must be called immediately after orbit is created and given a parent asset
       // given child should have a TOrbitFeatureNode, use Encyclopedia.WrapAssetForOrbit
-      procedure AddOrbitingChild(CachedSystem: TSystem; Child: TAssetNode; SemiMajorAxis: Double; Eccentricity: Double; Omega: Double; TimeOrigin: TTimeInMilliseconds; Clockwise: Boolean);
-      procedure UpdateOrbitingChild(CachedSystem: TSystem; Child: TAssetNode; SemiMajorAxis: Double; Eccentricity: Double; Omega: Double; TimeOrigin: TTimeInMilliseconds; Clockwise: Boolean; Index: Cardinal);
+      procedure AddOrbitingChild(Child: TAssetNode; SemiMajorAxis: Double; Eccentricity: Double; Omega: Double; TimeOrigin: TTimeInMilliseconds; Clockwise: Boolean);
+      procedure UpdateOrbitingChild(Child: TAssetNode; SemiMajorAxis: Double; Eccentricity: Double; Omega: Double; TimeOrigin: TTimeInMilliseconds; Clockwise: Boolean; Index: Cardinal);
       function IAssetNameProvider.GetAssetName = GetOrbitName;
       procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); override;
       property PrimaryChild: TAssetNode read FPrimaryChild;
@@ -156,7 +157,7 @@ begin
    Result := TOrbitFeatureNode;
 end;
 
-function TOrbitFeatureClass.InitFeatureNode(): TFeatureNode;
+function TOrbitFeatureClass.InitFeatureNode(ASystem: TSystem): TFeatureNode;
 begin
    Result := nil;
    raise Exception.Create('Cannot create a TOrbitFeatureNode from a prototype; use AddChild on a TSolarSystemFeatureNode or a TOrbitFeatureNode.');
@@ -182,19 +183,9 @@ begin
 end;
 
 
-constructor TOrbitFeatureNode.Create(APrimaryChild: TAssetNode);
+constructor TOrbitFeatureNode.Create(ASystem: TSystem);
 begin
-   inherited Create();
-   try
-      Assert(Assigned(APrimaryChild));
-      Assert(APrimaryChild.Mass > 0, 'Primary child "' + APrimaryChild.AssetName + '" (class "' + APrimaryChild.AssetClass.Name + '") has zero mass');
-      Assert(APrimaryChild.MassFlowRate.IsNearZero);
-      AdoptChild(APrimaryChild);
-      FPrimaryChild := APrimaryChild;
-   except
-      ReportCurrentException();
-      raise;
-   end;
+   inherited Create(ASystem);
 end;
 
 destructor TOrbitFeatureNode.Destroy();
@@ -272,18 +263,28 @@ begin
    Result := SemiMajorAxis * (1 + Eccentricity * Eccentricity / 2.0);
 end;
 
-procedure TOrbitFeatureNode.AddOrbitingChild(CachedSystem: TSystem; Child: TAssetNode; SemiMajorAxis: Double; Eccentricity: Double; Omega: Double; TimeOrigin: TTimeInMilliseconds; Clockwise: Boolean);
+procedure TOrbitFeatureNode.SetPrimaryChild(APrimaryChild: TAssetNode);
+begin
+   Assert(not Assigned(FPrimaryChild));
+   Assert(Assigned(APrimaryChild));
+   Assert(APrimaryChild.Mass > 0, 'Primary child "' + APrimaryChild.AssetName + '" (class "' + APrimaryChild.AssetClass.Name + '") has zero mass');
+   Assert(APrimaryChild.MassFlowRate.IsNearZero);
+   AdoptChild(APrimaryChild);
+   FPrimaryChild := APrimaryChild;
+end;
+
+procedure TOrbitFeatureNode.AddOrbitingChild(Child: TAssetNode; SemiMajorAxis: Double; Eccentricity: Double; Omega: Double; TimeOrigin: TTimeInMilliseconds; Clockwise: Boolean);
 begin
    Assert(Child.AssetClass.ID = idOrbits);
    Assert(not Assigned(Child.Parent));
    AdoptOrbitingChild(Child);
    SetLength(FChildren, Length(FChildren) + 1);
    FChildren[High(FChildren)] := Child;
-   UpdateOrbitingChild(CachedSystem, Child, SemiMajorAxis, Eccentricity, Omega, TimeOrigin, Clockwise, High(FChildren)); // $R-
+   UpdateOrbitingChild(Child, SemiMajorAxis, Eccentricity, Omega, TimeOrigin, Clockwise, High(FChildren)); // $R-
    POrbitData(Child.ParentData)^.IsNew := True;
 end;
 
-procedure TOrbitFeatureNode.UpdateOrbitingChild(CachedSystem: TSystem; Child: TAssetNode; SemiMajorAxis: Double; Eccentricity: Double; Omega: Double; TimeOrigin: TTimeInMilliseconds; Clockwise: Boolean; Index: Cardinal);
+procedure TOrbitFeatureNode.UpdateOrbitingChild(Child: TAssetNode; SemiMajorAxis: Double; Eccentricity: Double; Omega: Double; TimeOrigin: TTimeInMilliseconds; Clockwise: Boolean; Index: Cardinal);
 begin
    Assert(Child.Parent = Self);
    Assert(Assigned(Child.ParentData));
@@ -306,7 +307,7 @@ begin
    MarkAsDirty([dkUpdateClients, dkUpdateJournal, dkNeedsHandleChanges]);
 end;
 
-procedure TOrbitFeatureNode.HandleChanges(CachedSystem: TSystem);
+procedure TOrbitFeatureNode.HandleChanges();
 var
    Child, ChildCopy: TAssetNode;
    OrbitData: POrbitData;
@@ -332,9 +333,9 @@ begin
             // compute the next time that we'll be at a whole number of
             // Periods since the TimeOrigin.
             Period := OrbitData^.GetPeriod(Self, Child);
-            CrashTime := CachedSystem.TimeUntilNext(OrbitData^.TimeOrigin, Period);
+            CrashTime := System.TimeUntilNext(OrbitData^.TimeOrigin, Period);
             ChildCopy := Child;
-            OrbitData^.CrashEvent := CachedSystem.ScheduleEvent(CrashTime, @HandleCrash, ChildCopy);
+            OrbitData^.CrashEvent := System.ScheduleEvent(CrashTime, @HandleCrash, ChildCopy);
             Writeln('Scheduling crash for ', Child.DebugName, '; T-', CrashTime.ToString());
          end;
       end;
@@ -524,49 +525,47 @@ begin
    Result := False;
 end;
 
-procedure TOrbitFeatureNode.HandleVisibility(const DynastyIndex: Cardinal; var Visibility: TVisibility; const VisibilityHelper: TVisibilityHelper);
+procedure TOrbitFeatureNode.HandleVisibility(const DynastyIndex: Cardinal; var Visibility: TVisibility);
 begin
-   FPrimaryChild.HandleVisibility(DynastyIndex, Visibility, VisibilityHelper);
+   FPrimaryChild.HandleVisibility(DynastyIndex, Visibility);
 end;
 
-procedure TOrbitFeatureNode.CheckVisibilityChanged(VisibilityHelper: TVisibilityHelper);
+procedure TOrbitFeatureNode.CheckVisibilityChanged();
 var
    Visible: Boolean;
    DynastyIndex: Cardinal;
    Child: TAssetNode;
 begin
-   if (VisibilityHelper.System.DynastyCount > 0) then
+   if (System.DynastyCount > 0) then
    begin
-      for DynastyIndex := 0 to VisibilityHelper.System.DynastyCount - 1 do // $R-
+      for DynastyIndex := 0 to System.DynastyCount - 1 do // $R-
       begin
-         Visible := Parent.IsVisibleFor(DynastyIndex, VisibilityHelper.System)
-                 or FPrimaryChild.IsVisibleFor(DynastyIndex, VisibilityHelper.System);
+         Visible := Parent.IsVisibleFor(DynastyIndex) or FPrimaryChild.IsVisibleFor(DynastyIndex);
          if (not Visible) then
          begin
             for Child in FChildren do
             begin
-               Visible := Visible or Child.IsVisibleFor(DynastyIndex, VisibilityHelper.System);
+               Visible := Visible or Child.IsVisibleFor(DynastyIndex);
                if (Visible) then
                   break;
             end;
          end;
          if (Visible) then
          begin
-            VisibilityHelper.AddSpecificVisibilityByIndex(DynastyIndex, Parent.ReadVisibilityFor(DynastyIndex, VisibilityHelper.System), FPrimaryChild);
-            VisibilityHelper.AddSpecificVisibilityByIndex(DynastyIndex, [dmClassKnown] + FPrimaryChild.ReadVisibilityFor(DynastyIndex, VisibilityHelper.System), Parent);
+            System.AddSpecificVisibilityByIndex(DynastyIndex, Parent.ReadVisibilityFor(DynastyIndex), FPrimaryChild);
+            System.AddSpecificVisibilityByIndex(DynastyIndex, [dmClassKnown] + FPrimaryChild.ReadVisibilityFor(DynastyIndex), Parent);
          end;
       end;
    end;
 end;
 
-procedure TOrbitFeatureNode.HandleKnowledge(const DynastyIndex: Cardinal; const VisibilityHelper: TVisibilityHelper; const Sensors: ISensorsProvider);
+procedure TOrbitFeatureNode.HandleKnowledge(const DynastyIndex: Cardinal; const Sensors: ISensorsProvider);
 begin
-   FPrimaryChild.HandleKnowledge(DynastyIndex, VisibilityHelper, Sensors);
+   FPrimaryChild.HandleKnowledge(DynastyIndex, Sensors);
 end;
 
 function TOrbitFeatureNode.GetOrbitName(): UTF8String;
 begin
-   Assert(Assigned(FPrimaryChild));
    {$IFDEF DEBUG}
    if (not Assigned(FPrimaryChild)) then
       Result := '<orphan orbit>'
@@ -575,24 +574,24 @@ begin
    Result := FPrimaryChild.AssetName;
 end;
 
-procedure TOrbitFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
+procedure TOrbitFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);
 var
    Child: TAssetNode;
    Visibility: TVisibility;
 begin
-   Visibility := Parent.ReadVisibilityFor(DynastyIndex, CachedSystem);
+   Visibility := Parent.ReadVisibilityFor(DynastyIndex);
    if (Visibility <> []) then
    begin
       Assert(Assigned(FPrimaryChild));
       Writer.WriteCardinal(fcOrbit);
-      Assert(FPrimaryChild.IsVisibleFor(DynastyIndex, CachedSystem), 'Unexpected inconsistency in visibility between orbit and primary child');
-      Writer.WriteCardinal(FPrimaryChild.ID(CachedSystem, DynastyIndex));
+      Assert(FPrimaryChild.IsVisibleFor(DynastyIndex), 'Unexpected inconsistency in visibility between orbit and primary child');
+      Writer.WriteCardinal(FPrimaryChild.ID(DynastyIndex));
       for Child in FChildren do
       begin
          Assert(Assigned(Child));
-         if (Child.IsVisibleFor(DynastyIndex, CachedSystem)) then
+         if (Child.IsVisibleFor(DynastyIndex)) then
          begin
-            Writer.WriteCardinal(Child.ID(CachedSystem, DynastyIndex));
+            Writer.WriteCardinal(Child.ID(DynastyIndex));
             Writer.WriteDouble(POrbitData(Child.ParentData)^.SemiMajorAxis);
             Writer.WriteDouble(POrbitData(Child.ParentData)^.Eccentricity);
             Writer.WriteDouble(POrbitData(Child.ParentData)^.Omega);
@@ -604,7 +603,7 @@ begin
    end;
 end;
 
-procedure TOrbitFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
+procedure TOrbitFeatureNode.UpdateJournal(Journal: TJournalWriter);
 var
    Child: TAssetNode;
 begin
@@ -639,7 +638,7 @@ begin
    Journal.WriteAssetChangeKind(ckEndOfList);
 end;
 
-procedure TOrbitFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
+procedure TOrbitFeatureNode.ApplyJournal(Journal: TJournalReader);
 
    procedure AddChild();
    var
@@ -654,7 +653,7 @@ procedure TOrbitFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: 
       Omega := Journal.ReadDouble();
       TimeOrigin := TTimeInMilliseconds.FromMilliseconds(Journal.ReadInt64());
       Clockwise := Journal.ReadBoolean();
-      AddOrbitingChild(CachedSystem, Child, SemiMajorAxis, Eccentricity, Omega, TimeOrigin, Clockwise);
+      AddOrbitingChild(Child, SemiMajorAxis, Eccentricity, Omega, TimeOrigin, Clockwise);
       Assert(Child.Parent = Self);
    end;
 
@@ -673,7 +672,7 @@ procedure TOrbitFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: 
       TimeOrigin := TTimeInMilliseconds.FromMilliseconds(Journal.ReadInt64());
       Clockwise := Journal.ReadBoolean();
       Index := POrbitData(Child.ParentData)^.Index; // it doesn't change
-      UpdateOrbitingChild(CachedSystem, Child, SemiMajorAxis, Eccentricity, Omega, TimeOrigin, Clockwise, Index);
+      UpdateOrbitingChild(Child, SemiMajorAxis, Eccentricity, Omega, TimeOrigin, Clockwise, Index);
       Assert(Child.Parent = Self);
    end;
 

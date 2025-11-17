@@ -8,7 +8,7 @@ uses
    systems, serverstream, techtree, time;
 
 type
-   TCreateRegionCallback = function (CellSize: Double; Dimension: Cardinal): TAssetNode of object;
+   TCreateRegionCallback = function (CellSize: Double; Dimension: Cardinal; System: TSystem): TAssetNode of object;
 
    TSurfaceFeatureClass = class(TFeatureClass)
    private
@@ -20,7 +20,7 @@ type
    public
       constructor Create(ACellSize: Double; AMinRegionSize, AMaxRegionSize: Cardinal; ACreateRegionCallback: TCreateRegionCallback);
       constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
-      function InitFeatureNode(): TFeatureNode; override;
+      function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
    end;
 
    TSurfaceFeatureNode = class(TFeatureNode)
@@ -41,12 +41,12 @@ type
       function GetSize(): Double; override;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
-      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
+      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
-      constructor Create(AFeatureClass: TSurfaceFeatureClass; ASize: Double);
+      constructor Create(ASystem: TSystem; AFeatureClass: TSurfaceFeatureClass; ASize: Double);
       destructor Destroy(); override;
-      procedure UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem); override;
-      procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
+      procedure UpdateJournal(Journal: TJournalWriter); override;
+      procedure ApplyJournal(Journal: TJournalReader); override;
       procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); override;
    end;
 
@@ -91,16 +91,16 @@ begin
    Result := TSurfaceFeatureNode;
 end;
 
-function TSurfaceFeatureClass.InitFeatureNode(): TFeatureNode;
+function TSurfaceFeatureClass.InitFeatureNode(ASystem: TSystem): TFeatureNode;
 begin
    Result := nil;
    raise Exception.Create('Cannot create a TSurfaceFeatureNode from a prototype, it must have a size.');
 end;
 
 
-constructor TSurfaceFeatureNode.Create(AFeatureClass: TSurfaceFeatureClass; ASize: Double);
+constructor TSurfaceFeatureNode.Create(ASystem: TSystem; AFeatureClass: TSurfaceFeatureClass; ASize: Double);
 begin
-   inherited Create();
+   inherited Create(ASystem);
    FFeatureClass := AFeatureClass;
    Assert(ASize > 0);
    FSize := ASize;
@@ -186,7 +186,7 @@ begin
             end;
          end;
       end;
-      Result := FFeatureClass.FCreateRegionCallback(FFeatureClass.FCellSize, Dimension);
+      Result := FFeatureClass.FCreateRegionCallback(FFeatureClass.FCellSize, Dimension, System);
       AdoptRegionChild(Result, X, Y, Dimension);
    end;
 end;
@@ -281,21 +281,21 @@ begin
    end;
 end;
 
-procedure TSurfaceFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
+procedure TSurfaceFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);
 var
    Visibility: TVisibility;
    Child: TAssetNode;
    ChildData: PSurfaceData;
    FoundChild: Boolean;
 begin
-   Visibility := Parent.ReadVisibilityFor(DynastyIndex, CachedSystem);
+   Visibility := Parent.ReadVisibilityFor(DynastyIndex);
    if (Visibility <> []) then
    begin
       FoundChild := False;
       for Child in FChildren do
       begin
          Assert(Assigned(Child));
-         if (Child.IsVisibleFor(DynastyIndex, CachedSystem)) then
+         if (Child.IsVisibleFor(DynastyIndex)) then
          begin
             if (not FoundChild) then
             begin
@@ -303,7 +303,7 @@ begin
                FoundChild := True;
             end;
             ChildData := Child.ParentData;
-            Writer.WriteCardinal(Child.ID(CachedSystem, DynastyIndex));
+            Writer.WriteCardinal(Child.ID(DynastyIndex));
             Writer.WriteDouble(ChildData^.X * FFeatureClass.FCellSize);
             Writer.WriteDouble(ChildData^.Y * FFeatureClass.FCellSize);
          end;
@@ -313,7 +313,7 @@ begin
    end;
 end;
 
-procedure TSurfaceFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
+procedure TSurfaceFeatureNode.UpdateJournal(Journal: TJournalWriter);
 var
    Child: TAssetNode;
    SurfaceData: PSurfaceData;
@@ -348,7 +348,7 @@ begin
    Journal.WriteAssetChangeKind(ckEndOfList);
 end;
 
-procedure TSurfaceFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
+procedure TSurfaceFeatureNode.ApplyJournal(Journal: TJournalReader);
 
    procedure AddChild();
    var

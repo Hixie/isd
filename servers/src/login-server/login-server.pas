@@ -4,7 +4,7 @@ program main;
 
 uses
    sysutils, loginnetwork, users, logindynasty, servers, clock,
-   configuration, csvdocument, binaries, galaxy, strutils, isdprotocol;
+   configuration, csvdocument, binaries, galaxy, strutils, isdprotocol, exceptions;
 
 procedure CountDynastiesForServers(UserDatabase: TUserDatabase; ServerDatabase: TServerDatabase);
 var
@@ -85,7 +85,12 @@ begin
       SystemServerDatabase,
       GalaxyManager
    );
-   Server.Run();
+   try
+      Server.Run();
+   except
+      Writeln(ControlError);
+      ReportCurrentException();
+   end;
    // shutdown
    Writeln('Exiting...');
    FreeAndNil(Server);

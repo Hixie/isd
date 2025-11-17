@@ -17,7 +17,7 @@ type
    public
       constructor Create(AStarGroupingThreshold: Double; AGravitionalInfluenceConstant: Double);
       constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
-      function InitFeatureNode(): TFeatureNode; override;
+      function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
    end;
 
    TSolarSystemFeatureNode = class(TFeatureNode, IAssetNameProvider, IHillDiameterProvider)
@@ -38,13 +38,13 @@ type
       function GetSize(): Double; override;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
-      procedure ApplyVisibility(const VisibilityHelper: TVisibilityHelper); override;
-      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
+      procedure ApplyVisibility(); override;
+      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
-      constructor Create(AFeatureClass: TSolarSystemFeatureClass);
+      constructor Create(ASystem: TSystem; AFeatureClass: TSolarSystemFeatureClass);
       destructor Destroy(); override;
-      procedure UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem); override;
-      procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
+      procedure UpdateJournal(Journal: TJournalWriter); override;
+      procedure ApplyJournal(Journal: TJournalReader); override;
       procedure AddCartesianChild(Child: TAssetNode; X, Y: Double); // meters, first must be at 0,0; call ComputeHillSpheres after calling AddCartesianChild for all children // marks the child as new
       procedure ComputeHillSpheres(); // call this after all stars have been added
       function GetAssetName(): UTF8String;
@@ -70,7 +70,7 @@ type
 implementation
 
 uses
-   math, isdprotocol, encyclopedia;
+   math, isdprotocol, encyclopedia, exceptions;
 
 type
    TSolarSystemJournalState = (jsNew, jsChanged);
@@ -109,15 +109,15 @@ begin
    Result := TSolarSystemFeatureNode;
 end;
 
-function TSolarSystemFeatureClass.InitFeatureNode(): TFeatureNode;
+function TSolarSystemFeatureClass.InitFeatureNode(ASystem: TSystem): TFeatureNode;
 begin
-   Result := TSolarSystemFeatureNode.Create(Self);
+   Result := TSolarSystemFeatureNode.Create(ASystem, Self);
 end;
 
 
-constructor TSolarSystemFeatureNode.Create(AFeatureClass: TSolarSystemFeatureClass);
+constructor TSolarSystemFeatureNode.Create(ASystem: TSystem; AFeatureClass: TSolarSystemFeatureClass);
 begin
-   inherited Create();
+   inherited Create(ASystem);
    FFeatureClass := AFeatureClass;
 end;
 
@@ -125,7 +125,7 @@ constructor TSolarSystemFeatureNode.CreateFromJournal(Journal: TJournalReader; A
 begin
    Assert(Assigned(AFeatureClass));
    FFeatureClass := AFeatureClass as TSolarSystemFeatureClass;
-   inherited CreateFromJournal(Journal, AFeatureClass, ASystem);
+   inherited;
 end;
 
 destructor TSolarSystemFeatureNode.Destroy();
@@ -301,14 +301,13 @@ begin
    Result := False;
 end;
 
-procedure TSolarSystemFeatureNode.ApplyVisibility(const VisibilityHelper: TVisibilityHelper);
+procedure TSolarSystemFeatureNode.ApplyVisibility();
 begin
    Assert(Assigned(Parent));
-   Writeln(DebugName, ' is always known.');
-   VisibilityHelper.AddBroadVisibility([dmVisibleSpectrum, dmClassKnown], Parent);
+   System.AddBroadVisibility([dmVisibleSpectrum, dmClassKnown], Parent);
 end;
 
-procedure TSolarSystemFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
+procedure TSolarSystemFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);
 var
    Child: TAssetNode;
    Index: Cardinal;
@@ -317,15 +316,15 @@ begin
    Writer.WriteCardinal(fcSpace);
    Assert(Length(FChildren) > 0); // otherwise who are we reporting this to?
    Assert(Assigned(FChildren[0]));
-   Writer.WriteCardinal(FChildren[0].ID(CachedSystem, DynastyIndex)); // TODO: only if visible
+   Writer.WriteCardinal(FChildren[0].ID(DynastyIndex)); // TODO: only if visible
    if (Length(FChildren) > 1) then
       for Index := 1 to Length(FChildren) - 1 do // $R-
       begin
          Child := FChildren[Index];
          Assert(Assigned(Child));
-         if (Child.IsVisibleFor(DynastyIndex, CachedSystem)) then
+         if (Child.IsVisibleFor(DynastyIndex)) then
          begin
-            Writer.WriteCardinal(Child.ID(CachedSystem, DynastyIndex));
+            Writer.WriteCardinal(Child.ID(DynastyIndex));
             Writer.WriteDouble(PSolarSystemData(Child.ParentData)^.DistanceFromCenter);
             Writer.WriteDouble(PSolarSystemData(Child.ParentData)^.Theta);
          end;
@@ -333,7 +332,7 @@ begin
    Writer.WriteCardinal(0);
 end;
 
-procedure TSolarSystemFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
+procedure TSolarSystemFeatureNode.UpdateJournal(Journal: TJournalWriter);
 var
    Child: TAssetNode;
 begin
@@ -364,7 +363,7 @@ begin
    Journal.WriteAssetChangeKind(ckEndOfList);
 end;
 
-procedure TSolarSystemFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
+procedure TSolarSystemFeatureNode.ApplyJournal(Journal: TJournalReader);
 
    procedure AddChild();
    var

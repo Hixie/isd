@@ -26,7 +26,7 @@ type
          FDarkMatter: TMaterial;
          FMinMassPerOreUnit: Double; // cached value based on ores in materials passed to constructor
       function GetStarClass(Category: TStarCategory): TAssetClass;
-      function CreateRegion(CellSize: Double; Dimension: Cardinal): TAssetNode;
+      function CreateRegion(CellSize: Double; Dimension: Cardinal; System: TSystem): TAssetNode;
    protected
       function GetAssetClass(ID: Integer): TAssetClass; override;
       function GetMaterial(ID: TMaterialID): TMaterial; override;
@@ -45,7 +45,7 @@ type
       property PlaceholderShipInstructionManual: TResearch read FPlaceholderShipInstructionManual;
       property StarClass[Category: TStarCategory]: TAssetClass read GetStarClass;
       function WrapAssetForOrbit(Child: TAssetNode): TAssetNode;
-      function CreateLoneStar(StarID: TStarID): TAssetNode;
+      function CreateLoneStar(StarID: TStarID; System: TSystem): TAssetNode;
       procedure CondenseProtoplanetaryDisks(Space: TSolarSystemFeatureNode; System: TSystem);
       procedure FindTemperatureEquilibria(System: TSystem);
       procedure SpawnColonyShip(Dynasty: TDynasty; System: TSystem);
@@ -291,7 +291,8 @@ begin
          TPeopleBusFeatureClass.Create(),
          TResearchFeatureClass.Create(),
          TInternalSensorFeatureClass.Create([dmVisibleSpectrum]),
-         TKnowledgeFeatureClass.Create() // the instruction manual, ziptied to the ship
+         TKnowledgeFeatureClass.Create(), // the instruction manual, ziptied to the ship
+         TOnOffFeatureClass.Create()
       ],
       ColonyShipIcon,
       [beSpaceDock]
@@ -418,11 +419,15 @@ begin
 end;
 
 function TEncyclopedia.WrapAssetForOrbit(Child: TAssetNode): TAssetNode;
+var
+   OrbitFeature: TOrbitFeatureNode;
 begin
-   Result := FOrbits.Spawn(nil { no owner }, [ TOrbitFeatureNode.Create(Child) ]);
+   OrbitFeature := TOrbitFeatureNode.Create(Child.System);
+   Result := FOrbits.Spawn(nil { orbits have no owner }, Child.System, [ OrbitFeature ]);
+   OrbitFeature.SetPrimaryChild(Child);
 end;
 
-function TEncyclopedia.CreateLoneStar(StarID: TStarID): TAssetNode;
+function TEncyclopedia.CreateLoneStar(StarID: TStarID; System: TSystem): TAssetNode;
 var
    Category: TStarCategory;
 begin
@@ -430,9 +435,10 @@ begin
    Assert(Assigned(FStars[Category]));
    Result := FStars[Category].Spawn(
       nil, // no owner
+      System,
       [
-         TStarFeatureNode.Create(StarID),
-         TAssetNameFeatureNode.Create(StarNameOf(StarID))
+         TStarFeatureNode.Create(System, StarID),
+         TAssetNameFeatureNode.Create(System, StarNameOf(StarID))
       ]
    );
 end;
@@ -480,8 +486,10 @@ procedure TEncyclopedia.CondenseProtoplanetaryDisks(Space: TSolarSystemFeatureNo
       Fraction32.NormalizeArray(@AssetComposition[Low(AssetComposition)], Length(AssetComposition));
       Result := FPlanetaryBody.Spawn(
          nil, // no owner
+         System,
          [
             TPlanetaryBodyFeatureNode.Create(
+               System,
                Body.Seed,
                Body.Radius * 2.0, // diameter of body
                Body.Temperature,
@@ -490,6 +498,7 @@ procedure TEncyclopedia.CondenseProtoplanetaryDisks(Space: TSolarSystemFeatureNo
                Body.Habitable // whether to consider this body when selecting a crash landing point
             ), // $R-
             TSurfaceFeatureNode.Create(
+               System,
                FPlanetaryBody.Features[1] as TSurfaceFeatureClass,
                Body.Radius * 2.0 // diameter of surface
             )
@@ -507,7 +516,6 @@ procedure TEncyclopedia.CondenseProtoplanetaryDisks(Space: TSolarSystemFeatureNo
       Assert(Node.Size < Orbit.PrimaryChild.Size);
       OrbitNode := WrapAssetForOrbit(Node);
       Orbit.AddOrbitingChild(
-         System,
          OrbitNode,
          Body.Distance,
          Body.Eccentricity,
@@ -553,17 +561,18 @@ begin
    end;
 end;
 
-function TEncyclopedia.CreateRegion(CellSize: Double; Dimension: Cardinal): TAssetNode;
+function TEncyclopedia.CreateRegion(CellSize: Double; Dimension: Cardinal; System: TSystem): TAssetNode;
 begin
    Result := FRegion.Spawn(
       nil, // no owner
+      System,
       [
-         TRegionFeatureNode.Create(FRegion.Features[0] as TRegionFeatureClass),
-         TKnowledgeBusFeatureNode.Create(),
-         TFoodBusFeatureNode.Create(),
-         TBuilderBusFeatureNode.Create(),
-         TPeopleBusFeatureNode.Create(),
-         TGridFeatureNode.Create(bePlanetRegion, CellSize, Dimension)
+         TRegionFeatureNode.Create(System, FRegion.Features[0] as TRegionFeatureClass),
+         TKnowledgeBusFeatureNode.Create(System),
+         TFoodBusFeatureNode.Create(System),
+         TBuilderBusFeatureNode.Create(System),
+         TPeopleBusFeatureNode.Create(System),
+         TGridFeatureNode.Create(System, bePlanetRegion, CellSize, Dimension)
       ]
    );
 end;
@@ -683,22 +692,24 @@ begin
    A := Power(PeriodOverTwoPi * PeriodOverTwoPi * G * Home.Mass, 1/3); // $R-
    Omega := System.RandomNumberGenerator.GetDouble(0.0, 2.0 * Pi); // $R-
    (Home.Parent as TOrbitFeatureNode).AddOrbitingChild(
-      System,
       WrapAssetForOrbit(PlaceholderShip.Spawn(
-         Dynasty, [
-            TSpaceSensorFeatureNode.Create(PlaceholderShip.Features[0] as TSpaceSensorFeatureClass),
-            TGridSensorFeatureNode.Create(PlaceholderShip.Features[1] as TGridSensorFeatureClass),
-            TStructureFeatureNode.Create(PlaceholderShip.Features[2] as TStructureFeatureClass, 10000 { materials quantity }, 10000 { hp }),
-            TDynastyOriginalColonyShipFeatureNode.Create(Dynasty),
-            TPopulationFeatureNode.CreatePopulated(PlaceholderShip.Features[4] as TPopulationFeatureClass, 2000, 1.0),
-            TMessageBoardFeatureNode.Create(PlaceholderShip.Features[5] as TMessageBoardFeatureClass),
-            TKnowledgeBusFeatureNode.Create(),
-            TFoodBusFeatureNode.Create(),
-            TFoodGenerationFeatureNode.Create(PlaceholderShip.Features[8] as TFoodGenerationFeatureClass),
-            TPeopleBusFeatureNode.Create(),
-            TResearchFeatureNode.Create(PlaceholderShip.Features[10] as TResearchFeatureClass),
-            TInternalSensorFeatureNode.Create(PlaceholderShip.Features[11] as TInternalSensorFeatureClass),
-            TKnowledgeFeatureNode.Create(PlaceholderShipInstructionManual)
+         Dynasty,
+         System,
+         [
+            TSpaceSensorFeatureNode.Create(System, PlaceholderShip.Features[0] as TSpaceSensorFeatureClass),
+            TGridSensorFeatureNode.Create(System, PlaceholderShip.Features[1] as TGridSensorFeatureClass),
+            TStructureFeatureNode.Create(System, PlaceholderShip.Features[2] as TStructureFeatureClass, 10000 { materials quantity }, 10000 { hp }),
+            TDynastyOriginalColonyShipFeatureNode.Create(System, Dynasty),
+            TPopulationFeatureNode.CreatePopulated(System, PlaceholderShip.Features[4] as TPopulationFeatureClass, 2000, 1.0),
+            TMessageBoardFeatureNode.Create(System, PlaceholderShip.Features[5] as TMessageBoardFeatureClass),
+            TKnowledgeBusFeatureNode.Create(System),
+            TFoodBusFeatureNode.Create(System),
+            TFoodGenerationFeatureNode.Create(System, PlaceholderShip.Features[8] as TFoodGenerationFeatureClass),
+            TPeopleBusFeatureNode.Create(System),
+            TResearchFeatureNode.Create(System, PlaceholderShip.Features[10] as TResearchFeatureClass),
+            TInternalSensorFeatureNode.Create(System, PlaceholderShip.Features[11] as TInternalSensorFeatureClass),
+            TKnowledgeFeatureNode.Create(System, PlaceholderShipInstructionManual),
+            TOnOffFeatureNode.Create(System)
          ]
       )),
       A,
@@ -729,9 +740,9 @@ begin
    end
    else
       SetLength(Composition, 0);
-   Result := FCrater.Spawn(nil { no owner }, [
-      TProxyFeatureNode.Create(NewAsset),
-      TRubblePileFeatureNode.Create(Diameter, Composition)
+   Result := FCrater.Spawn(nil { no owner }, NewAsset.System, [
+      TProxyFeatureNode.Create(NewAsset.System, NewAsset),
+      TRubblePileFeatureNode.Create(NewAsset.System, Diameter, Composition)
    ]);
 end;
 

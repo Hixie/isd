@@ -11,16 +11,14 @@ type
    TAllocateOresBusMessage = class(TPhysicalConnectionBusMessage)
    strict private
       FDepth: Cardinal;
-      FCachedSystem: TSystem;
       FTargetCount: Cardinal;
       FTargetQuantity: UInt64;
    public
       AssignedOres: TOreQuantities;
-      constructor Create(ADepth: Cardinal; ATargetCount: Cardinal; ATargetQuantity: UInt64; ACachedSystem: TSystem);
+      constructor Create(ADepth: Cardinal; ATargetCount: Cardinal; ATargetQuantity: UInt64);
       property Depth: Cardinal read FDepth;
       property TargetCount: Cardinal read FTargetCount;
       property TargetQuantity: UInt64 read FTargetQuantity;
-      property CachedSystem: TSystem read FCachedSystem;
    end;
 
    TPlanetaryBodyFeatureClass = class(TFeatureClass)
@@ -28,7 +26,7 @@ type
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
       constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
-      function InitFeatureNode(): TFeatureNode; override;
+      function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
    end;
 
    TPlanetaryBodyFeatureNode = class(TFeatureNode)
@@ -46,12 +44,12 @@ type
       function GetSize(): Double; override; // m
       function ManageBusMessage(Message: TBusMessage): TBusMessageResult; override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
-      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
+      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
-      constructor Create(ASeed: Cardinal; ADiameter, ATemperature: Double; AComposition: TOreFractions; AMass: Double; AConsiderForDynastyStart: Boolean);
+      constructor Create(ASystem: TSystem; ASeed: Cardinal; ADiameter, ATemperature: Double; AComposition: TOreFractions; AMass: Double; AConsiderForDynastyStart: Boolean);
       destructor Destroy(); override;
-      procedure UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem); override;
-      procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
+      procedure UpdateJournal(Journal: TJournalWriter); override;
+      procedure ApplyJournal(Journal: TJournalReader); override;
       procedure SetTemperature(ATemperature: Double);
       procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); override;
       property ConsiderForDynastyStart: Boolean read FConsiderForDynastyStart;
@@ -64,13 +62,12 @@ implementation
 uses
    isdprotocol, sysutils, exceptions, math, rubble;
 
-constructor TAllocateOresBusMessage.Create(ADepth: Cardinal; ATargetCount: Cardinal; ATargetQuantity: UInt64; ACachedSystem: TSystem);
+constructor TAllocateOresBusMessage.Create(ADepth: Cardinal; ATargetCount: Cardinal; ATargetQuantity: UInt64);
 begin
    inherited Create();
    FDepth := ADepth;
    FTargetCount := ATargetCount;
    FTargetQuantity := ATargetQuantity;
-   FCachedSystem := ACachedSystem;
 end;
 
 
@@ -84,7 +81,7 @@ begin
    Result := TPlanetaryBodyFeatureNode;
 end;
 
-function TPlanetaryBodyFeatureClass.InitFeatureNode(): TFeatureNode;
+function TPlanetaryBodyFeatureClass.InitFeatureNode(ASystem: TSystem): TFeatureNode;
 begin
    Result := nil;
    // TODO: create a technology that knows how to create a planet from a mass of material
@@ -92,9 +89,9 @@ begin
 end;
 
 
-constructor TPlanetaryBodyFeatureNode.Create(ASeed: Cardinal; ADiameter, ATemperature: Double; AComposition: TOreFractions; AMass: Double; AConsiderForDynastyStart: Boolean);
+constructor TPlanetaryBodyFeatureNode.Create(ASystem: TSystem; ASeed: Cardinal; ADiameter, ATemperature: Double; AComposition: TOreFractions; AMass: Double; AConsiderForDynastyStart: Boolean);
 begin
-   inherited Create();
+   inherited Create(ASystem);
    FSeed := ASeed;
    FDiameter := ADiameter;
    FTemperature := ATemperature;
@@ -156,7 +153,7 @@ function TPlanetaryBodyFeatureNode.ManageBusMessage(Message: TBusMessage): TBusM
 var
    AllocateResourcesMessage: TAllocateOresBusMessage;
    OreIndex: TOres;
-   Encyclopedia: TEncyclopediaView;
+
    Material: TMaterial;
    ConsiderOre, IncludeOre: Boolean;
    TargetCount, RemainingCount, Index: Cardinal;
@@ -169,7 +166,6 @@ begin
    begin
       AllocateResourcesMessage := Message as TAllocateOresBusMessage;
       CachedSystem := System;
-      Encyclopedia := AllocateResourcesMessage.CachedSystem.Encyclopedia;
       TargetCount := AllocateResourcesMessage.TargetCount;
       Assert(TargetCount > 0);
       SelectedOres.Clear();
@@ -177,7 +173,7 @@ begin
       RemainingCount := 0;
       for OreIndex in TOres do
       begin
-         Material := Encyclopedia.Materials[OreIndex];
+         Material := System.Encyclopedia.Materials[OreIndex];
          if ((FComposition[OreIndex].IsNotZero) and
              (mtSolid in Material.Tags) and
              ((mtEvenlyDistributed in Material.Tags) or
@@ -192,7 +188,7 @@ begin
       begin
          if (FComposition[OreIndex].IsNotZero) then
          begin
-            Material := Encyclopedia.Materials[OreIndex];
+            Material := System.Encyclopedia.Materials[OreIndex];
             if (mtSolid in Material.Tags) then
             begin
                ConsiderOre := False;
@@ -216,7 +212,7 @@ begin
                   begin
                      ConsiderOre := True;
                   end;
-                  IncludeOre := ConsiderOre and AllocateResourcesMessage.CachedSystem.RandomNumberGenerator.GetBoolean(TargetCount / RemainingCount);
+                  IncludeOre := ConsiderOre and System.RandomNumberGenerator.GetBoolean(TargetCount / RemainingCount);
                end;
                if (IncludeOre) then
                begin
@@ -279,11 +275,11 @@ begin
    Result := False;
 end;
 
-procedure TPlanetaryBodyFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
+procedure TPlanetaryBodyFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);
 var
    Visibility: TVisibility;
 begin
-   Visibility := Parent.ReadVisibilityFor(DynastyIndex, CachedSystem);
+   Visibility := Parent.ReadVisibilityFor(DynastyIndex);
    if (dmDetectable * Visibility <> []) then
    begin
       Writer.WriteCardinal(fcPlanetaryBody);
@@ -291,7 +287,7 @@ begin
    end;
 end;
 
-procedure TPlanetaryBodyFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
+procedure TPlanetaryBodyFeatureNode.UpdateJournal(Journal: TJournalWriter);
 var
    QuadIndex: Int256.TQuadIndex;
    OreIndex: TOres;
@@ -305,13 +301,13 @@ begin
    Assert(Length(FComposition) > 0);
    for OreIndex := Low(FComposition) to High(FComposition) do // $R-
    begin
-      Journal.WriteMaterialReference(CachedSystem.Encyclopedia.Materials[OreIndex]);
+      Journal.WriteMaterialReference(System.Encyclopedia.Materials[OreIndex]);
       Journal.WriteCardinal(FComposition[OreIndex].AsCardinal);
    end;
    Journal.WriteBoolean(FConsiderForDynastyStart);
 end;
 
-procedure TPlanetaryBodyFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
+procedure TPlanetaryBodyFeatureNode.ApplyJournal(Journal: TJournalReader);
 var
    QuadIndex: Int256.TQuadIndex;
    Index, Count: Cardinal;

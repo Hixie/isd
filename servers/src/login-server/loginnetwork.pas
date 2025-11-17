@@ -12,7 +12,7 @@ interface
 
 uses
    corenetwork, stringstream, users, logindynasty, isderrors, clock,
-   servers, basenetwork, binaries, galaxy, astronomy, binarystream;
+   servers, basenetwork, binaries, galaxy, astronomy, binarystream, sharedpointer;
 
 const
    DefaultPasswordLength = 64;
@@ -22,23 +22,36 @@ const
 type
    TServer = class;
 
-   TInternalDynastyConnection = class(TBaseOutgoingInternalConnection)
-   protected
-      FClientMessage: TMessage;
-      procedure Done(); override;
+   TPendingMessageInternals = class
+   private
+      FMessage: TMessage;
    public
-      constructor Create(AClientMessage: TMessage; ADynastyServer: PServerEntry);
+      constructor Create(AMessage: TMessage);
+      destructor Destroy(); override;
+      procedure Fail(Error: UTF8String);
+      property Message: TMessage read FMessage;
+   end;
+   TPendingMessage = specialize TSharedPointer<TPendingMessageInternals>;
+   
+   TDynastyServerOutgoingInternalConnection = class(TBaseOutgoingInternalConnection)
+   protected
+      FClientMessage: TPendingMessage;
+      FServer: TServer;
+      procedure Done(); override; // Called by superclass when all holds are cleared.
+   public
+      constructor Create(AClientMessage: TPendingMessage; AServer: TServer; ADynastyServer: PServerEntry);
       procedure Disconnect(); override;
+   end;
+
+   TInternalDynastyConnection = class(TDynastyServerOutgoingInternalConnection)
+   public
       procedure RegisterNewAccount(Dynasty: TDynasty);
       procedure RegisterToken(Dynasty: TDynasty);
       procedure Logout(Dynasty: TDynasty);
    end;
 
-   TInternalSystemConnection = class(TBaseOutgoingInternalConnection)
-   protected
-      FServer: TServer;
+   TInternalSystemConnection = class(TDynastyServerOutgoingInternalConnection)
    public
-      constructor Create(AServer: TServer; ASystemServer: PServerEntry);
       procedure RegisterNewHome(System: TStarID; Dynasty: TDynasty; DynastyServerID: Cardinal);
    end;
 
@@ -73,7 +86,7 @@ type
    {$IFDEF TESTSUITE}
    private
       FDebugScoresReceived: Cardinal;
-      FDebugAwaitScores: TInternalConversationHandle;
+      FDebugAwaitScores: TInternalConversation;
    {$ENDIF}
    public
       constructor Create(APort: Word; AInternalPassword: UTF8String; AClock: TClock; ADataDirectory: UTF8String; AUserDatabase: TUserDatabase; ADynastyServerDatabase, ASystemServerDatabase: TServerDatabase; AGalaxyManager: TGalaxyManager);
@@ -126,6 +139,7 @@ var
    InternalSystemConnectionSocket: TInternalSystemConnection;
    StarID: TStarID;
    ScoreFile: File of TScoreRecord;
+   PendingMessage: TPendingMessage;
 begin
    if (not Message.CloseInput()) then
       exit;
@@ -150,8 +164,11 @@ begin
    Message.Output.WriteString(Password);
    Message.Output.WriteString('wss://' + DynastyServerDetails^.HostName + ':' + IntToStr(DynastyServerDetails^.WebSocketPort) + '/');
 
+   // Create a pending message that will get closed and freed when the internal messages (below) are done.
+   PendingMessage := TPendingMessageInternals.Create(Message);
+   
    // Connect to dynasty server and create account
-   InternalDynastyConnectionSocket := TInternalDynastyConnection.Create(Message, DynastyServerDetails);
+   InternalDynastyConnectionSocket := TInternalDynastyConnection.Create(PendingMessage, FServer, DynastyServerDetails);
    try
       InternalDynastyConnectionSocket.Connect();
    except
@@ -168,7 +185,7 @@ begin
    FServer.SystemServerDatabase.IncreaseLoadOnServer(SystemServerID);
 
    // Connect to system server and create actual system
-   InternalSystemConnectionSocket := TInternalSystemConnection.Create(FServer, SystemServerDetails);
+   InternalSystemConnectionSocket := TInternalSystemConnection.Create(PendingMessage, FServer, SystemServerDetails);
    try
       InternalSystemConnectionSocket.Connect();
    except
@@ -193,7 +210,7 @@ begin
    DynastyServerDetails := FServer.DynastyServerDatabase[Dynasty.ServerID];
    Message.Reply();
    Message.Output.WriteString('wss://' + DynastyServerDetails^.HostName + ':' + IntToStr(DynastyServerDetails^.WebSocketPort) + '/');
-   InternalDynastyConnectionSocket := TInternalDynastyConnection.Create(Message, DynastyServerDetails);
+   InternalDynastyConnectionSocket := TInternalDynastyConnection.Create(TPendingMessageInternals.Create(Message), FServer, DynastyServerDetails);
    try
       InternalDynastyConnectionSocket.Connect();
    except
@@ -215,7 +232,7 @@ begin
       exit;
    DynastyServerDetails := FServer.DynastyServerDatabase[Dynasty.ServerID];
    Message.Reply();
-   InternalDynastyConnectionSocket := TInternalDynastyConnection.Create(Message, DynastyServerDetails);
+   InternalDynastyConnectionSocket := TInternalDynastyConnection.Create(TPendingMessageInternals.Create(Message), FServer, DynastyServerDetails);
    try
       InternalDynastyConnectionSocket.Connect();
    except
@@ -425,7 +442,7 @@ var
    ScoreFile: File of TScoreRecord;
    {$IFDEF TESTSUITE}
    ExpectedScores: Cardinal;
-   AwaitScores: TInternalConversationHandle;
+   AwaitScores: TInternalConversation;
    {$ENDIF}
 begin
    if (Command = icAddScoreDatum) then
@@ -450,12 +467,12 @@ begin
       FServer.UserDatabase.RegisterScoreUpdate(DynastyID, ScoreRecord.Score);
       {$IFDEF TESTSUITE}
       Inc(FServer.FDebugScoresReceived);
-      if (Assigned(FServer.FDebugAwaitScores)) then
+      if (Assigned(FServer.FDebugAwaitScores.Value)) then
       begin
-         FServer.FDebugAwaitScores.RemoveHold();
-         if (not FServer.FDebugAwaitScores.HasHolds) then
+         FServer.FDebugAwaitScores.Value.RemoveHold();
+         if (not FServer.FDebugAwaitScores.Value.HasHolds) then
          begin
-            FreeAndNil(FServer.FDebugAwaitScores);
+            FServer.FDebugAwaitScores.Free();
          end;
       end;
       {$ENDIF}
@@ -464,7 +481,7 @@ begin
    else
    if (Command = icAwaitScores) then
    begin
-      if (Assigned(FServer.FDebugAwaitScores)) then
+      if (Assigned(FServer.FDebugAwaitScores.Value)) then
       begin
          Writeln('received multiple simultaneous score holds');
          Disconnect();
@@ -476,9 +493,9 @@ begin
          Write(#$01);
          exit;
       end;
-      AwaitScores := TInternalConversationHandle.Create(Self);
-      AwaitScores.AddHold(ExpectedScores);
-      AwaitScores.RemoveHold(FServer.FDebugScoresReceived); 
+      AwaitScores := TInternalConversationInternals.Create(Self);
+      AwaitScores.Value.AddHold(ExpectedScores);
+      AwaitScores.Value.RemoveHold(FServer.FDebugScoresReceived); 
       FServer.FDebugAwaitScores := AwaitScores;
    end
    {$ENDIF}
@@ -487,24 +504,45 @@ begin
 end;
 
 
-constructor TInternalDynastyConnection.Create(AClientMessage: TMessage; ADynastyServer: PServerEntry);
+constructor TPendingMessageInternals.Create(AMessage: TMessage);
+begin
+   inherited Create();
+   FMessage := AMessage;
+end;
+
+destructor TPendingMessageInternals.Destroy();
+begin
+   if (not FMessage.OutputClosed) then
+      FMessage.CloseOutput();
+end;
+
+procedure TPendingMessageInternals.Fail(Error: UTF8String);
+begin
+   if (not FMessage.OutputClosed) then
+      FMessage.Error(ieInternalError);
+end;
+
+
+constructor TDynastyServerOutgoingInternalConnection.Create(AClientMessage: TPendingMessage; AServer: TServer; ADynastyServer: PServerEntry);
 begin
    inherited Create(ADynastyServer);
    FClientMessage := AClientMessage;
+   FServer := AServer;
 end;
 
-procedure TInternalDynastyConnection.Done();
+procedure TDynastyServerOutgoingInternalConnection.Disconnect();
 begin
-   if (not FClientMessage.OutputClosed) then
-      FClientMessage.CloseOutput();
-end;
-
-procedure TInternalDynastyConnection.Disconnect();
-begin
-   if (not FClientMessage.OutputClosed) then
-      FClientMessage.Error(ieInternalError);
+   if (FClientMessage.Assigned) then
+      FClientMessage.Value.Fail(ieInternalError);
    inherited;
 end;
+
+procedure TDynastyServerOutgoingInternalConnection.Done();
+begin
+   inherited;
+   FClientMessage.Free();
+end;
+
 
 procedure TInternalDynastyConnection.RegisterNewAccount(Dynasty: TDynasty);
 var
@@ -542,8 +580,9 @@ begin
    ConsoleWriteln('Sending IPC to dynasty server: ', Message);
    Write(Message);
    FreeAndNil(Writer);
-   if (not FClientMessage.OutputClosed) then
-      FClientMessage.Output.WriteString(IntToStr(Dynasty.ID) + TokenSeparator + Token);
+   Assert(FClientMessage.Assigned);
+   if (not FClientMessage.Value.Message.OutputClosed) then
+      FClientMessage.Value.Message.Output.WriteString(IntToStr(Dynasty.ID) + TokenSeparator + Token);
    IncrementPendingCount();
 end;
 
@@ -562,12 +601,6 @@ begin
    IncrementPendingCount();
 end;
 
-
-constructor TInternalSystemConnection.Create(AServer: TServer; ASystemServer: PServerEntry);
-begin
-   inherited Create(ASystemServer);
-   FServer := AServer;
-end;
 
 procedure TInternalSystemConnection.RegisterNewHome(System: TStarID; Dynasty: TDynasty; DynastyServerID: Cardinal);
 var
@@ -613,7 +646,7 @@ end;
 destructor TServer.Destroy();
 begin
    {$IFDEF TESTSUITE}
-   FreeAndNil(FDebugAwaitScores);
+   FDebugAwaitScores.Free();
    {$ENDIF}
    inherited;
 end;

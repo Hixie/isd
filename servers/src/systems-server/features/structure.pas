@@ -36,7 +36,7 @@ type
    public
       constructor Create(ABillOfMaterials: TMaterialLineItemArray; AMinimumFunctionalQuantity: Cardinal; ADefaultSize: Double);
       constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
-      function InitFeatureNode(): TFeatureNode; override;
+      function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
       property DefaultSize: Double read FDefaultSize;
       property BillOfMaterials[Index: Cardinal]: TMaterialLineItem read GetMaterialLineItem;
       property BillOfMaterialsLength: Cardinal read GetMaterialLineItemCount;
@@ -80,21 +80,21 @@ type
       function GetMass(): Double; override; // kg
       function GetMassFlowRate(): TRate; override;
       function GetSize(): Double; override; // m
-      procedure HandleChanges(CachedSystem: TSystem); override;
+      procedure HandleChanges(); override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
-      procedure ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynastyHashSet; CachedSystem: TSystem); override;
-      procedure ResetVisibility(CachedSystem: TSystem); override;
-      procedure HandleKnowledge(const DynastyIndex: Cardinal; const VisibilityHelper: TVisibilityHelper; const Sensors: ISensorsProvider); override;
+      procedure ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynasty.TArray); override;
+      procedure ResetVisibility(); override;
+      procedure HandleKnowledge(const DynastyIndex: Cardinal; const Sensors: ISensorsProvider); override;
       procedure FetchMaterials();
-      procedure RescheduleNextEvent(CachedSystem: TSystem);
+      procedure RescheduleNextEvent();
       procedure HandleEvent(var Data);
       procedure TriggerBuilding();
-      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
+      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
-      constructor Create(AFeatureClass: TStructureFeatureClass; AMaterialsQuantity: Cardinal; AStructuralIntegrity: Cardinal);
+      constructor Create(ASystem: TSystem; AFeatureClass: TStructureFeatureClass; AMaterialsQuantity: Cardinal; AStructuralIntegrity: Cardinal);
       destructor Destroy(); override;
-      procedure UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem); override;
-      procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
+      procedure UpdateJournal(Journal: TJournalWriter); override;
+      procedure ApplyJournal(Journal: TJournalReader); override;
       procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); override;
    private // IStructure
       procedure BuilderBusConnected(Bus: TBuilderBusFeatureNode); // must come from builder bus
@@ -200,9 +200,9 @@ begin
    Result := TStructureFeatureNode;
 end;
 
-function TStructureFeatureClass.InitFeatureNode(): TFeatureNode;
+function TStructureFeatureClass.InitFeatureNode(ASystem: TSystem): TFeatureNode;
 begin
-   Result := TStructureFeatureNode.Create(Self, 0, 0);
+   Result := TStructureFeatureNode.Create(ASystem, Self, 0, 0);
 end;
 
 function TStructureFeatureClass.GetMaterialLineItem(Index: Cardinal): TMaterialLineItem;
@@ -245,11 +245,11 @@ begin
 end;
 
 
-constructor TStructureFeatureNode.Create(AFeatureClass: TStructureFeatureClass; AMaterialsQuantity: Cardinal; AStructuralIntegrity: Cardinal);
+constructor TStructureFeatureNode.Create(ASystem: TSystem; AFeatureClass: TStructureFeatureClass; AMaterialsQuantity: Cardinal; AStructuralIntegrity: Cardinal);
 var
    Index: Cardinal;
 begin
-   inherited Create();
+   inherited Create(ASystem);
    Assert(Assigned(AFeatureClass));
    FFeatureClass := AFeatureClass;
    if ((AMaterialsQuantity < FFeatureClass.TotalQuantity) or (AStructuralIntegrity < FFeatureClass.TotalQuantity)) then
@@ -272,7 +272,7 @@ constructor TStructureFeatureNode.CreateFromJournal(Journal: TJournalReader; AFe
 begin
    Assert(Assigned(AFeatureClass));
    FFeatureClass := AFeatureClass as TStructureFeatureClass;
-   inherited CreateFromJournal(Journal, AFeatureClass, ASystem);
+   inherited;
    SetLength(FDynastyKnowledge, FFeatureClass.BillOfMaterialsLength);
 end;
 
@@ -434,17 +434,17 @@ begin
       Result := inherited;
 end;
 
-procedure TStructureFeatureNode.ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynastyHashSet; CachedSystem: TSystem);
+procedure TStructureFeatureNode.ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynasty.TArray);
 var
    Index: Cardinal;
 begin
    Assert(Length(FDynastyKnowledge) = FFeatureClass.BillOfMaterialsLength);
    Assert(FFeatureClass.BillOfMaterialsLength > 0);
    for Index := 0 to FFeatureClass.BillOfMaterialsLength - 1 do // $R-
-      FDynastyKnowledge[Index].Init(NewDynasties.Count);
+      FDynastyKnowledge[Index].Init(Length(NewDynasties)); // $R-
 end;
 
-procedure TStructureFeatureNode.ResetVisibility(CachedSystem: TSystem);
+procedure TStructureFeatureNode.ResetVisibility();
 var
    Index: Cardinal;
 begin
@@ -453,7 +453,7 @@ begin
       FDynastyKnowledge[Index].Reset();
 end;
 
-procedure TStructureFeatureNode.HandleKnowledge(const DynastyIndex: Cardinal; const VisibilityHelper: TVisibilityHelper; const Sensors: ISensorsProvider);
+procedure TStructureFeatureNode.HandleKnowledge(const DynastyIndex: Cardinal; const Sensors: ISensorsProvider);
 var
    Index: Cardinal;
 begin
@@ -465,13 +465,13 @@ begin
    end;
 end;
 
-procedure TStructureFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
+procedure TStructureFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);
 var
    Index, Remaining, Quantity, TotalQuantityAlreadyBuilt, StructuralIntegrity: Cardinal;
    Visibility: TVisibility;
    ClassKnown: Boolean;
 begin
-   Visibility := Parent.ReadVisibilityFor(DynastyIndex, CachedSystem);
+   Visibility := Parent.ReadVisibilityFor(DynastyIndex);
    if (dmDetectable * Visibility <> []) then
    begin
       Writer.WriteCardinal(fcStructure);
@@ -480,7 +480,7 @@ begin
       begin
          TotalQuantityAlreadyBuilt := FBuildingState^.MaterialsQuantity;
          if (FBuildingState^.MaterialsQuantityRate.IsNotZero) then
-            Inc(TotalQuantityAlreadyBuilt, Round((CachedSystem.Now - FBuildingState^.AnchorTime) * FBuildingState^.MaterialsQuantityRate));
+            Inc(TotalQuantityAlreadyBuilt, Round((System.Now - FBuildingState^.AnchorTime) * FBuildingState^.MaterialsQuantityRate));
       end
       else
       begin
@@ -535,7 +535,7 @@ begin
          if (FBuildingState^.StructuralIntegrityRate.IsNotZero and Assigned(FBuildingState^.NextEvent)) then
          begin
             Assert(not FBuildingState^.AnchorTime.IsInfinite);
-            Inc(StructuralIntegrity, Round((CachedSystem.Now - FBuildingState^.AnchorTime) * FBuildingState^.StructuralIntegrityRate));
+            Inc(StructuralIntegrity, Round((System.Now - FBuildingState^.AnchorTime) * FBuildingState^.StructuralIntegrityRate));
          end;
          if (StructuralIntegrity > TotalQuantityAlreadyBuilt) then
             StructuralIntegrity := TotalQuantityAlreadyBuilt;
@@ -560,7 +560,7 @@ begin
    end;
 end;
 
-procedure TStructureFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
+procedure TStructureFeatureNode.UpdateJournal(Journal: TJournalWriter);
 begin
    if (Assigned(FBuildingState)) then
    begin
@@ -576,7 +576,7 @@ begin
    end;
 end;
 
-procedure TStructureFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
+procedure TStructureFeatureNode.ApplyJournal(Journal: TJournalReader);
 var
    MaterialsQuantity, StructuralIntegrity, Priority: Cardinal;
 begin
@@ -612,7 +612,7 @@ begin
    IsDefinitelyGhost := (Assigned(FBuildingState)) and (FBuildingState^.MaterialsQuantity = 0);
 end;
 
-procedure TStructureFeatureNode.HandleChanges(CachedSystem: TSystem);
+procedure TStructureFeatureNode.HandleChanges();
 var
    Message: TRegisterStructureMessage;
 begin
@@ -719,7 +719,7 @@ begin
       Assert(FBuildingState^.AnchorTime.IsInfinite);
       Assert(FBuildingState^.MaterialsQuantityRate.IsZero);
       Assert(FBuildingState^.StructuralIntegrityRate.IsNotZero);
-      RescheduleNextEvent(System);
+      RescheduleNextEvent();
    end;
    if (Assigned(FBuildingState)) then
       Include(FBuildingState^.Flags, bsTriggered);
@@ -884,7 +884,7 @@ begin
    Assert(Assigned(FBuildingState^.PendingMaterial));
    Assert(FBuildingState^.PendingQuantity > 0);
    FBuildingState^.MaterialsQuantityRate := ActualRate;
-   RescheduleNextEvent(System);
+   RescheduleNextEvent();
    MarkAsDirty([dkUpdateClients]);
 end;
 
@@ -957,7 +957,7 @@ begin
    MarkAsDirty([dkNeedsHandleChanges]);
 end;
 
-procedure TStructureFeatureNode.RescheduleNextEvent(CachedSystem: TSystem);
+procedure TStructureFeatureNode.RescheduleNextEvent();
 var
    RemainingTime: TMillisecondsDuration;
    TimeUntilMaterialFunctional, TimeUntilIntegrityFunctional: TMillisecondsDuration;
@@ -1018,8 +1018,8 @@ begin
       end;
    end;
    Assert(RemainingTime.IsNotZero);
-   FBuildingState^.NextEvent := CachedSystem.ScheduleEvent(RemainingTime, @HandleEvent, Self);
-   FBuildingState^.AnchorTime := CachedSystem.Now;
+   FBuildingState^.NextEvent := System.ScheduleEvent(RemainingTime, @HandleEvent, Self);
+   FBuildingState^.AnchorTime := System.Now;
 end;
 
 procedure TStructureFeatureNode.HandleEvent(var Data);
@@ -1099,7 +1099,7 @@ begin
          Assert(FBuildingState^.StructuralIntegrityRate.IsNotZero);
          {$IFOPT C+} FBuildingState^.AnchorTime := TTimeInMilliseconds.NegInfinity; {$ENDIF}
          Assert(bsTriggered in FBuildingState^.Flags); // so we're NOT going to get retriggered
-         RescheduleNextEvent(System);
+         RescheduleNextEvent();
       end;
    end
    else

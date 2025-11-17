@@ -33,7 +33,7 @@ type
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
       constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
-      function InitFeatureNode(): TFeatureNode; override;
+      function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
    end;
 
    TRubblePileFeatureNode = class(TFeatureNode)
@@ -44,11 +44,11 @@ type
       function GetMass(): Double; override; // kg
       function GetSize(): Double; override; // m
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
-      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
+      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
-      constructor Create(ADiameter: Double; AComposition: TRubbleComposition);
-      procedure UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem); override;
-      procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
+      constructor Create(ASystem: TSystem; ADiameter: Double; AComposition: TRubbleComposition);
+      procedure UpdateJournal(Journal: TJournalWriter); override;
+      procedure ApplyJournal(Journal: TJournalReader); override;
       procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); override;
    end;
 
@@ -96,7 +96,7 @@ begin
    Result := TRubblePileFeatureNode;
 end;
 
-function TRubblePileFeatureClass.InitFeatureNode(): TFeatureNode;
+function TRubblePileFeatureClass.InitFeatureNode(ASystem: TSystem): TFeatureNode;
 begin
    Result := nil;
    // TODO: create a technology that knows how to create a pile from a mass of material
@@ -104,9 +104,9 @@ begin
 end;
 
 
-constructor TRubblePileFeatureNode.Create(ADiameter: Double; AComposition: TRubbleComposition);
+constructor TRubblePileFeatureNode.Create(ASystem: TSystem; ADiameter: Double; AComposition: TRubbleComposition);
 begin
-   inherited Create();
+   inherited Create(ASystem);
    FDiameter := ADiameter;
    FComposition := AComposition;
 end;
@@ -145,7 +145,7 @@ begin
    end;
 end;
 
-procedure TRubblePileFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
+procedure TRubblePileFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);
 var
    KnownMaterials: TGetKnownMaterialsMessage;
    Other: UInt64;
@@ -155,7 +155,7 @@ begin
    Other := 0;
    if (Length(FComposition) > 0) then
    begin
-      KnownMaterials := TGetKnownMaterialsMessage.Create(CachedSystem.DynastyByIndex[DynastyIndex]);
+      KnownMaterials := TGetKnownMaterialsMessage.Create(System.DynastyByIndex[DynastyIndex]);
       InjectBusMessage(KnownMaterials); // we ignore the result - it doesn't matter if it wasn't handled
       for Index := Low(FComposition) to High(FComposition) do // $R-
       begin
@@ -173,7 +173,7 @@ begin
    Writer.WriteUInt64(Other);
 end;
 
-procedure TRubblePileFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
+procedure TRubblePileFeatureNode.UpdateJournal(Journal: TJournalWriter);
 var
    Index: Cardinal;
 begin
@@ -187,7 +187,7 @@ begin
       end;
 end;
 
-procedure TRubblePileFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
+procedure TRubblePileFeatureNode.ApplyJournal(Journal: TJournalReader);
 var
    Index: Cardinal;
 begin

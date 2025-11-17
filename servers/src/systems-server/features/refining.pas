@@ -19,7 +19,7 @@ type
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
       constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
-      function InitFeatureNode(): TFeatureNode; override;
+      function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
    end;
 
    TRefiningFeatureNode = class(TFeatureNode, IRefinery)
@@ -37,16 +37,16 @@ type
       function GetDynasty(): TDynasty;
    protected
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
-      procedure HandleChanges(CachedSystem: TSystem); override;
-      procedure ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynastyHashSet; CachedSystem: TSystem); override;
-      procedure ResetVisibility(CachedSystem: TSystem); override;
-      procedure HandleKnowledge(const DynastyIndex: Cardinal; const VisibilityHelper: TVisibilityHelper; const Sensors: ISensorsProvider); override;
-      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
+      procedure HandleChanges(); override;
+      procedure ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynasty.TArray); override;
+      procedure ResetVisibility(); override;
+      procedure HandleKnowledge(const DynastyIndex: Cardinal; const Sensors: ISensorsProvider); override;
+      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
-      constructor Create(AFeatureClass: TRefiningFeatureClass);
+      constructor Create(ASystem: TSystem; AFeatureClass: TRefiningFeatureClass);
       destructor Destroy(); override;
-      procedure UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem); override;
-      procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
+      procedure UpdateJournal(Journal: TJournalWriter); override;
+      procedure ApplyJournal(Journal: TJournalReader); override;
    end;
 
 // TODO: handle our ancestor chain changing
@@ -77,15 +77,15 @@ begin
    Result := TRefiningFeatureNode;
 end;
 
-function TRefiningFeatureClass.InitFeatureNode(): TFeatureNode;
+function TRefiningFeatureClass.InitFeatureNode(ASystem: TSystem): TFeatureNode;
 begin
-   Result := TRefiningFeatureNode.Create(Self);
+   Result := TRefiningFeatureNode.Create(ASystem, Self);
 end;
 
 
-constructor TRefiningFeatureNode.Create(AFeatureClass: TRefiningFeatureClass);
+constructor TRefiningFeatureNode.Create(ASystem: TSystem; AFeatureClass: TRefiningFeatureClass);
 begin
-   inherited Create();
+   inherited Create(ASystem);
    FFeatureClass := AFeatureClass;
 end;
 
@@ -93,7 +93,7 @@ constructor TRefiningFeatureNode.CreateFromJournal(Journal: TJournalReader; AFea
 begin
    Assert(Assigned(AFeatureClass));
    FFeatureClass := AFeatureClass as TRefiningFeatureClass;
-   inherited CreateFromJournal(Journal, AFeatureClass, ASystem);
+   inherited;
 end;
 
 destructor TRefiningFeatureNode.Destroy();
@@ -139,7 +139,7 @@ begin
    Result := Parent.Owner;
 end;
 
-procedure TRefiningFeatureNode.HandleChanges(CachedSystem: TSystem);
+procedure TRefiningFeatureNode.HandleChanges();
 var
    DisabledReasons: TDisabledReasons;
    Message: TRegisterRefineryBusMessage;
@@ -162,12 +162,12 @@ begin
    inherited;
 end;
 
-procedure TRefiningFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
+procedure TRefiningFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);
 var
    Visibility: TVisibility;
    Flags: Byte;
 begin
-   Visibility := Parent.ReadVisibilityFor(DynastyIndex, CachedSystem);
+   Visibility := Parent.ReadVisibilityFor(DynastyIndex);
    if ((dmDetectable * Visibility <> []) and (dmClassKnown in Visibility)) then
    begin
       Writer.WriteCardinal(fcRefining);
@@ -191,26 +191,26 @@ begin
    end;
 end;
 
-procedure TRefiningFeatureNode.ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynastyHashSet; CachedSystem: TSystem);
+procedure TRefiningFeatureNode.ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynasty.TArray);
 begin
-   FOreKnowledge.Init(NewDynasties.Count);
+   FOreKnowledge.Init(Length(NewDynasties)); // $R-
 end;
 
-procedure TRefiningFeatureNode.ResetVisibility(CachedSystem: TSystem);
+procedure TRefiningFeatureNode.ResetVisibility();
 begin
    FOreKnowledge.Reset();
 end;
 
-procedure TRefiningFeatureNode.HandleKnowledge(const DynastyIndex: Cardinal; const VisibilityHelper: TVisibilityHelper; const Sensors: ISensorsProvider);
+procedure TRefiningFeatureNode.HandleKnowledge(const DynastyIndex: Cardinal; const Sensors: ISensorsProvider);
 begin
    FOreKnowledge.SetEntry(DynastyIndex, Sensors.Knows(System.Encyclopedia.Materials[FFeatureClass.FOre]));
 end;
 
-procedure TRefiningFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
+procedure TRefiningFeatureNode.UpdateJournal(Journal: TJournalWriter);
 begin
 end;
 
-procedure TRefiningFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
+procedure TRefiningFeatureNode.ApplyJournal(Journal: TJournalReader);
 begin
 end;
 

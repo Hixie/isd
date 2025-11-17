@@ -14,7 +14,7 @@ type
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
       constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
-      function InitFeatureNode(): TFeatureNode; override;
+      function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
    end;
 
    TOnOffFeatureNode = class(TFeatureNode)
@@ -22,11 +22,11 @@ type
       FEnabled: Boolean;
    protected
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
-      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
+      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
-      constructor Create();
-      procedure UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem); override;
-      procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
+      constructor Create(ASystem: TSystem);
+      procedure UpdateJournal(Journal: TJournalWriter); override;
+      procedure ApplyJournal(Journal: TJournalReader); override;
       function HandleCommand(Command: UTF8String; var Message: TMessage): Boolean; override;
    end;
 
@@ -46,15 +46,15 @@ begin
    Result := TOnOffFeatureNode;
 end;
 
-function TOnOffFeatureClass.InitFeatureNode(): TFeatureNode;
+function TOnOffFeatureClass.InitFeatureNode(ASystem: TSystem): TFeatureNode;
 begin
-   Result := TOnOffFeatureNode.Create();
+   Result := TOnOffFeatureNode.Create(ASystem);
 end;
 
 
-constructor TOnOffFeatureNode.Create();
+constructor TOnOffFeatureNode.Create(ASystem: TSystem);
 begin
-   inherited Create();
+   inherited Create(ASystem);
    FEnabled := True;
 end;
 
@@ -70,11 +70,11 @@ begin
       Result := inherited;
 end;
 
-procedure TOnOffFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
+procedure TOnOffFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);
 var
    Visibility: TVisibility;
 begin
-   Visibility := Parent.ReadVisibilityFor(DynastyIndex, CachedSystem);
+   Visibility := Parent.ReadVisibilityFor(DynastyIndex);
    if ((dmDetectable * Visibility <> []) and (dmClassKnown in Visibility)) then
    begin
       Writer.WriteCardinal(fcOnOff);
@@ -82,12 +82,12 @@ begin
    end;
 end;
 
-procedure TOnOffFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
+procedure TOnOffFeatureNode.UpdateJournal(Journal: TJournalWriter);
 begin
    Journal.WriteBoolean(FEnabled);
 end;
 
-procedure TOnOffFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
+procedure TOnOffFeatureNode.ApplyJournal(Journal: TJournalReader);
 begin
    FEnabled := Journal.ReadBoolean();
 end;

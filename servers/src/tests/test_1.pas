@@ -19,7 +19,7 @@ var
    ModelSystem: TModelSystem;
    SystemsServerIPC, LoginServerIPC: TServerIPCSocket;
    MinTime, MaxTime: Int64;
-   TimePinned: Boolean;
+   TimePinned: Boolean; // means that time is not currently advancing for the server
 
    procedure AdvanceTime(Delta: Int64);
    begin
@@ -127,7 +127,7 @@ begin
    Verify(ModelSystem.CurrentTime = 3 * Hours);
 
    // Expect: Crash and technology.
-   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 10);
+   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 18); // crash
    Verify(ModelSystem.CurrentTime < 1 * Days);
    Verify(FindColonyShip(ModelSystem) = ColonyShip);
    Verify(ColonyShip.Parent.HasFeature(TModelRubblePileFeature));

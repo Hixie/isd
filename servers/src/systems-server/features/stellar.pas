@@ -13,7 +13,7 @@ type
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
       constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
-      function InitFeatureNode(): TFeatureNode; override;
+      function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
    end;
 
    TStarFeatureNode = class(TFeatureNode, IAssetNameProvider)
@@ -24,13 +24,13 @@ type
    protected
       function GetMass(): Double; override;
       function GetSize(): Double; override;
-      procedure ApplyVisibility(const VisibilityHelper: TVisibilityHelper); override;
-      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
+      procedure ApplyVisibility(); override;
+      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
       function GetAssetName(): UTF8String;
    public
-      constructor Create(AStarID: TStarID);
-      procedure UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem); override;
-      procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
+      constructor Create(ASystem: TSystem; AStarID: TStarID);
+      procedure UpdateJournal(Journal: TJournalWriter); override;
+      procedure ApplyJournal(Journal: TJournalReader); override;
       procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); override;
       property Category: TStarCategory read GetCategory;
       property StarID: TStarID read FStarID;
@@ -57,7 +57,7 @@ begin
    Result := TStarFeatureNode;
 end;
 
-function TStarFeatureClass.InitFeatureNode(): TFeatureNode;
+function TStarFeatureClass.InitFeatureNode(ASystem: TSystem): TFeatureNode;
 begin
    Result := nil;
    // TODO: create a technology that knows how to create a star and generate a new ID for it.
@@ -65,9 +65,9 @@ begin
 end;
 
 
-constructor TStarFeatureNode.Create(AStarID: TStarID);
+constructor TStarFeatureNode.Create(ASystem: TSystem; AStarID: TStarID);
 begin
-   inherited Create();
+   inherited Create(ASystem);
    FStarID := AStarID;
 end;
 
@@ -134,26 +134,26 @@ begin
    // Result := Result * Modifier(0.9, 1.1, StarID, TemperatureSalt);
 end;
 
-procedure TStarFeatureNode.ApplyVisibility(const VisibilityHelper: TVisibilityHelper);
+procedure TStarFeatureNode.ApplyVisibility();
 begin
    Assert(Assigned(Parent));
-   VisibilityHelper.AddBroadVisibility([dmVisibleSpectrum], Parent);
+   System.AddBroadVisibility([dmVisibleSpectrum], Parent);
 end;
 
-procedure TStarFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
+procedure TStarFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);
 begin
    Writer.WriteCardinal(fcStar);
    Assert(StarID >= 0);
    Writer.WriteCardinal(StarID); // $R-
 end;
 
-procedure TStarFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
+procedure TStarFeatureNode.UpdateJournal(Journal: TJournalWriter);
 begin
    Assert(StarID >= 0);
    Journal.WriteCardinal(StarID); // $R-
 end;
 
-procedure TStarFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
+procedure TStarFeatureNode.ApplyJournal(Journal: TJournalReader);
 begin
    FStarID := Journal.ReadCardinal(); // $R-
 end;

@@ -37,12 +37,14 @@ procedure RunTests(BaseDirectory: UTF8String);
 var
    Test: TIsdTest;
    TestDirectory: UTF8String;
+   Index: Cardinal;
 begin
    if (not DirectoryExists(BaseDirectory + 'defaults')) then
       raise Exception.Create('Specified directory is not fully configured for tests.');
    CreateDir(BaseDirectory + 'runtime');
-   for Test in Tests do
+   for Index := Tests.Length - 1 downto 0 do // $R-
    begin
+      Test := Tests[Index];
       TestDirectory := GetTempFileName(BaseDirectory + 'runtime', 'isd' + '-' + Test.UnitName + '-') + '/';
       CreateDir(TestDirectory);
       try

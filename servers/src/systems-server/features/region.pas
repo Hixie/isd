@@ -129,7 +129,7 @@ type
    public
       constructor Create(ADepth: Cardinal; ATargetCount: Cardinal; ATargetQuantity: UInt64);
       constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
-      function InitFeatureNode(): TFeatureNode; override;
+      function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
       property Depth: Cardinal read FDepth;
       property TargetCount: Cardinal read FTargetCount;
       property TargetQuantity: UInt64 read FTargetQuantity;
@@ -210,7 +210,7 @@ type
       function GetTotalOrePileCapacity(Dynasty: TDynasty): Double; // kg total for all piles
       function GetTotalOrePileMass(Dynasty: TDynasty): Double; // kg total for all piles
       function GetTotalOrePileMassFlowRate(Dynasty: TDynasty): TRate; // kg/s (total for all piles; total miner rate minus total refinery rate)
-      function GetMinOreMassTransfer(CachedSystem: TSystem): Double; // kg mass that would need to be transferred from the ground to move at least one unit of quantity
+      function GetMinOreMassTransfer(): Double; // kg mass that would need to be transferred from the ground to move at least one unit of quantity
       function GetTotalMaterialPileQuantity(Dynasty: TDynasty; Material: TMaterial): UInt64;
       function GetTotalMaterialPileQuantityFlowRate(Dynasty: TDynasty; Material: TMaterial): TRate; // units/s
       function GetTotalMaterialPileCapacity(Dynasty: TDynasty; Material: TMaterial): UInt64;
@@ -223,17 +223,17 @@ type
       function GetMassFlowRate(): TRate; override;
       function ManageBusMessage(Message: TBusMessage): TBusMessageResult; override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
-      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
+      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
       procedure Sync(); // move the ores around
       procedure SyncAndReconsider(); // sync, cancel the current scheduled event, schedule HandleChanges
       procedure HandleScheduledEvent(var Data); // same as SyncAndReconsider, but used as event handler
       procedure Reset(); // disconnect and forget all the clients (only called by Destroy)
-      procedure HandleChanges(CachedSystem: TSystem); override;
+      procedure HandleChanges(); override;
    public
-      constructor Create(AFeatureClass: TRegionFeatureClass);
+      constructor Create(ASystem: TSystem; AFeatureClass: TRegionFeatureClass);
       destructor Destroy(); override;
-      procedure UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem); override;
-      procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
+      procedure UpdateJournal(Journal: TJournalWriter); override;
+      procedure ApplyJournal(Journal: TJournalReader); override;
       procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); override;
       procedure RemoveMiner(Miner: IMiner);
       procedure RemoveOrePile(OrePile: IOrePile);
@@ -406,7 +406,7 @@ begin
    Result := TRegionFeatureNode;
 end;
 
-function TRegionFeatureClass.InitFeatureNode(): TFeatureNode;
+function TRegionFeatureClass.InitFeatureNode(ASystem: TSystem): TFeatureNode;
 begin
    Result := nil;
    raise Exception.Create('Cannot create a TRegionFeatureNode from a prototype, it must have an ore composition from an ancestor TPlanetaryBodyFeatureNode.');
@@ -623,9 +623,9 @@ begin
 end;
 
 
-constructor TRegionFeatureNode.Create(AFeatureClass: TRegionFeatureClass);
+constructor TRegionFeatureNode.Create(ASystem: TSystem; AFeatureClass: TRegionFeatureClass);
 begin
-   inherited Create();
+   inherited Create(ASystem);
    FFeatureClass := AFeatureClass;
    FAnchorTime := TTimeInMilliseconds.NegInfinity;
    Assert(not FActive);
@@ -636,7 +636,7 @@ constructor TRegionFeatureNode.CreateFromJournal(Journal: TJournalReader; AFeatu
 begin
    FFeatureClass := AFeatureClass as TRegionFeatureClass;
    Assert(Assigned(AFeatureClass));
-   inherited CreateFromJournal(Journal, AFeatureClass, ASystem);
+   inherited;
    FAnchorTime := TTimeInMilliseconds.NegInfinity;
    Assert(not FActive);
    Assert(not FDynamic);
@@ -787,22 +787,20 @@ begin
    Result := GetTotalOrePileMassFlowRate(Dynasty) / RPileRatio;
 end;
 
-function TRegionFeatureNode.GetMinOreMassTransfer(CachedSystem: TSystem): Double;
+function TRegionFeatureNode.GetMinOreMassTransfer(): Double;
 var
    Ore: TOres;
    Quantity: UInt64;
    TransferMassPerUnit, Min: Double;
-   Encyclopedia: TEncyclopediaView;
 begin
-   Encyclopedia := CachedSystem.Encyclopedia;
-   Min := Encyclopedia.MinMassPerOreUnit;
+   Min := System.Encyclopedia.MinMassPerOreUnit;
    {$PUSH} {$IEEEERRORS-} Result := Infinity; {$POP}
    for Ore in TOres do
    begin
       Quantity := FGroundComposition[Ore];
       if (Quantity > 0) then
       begin
-         TransferMassPerUnit := Encyclopedia.Materials[Ore].MassPerUnit;
+         TransferMassPerUnit := System.Encyclopedia.Materials[Ore].MassPerUnit;
          if (TransferMassPerUnit < Result) then
             Result := TransferMassPerUnit;
          if (Result <= Min) then
@@ -1442,14 +1440,14 @@ begin
    FAnchorTime := TTimeInMilliseconds.NegInfinity;
 end;
 
-procedure TRegionFeatureNode.HandleChanges(CachedSystem: TSystem);
+procedure TRegionFeatureNode.HandleChanges();
 
    procedure AllocateOres();
    var
       Message: TAllocateOresBusMessage;
    begin
       Assert(not FAllocatedOres);
-      Message := TAllocateOresBusMessage.Create(FFeatureClass.Depth, FFeatureClass.TargetCount, FFeatureClass.TargetQuantity, CachedSystem);
+      Message := TAllocateOresBusMessage.Create(FFeatureClass.Depth, FFeatureClass.TargetCount, FFeatureClass.TargetQuantity);
       if (InjectBusMessage(Message) = mrHandled) then
          FGroundComposition := Message.AssignedOres;
       FreeAndNil(Message);
@@ -1468,7 +1466,6 @@ var
    OreMiningRates, OreRefiningRates: TOreRates;
    MaterialCapacities, MaterialConsumerCounts: TMaterialQuantityHashTable;
    MaterialFactoryRates: TMaterialRateHashTable;
-   Encyclopedia: TEncyclopediaView;
    Ratio: Double;
    Miner: IMiner;
    OrePile: IOrePile;
@@ -1488,7 +1485,6 @@ begin
    begin
       Assert(not Assigned(FNextEvent));
       Assert(not FDynamic); // so all the "get current mass" etc getters won't be affected by mass flow
-      Encyclopedia := CachedSystem.Encyclopedia;
       CurrentGroundMass := Mass;
       TimeUntilNextEvent := TMillisecondsDuration.Infinity;
       AllDynastyMiningRate := TRate.Zero;
@@ -1520,7 +1516,7 @@ begin
          begin
             if (CurrentGroundMass > 0) then
             begin
-               OreMiningRates[Ore] := TotalMinerMaxRate * (FGroundComposition[Ore] * Encyclopedia.Materials[Ore].MassPerUnit / CurrentGroundMass);
+               OreMiningRates[Ore] := TotalMinerMaxRate * (FGroundComposition[Ore] * System.Encyclopedia.Materials[Ore].MassPerUnit / CurrentGroundMass);
             end
             else
             begin
@@ -1541,7 +1537,7 @@ begin
          {$IFOPT C+}
          for Ore in TOres do
          begin
-            Assert(OrePileCapacity / Encyclopedia.Materials[Ore].MassPerUnit < Double(High(DynastyData^.FOrePileComposition[Ore])), 'Ore pile capacity exceeds maximum individual max ore quantity for ' + Encyclopedia.Materials[Ore].Name);
+            Assert(OrePileCapacity / System.Encyclopedia.Materials[Ore].MassPerUnit < Double(High(DynastyData^.FOrePileComposition[Ore])), 'Ore pile capacity exceeds maximum individual max ore quantity for ' + System.Encyclopedia.Materials[Ore].Name);
          end;
          {$ENDIF}
          // Refinery rates
@@ -1558,7 +1554,7 @@ begin
          begin
             if (Assigned(DynastyData^.FMaterialPileComposition)) then
             begin
-               Composition := DynastyData^.FMaterialPileComposition[Encyclopedia.Materials[Ore]];
+               Composition := DynastyData^.FMaterialPileComposition[System.Encyclopedia.Materials[Ore]];
             end
             else
             begin
@@ -1611,7 +1607,7 @@ begin
          TotalMiningToRefineryRate := TRate.Zero;
          for Ore in TOres do
          begin
-            Material := Encyclopedia.Materials[Ore];
+            Material := System.Encyclopedia.Materials[Ore];
             RefiningRate := OreRefiningRates[Ore];
             if (RefiningRate.IsZero) then
             begin
@@ -1716,7 +1712,7 @@ begin
                end;
                if (OreMiningRates[Ore] < RefiningRate * Ratio) then
                begin
-                  TimeUntilThisOrePileEmpty := DynastyData^.FOrePileComposition[Ore] * Encyclopedia.Materials[Ore].MassPerUnit / (RefiningRate * Ratio - OreMiningRates[Ore]);
+                  TimeUntilThisOrePileEmpty := DynastyData^.FOrePileComposition[Ore] * System.Encyclopedia.Materials[Ore].MassPerUnit / (RefiningRate * Ratio - OreMiningRates[Ore]);
                   Assert(TimeUntilThisOrePileEmpty.IsPositive);
                end
                else
@@ -1769,7 +1765,7 @@ begin
 
          // Miners
          RemainingOrePileCapacity := OrePileCapacity - CurrentOrePileMass;
-         MinMassTransfer := GetMinOreMassTransfer(CachedSystem);
+         MinMassTransfer := GetMinOreMassTransfer();
          TimeUntilOrePilesFull := TMillisecondsDuration.Infinity;
          if (CurrentGroundMass > 0) then
          begin
@@ -1853,7 +1849,7 @@ begin
       begin
          Assert(TimeUntilNextEvent.IsPositive);
          Assert(not Assigned(FNextEvent));
-         FNextEvent := CachedSystem.ScheduleEvent(TimeUntilNextEvent, @HandleScheduledEvent, Self);
+         FNextEvent := System.ScheduleEvent(TimeUntilNextEvent, @HandleScheduledEvent, Self);
          FDynamic := True;
       end;
       FActive := True;
@@ -1862,7 +1858,7 @@ begin
       if (FDynamic) then
       begin
          if (FAnchorTime.IsInfinite) then
-            FAnchorTime := CachedSystem.Now;
+            FAnchorTime := System.Now;
       end;
    end;
    Assert(Parent.MassFlowRate.IsNearZero, '  Ended with non-zero mass flow rate: ' + Parent.MassFlowRate.ToString('kg'));
@@ -1996,11 +1992,11 @@ begin
    Result := GetTotalMaterialPileQuantityFlowRate(Dynasty, Material) * PileRatio;
 end;
 
-procedure TRegionFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
+procedure TRegionFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);
 var
    Visibility: TVisibility;
 begin
-   Visibility := Parent.ReadVisibilityFor(DynastyIndex, CachedSystem);
+   Visibility := Parent.ReadVisibilityFor(DynastyIndex);
    if ((dmDetectable * Visibility <> []) and (dmClassKnown in Visibility)) then
    begin
       Writer.WriteCardinal(fcRegion);
@@ -2009,7 +2005,7 @@ begin
    end;
 end;
 
-procedure TRegionFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
+procedure TRegionFeatureNode.UpdateJournal(Journal: TJournalWriter);
 var
    Ore: TOres;
    Material: TMaterial;
@@ -2022,7 +2018,7 @@ begin
    begin
       if (FGroundComposition[Ore] > 0) then
       begin
-         Journal.WriteMaterialReference(CachedSystem.Encyclopedia.Materials[Ore]);
+         Journal.WriteMaterialReference(System.Encyclopedia.Materials[Ore]);
          Journal.WriteUInt64(FGroundComposition[Ore]);
       end;
    end;
@@ -2036,7 +2032,7 @@ begin
       begin
          if (DynastyData^.FOrePileComposition[Ore] > 0) then
          begin
-            Journal.WriteMaterialReference(CachedSystem.Encyclopedia.Materials[Ore]);
+            Journal.WriteMaterialReference(System.Encyclopedia.Materials[Ore]);
             Journal.WriteUInt64(DynastyData^.FOrePileComposition[Ore]);
          end;
       end;
@@ -2054,7 +2050,7 @@ begin
    Journal.WriteCardinal(0); // last dynasty
 end;
 
-procedure TRegionFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
+procedure TRegionFeatureNode.ApplyJournal(Journal: TJournalReader);
 
    procedure ReadOres(var Composition: TOreQuantities);
    var

@@ -36,6 +36,9 @@ uses
 // data to the new data, snapshots the visibility data, and sets the
 // visibility data to zero.
 //
+// (TAssetNode.ResetDynastyNotes is also called after the node is
+// created, with the first argument set to nil.)
+//
 // TAssetNode.ResetVisibility just calls TFeatureNode.ResetVisibility
 // on every feature in the system, snapshots the visibility data, and
 // sets the visibility data to zero.
@@ -54,24 +57,23 @@ uses
 // features that track which materials are known by detecting
 // entities).
 //
-// To add visibility data, code uses a TVisibilityHelper which is a
-// wrapper around a pointer to the system. It has two main APIs:
+// To add visibility data, we have the following APIs on TSystem:
 //
-//  * TVisibilityHelper.AddSpecificVisibility: marks an asset as
-//    having a particular TVisibility (in addition to any that it
-//    already has). In addition, it initializes the asset's dynasty
-//    data (FDynastyNotes) if necessary, and marks the ancestor chain
-//    as having inferred visibility (by calling the same API
+//  * AddSpecificVisibility: marks an asset as having a particular
+//    TVisibility (in addition to any that it already has). In
+//    addition, it initializes the asset's dynasty data
+//    (FDynastyNotes) if necessary, and marks the ancestor chain as
+//    having inferred visibility (by calling the same API
 //    recursively).
 //
-//  * TVisibilityHelper.AddBroadVisibility adds a particular
-//    visibility for every dynasty, then marks the ancestor chain as
-//    having inferred visibility.
+//  * AddBroadVisibility adds a particular visibility for every
+//    dynasty, then marks the ancestor chain as having inferred
+//    visibility.
 //
 // TAssetNode.CheckVisibilityChanged first calls
 // TFeatureNode.CheckVisibilityChanged on all its features, then
 // checks if the visibility changed since the last update, and calls
-// MarkAsDirty as appropriate.
+// MarkAsDirty as appropriate (setting dkVisibilityDidChange).
 //
 // TAssetNode.ApplyKnowledge calls TFeatureNode.ApplyKnowledge on each
 // feature in the system. This is the mechanism to determine what is
@@ -152,17 +154,18 @@ type
    TAssetID = Cardinal; // 0 is reserved for placeholders or sentinels
 
    TDynastyNotes = record
-   {strict} private
+   strict private
       FID: TAssetID; // 4 bytes
-      FOldVisibilty, FCurrentVisibility: TVisibility; // 2 bytes each
+      FOldVisibility, FCurrentVisibility: TVisibility; // 2 bytes each
       function GetHasID(): Boolean; inline;
       function GetChanged(): Boolean; inline;
    public
+      procedure Init(const AID: TAssetID);
+      procedure InitFrom(const Other: TDynastyNotes);
       procedure Snapshot(); inline; // copies current visibility to old visibility, set current visibility to zero
-      constructor Init(const AID: TAssetID);
-      constructor InitFrom(const Other: TDynastyNotes);
       property HasID: Boolean read GetHasID;
       property AssetID: TAssetID read FID write FID;
+      {$IFOPT C+} property OldVisibility: TVisibility read FOldVisibility write FOldVisibility; {$ENDIF}
       property Visibility: TVisibility read FCurrentVisibility write FCurrentVisibility;
       property Changed: Boolean read GetChanged;
    end;
@@ -174,7 +177,7 @@ type
    PDynastyNotesPackage = ^TDynastyNotesPackage;
    TDynastyNotesPackage = packed record
       const
-         LongThreshold = 2;
+         LongThreshold = 2; // two or more dynasties get allocated on the heap; 1 uses AsShortDynasties
       type
          PDynastyNotesArray = ^TDynastyNotesArray;
          TDynastyNotesArray = packed array[0..0] of TDynastyNotes;
@@ -183,7 +186,6 @@ type
          case Integer of
             1: (AsShortDynasties: TShortDynastyNotesArray); // 1 dynasty
             2: (AsLongDynasties: PDynastyNotesArray); // 2 or more
-            3: (AsRawPointer: Pointer);
    end;
    {$IF SIZEOF(TDynastyNotesPackage) <> SIZEOF(Pointer)}
       {$FATAL TDynastyNotesPackage size error.}
@@ -219,22 +221,6 @@ type
    end;
    {$IF SIZEOF(TKnowledgeSummary) <> SIZEOF(Pointer)}
       {$FATAL TKnowledgeSummary size error.}
-   {$ENDIF}
-
-   TVisibilityHelper = record // 64 bits - frequently passed as an argument
-   strict private
-      FSystem: TSystem;
-   private
-      procedure Init(ASystem: TSystem); inline;
-   public
-      function GetDynastyIndex(Dynasty: TDynasty): Cardinal; inline;
-      procedure AddSpecificVisibility(const Dynasty: TDynasty; const Visibility: TVisibility; const Asset: TAssetNode); inline;
-      procedure AddSpecificVisibilityByIndex(const DynastyIndex: Cardinal; const Visibility: TVisibility; const Asset: TAssetNode);
-      procedure AddBroadVisibility(const Visibility: TVisibility; const Asset: TAssetNode);
-      property System: TSystem read FSystem;
-   end;
-   {$IF SIZEOF(TVisibilityHelper) <> SIZEOF(Pointer)}
-      {$FATAL TVisibilityHelper unexpectedly large.}
    {$ENDIF}
 
    TAssetChangeKind = (ckAdd, ckChange, ckEndOfList);
@@ -472,24 +458,25 @@ type
       function GetFeatureNodeClass(): FeatureNodeReference; virtual; abstract;
    public
       constructor CreateFromTechnologyTree(Reader: TTechTreeReader); virtual; abstract;
-      function InitFeatureNode(): TFeatureNode; virtual; abstract;
+      function InitFeatureNode(ASystem: TSystem): TFeatureNode; virtual; abstract;
       property FeatureNodeClass: FeatureNodeReference read GetFeatureNodeClass;
    end;
 
    TDirtyKind = (
-      dkNew, // this asset node is newly created (set automatically; do not use directly) [1]
+      dkVisibilityNew, // this asset node is newly created, and ResetDynastyNotes needs to be called (with a nil first argument) [1]
+      dkDescendantsVisibilityNew, // one or more of the descendants has dkVisibilityNew set [2]
       dkNeedsHandleChanges, // the node wants HandleChanges to be called [1]
       dkDescendantNeedsHandleChanges, // one of the node's descendants has dkNeedsHandleChanges set [2]
       dkUpdateClients, // this asset node is dirty and we need to update the client [1] // TODO: audit uses of this now that it has a specific meaning
       dkDescendantUpdateClients, // one or more of the descendants has dkUpdateClients set [2]
       dkUpdateJournal, // this asset node is dirty and we need to update the journal( // TODO: audit uses of this now that it has a specific meaning
       dkDescendantUpdateJournal, // one or more of the descendants has dkUpdateJournal set [2]
-      dkChildren, // this asset's node's children changed in some way (were added, moved, or removed)
-      dkDescendants, // one or more of the descendants has dkChildren set [2]
+      dkJournalNew, // this asset node is newly created, asset will be added to the journal using jcNewAsset [1]
+      dkChildren, // this asset's node's children changed in some way [1][2]
       dkAffectsNames, // the asset's name changed [1]
       dkChildAffectsNames, // a child's name changed [1][2]
-      dkVisibilityDidChange, // one or more dynasties changed whether they can see this node (handled by CheckVisibilityChanged)
-      dkAffectsVisibility, // system needs to redo a visibility scan // TODO: clarify how this differs from dkVisibilityDidChange
+      dkAffectsVisibility, // system needs to redo a visibility scan
+      dkVisibilityDidChange, // one or more dynasties changed whether they can see this node (set during CheckVisibilityChanged)
       dkAffectsDynastyCount, // system needs to redo a dynasty census (requires dkAffectsVisibility)
       dkAffectsKnowledge // any nodes caching knowledge of descendants should reset caches
    );
@@ -499,11 +486,14 @@ type
 
 const
    dkNewNode = [ // initial dirty flags used on creation
-      dkNew, dkNeedsHandleChanges, dkUpdateClients, dkUpdateJournal, dkVisibilityDidChange, dkAffectsVisibility, dkAffectsDynastyCount, dkAffectsKnowledge,
-      dkDescendantNeedsHandleChanges, dkDescendantUpdateClients // TODO: remove these two
+      dkJournalNew, dkVisibilityNew,
+      dkNeedsHandleChanges, dkUpdateClients, dkUpdateJournal,
+      dkVisibilityDidChange, dkAffectsVisibility, dkAffectsKnowledge,
+      dkDescendantNeedsHandleChanges, dkDescendantUpdateClients, dkDescendantUpdateJournal
+      // dkAffectsDynastyCount is set conditionally
    ];
    dkAffectsTreeStructure = [ // set on old/new parents when child's parent changes
-      dkAffectsVisibility, dkAffectsKnowledge, dkVisibilityDidChange, dkUpdateClients, dkUpdateJournal, dkChildren, dkChildAffectsNames
+      dkAffectsVisibility, dkAffectsKnowledge, dkUpdateClients, dkUpdateJournal, dkChildren, dkChildAffectsNames
    ];
 
 type
@@ -527,6 +517,7 @@ type
          TArray = array of TFeatureNode;
    strict private
       FParent: TAssetNode;
+      FSystem: TSystem;
    private
       procedure SetParent(Asset: TAssetNode); inline;
       function GetParent(): TAssetNode; inline;
@@ -552,20 +543,22 @@ type
       function ManageBusMessage(Message: TBusMessage): TBusMessageResult; virtual; // (consider sending message down the tree) returns true if feature was a bus for this message or should stop propagation
       function DeferOrManageBusMessage(Message: TBusMessage): TBusMessageResult; // convenience function for ManageBusMessage that tries to inject it higher, and if that rejects, has the asset handle it (typically used for management buses)
       function HandleBusMessage(Message: TBusMessage): Boolean; virtual; // (send message down the tree) returns true if feature handled the message or should stop propagation
-      procedure ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynastyHashSet; CachedSystem: TSystem); virtual;
-      procedure ResetVisibility(CachedSystem: TSystem); virtual;
-      procedure ApplyVisibility(const VisibilityHelper: TVisibilityHelper); virtual;
-      procedure HandleVisibility(const DynastyIndex: Cardinal; var Visibility: TVisibility; const VisibilityHelper: TVisibilityHelper); virtual;
-      procedure CheckVisibilityChanged(VisibilityHelper: TVisibilityHelper); virtual;
-      procedure ApplyKnowledge(const VisibilityHelper: TVisibilityHelper); virtual;
-      procedure HandleKnowledge(const DynastyIndex: Cardinal; const VisibilityHelper: TVisibilityHelper; const Sensors: ISensorsProvider); virtual;
-      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); virtual;
-      procedure HandleChanges(CachedSystem: TSystem); virtual;
+      procedure ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynasty.TArray); virtual; // OldDynasties is nil the first time this is called
+      procedure ResetVisibility(); virtual;
+      procedure ApplyVisibility(); virtual;
+      procedure HandleVisibility(const DynastyIndex: Cardinal; var Visibility: TVisibility); virtual;
+      procedure CheckVisibilityChanged(); virtual;
+      procedure ApplyKnowledge(); virtual;
+      procedure HandleKnowledge(const DynastyIndex: Cardinal; const Sensors: ISensorsProvider); virtual;
+      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); virtual;
+      procedure HandleChanges(); virtual;
       property System: TSystem read GetSystem;
    public
+      constructor Create(ASystem: TSystem);
+      constructor Create(); unimplemented;
       destructor Destroy(); override;
-      procedure UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem); virtual;
-      procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); virtual;
+      procedure UpdateJournal(Journal: TJournalWriter); virtual;
+      procedure ApplyJournal(Journal: TJournalReader); virtual;
       function HandleCommand(Command: UTF8String; var Message: TMessage): Boolean; virtual;
       procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); virtual;
       property Mass: Double read GetMass; // kg
@@ -596,15 +589,15 @@ type
    public
       constructor Create(AID: TAssetClassID; AName, AAmbiguousName, ADescription: UTF8String; AFeatures: TFeatureClass.TArray; AIcon: TIcon; ABuildEnvironments: TBuildEnvironments);
       destructor Destroy(); override;
-      function SpawnFeatureNodes(): TFeatureNode.TArray; // some feature nodes _can't_ be spawned this way (e.g. TAssetNameFeatureNode)
-      function SpawnFeatureNodesFromJournal(Journal: TJournalReader; CachedSystem: TSystem): TFeatureNode.TArray;
-      procedure ApplyFeatureNodesFromJournal(Journal: TJournalReader; AssetNode: TAssetNode; CachedSystem: TSystem);
-      function Spawn(AOwner: TDynasty): TAssetNode; overload;
-      function Spawn(AOwner: TDynasty; AFeatures: TFeatureNode.TArray): TAssetNode; overload;
+      function SpawnFeatureNodes(ASystem: TSystem): TFeatureNode.TArray; // some feature nodes _can't_ be spawned this way (e.g. TAssetNameFeatureNode)
+      function SpawnFeatureNodesFromJournal(Journal: TJournalReader; System: TSystem): TFeatureNode.TArray;
+      procedure ApplyFeatureNodesFromJournal(Journal: TJournalReader; AssetNode: TAssetNode);
+      function Spawn(AOwner: TDynasty; ASystem: TSystem): TAssetNode; overload;
+      function Spawn(AOwner: TDynasty; ASystem: TSystem; AFeatures: TFeatureNode.TArray): TAssetNode; overload;
    public // encoded in knowledge
       procedure Serialize(Writer: TStringStreamWriter); overload;
       procedure Serialize(Writer: TServerStreamWriter); overload;
-      procedure SerializeFor(AssetNode: TAssetNode; DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
+      procedure SerializeFor(AssetNode: TAssetNode; DynastyIndex: Cardinal; Writer: TServerStreamWriter);
       function CanBuild(BuildEnvironment: TBuildEnvironment): Boolean;
       property Features[Index: Cardinal]: TFeatureClass read GetFeature;
       property FeatureCount: Cardinal read GetFeatureCount;
@@ -639,14 +632,14 @@ type
          AttachedBit = $01;
       var
          FParent: PtrUInt; // TFeatureNode with top bit tracking attachment status
+         FSystem: TSystem;
    strict protected
       FAssetClass: TAssetClass;
       FOwner: TDynasty; // TODO: if this changes value, some features are going to get very confused (e.g. the builder bus)
       FFeatures: TFeatureNode.TArray;
    protected
       FDirty: TDirtyKinds;
-      FDynastyNotes: TDynastyNotesPackage; // TDynastyNotesPackage is a 64 bit record, not a pointer to heap-allocated data
-      constructor Create(AAssetClass: TAssetClass; AOwner: TDynasty; AFeatures: TFeatureNode.TArray);
+      FDynastyNotes: TDynastyNotesPackage; // TDynastyNotesPackage is 64 bits for one dynasty, and a pointer into the heap for more than one
       function GetFeature(Index: Cardinal): TFeatureNode;
       function GetMass(): Double; // kg
       function GetMassFlowRate(): TRate; // kg/s
@@ -662,32 +655,33 @@ type
       function GetParent(): TFeatureNode; inline;
       function GetHasParent(): Boolean; inline;
       function GetIsAttached(): Boolean; virtual;
-      procedure UpdateID(CachedSystem: TSystem; DynastyIndex: Cardinal; ID: TAssetID); // used from ApplyJournal
+      procedure UpdateID(DynastyIndex: Cardinal; ID: TAssetID); // used from ApplyJournal
       function GetSystem(): TSystem; virtual;
    public
       ParentData: Pointer;
-      constructor Create(Journal: TJournalReader; ASystem: TSystem);
       constructor Create(); unimplemented;
+      constructor Create(ASystem: TSystem; AAssetClass: TAssetClass; AOwner: TDynasty; AFeatures: TFeatureNode.TArray);
+      constructor CreateFromJournal(ASystem: TSystem; Journal: TJournalReader);
       destructor Destroy(); override;
       procedure ReportPermanentlyGone();
       function GetFeatureByClass(FeatureClass: FeatureClassReference): TFeatureNode; // returns nil if feature is absent
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback);
       function InjectBusMessage(Message: TBusMessage): TBusMessageResult; // called by a node to send a message up the tree to a bus (ManageBusMessage); returns true if bus was found
       function HandleBusMessage(Message: TBusMessage): Boolean; // called by a bus (ManageBusMessage) to send a message down the tree; returs true if message was handled
-      procedure ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynastyHashSet; CachedSystem: TSystem);
-      procedure ResetVisibility(CachedSystem: TSystem);
-      procedure ApplyVisibility(const VisibilityHelper: TVisibilityHelper);
-      procedure HandleVisibility(const DynastyIndex: Cardinal; var Visibility: TVisibility; const VisibilityHelper: TVisibilityHelper);
-      procedure CheckVisibilityChanged(VisibilityHelper: TVisibilityHelper);
-      procedure ApplyKnowledge(const VisibilityHelper: TVisibilityHelper);
-      procedure HandleKnowledge(const DynastyIndex: Cardinal; const VisibilityHelper: TVisibilityHelper; const Sensors: ISensorsProvider);
-      function ReadVisibilityFor(DynastyIndex: Cardinal; CachedSystem: TSystem): TVisibility; inline;
-      function IsVisibleFor(DynastyIndex: Cardinal; CachedSystem: TSystem): Boolean; inline;
-      procedure HandleChanges(CachedSystem: TSystem);
-      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
-      procedure UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
-      procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
-      function ID(CachedSystem: TSystem; DynastyIndex: Cardinal; AllowZero: Boolean = False): TAssetID;
+      procedure ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynasty.TArray); // OldDynasties is nil the first time this is called
+      procedure ResetVisibility();
+      procedure ApplyVisibility();
+      procedure HandleVisibility(const DynastyIndex: Cardinal; var Visibility: TVisibility);
+      procedure CheckVisibilityChanged();
+      procedure ApplyKnowledge();
+      procedure HandleKnowledge(const DynastyIndex: Cardinal; const Sensors: ISensorsProvider);
+      function ReadVisibilityFor(DynastyIndex: Cardinal): TVisibility; inline;
+      function IsVisibleFor(DynastyIndex: Cardinal): Boolean; inline;
+      procedure HandleChanges();
+      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);
+      procedure UpdateJournal(Journal: TJournalWriter);
+      procedure ApplyJournal(Journal: TJournalReader);
+      function ID(DynastyIndex: Cardinal; AllowZero: Boolean = False): TAssetID;
       procedure HandleCommand(Command: UTF8String; var Message: TMessage);
       function IsReal(): Boolean;
       property Parent: TFeatureNode read GetParent;
@@ -734,7 +728,7 @@ type
       FNextEventHandle: PEvent;
       FCurrentEventTime, FLastTime: TTimeInMilliseconds;
       FDynastyDatabase: TDynastyDatabase;
-      FDynasties: array of TDynasty; // in index order
+      FDynasties: TDynasty.TArray; // in index order
       FEncyclopedia: TEncyclopediaView;
       FConfigurationDirectory: UTF8String;
       FSystemID: Cardinal;
@@ -747,13 +741,13 @@ type
       procedure Init(AConfigurationDirectory: UTF8String; ASystemID: Cardinal; ARootClass: TAssetClass; AServer: TBaseServer; ADynastyDatabase: TDynastyDatabase; AEncyclopedia: TEncyclopediaView; AOnScoreDirty: TScoreDirtyCallback);
       procedure ApplyJournal(FileName: UTF8String);
       procedure OpenJournal(FileName: UTF8String);
-      procedure RecordUpdate();
+      procedure RecordUpdate(DynastyCountChanged: Boolean);
       function GetDirty(): Boolean;
       procedure Clean();
       function GetIsLongVisibilityMode(): Boolean; inline;
       procedure UnwindDynastyNotesArenas(Arena: Pointer);
       procedure UpdateDynastyList(MaintainMaxIDs: Boolean);
-      procedure RecomputeVisibility();
+      procedure RecomputeVisibility(DynastyCountChanged, HaveNewNodes: Boolean);
       procedure RunEvent(var Data);
       procedure ScheduleNextEvent();
       procedure RescheduleNextEvent(); // call this when the time factor changes
@@ -763,16 +757,17 @@ type
       function GetDynastyIndex(Dynasty: TDynasty): Cardinal; inline;
       function GetDynastyByIndex(Index: Cardinal): TDynasty; inline;
    private
-      FDynastyIndices: TDynastyIndexHashTable; // for index into visibility tables; used by TVisibilityHelper
-      FDynastyMaxAssetIDs: array of TAssetID; // used by TVisibilityHelper
-      FDynastyNotesBuffer: Pointer; // used by TVisibilityHelper // pointer to an arena that ends with a pointer to the next arena (or nil); size is N*M+8 bytes, where N=dynasty count and M=size of TDynastyNotes
-      FDynastyNotesOffset: Cardinal; // used by TVisibilityHelper
+      FDynastyIndices: TDynastyIndexHashTable; // for index into visibility tables
+      FDynastyMaxAssetIDs: array of TAssetID;
+      FDynastyNotesBuffer: Pointer; // pointer to an arena that ends with a pointer to the next arena (or nil); size is N*M+8 bytes, where N=dynasty count and M=size of TDynastyNotes
+      FDynastyNotesOffset: Cardinal;
       FJournalFile: File; // used by TJournalReader/TJournalWriter
       FJournalWriter: TJournalWriter;
       procedure CancelEvent(Event: TSystemEvent);
       procedure ReportChildIsPermanentlyGone(Child: TAssetNode);
    protected
       procedure MarkAsDirty(DirtyKinds: TDirtyKinds);
+      function AllocateFromDynastyNotesArena(Size: SizeInt): Pointer;
    public
       constructor Create(AConfigurationDirectory: UTF8String; ASystemID: Cardinal; AX, AY: Double; ARootClass: TAssetClass; AServer: TBaseServer; ADynastyDatabase: TDynastyDatabase; AEncyclopedia: TEncyclopediaView; Settings: PSettings; AOnScoreDirty: TScoreDirtyCallback);
       constructor CreateFromDisk(AConfigurationDirectory: UTF8String; ASystemID: Cardinal; ARootClass: TAssetClass; AServer: TBaseServer; ADynastyDatabase: TDynastyDatabase; AEncyclopedia: TEncyclopediaView; AOnScoreDirty: TScoreDirtyCallback);
@@ -780,6 +775,7 @@ type
       function SerializeSystem(Dynasty: TDynasty; Writer: TServerStreamWriter; DirtyOnly: Boolean): Boolean; // true if anything was dkUpdateClients dirty
       procedure ReportChanges();
       function HasDynasty(Dynasty: TDynasty): Boolean; inline;
+      function SubtreeHasNewDynasty(Child: TAssetNode): Boolean;
       function ComputeScoreFor(Dynasty: TDynasty): Double;
       function ScheduleEvent(TimeDelta: TMillisecondsDuration; Callback: TEventCallback; var Data): TSystemEvent;
       function TimeUntilNext(TimeOrigin: TTimeInMilliseconds; Period: TMillisecondsDuration): TMillisecondsDuration;
@@ -798,6 +794,10 @@ type
       property Journal: TJournalWriter read FJournalWriter;
       property Now: TTimeInMilliseconds read GetNow;
       property TimeFactor: TTimeFactor read FTimeFactor; // if this ever supports being changed, we need to be super careful about code that checks Now around the time it updates (e.g. to write a time to disk, read it back from disk, etc), and need to make sure Now doesn't ever go backwards or forwards in time discontinuously
+   public // Visibility API
+      procedure AddSpecificVisibility(const Dynasty: TDynasty; const Visibility: TVisibility; const Asset: TAssetNode); inline;
+      procedure AddSpecificVisibilityByIndex(const Index: Cardinal; const Visibility: TVisibility; const Asset: TAssetNode);
+      procedure AddBroadVisibility(const Visibility: TVisibility; const Asset: TAssetNode);
    end;
 
 function ResearchIDHash32(const Key: TResearchID): DWord;
@@ -824,28 +824,29 @@ begin
    end;
    if (dkUpdateJournal in Result) then
    begin
+      Exclude(Result, dkJournalNew); // may or may not be present
       Exclude(Result, dkUpdateJournal);
       Include(Result, dkDescendantUpdateJournal);
    end;
+   Assert(not (dkJournalNew in Result)); // it should only be set if dkUpdateJournal is set
    if (dkUpdateClients in Result) then
    begin
       Exclude(Result, dkUpdateClients);
       Include(Result, dkDescendantUpdateClients);
-      // TODO: have a descendant version of just this
-      if (dkVisibilityDidChange in Result) then // TODO: consider removing this as it seems overly complicated.
-      begin
-         Include(Result, dkNeedsHandleChanges); // TODO: we only do this for food, apparently. we should move this logic to the food feature using ParentMarkedAsDirty
-      end;
+   end;
+   if (dkVisibilityDidChange in Result) then
+   begin
+      Include(Result, dkUpdateClients);
+      Exclude(Result, dkVisibilityDidChange);
+   end;
+   if (dkVisibilityNew in Result) then
+   begin
+      Exclude(Result, dkVisibilityNew);
+      Include(Result, dkDescendantsVisibilityNew);
    end;
    if (dkChildren in Result) then
    begin
       Exclude(Result, dkChildren);
-      Include(Result, dkDescendants);
-   end;
-   if (dkNew in Result) then
-   begin
-      Exclude(Result, dkNew);
-      Include(Result, dkChildren);
    end;
    if (dkChildAffectsNames in Result) then
    begin
@@ -858,18 +859,33 @@ begin
    end;
 end;
 
+
 type
    TRootAssetNode = class(TAssetNode)
    private
       function GetIsAttached(): Boolean; override;
    protected
-      FSystem: TSystem;
-      function GetSystem(): TSystem; override;
       procedure MarkAsDirty(DirtyKinds: TDirtyKinds); override;
       procedure ReportChildIsPermanentlyGone(Child: TAssetNode); override;
-   public
-      constructor Create(AAssetClass: TAssetClass; ASystem: TSystem; AFeatures: TFeatureNode.TArray);
    end;
+
+function TRootAssetNode.GetIsAttached(): Boolean;
+begin
+   Result := True;
+end;
+
+procedure TRootAssetNode.MarkAsDirty(DirtyKinds: TDirtyKinds);
+begin
+   inherited;
+   System.MarkAsDirty(UpdateDirtyKindsForAncestor(DirtyKinds));
+end;
+
+procedure TRootAssetNode.ReportChildIsPermanentlyGone(Child: TAssetNode);
+begin
+   Assert(not Assigned(Parent));
+   System.ReportChildIsPermanentlyGone(Child);
+end;
+
 
 function AssetClassHash32(const Key: TAssetClass): DWord;
 begin
@@ -1142,36 +1158,43 @@ end;
 function TJournalReader.ReadBoolean(): Boolean;
 begin
    BlockRead(FSystem.FJournalFile, Result, SizeOf(Result)); {BOGUS Hint: Function result variable does not seem to be initialized}
+   {$IFDEF VERBOSE_JOURNAL} Writeln('ReadBoolean: ', Result); {$ENDIF}
 end;
 
 function TJournalReader.ReadCardinal(): Cardinal;
 begin
    BlockRead(FSystem.FJournalFile, Result, SizeOf(Result)); {BOGUS Hint: Function result variable does not seem to be initialized}
+   {$IFDEF VERBOSE_JOURNAL} Writeln('ReadCardinal: ', Result, ' $', HexStr(Result, 8)); {$ENDIF}
 end;
 
 function TJournalReader.ReadInt32(): Int32;
 begin
    BlockRead(FSystem.FJournalFile, Result, SizeOf(Result)); {BOGUS Hint: Function result variable does not seem to be initialized}
+   {$IFDEF VERBOSE_JOURNAL} Writeln('ReadInt32: ', Result); {$ENDIF}
 end;
 
 function TJournalReader.ReadInt64(): Int64;
 begin
    BlockRead(FSystem.FJournalFile, Result, SizeOf(Result)); {BOGUS Hint: Function result variable does not seem to be initialized}
+   {$IFDEF VERBOSE_JOURNAL} Writeln('ReadInt64: ', Result); {$ENDIF}
 end;
 
 function TJournalReader.ReadUInt64(): UInt64;
 begin
    BlockRead(FSystem.FJournalFile, Result, SizeOf(Result)); {BOGUS Hint: Function result variable does not seem to be initialized}
+   {$IFDEF VERBOSE_JOURNAL} Writeln('ReadUInt64: ', Result); {$ENDIF}
 end;
 
 function TJournalReader.ReadPtrUInt(): PtrUInt;
 begin
    BlockRead(FSystem.FJournalFile, Result, SizeOf(Result)); {BOGUS Hint: Function result variable does not seem to be initialized}
+   {$IFDEF VERBOSE_JOURNAL} Writeln('ReadPtrUInt: ', Result, ' $', HexStr(Result, 16)); {$ENDIF}
 end;
 
 function TJournalReader.ReadDouble(): Double;
 begin
    BlockRead(FSystem.FJournalFile, Result, SizeOf(Result)); {BOGUS Hint: Function result variable does not seem to be initialized}
+   {$IFDEF VERBOSE_JOURNAL} Writeln('ReadDouble: ', Result); {$ENDIF}
 end;
 
 function TJournalReader.ReadString(): UTF8String;
@@ -1182,11 +1205,13 @@ begin
    SetLength(Result, Size); {BOGUS Hint: Function result variable of a managed type does not seem to be initialized}
    if (Size > 0) then
       BlockRead(FSystem.FJournalFile, Result[1], Size);
+   {$IFDEF VERBOSE_JOURNAL} Writeln('ReadString: ', Result); {$ENDIF}
 end;
 
 function TJournalReader.ReadAssetChangeKind(): TAssetChangeKind;
 begin
    BlockRead(FSystem.FJournalFile, Result, SizeOf(Result)); {BOGUS Hint: Function result variable does not seem to be initialized}
+   {$IFDEF VERBOSE_JOURNAL} Writeln('ReadAssetChangeKind: ', specialize EnumToString<TAssetChangeKind>(Result)); {$ENDIF}
 end;
 
 function TJournalReader.ReadAssetNodeReference(): TAssetNode;
@@ -1196,12 +1221,19 @@ begin
    ID := ReadPtrUInt();
    if (ID > 0) then
    begin
-      Assert(FAssetMap.Has(ID));
+      Assert(FAssetMap.Has(ID), 'Asset was never declared: ');
       Result := FAssetMap[ID];
+      {$IFDEF VERBOSE_JOURNAL}
+      if (Assigned(Result)) then
+         Writeln('ReadAssetNodeReference: ', Result.DebugName)
+      else
+         Writeln('ReadAssetNodeReference: nil UNEXPECTED');
+      {$ENDIF};
    end
    else
    begin
       Result := nil;
+      {$IFDEF VERBOSE_JOURNAL} Writeln('ReadAssetNodeReference: nil'); {$ENDIF}
    end;
 end;
 
@@ -1214,9 +1246,18 @@ begin
    if (ID <> 0) then
    begin
       Result := FSystem.Encyclopedia.AssetClasses[ID];
+      {$IFDEF VERBOSE_JOURNAL}
+      if (Assigned(Result)) then
+         Writeln('ReadAssetClassReference: ', Result.Name)
+      else
+         Writeln('ReadAssetClassReference: nil UNEXPECTED');
+      {$ENDIF}
    end
    else
+   begin
       Result := nil;
+      {$IFDEF VERBOSE_JOURNAL} Writeln('ReadAssetClassReference: nil'); {$ENDIF}
+   end;
 end;
 
 function TJournalReader.ReadDynastyReference(): TDynasty;
@@ -1227,10 +1268,12 @@ begin
    if (ID > 0) then
    begin
       Result := FSystem.DynastyDatabase.GetDynastyFromDisk(ID);
+      {$IFDEF VERBOSE_JOURNAL} Writeln('ReadDynastyReference: ', Result.DynastyID); {$ENDIF}
    end
    else
    begin
       Result := nil;
+      {$IFDEF VERBOSE_JOURNAL} Writeln('ReadDynastyReference: nil'); {$ENDIF}
    end;
 end;
 
@@ -1241,6 +1284,7 @@ begin
    Assert(SizeOf(Cardinal) = SizeOf(TMaterialID));
    ID := TMaterialID(ReadCardinal());
    Result := FSystem.Encyclopedia.Materials[ID];
+   {$IFDEF VERBOSE_JOURNAL} Writeln('ReadMaterialReference: ', Result.Name); {$ENDIF}
 end;
 
 
@@ -1351,12 +1395,27 @@ end;
 constructor TFeatureNode.CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem);
 begin
    inherited Create();
+   Assert(Assigned(ASystem));
+   FSystem := ASystem;
    try
-      ApplyJournal(Journal, ASystem);
+      ApplyJournal(Journal);
    except
       ReportCurrentException();
       raise;
    end;
+end;
+
+constructor TFeatureNode.Create(ASystem: TSystem);
+begin
+   inherited Create();
+   Assert(Assigned(ASystem));
+   FSystem := ASystem;
+end;
+
+constructor TFeatureNode.Create();
+begin
+   Writeln('Invalid constructor call for ', ClassName, '.');
+   raise Exception.Create('Invalid constructor call');
 end;
 
 procedure TFeatureNode.SetParent(Asset: TAssetNode);
@@ -1375,8 +1434,8 @@ end;
 
 function TFeatureNode.GetSystem(): TSystem;
 begin
-   Assert(Assigned(FParent), 'Missing parent on ' + ClassName);
-   Result := FParent.System;
+   Assert(Assigned(FSystem));
+   Result := FSystem;
 end;
 
 function TFeatureNode.GetIsAttached(): Boolean;
@@ -1405,7 +1464,8 @@ begin
    Assert(not Assigned(Child.ParentData)); // DropChild is responsible for freeing it; subclass is responsible for allocating this after calling us
    Child.SetParent(Self);
    DirtyKinds := dkAffectsTreeStructure + UpdateDirtyKindsForAncestor(Child.Dirty);
-   Include(DirtyKinds, dkAffectsDynastyCount); // TODO: only do this if new subtree contains any dynasties that aren't in the rest of the system
+   if (System.SubtreeHasNewDynasty(Child)) then
+      Include(DirtyKinds, dkAffectsDynastyCount);
    MarkAsDirty(DirtyKinds);
 end;
 
@@ -1418,7 +1478,7 @@ begin
    Child.SetParent(nil);
    Assert(not Assigned(Child.ParentData)); // subclass is responsible for freeing child's parent data before calling us
    DirtyKinds := dkAffectsTreeStructure;
-   Include(DirtyKinds, dkAffectsDynastyCount); // TODO: find a way to skip this if System.HasDynasty(Child.Owner) - but while reading journal, we don't have the system
+   // TODO: should detect when a dynasty is gone entirely, and set dkAffectsDynastyCount
    MarkAsDirty(DirtyKinds);
 end;
 
@@ -1497,47 +1557,47 @@ begin
    end;
 end;
 
-procedure TFeatureNode.ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynastyHashSet; CachedSystem: TSystem);
+procedure TFeatureNode.ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynasty.TArray);
 begin
 end;
 
-procedure TFeatureNode.ResetVisibility(CachedSystem: TSystem);
+procedure TFeatureNode.ResetVisibility();
 begin
 end;
 
-procedure TFeatureNode.ApplyVisibility(const VisibilityHelper: TVisibilityHelper);
+procedure TFeatureNode.ApplyVisibility();
 begin
 end;
 
-procedure TFeatureNode.HandleVisibility(const DynastyIndex: Cardinal; var Visibility: TVisibility; const VisibilityHelper: TVisibilityHelper);
+procedure TFeatureNode.HandleVisibility(const DynastyIndex: Cardinal; var Visibility: TVisibility);
 begin
 end;
 
-procedure TFeatureNode.CheckVisibilityChanged(VisibilityHelper: TVisibilityHelper);
+procedure TFeatureNode.CheckVisibilityChanged();
 begin
 end;
 
-procedure TFeatureNode.ApplyKnowledge(const VisibilityHelper: TVisibilityHelper);
+procedure TFeatureNode.ApplyKnowledge();
 begin
 end;
 
-procedure TFeatureNode.HandleKnowledge(const DynastyIndex: Cardinal; const VisibilityHelper: TVisibilityHelper; const Sensors: ISensorsProvider);
+procedure TFeatureNode.HandleKnowledge(const DynastyIndex: Cardinal; const Sensors: ISensorsProvider);
 begin
 end;
 
-procedure TFeatureNode.HandleChanges(CachedSystem: TSystem);
+procedure TFeatureNode.HandleChanges();
 begin
 end;
 
-procedure TFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
+procedure TFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);
 begin
 end;
 
-procedure TFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
+procedure TFeatureNode.UpdateJournal(Journal: TJournalWriter);
 begin
 end;
 
-procedure TFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
+procedure TFeatureNode.ApplyJournal(Journal: TJournalReader);
 begin
 end;
 
@@ -1552,7 +1612,7 @@ end;
 
 function TFeatureNode.GetDebugName(): UTF8String;
 begin
-   if (Assigned(Parent)) then
+   if (Assigned(FParent)) then
    begin
       Result := Parent.DebugName + '-<' + ClassName + ' ' + '@' + HexStr(Self) + '>';
    end
@@ -1604,7 +1664,7 @@ begin
    Result := Length(FFeatures); // $R-
 end;
 
-function TAssetClass.SpawnFeatureNodes(): TFeatureNode.TArray;
+function TAssetClass.SpawnFeatureNodes(ASystem: TSystem): TFeatureNode.TArray;
 var
    FeatureNodes: TFeatureNode.TArray;
    Index: Cardinal;
@@ -1612,11 +1672,11 @@ begin
    SetLength(FeatureNodes, Length(FFeatures));
    if (Length(FeatureNodes) > 0) then
       for Index := 0 to High(FFeatures) do // $R-
-         FeatureNodes[Index] := FFeatures[Index].InitFeatureNode();
+         FeatureNodes[Index] := FFeatures[Index].InitFeatureNode(ASystem);
    Result := FeatureNodes;
 end;
 
-function TAssetClass.SpawnFeatureNodesFromJournal(Journal: TJournalReader; CachedSystem: TSystem): TFeatureNode.TArray;
+function TAssetClass.SpawnFeatureNodesFromJournal(Journal: TJournalReader; System: TSystem): TFeatureNode.TArray;
 var
    Index, FallbackIndex: Cardinal;
    Value: Cardinal;
@@ -1631,7 +1691,7 @@ begin
             jcStartOfFeature:
                begin
                   {$IFDEF DEBUG} HeapInfo := SetHeapInfoTruncated(FFeatures[Index].FeatureNodeClass.ClassName); {$ENDIF}
-                  Result[Index] := FFeatures[Index].FeatureNodeClass.CreateFromJournal(Journal, FFeatures[Index], CachedSystem);
+                  Result[Index] := FFeatures[Index].FeatureNodeClass.CreateFromJournal(Journal, FFeatures[Index], System);
                   {$IFDEF DEBUG} SetHeapInfo(HeapInfo); {$ENDIF}
                   if (Journal.ReadCardinal() <> jcEndOfFeature) then
                   begin
@@ -1643,7 +1703,7 @@ begin
                   for FallbackIndex := Index to High(FFeatures) do // $R-
                   begin
                      Writeln('Migrating asset class ', FName, '; using default values for ', FFeatures[Index].ClassName);
-                     Result[Index] := FFeatures[Index].InitFeatureNode(); // this will fail for some features nodes...
+                     Result[Index] := FFeatures[Index].InitFeatureNode(System); // this will fail for some features nodes...
                   end;
                   exit;
                end;
@@ -1659,7 +1719,7 @@ begin
    end;
 end;
 
-procedure TAssetClass.ApplyFeatureNodesFromJournal(Journal: TJournalReader; AssetNode: TAssetNode; CachedSystem: TSystem);
+procedure TAssetClass.ApplyFeatureNodesFromJournal(Journal: TJournalReader; AssetNode: TAssetNode);
 var
    Index: Cardinal;
    Value: Cardinal;
@@ -1671,7 +1731,7 @@ begin
          case (Journal.ReadCardinal()) of
             jcStartOfFeature:
                begin
-                  AssetNode.Features[Index].ApplyJournal(Journal, CachedSystem);
+                  AssetNode.Features[Index].ApplyJournal(Journal);
                   if (Journal.ReadCardinal() <> jcEndOfFeature) then
                   begin
                      raise EJournalError.Create('missing end of feature marker (0x' + HexStr(jcEndOfFeature, 8) + ')');
@@ -1691,14 +1751,14 @@ begin
    end;
 end;
 
-function TAssetClass.Spawn(AOwner: TDynasty): TAssetNode;
+function TAssetClass.Spawn(AOwner: TDynasty; ASystem: TSystem): TAssetNode;
 begin
-   Result := TAssetNode.Create(Self, AOwner, SpawnFeatureNodes());
+   Result := TAssetNode.Create(ASystem, Self, AOwner, SpawnFeatureNodes(ASystem));
 end;
 
-function TAssetClass.Spawn(AOwner: TDynasty; AFeatures: TFeatureNode.TArray): TAssetNode;
+function TAssetClass.Spawn(AOwner: TDynasty; ASystem: TSystem; AFeatures: TFeatureNode.TArray): TAssetNode;
 begin
-   Result := TAssetNode.Create(Self, AOwner, AFeatures);
+   Result := TAssetNode.Create(ASystem, Self, AOwner, AFeatures);
 end;
 
 procedure TAssetClass.Serialize(Writer: TStringStreamWriter);
@@ -1717,14 +1777,14 @@ begin
    Writer.WriteStringReference(FDescription);
 end;
 
-procedure TAssetClass.SerializeFor(AssetNode: TAssetNode; DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
+procedure TAssetClass.SerializeFor(AssetNode: TAssetNode; DynastyIndex: Cardinal; Writer: TServerStreamWriter);
 var
    Visibility: TVisibility;
    ReportedClassID: TAssetClassID;
    Detectable, Recognizable: Boolean;
    ReportedIcon, ReportedName, ReportedDescription: UTF8String;
 begin
-   Visibility := AssetNode.ReadVisibilityFor(DynastyIndex, CachedSystem);
+   Visibility := AssetNode.ReadVisibilityFor(DynastyIndex);
    Detectable := dmDetectable * Visibility <> [];
    Recognizable := dmClassKnown in Visibility;
    // TODO: optionally get the description from the node rather than the class
@@ -1767,12 +1827,14 @@ begin
 end;
 
 
-constructor TAssetNode.Create(AAssetClass: TAssetClass; AOwner: TDynasty; AFeatures: TFeatureNode.TArray);
+constructor TAssetNode.Create(ASystem: TSystem; AAssetClass: TAssetClass; AOwner: TDynasty; AFeatures: TFeatureNode.TArray);
 var
    Feature: TFeatureNode;
 begin
    inherited Create();
+   Assert(Assigned(ASystem));
    try
+      FSystem := ASystem;
       FAssetClass := AAssetClass;
       FOwner := AOwner;
       if (Assigned(FOwner)) then
@@ -1788,11 +1850,13 @@ begin
    end;
 end;
 
-constructor TAssetNode.Create(Journal: TJournalReader; ASystem: TSystem);
+constructor TAssetNode.CreateFromJournal(ASystem: TSystem; Journal: TJournalReader);
 begin
    inherited Create();
+   Assert(Assigned(ASystem));
    try
-      ApplyJournal(Journal, ASystem);
+      FSystem := ASystem;
+      ApplyJournal(Journal);
       FDirty := dkNewNode;
    except
       ReportCurrentException();
@@ -1956,7 +2020,8 @@ var
    Feature: TFeatureNode;
    NewFlags: TDirtyKinds;
 begin
-   Assert(not (dkNew in DirtyKinds));
+   Assert(not (dkJournalNew in DirtyKinds));
+   Assert(not (dkVisibilityNew in DirtyKinds));
    if (DirtyKinds - FDirty <> []) then
    begin
       NewFlags := DirtyKinds - FDirty;
@@ -2025,28 +2090,27 @@ begin
    Result := False;
 end;
 
-procedure TAssetNode.ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynastyHashSet; CachedSystem: TSystem);
+procedure TAssetNode.ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynasty.TArray);
 var
    Dynasty: TDynasty;
    Feature: TFeatureNode;
    Source, Target: TDynastyNotesPackage.PDynastyNotesArray;
-   Buffer: TDynastyNotesPackage.TShortDynastyNotesArray;
    Index: Cardinal;
 begin
-   if (OldDynasties.Count >= TDynastyNotesPackage.LongThreshold) then
+   if (Assigned(OldDynasties)) then
    begin
-      Source := FDynastyNotes.AsLongDynasties;
-   end
-   else
-   begin
-      Buffer := FDynastyNotes.AsShortDynasties;
-      Source := TDynastyNotesPackage.PDynastyNotesArray(@Buffer);
+      if (OldDynasties.Count >= TDynastyNotesPackage.LongThreshold) then
+      begin
+         Source := FDynastyNotes.AsLongDynasties;
+      end
+      else
+      begin
+         Source := TDynastyNotesPackage.PDynastyNotesArray(@FDynastyNotes.AsShortDynasties);
+      end;
    end;
-   if (NewDynasties.Count >= TDynastyNotesPackage.LongThreshold) then
+   if (Length(NewDynasties) >= TDynastyNotesPackage.LongThreshold) then
    begin
-      Assert(Assigned(CachedSystem.FDynastyNotesBuffer));
-      Target := CachedSystem.FDynastyNotesBuffer + CachedSystem.FDynastyNotesOffset;
-      Inc(CachedSystem.FDynastyNotesOffset, SizeOf(TDynastyNotes) * NewDynasties.Count);
+      Target := System.AllocateFromDynastyNotesArena(SizeOf(TDynastyNotes) * Length(NewDynasties));
       FDynastyNotes.AsLongDynasties := Target;
    end
    else
@@ -2056,7 +2120,7 @@ begin
    Index := 0;
    for Dynasty in NewDynasties do
    begin
-      if (OldDynasties.Has(Dynasty) and (Source^[OldDynasties[Dynasty]].HasID)) then
+      if (Assigned(OldDynasties) and OldDynasties.Has(Dynasty) and Source^[OldDynasties[Dynasty]].HasID) then
       begin
          Target^[Index].InitFrom(Source^[OldDynasties[Dynasty]]);
       end
@@ -2067,16 +2131,16 @@ begin
       Inc(Index);
    end;
    for Feature in FFeatures do
-      Feature.ResetDynastyNotes(OldDynasties, NewDynasties, CachedSystem);
+      Feature.ResetDynastyNotes(OldDynasties, NewDynasties);
 end;
 
-procedure TAssetNode.ResetVisibility(CachedSystem: TSystem);
+procedure TAssetNode.ResetVisibility();
 var
    Feature: TFeatureNode;
    Target: TDynastyNotesPackage.PDynastyNotesArray;
    Index, Count: Cardinal;
 begin
-   if (CachedSystem.IsLongVisibilityMode) then
+   if (System.IsLongVisibilityMode) then
    begin
       Target := FDynastyNotes.AsLongDynasties;
    end
@@ -2084,7 +2148,7 @@ begin
    begin
       Target := TDynastyNotesPackage.PDynastyNotesArray(@FDynastyNotes.AsShortDynasties);
    end;
-   Count := CachedSystem.DynastyCount;
+   Count := System.DynastyCount;
    if (Count > 0) then
    begin
       for Index := 0 to Count - 1 do // $R-
@@ -2093,31 +2157,31 @@ begin
       end;
    end;
    for Feature in FFeatures do
-      Feature.ResetVisibility(CachedSystem);
+      Feature.ResetVisibility();
 end;
 
-procedure TAssetNode.ApplyVisibility(const VisibilityHelper: TVisibilityHelper);
+procedure TAssetNode.ApplyVisibility();
 var
    Feature: TFeatureNode;
 begin
    if (Assigned(FOwner)) then
-      VisibilityHelper.AddSpecificVisibility(FOwner, dmOwnership, Self);
+      System.AddSpecificVisibility(FOwner, dmOwnership, Self);
    for Feature in FFeatures do
-      Feature.ApplyVisibility(VisibilityHelper);
+      Feature.ApplyVisibility();
 end;
 
-procedure TAssetNode.HandleVisibility(const DynastyIndex: Cardinal; var Visibility: TVisibility; const VisibilityHelper: TVisibilityHelper);
+procedure TAssetNode.HandleVisibility(const DynastyIndex: Cardinal; var Visibility: TVisibility);
 var
    Feature: TFeatureNode;
 begin
-   Assert((not Assigned(Owner)) or (VisibilityHelper.GetDynastyIndex(Owner) = DynastyIndex) or IsReal());
+   Assert((not Assigned(Owner)) or (System.DynastyIndex[Owner] = DynastyIndex) or IsReal());
    for Feature in FFeatures do
-      Feature.HandleVisibility(DynastyIndex, Visibility, VisibilityHelper);
+      Feature.HandleVisibility(DynastyIndex, Visibility);
    if (Visibility <> []) then
-      VisibilityHelper.AddSpecificVisibilityByIndex(DynastyIndex, Visibility, Self);
+      System.AddSpecificVisibilityByIndex(DynastyIndex, Visibility, Self);
 end;
 
-procedure TAssetNode.CheckVisibilityChanged(VisibilityHelper: TVisibilityHelper);
+procedure TAssetNode.CheckVisibilityChanged();
 
    function HandleChanged(const DynastyIndex: Cardinal; var Notes: TDynastyNotes): Boolean;
    begin
@@ -2135,9 +2199,9 @@ procedure TAssetNode.CheckVisibilityChanged(VisibilityHelper: TVisibilityHelper)
          begin
             if (not Notes.HasID) then
             begin
-               Assert(VisibilityHelper.System.FDynastyMaxAssetIDs[DynastyIndex] < High(TAssetID)); // TODO: re-use expired IDs!
-               Inc(VisibilityHelper.System.FDynastyMaxAssetIDs[DynastyIndex]);
-               Notes.AssetID := VisibilityHelper.System.FDynastyMaxAssetIDs[DynastyIndex];
+               Assert(System.FDynastyMaxAssetIDs[DynastyIndex] < High(TAssetID)); // TODO: re-use expired IDs! (but not on some update!)
+               Inc(System.FDynastyMaxAssetIDs[DynastyIndex]);
+               Notes.AssetID := System.FDynastyMaxAssetIDs[DynastyIndex];
             end;
          end;
       end;
@@ -2149,19 +2213,19 @@ var
    Feature: TFeatureNode;
 begin
    for Feature in FFeatures do
-      Feature.CheckVisibilityChanged(VisibilityHelper);
-   if (VisibilityHelper.System.DynastyCount > 0) then
+      Feature.CheckVisibilityChanged();
+   if (System.DynastyCount > 0) then
    begin
       Changed := False;
-      for DynastyIndex := 0 to VisibilityHelper.System.DynastyCount - 1 do // $R-
+      for DynastyIndex := 0 to System.DynastyCount - 1 do // $R-
       begin
-         if (VisibilityHelper.System.IsLongVisibilityMode) then
+         if (System.IsLongVisibilityMode) then
          begin
-            Changed := Changed or HandleChanged(DynastyIndex, FDynastyNotes.AsLongDynasties^[DynastyIndex]);
+            Changed := HandleChanged(DynastyIndex, FDynastyNotes.AsLongDynasties^[DynastyIndex]) or Changed;
          end
          else
          begin
-            Changed := Changed or HandleChanged(DynastyIndex, FDynastyNotes.AsShortDynasties[DynastyIndex]);
+            Changed := HandleChanged(DynastyIndex, FDynastyNotes.AsShortDynasties[DynastyIndex]) or Changed;
          end;
       end;
       if (Changed) then
@@ -2171,29 +2235,29 @@ begin
    end;
 end;
 
-procedure TAssetNode.ApplyKnowledge(const VisibilityHelper: TVisibilityHelper);
+procedure TAssetNode.ApplyKnowledge();
 var
    Feature: TFeatureNode;
 begin
    for Feature in FFeatures do
-      Feature.ApplyKnowledge(VisibilityHelper);
+      Feature.ApplyKnowledge();
 end;
 
-procedure TAssetNode.HandleKnowledge(const DynastyIndex: Cardinal; const VisibilityHelper: TVisibilityHelper; const Sensors: ISensorsProvider);
+procedure TAssetNode.HandleKnowledge(const DynastyIndex: Cardinal; const Sensors: ISensorsProvider);
 var
    Feature: TFeatureNode;
 begin
    if (Sensors.Knows(FAssetClass)) then
    begin
-      VisibilityHelper.AddSpecificVisibilityByIndex(DynastyIndex, [dmClassKnown], Self);
+      System.AddSpecificVisibilityByIndex(DynastyIndex, [dmClassKnown], Self);
    end;
    for Feature in FFeatures do
-      Feature.HandleKnowledge(DynastyIndex, VisibilityHelper, Sensors);
+      Feature.HandleKnowledge(DynastyIndex, Sensors);
 end;
 
-function TAssetNode.ReadVisibilityFor(DynastyIndex: Cardinal; CachedSystem: TSystem): TVisibility;
+function TAssetNode.ReadVisibilityFor(DynastyIndex: Cardinal): TVisibility;
 begin
-   if (CachedSystem.IsLongVisibilityMode) then
+   if (System.IsLongVisibilityMode) then
    begin
       Result := FDynastyNotes.AsLongDynasties^[DynastyIndex].Visibility;
    end
@@ -2203,26 +2267,26 @@ begin
    end;
 end;
 
-function TAssetNode.IsVisibleFor(DynastyIndex: Cardinal; CachedSystem: TSystem): Boolean;
+function TAssetNode.IsVisibleFor(DynastyIndex: Cardinal): Boolean;
 begin
-   Result := ReadVisibilityFor(DynastyIndex, CachedSystem) <> [];
+   Result := ReadVisibilityFor(DynastyIndex) <> [];
 end;
 
-procedure TAssetNode.HandleChanges(CachedSystem: TSystem);
+procedure TAssetNode.HandleChanges();
 var
    Feature: TFeatureNode;
 begin
    for Feature in FFeatures do
-      Feature.HandleChanges(CachedSystem);
+      Feature.HandleChanges();
 end;
 
-procedure TAssetNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
+procedure TAssetNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);
 var
    Feature: TFeatureNode;
 begin
-   if (IsVisibleFor(DynastyIndex, CachedSystem)) then
+   if (IsVisibleFor(DynastyIndex)) then
    begin
-      Writer.WriteCardinal(ID(CachedSystem, DynastyIndex));
+      Writer.WriteCardinal(ID(DynastyIndex));
       if (Assigned(FOwner)) then
       begin
          Writer.WriteCardinal(FOwner.DynastyID);
@@ -2237,18 +2301,18 @@ begin
       Assert(Size >= 0.0);
       Writer.WriteDouble(Size);
       Writer.WriteStringReference(AssetName);
-      FAssetClass.SerializeFor(Self, DynastyIndex, Writer, CachedSystem);
+      FAssetClass.SerializeFor(Self, DynastyIndex, Writer);
       for Feature in FFeatures do
-         Feature.Serialize(DynastyIndex, Writer, CachedSystem);
+         Feature.Serialize(DynastyIndex, Writer);
       Writer.WriteCardinal(fcTerminator);
    end;
 end;
 
-procedure TAssetNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
+procedure TAssetNode.UpdateJournal(Journal: TJournalWriter);
 var
    Feature: TFeatureNode;
 begin
-   if (dkNew in Dirty) then
+   if (dkJournalNew in Dirty) then
    begin
       Assert(dkUpdateJournal in Dirty);
       Journal.WriteCardinal(jcNewAsset);
@@ -2263,14 +2327,14 @@ begin
    for Feature in FFeatures do
    begin
       Journal.WriteCardinal(jcStartOfFeature);
-      Feature.UpdateJournal(Journal, CachedSystem);
+      Feature.UpdateJournal(Journal);
       Journal.WriteCardinal(jcEndOfFeature);
    end;
    Journal.WriteCardinal(jcEndOfFeatures);
    Journal.WriteCardinal(jcEndOfAsset);
 end;
 
-procedure TAssetNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
+procedure TAssetNode.ApplyJournal(Journal: TJournalReader);
 var
    NewAssetClass: TAssetClass;
    Feature: TFeatureNode;
@@ -2291,13 +2355,13 @@ begin
    if (SpawnFeatures) then
    begin
       Assert(Length(FFeatures) = 0);
-      FFeatures := FAssetClass.SpawnFeatureNodesFromJournal(Journal, CachedSystem);
+      FFeatures := FAssetClass.SpawnFeatureNodesFromJournal(Journal, System);
       for Feature in FFeatures do
          Feature.SetParent(Self);
    end
    else
    begin
-      FAssetClass.ApplyFeatureNodesFromJournal(Journal, Self, CachedSystem);
+      FAssetClass.ApplyFeatureNodesFromJournal(Journal, Self);
    end;
    if (Journal.ReadCardinal() <> jcEndOfAsset) then
    begin
@@ -2312,9 +2376,9 @@ begin
    Parent.Parent.ReportChildIsPermanentlyGone(Child);
 end;
 
-function TAssetNode.ID(CachedSystem: TSystem; DynastyIndex: Cardinal; AllowZero: Boolean = False): TAssetID;
+function TAssetNode.ID(DynastyIndex: Cardinal; AllowZero: Boolean = False): TAssetID;
 begin
-   if (CachedSystem.IsLongVisibilityMode) then
+   if (System.IsLongVisibilityMode) then
    begin
       Result := FDynastyNotes.AsLongDynasties^[DynastyIndex].AssetID;
    end
@@ -2376,9 +2440,9 @@ begin
    Result := FParent and AttachedBit > 0;
 end;
 
-procedure TAssetNode.UpdateID(CachedSystem: TSystem; DynastyIndex: Cardinal; ID: TAssetID);
+procedure TAssetNode.UpdateID(DynastyIndex: Cardinal; ID: TAssetID);
 begin
-   if (CachedSystem.IsLongVisibilityMode) then
+   if (System.IsLongVisibilityMode) then
    begin
       FDynastyNotes.AsLongDynasties^[DynastyIndex].AssetID := ID;
    end
@@ -2390,8 +2454,8 @@ end;
 
 function TAssetNode.GetSystem(): TSystem;
 begin
-   Assert(Assigned(Parent), 'Missing parent on ' + ClassName);
-   Result := Parent.System;
+   Assert(Assigned(FSystem));
+   Result := FSystem;
 end;
 
 procedure TAssetNode.HandleCommand(Command: UTF8String; var Message: TMessage);
@@ -2496,9 +2560,9 @@ begin
    FLastTime := TTimeInMilliseconds.NegInfinity;
    FEncyclopedia := AEncyclopedia;
    FOnScoreDirty := AOnScoreDirty;
-   FRoot := TRootAssetNode.Create(ARootClass, Self, ARootClass.SpawnFeatureNodes());
-   Exclude(FRoot.FDirty, dkNew);
-   FChanges := [];
+   FRoot := TRootAssetNode.Create(Self, ARootClass, nil, ARootClass.SpawnFeatureNodes(Self));
+   Exclude(FRoot.FDirty, dkJournalNew); // we always create this node ourselves, even when reading from the journal, so don't tell the journal to create it
+   FChanges := dkAffectsTreeStructure + UpdateDirtyKindsForAncestor(FRoot.Dirty);
 end;
 
 destructor TSystem.Destroy();
@@ -2559,6 +2623,9 @@ begin
             jcIDUpdates: begin
                try
                   UpdateDynastyList(False); // the False resets the FDynastyMaxAssetIDs to zero
+                  Index := JournalReader.ReadCardinal();
+                  if (FDynastyIndices.Count <> Index) then
+                     raise EJournalError.CreateFmt('Dynasty count inconsistent (journal=%d, measured=%d)', [Index, FDynastyIndices.Count]);
                   while True do
                   begin
                      Asset := JournalReader.ReadAssetNodeReference();
@@ -2568,7 +2635,7 @@ begin
                         for Index := 0 to FDynastyIndices.Count - 1 do // $R-
                         begin
                            AssetID := TAssetID(JournalReader.ReadCardinal());
-                           Asset.UpdateID(Self, Index, AssetID);
+                           Asset.UpdateID(Index, AssetID);
                            if (FDynastyMaxAssetIDs[Index] < AssetID) then
                               FDynastyMaxAssetIDs[Index] := AssetID;
                         end;
@@ -2581,7 +2648,7 @@ begin
             jcNewAsset: begin
                try
                   ID := JournalReader.ReadPtrUInt();
-                  Asset := TAssetNode.Create(JournalReader, Self);
+                  Asset := TAssetNode.CreateFromJournal(Self, JournalReader);
                   JournalReader.FAssetMap[ID] := Asset;
                except
                   ReportCurrentException();
@@ -2592,7 +2659,7 @@ begin
                try
                   Asset := JournalReader.ReadAssetNodeReference();
                   Assert(Assigned(Asset));
-                  Asset.ApplyJournal(JournalReader, Self);
+                  Asset.ApplyJournal(JournalReader);
                except
                   ReportCurrentException();
                   raise;
@@ -2652,40 +2719,54 @@ begin
    end;
 end;
 
-procedure TSystem.RecordUpdate();
+procedure TSystem.RecordUpdate(DynastyCountChanged: Boolean);
 
    function SkipCleanChildren(Asset: TAssetNode): Boolean;
    begin
       Result := dkDescendantUpdateJournal in Asset.Dirty;
+      {$IFOPT C+}
+      Exclude(Asset.FDirty, dkDescendantUpdateJournal);
+      {$ENDIF}
    end;
 
    procedure RecordDirtyAsset(Asset: TAssetNode);
    begin
       if (dkUpdateJournal in Asset.Dirty) then
-         Asset.UpdateJournal(Journal, Self);
+      begin
+         Asset.UpdateJournal(Journal);
+         {$IFOPT C+}
+         Exclude(Asset.FDirty, dkJournalNew);
+         Exclude(Asset.FDirty, dkUpdateJournal);
+         {$ENDIF}
+      end;
    end;
 
    function RecordAssetIDs(Asset: TAssetNode): Boolean;
    var
       Dynasty: TDynasty;
    begin
+      Assert(not (dkJournalNew in Asset.Dirty));
+      Assert(not (dkUpdateJournal in Asset.Dirty));
+      Assert(not (dkDescendantUpdateJournal in Asset.Dirty));
       Journal.WriteAssetNodeReference(Asset);
       for Dynasty in FDynastyIndices do
-         Journal.WriteCardinal(Asset.ID(Self, FDynastyIndices[Dynasty], True {AllowZero}));
+      begin
+         Journal.WriteCardinal(Asset.ID(FDynastyIndices[Dynasty], True {AllowZero}));
+      end;
       Result := True;
    end;
 
 begin
-   Assert(dkDescendantUpdateJournal in FChanges);
    Journal.WriteCardinal(jcSystemUpdate);
    Journal.WriteDouble(FServer.Clock.Now() - FTimeOrigin); // age of server
    Journal.WriteUInt64(FRandomNumberGenerator.State);
    Journal.WriteDouble(FTimeFactor.AsDouble);
    // TODO: consider tracking FLastTime as well
    FRoot.Walk(@SkipCleanChildren, @RecordDirtyAsset);
-   if (dkAffectsDynastyCount in FChanges) then
+   if (DynastyCountChanged) then
    begin
       Journal.WriteCardinal(jcIDUpdates);
+      Journal.WriteCardinal(FDynastyIndices.Count); // sanity check
       FRoot.Walk(@RecordAssetIDs, nil);
       Journal.WriteUInt64(0);
    end;
@@ -2718,13 +2799,13 @@ var
    var
       Visibility: TVisibility;
    begin
-      Visibility := Asset.ReadVisibilityFor(CachedDynastyIndex, Self);
+      Visibility := Asset.ReadVisibilityFor(CachedDynastyIndex);
       if (Visibility <> []) then
       begin
          if ((dkUpdateClients in Asset.Dirty) or not DirtyOnly) then
          begin
             FoundASelfDirty := True;
-            Asset.Serialize(CachedDynastyIndex, Writer, Self);
+            Asset.Serialize(CachedDynastyIndex, Writer);
          end;
          Result := (dkDescendantUpdateClients in Asset.Dirty) or not DirtyOnly;
       end
@@ -2740,7 +2821,7 @@ begin
    Writer.WriteCardinal(SystemID);
    Writer.WriteInt64(Now.AsInt64);
    Writer.WriteDouble(FTimeFactor.AsDouble);
-   Writer.WriteCardinal(FRoot.ID(Self, CachedDynastyIndex));
+   Writer.WriteCardinal(FRoot.ID(CachedDynastyIndex));
    Writer.WriteDouble(FX);
    Writer.WriteDouble(FY);
    FRoot.Walk(@Serialize, nil);
@@ -2768,6 +2849,7 @@ end;
 
 function TSystem.GetDynastyCount(): Cardinal;
 begin
+   Assert(Assigned(FDynastyIndices));
    Result := FDynastyIndices.Count;
 end;
 
@@ -2792,9 +2874,29 @@ begin
    end;
 end;
 
+function TSystem.AllocateFromDynastyNotesArena(Size: SizeInt): Pointer;
+var
+   NewBuffer: Pointer;
+begin
+   // TODO: putting the back pointer at the start of the block instead of the end would simplify the logic
+   Assert(Assigned(FDynastyNotesBuffer));
+   if (FDynastyNotesOffset + Size > MemSize(FDynastyNotesBuffer) - SizeOf(Pointer)) then
+   begin
+      NewBuffer := GetMem(MemSize(FDynastyNotesBuffer));
+      Assert(MemSize(NewBuffer) mod SizeOf(DWord) = 0);
+      FillDWord(NewBuffer^, MemSize(NewBuffer) div SizeOf(DWord), 0); // $R-
+      PPointer(NewBuffer + MemSize(NewBuffer) - SizeOf(Pointer))^ := FDynastyNotesBuffer;
+      FDynastyNotesBuffer := NewBuffer;
+      FDynastyNotesOffset := 0;
+   end;
+   Result := FDynastyNotesBuffer + FDynastyNotesOffset;
+   Inc(FDynastyNotesOffset, Size);
+end;
+
 procedure TSystem.UpdateDynastyList(MaintainMaxIDs: Boolean);
 var
    Dynasties: TDynastyHashSet;
+   NewDynasties: TDynasty.TArray;
    NodeCount: Cardinal;
 
    function TrackDynasties(Asset: TAssetNode): Boolean;
@@ -2807,7 +2909,17 @@ var
 
    function ResetDynasties(Asset: TAssetNode): Boolean;
    begin
-      Asset.ResetDynastyNotes(FDynastyIndices, Dynasties, Self);
+      if (dkVisibilityNew in Asset.Dirty) then
+      begin
+         Asset.ResetDynastyNotes(nil, NewDynasties);
+         Exclude(Asset.FDirty, dkVisibilityNew);
+      end
+      else
+      begin
+         Asset.ResetDynastyNotes(FDynastyIndices, NewDynasties);
+      end;
+      Include(Asset.FDirty, dkUpdateClients);
+      Include(Asset.FDirty, dkDescendantUpdateClients);
       Result := True;
    end;
 
@@ -2845,7 +2957,7 @@ begin
       for Dynasty in Dynasties do
       begin
          if (FDynastyIndices.Has(Dynasty)) then
-            FDynastyMaxAssetIDs[Index] := OldIDs[FDynastyIndices[Dynasty]]
+            FDynastyMaxAssetIDs[Index] := OldIDs[FDynastyIndices[Dynasty]] // here, FDynastyIndices is the old indices still
          else
             FDynastyMaxAssetIDs[Index] := 0;
          Inc(Index);
@@ -2856,62 +2968,95 @@ begin
       SetLength(FDynastyMaxAssetIDs, 0);
       SetLength(FDynastyMaxAssetIDs, Dynasties.Count);
    end;
-   FRoot.Walk(@ResetDynasties, nil);
-   Assert(((not Assigned(FDynastyNotesBuffer)) and (FDynastyNotesOffset = 0)) or (FDynastyNotesOffset = MemSize(FDynastyNotesBuffer) - SizeOf(Pointer)), 'FDynastyNotesOffset = ' + IntToStr(PtrUInt(FDynastyNotesBuffer)) + '; MemSize(FDynastyNotesOffset) = ' + IntToStr(MemSize(FDynastyNotesBuffer)));
-   if (Assigned(OldBuffer)) then
-      UnwindDynastyNotesArenas(OldBuffer);
-   FDynastyIndices.Empty();
-   SetLength(FDynasties, Dynasties.Count);
+   SetLength(NewDynasties, Dynasties.Count);
    Index := 0;
    for Dynasty in Dynasties do
    begin
-      FDynasties[Index] := Dynasty;
-      FDynastyIndices[Dynasty] := Index;
+      NewDynasties[Index] := Dynasty;
+      Inc(Index);
+   end;
+   FRoot.Walk(@ResetDynasties, nil);
+   Include(FChanges, dkDescendantUpdateClients);
+   // check that either we didn't use the buffer, or we used all of it:
+   Assert(((not Assigned(FDynastyNotesBuffer)) and (FDynastyNotesOffset = 0)) or
+          (FDynastyNotesOffset = MemSize(FDynastyNotesBuffer) - SizeOf(Pointer)),
+          'FDynastyNotesOffset = ' + IntToStr(PtrUInt(FDynastyNotesBuffer)) + '; MemSize(FDynastyNotesOffset) = ' + IntToStr(MemSize(FDynastyNotesBuffer)));
+   if (Assigned(OldBuffer)) then
+      UnwindDynastyNotesArenas(OldBuffer);
+   FDynasties := NewDynasties;
+   FDynastyIndices.Empty();
+   Index := 0;
+   for Dynasty in FDynasties do
+   begin
+      FDynastyIndices[Dynasty] := Index; // here we update the FDynastyIndices to the new indices
       Inc(Index);
    end;
    Assert(Index = Dynasties.Count);
+   Assert(Index = Length(FDynasties));
    Assert(Index = FDynastyIndices.Count);
    FreeAndNil(Dynasties);
 end;
 
-procedure TSystem.RecomputeVisibility();
-var
-   VisibilityHelper: TVisibilityHelper;
+procedure TSystem.RecomputeVisibility(DynastyCountChanged, HaveNewNodes: Boolean);
+
+   function ResetDynastyNotesForNewNodes(Asset: TAssetNode): Boolean;
+   begin
+      if (dkVisibilityNew in Asset.Dirty) then
+      begin
+         Asset.ResetDynastyNotes(nil, FDynasties);
+         Assert(dkUpdateClients in Asset.Dirty);
+         // dkVisibilityNew is removed during ResetVisibility below
+      end;
+      Result := dkDescendantsVisibilityNew in Asset.Dirty;
+      if (Result) then
+      begin
+         Exclude(Asset.FDirty, dkDescendantsVisibilityNew);
+         Include(Asset.FDirty, dkDescendantUpdateClients);
+      end;
+   end;
 
    function ResetVisibility(Asset: TAssetNode): Boolean;
    begin
-      Asset.ResetVisibility(Self);
+      if (dkVisibilityNew in Asset.Dirty) then
+      begin
+         Exclude(Asset.FDirty, dkVisibilityNew);
+      end
+      else
+      begin
+         Asset.ResetVisibility();
+      end;
       Result := True;
    end;
 
    function ApplyVisibility(Asset: TAssetNode): Boolean;
    begin
-      Asset.ApplyVisibility(VisibilityHelper);
+      Asset.ApplyVisibility();
       Result := True;
    end;
 
    function CheckVisibility(Asset: TAssetNode): Boolean;
    begin
-      Asset.CheckVisibilityChanged(VisibilityHelper);
+      Asset.CheckVisibilityChanged();
       Result := True;
    end;
 
    function ApplyKnowledge(Asset: TAssetNode): Boolean;
    begin
-      Asset.ApplyKnowledge(VisibilityHelper);
+      Asset.ApplyKnowledge();
       Result := True;
    end;
 
 begin
-   if (dkAffectsDynastyCount in FChanges) then
+   if (DynastyCountChanged) then
    begin
       UpdateDynastyList(True); // True means we maintain the FDynastyMaxAssetIDs
    end
    else
    begin
+      if (HaveNewNodes) then
+         FRoot.Walk(@ResetDynastyNotesForNewNodes, nil);
       FRoot.Walk(@ResetVisibility, nil);
    end;
-   VisibilityHelper.Init(Self);
    FRoot.Walk(@ApplyVisibility, nil);
    FRoot.Walk(@ApplyKnowledge, nil);
    FRoot.Walk(@CheckVisibility, nil);
@@ -2934,7 +3079,7 @@ var
 
    function SkipCleanChildren(Asset: TAssetNode): Boolean;
    begin
-      Result := dkDescendantNeedsHandleChanges in Asset.FDirty;
+      Result := dkDescendantNeedsHandleChanges in Asset.Dirty;
       Exclude(Asset.FDirty, dkDescendantNeedsHandleChanges);
    end;
 
@@ -2943,37 +3088,52 @@ var
       if (dkNeedsHandleChanges in Asset.Dirty) then
       begin
          Exclude(Asset.FDirty, dkNeedsHandleChanges);
-         Asset.HandleChanges(Self);
+         Asset.HandleChanges();
       end;
    end;
 
+var
+   LastChanges, AllChanges: TDirtyKinds;
+   DynastyCountChanged: Boolean;
 begin
    if (not Dirty) then
       exit;
    Writeln('== Processing changes for system ', FSystemID, ' (', HexStr(FSystemID, 6), ') ==');
    Assert((dkAffectsVisibility in FChanges) or not (dkAffectsDynastyCount in FChanges)); // dkAffectsDynastyCount requires dkAffectsVisibility
-   if (dkAffectsVisibility in FChanges) then
-   begin
-      Writeln('Recomputing visibility...');
-      RecomputeVisibility();
-   end;
-   while (dkDescendantNeedsHandleChanges in FChanges) do
-   begin
-      Writeln('Handling changes...');
-      Exclude(FChanges, dkDescendantNeedsHandleChanges);
-      FRoot.Walk(@SkipCleanChildren, @HandleChanges);
-   end;
-   if (dkDescendantUpdateJournal in FChanges) then
+   AllChanges := [];
+   repeat
+      LastChanges := FChanges;
+      AllChanges := AllChanges + FChanges;
+      FChanges := [];
+      if (dkAffectsVisibility in LastChanges) then
+      begin
+         Writeln('Recomputing visibility...');
+         if (dkAffectsDynastyCount in LastChanges) then
+         begin
+            Writeln('  dynasty count changed!');
+            DynastyCountChanged := True;
+         end;
+         RecomputeVisibility(dkAffectsDynastyCount in LastChanges, dkDescendantsVisibilityNew in LastChanges);
+      end;
+      if (dkDescendantNeedsHandleChanges in LastChanges) then
+      begin
+         Writeln('Handling changes...');
+         FRoot.Walk(@SkipCleanChildren, @HandleChanges);
+      end;
+   until FChanges = [];
+   if (dkDescendantUpdateJournal in AllChanges) then
    begin
       Writeln('Updating journal...');
-      RecordUpdate();
+      RecordUpdate(DynastyCountChanged);
    end;
-   // TODO: tell the clients if anything stopped being visible? or is that implied?
    // TODO: tell the clients if _everything_ stopped being visible
-   Writeln('Updating clients...');
-   for Dynasty in FDynasties do
+   if (dkDescendantUpdateClients in AllChanges) then
    begin
-      Dynasty.ForEachConnection(@ReportChange);
+      Writeln('Updating clients...');
+      for Dynasty in FDynasties do
+      begin
+         Dynasty.ForEachConnection(@ReportChange);
+      end;
    end;
    Clean();
    Writeln('Done processing changes.');
@@ -2982,6 +3142,23 @@ end;
 function TSystem.HasDynasty(Dynasty: TDynasty): Boolean;
 begin
    Result := FDynastyIndices.Has(Dynasty);
+end;
+
+function TSystem.SubtreeHasNewDynasty(Child: TAssetNode): Boolean;
+var
+   FoundAny: Boolean;
+
+   function CheckForNewDynasty(Asset: TAssetNode): Boolean;
+   begin
+      if (Assigned(Asset.Owner) and not HasDynasty(Asset.Owner)) then
+         FoundAny := True;
+      Result := FoundAny;
+   end;
+
+begin
+   FoundAny := False;
+   Child.Walk(@CheckForNewDynasty, nil);
+   Result := FoundAny;
 end;
 
 function TSystem.ComputeScoreFor(Dynasty: TDynasty): Double;
@@ -3152,7 +3329,7 @@ var
    function Search(Asset: TAssetNode): Boolean;
    begin
       // TODO: change this to be that you can send the message so long as you can see it (not necessarily own it)
-      if (((not Assigned(Asset.Owner)) or (Asset.Owner = Dynasty)) and (Asset.ID(Self, CachedDynastyIndex, True {AllowZero}) = AssetID)) then
+      if (((not Assigned(Asset.Owner)) or (Asset.Owner = Dynasty)) and (Asset.ID(CachedDynastyIndex, True {AllowZero}) = AssetID)) then
       begin
          FoundAsset := Asset;
       end;
@@ -3176,6 +3353,72 @@ begin
    FOnScoreDirty(Dynasty);
 end;
 
+procedure TSystem.AddSpecificVisibilityByIndex(const Index: Cardinal; const Visibility: TVisibility; const Asset: TAssetNode);
+var
+   Current: TVisibility;
+begin
+   Assert(Assigned(Asset.Owner) or Asset.IsReal());
+   Assert((FDynastyIndices.Items[Asset.Owner] = Index) or Asset.IsReal());
+   Assert(Visibility <> []);
+   if (IsLongVisibilityMode) then
+   begin
+      Current := Asset.FDynastyNotes.AsLongDynasties^[Index].Visibility;
+      Asset.FDynastyNotes.AsLongDynasties^[Index].Visibility := Current + Visibility;
+   end
+   else
+   begin
+      Assert(Index >= Low(Asset.FDynastyNotes.AsShortDynasties));
+      Assert(Index <= High(Asset.FDynastyNotes.AsShortDynasties));
+      Current := Asset.FDynastyNotes.AsShortDynasties[Index].Visibility;
+      Asset.FDynastyNotes.AsShortDynasties[Index].Visibility := Current + Visibility;
+   end;
+   if ((not (dmInference in Current)) and Assigned(Asset.Parent)) then
+   begin
+      AddSpecificVisibilityByIndex(Index, [dmInference], Asset.Parent.Parent);
+   end;
+end;
+
+procedure TSystem.AddSpecificVisibility(const Dynasty: TDynasty; const Visibility: TVisibility; const Asset: TAssetNode);
+begin
+   AddSpecificVisibilityByIndex(GetDynastyIndex(Dynasty), Visibility, Asset);
+end;
+
+procedure TSystem.AddBroadVisibility(const Visibility: TVisibility; const Asset: TAssetNode);
+var
+   Index, Count: Cardinal;
+   Current: TVisibility;
+begin
+   Assert(Visibility <> []);
+   Assert(Assigned(Asset));
+   Assert(Asset.IsReal());
+   Count := DynastyCount;
+   if (Count = 0) then
+      exit;
+   if (IsLongVisibilityMode) then
+   begin
+      for Index := 0 to Count - 1 do // $R-
+      begin
+         Current := Asset.FDynastyNotes.AsLongDynasties^[Index].Visibility;
+         Asset.FDynastyNotes.AsLongDynasties^[Index].Visibility := Current + Visibility;
+      end;
+   end
+   else
+   begin
+      for Index := 0 to Count - 1 do // $R-
+      begin
+         Current := Asset.FDynastyNotes.AsShortDynasties[Index].Visibility;
+         Asset.FDynastyNotes.AsShortDynasties[Index].Visibility := Current + Visibility;
+      end;
+   end;
+   if ((not (dmInference in Current)) and Assigned(Asset.Parent)) then
+   begin
+      for Index := 0 to Count - 1 do // $R-
+      begin
+         AddSpecificVisibilityByIndex(Index, [dmInference], Asset.Parent.Parent);
+      end;
+   end;
+end;
+
 
 constructor TSystemEvent.Create(ATime: TTimeInMilliseconds; ACallback: TEventCallback; AData: Pointer; ASystem: TSystem);
 begin
@@ -3193,17 +3436,17 @@ begin
 end;
 
 
-constructor TDynastyNotes.Init(const AID: TAssetID);
+procedure TDynastyNotes.Init(const AID: TAssetID);
 begin
    FID := AID;
-   FOldVisibilty := dmNil;
+   FOldVisibility := dmNil;
    FCurrentVisibility := dmNil;
 end;
 
-constructor TDynastyNotes.InitFrom(const Other: TDynastyNotes);
+procedure TDynastyNotes.InitFrom(const Other: TDynastyNotes);
 begin
    FID := Other.FID;
-   FOldVisibilty := Other.FCurrentVisibility;
+   FOldVisibility := Other.FCurrentVisibility;
    FCurrentVisibility := dmNil;
 end;
 
@@ -3214,12 +3457,12 @@ end;
 
 function TDynastyNotes.GetChanged(): Boolean;
 begin
-   Result := FOldVisibilty <> FCurrentVisibility;
+   Result := FOldVisibility <> FCurrentVisibility;
 end;
 
 procedure TDynastyNotes.Snapshot();
 begin
-   FOldVisibilty := FCurrentVisibility;
+   FOldVisibility := FCurrentVisibility;
    FCurrentVisibility := dmNil;
 end;
 
@@ -3301,114 +3544,6 @@ begin
    begin
       Result := AsShortDynasties[DynastyIndex];
    end;
-end;
-
-
-procedure TVisibilityHelper.Init(ASystem: TSystem);
-begin
-   FSystem := ASystem;
-end;
-
-function TVisibilityHelper.GetDynastyIndex(Dynasty: TDynasty): Cardinal;
-begin
-   Assert(FSystem.FDynastyIndices.Has(Dynasty));
-   Result := FSystem.FDynastyIndices.Items[Dynasty];
-end;
-
-procedure TVisibilityHelper.AddSpecificVisibilityByIndex(const DynastyIndex: Cardinal; const Visibility: TVisibility; const Asset: TAssetNode);
-var
-   Current: TVisibility;
-begin
-   Assert(Assigned(Asset.Owner) or Asset.IsReal());
-   Assert((FSystem.FDynastyIndices.Items[Asset.Owner] = DynastyIndex) or Asset.IsReal());
-   Assert(Visibility <> []);
-   if (FSystem.IsLongVisibilityMode) then
-   begin
-      Current := Asset.FDynastyNotes.AsLongDynasties^[DynastyIndex].Visibility;
-      Asset.FDynastyNotes.AsLongDynasties^[DynastyIndex].Visibility := Current + Visibility;
-   end
-   else
-   begin
-      Assert(DynastyIndex >= Low(Asset.FDynastyNotes.AsShortDynasties));
-      Assert(DynastyIndex <= High(Asset.FDynastyNotes.AsShortDynasties));
-      Current := Asset.FDynastyNotes.AsShortDynasties[DynastyIndex].Visibility;
-      Asset.FDynastyNotes.AsShortDynasties[DynastyIndex].Visibility := Current + Visibility;
-   end;
-   if ((not (dmInference in Current)) and Assigned(Asset.Parent)) then
-   begin
-      AddSpecificVisibilityByIndex(DynastyIndex, [dmInference], Asset.Parent.Parent);
-   end;
-end;
-
-procedure TVisibilityHelper.AddSpecificVisibility(const Dynasty: TDynasty; const Visibility: TVisibility; const Asset: TAssetNode);
-begin
-   AddSpecificVisibilityByIndex(GetDynastyIndex(Dynasty), Visibility, Asset);
-end;
-
-procedure TVisibilityHelper.AddBroadVisibility(const Visibility: TVisibility; const Asset: TAssetNode);
-var
-   DynastyIndex, DynastyCount: Cardinal;
-   Current: TVisibility;
-begin
-   Assert(Visibility <> []);
-   Assert(Assigned(Asset));
-   Assert(Asset.IsReal());
-   DynastyCount := FSystem.FDynastyIndices.Count;
-   if (DynastyCount = 0) then
-      exit;
-   if (FSystem.IsLongVisibilityMode) then
-   begin
-      for DynastyIndex := 0 to DynastyCount - 1 do // $R-
-      begin
-         Current := Asset.FDynastyNotes.AsLongDynasties^[DynastyIndex].Visibility;
-         Asset.FDynastyNotes.AsLongDynasties^[DynastyIndex].Visibility := Current + Visibility;
-      end;
-   end
-   else
-   begin
-      for DynastyIndex := 0 to DynastyCount - 1 do // $R-
-      begin
-         Current := Asset.FDynastyNotes.AsShortDynasties[DynastyIndex].Visibility;
-         Asset.FDynastyNotes.AsShortDynasties[DynastyIndex].Visibility := Current + Visibility;
-      end;
-   end;
-   if ((not (dmInference in Current)) and Assigned(Asset.Parent)) then
-   begin
-      for DynastyIndex := 0 to DynastyCount - 1 do // $R-
-      begin
-         AddSpecificVisibilityByIndex(DynastyIndex, [dmInference], Asset.Parent.Parent);
-      end;
-   end;
-end;
-
-
-constructor TRootAssetNode.Create(AAssetClass: TAssetClass; ASystem: TSystem; AFeatures: TFeatureNode.TArray);
-begin
-   inherited Create(AAssetClass, nil, AFeatures);
-   Assert(Assigned(ASystem));
-   FSystem := ASystem;
-end;
-
-function TRootAssetNode.GetIsAttached(): Boolean;
-begin
-   Result := True;
-end;
-
-procedure TRootAssetNode.MarkAsDirty(DirtyKinds: TDirtyKinds);
-begin
-   inherited;
-   FSystem.MarkAsDirty(UpdateDirtyKindsForAncestor(DirtyKinds));
-end;
-
-procedure TRootAssetNode.ReportChildIsPermanentlyGone(Child: TAssetNode);
-begin
-   Assert(not Assigned(Parent));
-   FSystem.ReportChildIsPermanentlyGone(Child);
-end;
-
-function TRootAssetNode.GetSystem(): TSystem;
-begin
-   Result := FSystem;
 end;
 
 

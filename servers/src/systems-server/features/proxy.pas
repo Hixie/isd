@@ -13,7 +13,7 @@ type
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
       constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
-      function InitFeatureNode(): TFeatureNode; override;
+      function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
    end;
 
    TProxyFeatureNode = class(TFeatureNode)
@@ -27,12 +27,12 @@ type
       function GetSize(): Double; override;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
-      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
+      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
-      constructor Create(AChild: TAssetNode);
+      constructor Create(ASystem: TSystem; AChild: TAssetNode);
       destructor Destroy(); override;
-      procedure UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem); override;
-      procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
+      procedure UpdateJournal(Journal: TJournalWriter); override;
+      procedure ApplyJournal(Journal: TJournalReader); override;
       property Child: TAssetNode read FChild;
    end;
 
@@ -52,15 +52,15 @@ begin
    Result := TProxyFeatureNode;
 end;
 
-function TProxyFeatureClass.InitFeatureNode(): TFeatureNode;
+function TProxyFeatureClass.InitFeatureNode(ASystem: TSystem): TFeatureNode;
 begin
-   Result := TProxyFeatureNode.Create(nil);
+   Result := TProxyFeatureNode.Create(ASystem, nil);
 end;
 
 
-constructor TProxyFeatureNode.Create(AChild: TAssetNode);
+constructor TProxyFeatureNode.Create(ASystem: TSystem; AChild: TAssetNode);
 begin
-   inherited Create();
+   inherited Create(ASystem);
    try
       if (Assigned(AChild)) then
          AdoptChild(AChild);
@@ -136,23 +136,23 @@ begin
    end;
 end;
 
-procedure TProxyFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
+procedure TProxyFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);
 begin
    Writer.WriteCardinal(fcProxy);
-   if (Assigned(FChild) and FChild.IsVisibleFor(DynastyIndex, CachedSystem)) then
+   if (Assigned(FChild) and FChild.IsVisibleFor(DynastyIndex)) then
    begin
-      Writer.WriteCardinal(Child.ID(CachedSystem, DynastyIndex));
+      Writer.WriteCardinal(Child.ID(DynastyIndex));
    end
    else
       Writer.WriteCardinal(0);
 end;
 
-procedure TProxyFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
+procedure TProxyFeatureNode.UpdateJournal(Journal: TJournalWriter);
 begin
    Journal.WriteAssetNodeReference(FChild);
 end;
 
-procedure TProxyFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
+procedure TProxyFeatureNode.ApplyJournal(Journal: TJournalReader);
 var
    NewChild: TAssetNode;
 begin

@@ -16,7 +16,7 @@ type
    public
       constructor Create(ASize: Double);
       constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
-      function InitFeatureNode(): TFeatureNode; override;
+      function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
       property Size: Double read FSize;
    end;
 
@@ -26,7 +26,7 @@ type
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
       function GetSize(): Double; override; // m
    public
-      constructor Create(AFeatureClass: TSizeFeatureClass);
+      constructor Create(ASystem: TSystem; AFeatureClass: TSizeFeatureClass);
    end;
 
 implementation
@@ -52,15 +52,15 @@ begin
    Result := TSizeFeatureNode;
 end;
 
-function TSizeFeatureClass.InitFeatureNode(): TFeatureNode;
+function TSizeFeatureClass.InitFeatureNode(ASystem: TSystem): TFeatureNode;
 begin
-   Result := TSizeFeatureNode.Create(Self);
+   Result := TSizeFeatureNode.Create(ASystem, Self);
 end;
 
 
-constructor TSizeFeatureNode.Create(AFeatureClass: TSizeFeatureClass);
+constructor TSizeFeatureNode.Create(ASystem: TSystem; AFeatureClass: TSizeFeatureClass);
 begin
-   inherited Create();
+   inherited Create(ASystem);
    FFeatureClass := AFeatureClass;
 end;
 
@@ -68,7 +68,7 @@ constructor TSizeFeatureNode.CreateFromJournal(Journal: TJournalReader; AFeature
 begin
    Assert(Assigned(AFeatureClass));
    FFeatureClass := AFeatureClass as TSizeFeatureClass;
-   inherited CreateFromJournal(Journal, AFeatureClass, ASystem);
+   inherited;
 end;
 
 function TSizeFeatureNode.GetSize(): Double;

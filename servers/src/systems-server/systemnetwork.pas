@@ -193,7 +193,7 @@ begin
       SolarSystem := System.RootNode.Features[0] as TSolarSystemFeatureNode;
       for Star in Stars do
       begin
-         SolarSystem.AddCartesianChild(FServer.Encyclopedia.WrapAssetForOrbit(FServer.Encyclopedia.CreateLoneStar(Star.StarID)), Star.DX, Star.DY); // $R-
+         SolarSystem.AddCartesianChild(FServer.Encyclopedia.WrapAssetForOrbit(FServer.Encyclopedia.CreateLoneStar(Star.StarID, System)), Star.DX, Star.DY); // $R-
       end;
       SolarSystem.ComputeHillSpheres();
       FServer.Encyclopedia.CondenseProtoplanetaryDisks(SolarSystem, System);

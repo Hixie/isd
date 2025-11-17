@@ -12,7 +12,7 @@ type
    protected
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
-      function InitFeatureNode(): TFeatureNode; override;
+      function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
    end;
 
    TGridSensorFeatureNode = class(TSensorFeatureNode)
@@ -20,11 +20,11 @@ type
       FGrid: TAssetNode;
       FFeatureClass: TGridSensorFeatureClass;
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
-      procedure ApplyVisibility(const VisibilityHelper: TVisibilityHelper); override;
-      procedure ApplyKnowledge(const VisibilityHelper: TVisibilityHelper); override;
-      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
+      procedure ApplyVisibility(); override;
+      procedure ApplyKnowledge(); override;
+      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
-      constructor Create(AFeatureClass: TGridSensorFeatureClass);
+      constructor Create(ASystem: TSystem; AFeatureClass: TGridSensorFeatureClass);
    end;
 
 implementation
@@ -37,15 +37,15 @@ begin
    Result := TGridSensorFeatureNode;
 end;
 
-function TGridSensorFeatureClass.InitFeatureNode(): TFeatureNode;
+function TGridSensorFeatureClass.InitFeatureNode(ASystem: TSystem): TFeatureNode;
 begin
-   Result := TGridSensorFeatureNode.Create(Self);
+   Result := TGridSensorFeatureNode.Create(ASystem, Self);
 end;
 
 
-constructor TGridSensorFeatureNode.Create(AFeatureClass: TGridSensorFeatureClass);
+constructor TGridSensorFeatureNode.Create(ASystem: TSystem; AFeatureClass: TGridSensorFeatureClass);
 begin
-   inherited Create();
+   inherited Create(ASystem);
    FFeatureClass := AFeatureClass;
 end;
 
@@ -53,10 +53,10 @@ constructor TGridSensorFeatureNode.CreateFromJournal(Journal: TJournalReader; AF
 begin
    Assert(Assigned(AFeatureClass));
    FFeatureClass := AFeatureClass as TGridSensorFeatureClass;
-   inherited CreateFromJournal(Journal, AFeatureClass, ASystem);
+   inherited;
 end;
 
-procedure TGridSensorFeatureNode.ApplyVisibility(const VisibilityHelper: TVisibilityHelper);
+procedure TGridSensorFeatureNode.ApplyVisibility();
 var
    OwnerIndex: Cardinal;
 
@@ -69,7 +69,7 @@ var
           Asset.IsReal()) then // and we see non-ghosts regardless of who owns them
       begin
          Visibility := FFeatureClass.FSensorKind;
-         Asset.HandleVisibility(OwnerIndex, Visibility, VisibilityHelper);
+         Asset.HandleVisibility(OwnerIndex, Visibility);
          if (Visibility <> []) then
             Inc(FLastCountDetected);
          Result := True;
@@ -96,14 +96,14 @@ begin
    FLastCountDetected := 0;
    if (Enabled and Assigned(FGrid)) then
    begin
-      OwnerIndex := VisibilityHelper.GetDynastyIndex(Parent.Owner);
+      OwnerIndex := System.DynastyIndex[Parent.Owner];
       FGrid.Walk(@SenseDown, nil);
    end;
    Assert(not Assigned(FKnownMaterials));
    Assert(not Assigned(FKnownAssetClasses));
 end;
 
-procedure TGridSensorFeatureNode.ApplyKnowledge(const VisibilityHelper: TVisibilityHelper);
+procedure TGridSensorFeatureNode.ApplyKnowledge();
 var
    OwnerIndex: Cardinal;
 
@@ -113,8 +113,8 @@ var
            (not Assigned(Asset.Owner)) or // we see unowned ghosts // TODO: this should be redundant, assert instead?
            Asset.IsReal())) then // and we see non-ghosts regardless of who owns them
       begin
-         if (Asset.IsVisibleFor(OwnerIndex, VisibilityHelper.System)) then
-            Asset.HandleKnowledge(OwnerIndex, VisibilityHelper, Self);
+         if (Asset.IsVisibleFor(OwnerIndex)) then
+            Asset.HandleKnowledge(OwnerIndex, Self);
          Result := True;
       end
       else
@@ -126,18 +126,18 @@ begin
    Assert(not Assigned(FKnownAssetClasses));
    if (Enabled and Assigned(FGrid)) then
    begin
-      OwnerIndex := VisibilityHelper.GetDynastyIndex(Parent.Owner);
+      OwnerIndex := System.DynastyIndex[Parent.Owner];
       FGrid.Walk(@SenseDown, nil);
    end;
    FreeAndNil(FKnownMaterials);
    FreeAndNil(FKnownAssetClasses);
 end;
 
-procedure TGridSensorFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
+procedure TGridSensorFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);
 var
    Visibility: TVisibility;
 begin
-   Visibility := Parent.ReadVisibilityFor(DynastyIndex, CachedSystem);
+   Visibility := Parent.ReadVisibilityFor(DynastyIndex);
    if ((dmDetectable * Visibility <> []) and (dmClassKnown in Visibility)) then
    begin
       Writer.WriteCardinal(fcGridSensor);
@@ -147,7 +147,7 @@ begin
          Writer.WriteCardinal(fcGridSensorStatus);
          if (Assigned(FGrid)) then
          begin
-            Writer.WriteCardinal(FGrid.ID(CachedSystem, DynastyIndex));
+            Writer.WriteCardinal(FGrid.ID(DynastyIndex));
          end
          else
          begin

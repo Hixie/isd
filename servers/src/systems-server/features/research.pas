@@ -23,7 +23,7 @@ type
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
       constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
-      function InitFeatureNode(): TFeatureNode; override;
+      function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
    end;
 
    TResearchFeatureNode = class(TFeatureNode)
@@ -38,19 +38,19 @@ type
       FCurrentResearch: TResearch;
       FResearchStartTime: TTimeInMilliseconds;
       FResearchEvent: TSystemEvent;
-      procedure BankResearch(CachedSystem: TSystem);
-      procedure UpdateResearch(CachedSystem: TSystem);
+      procedure BankResearch();
+      procedure UpdateResearch();
       procedure TriggerResearch(var Data);
       procedure ScheduleUpdateResearch();
    protected
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
-      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
-      procedure HandleChanges(CachedSystem: TSystem); override;
+      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
+      procedure HandleChanges(); override;
    public
-      constructor Create(AFeatureClass: TResearchFeatureClass);
+      constructor Create(ASystem: TSystem; AFeatureClass: TResearchFeatureClass);
       destructor Destroy(); override;
-      procedure UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem); override;
-      procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
+      procedure UpdateJournal(Journal: TJournalWriter); override;
+      procedure ApplyJournal(Journal: TJournalReader); override;
       function HandleCommand(Command: UTF8String; var Message: TMessage): Boolean; override;
    end;
 
@@ -84,15 +84,15 @@ begin
    Result := TResearchFeatureNode;
 end;
 
-function TResearchFeatureClass.InitFeatureNode(): TFeatureNode;
+function TResearchFeatureClass.InitFeatureNode(ASystem: TSystem): TFeatureNode;
 begin
-   Result := TResearchFeatureNode.Create(Self);
+   Result := TResearchFeatureNode.Create(ASystem, Self);
 end;
 
 
-constructor TResearchFeatureNode.Create(AFeatureClass: TResearchFeatureClass);
+constructor TResearchFeatureNode.Create(ASystem: TSystem; AFeatureClass: TResearchFeatureClass);
 begin
-   inherited Create();
+   inherited Create(ASystem);
    FFeatureClass := AFeatureClass;
    FSeed := -1;
    FUpdateResearchScheduled := True;
@@ -104,7 +104,7 @@ begin
    Assert(Assigned(AFeatureClass));
    FFeatureClass := AFeatureClass as TResearchFeatureClass;
    FBankedResearch := TResearchTimeHashTable.Create();
-   inherited CreateFromJournal(Journal, AFeatureClass, ASystem);
+   inherited;
 end;
 
 destructor TResearchFeatureNode.Destroy();
@@ -115,11 +115,11 @@ begin
    inherited;
 end;
 
-procedure TResearchFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
+procedure TResearchFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);
 var
    Visibility: TVisibility;
 begin
-   Visibility := Parent.ReadVisibilityFor(DynastyIndex, CachedSystem);
+   Visibility := Parent.ReadVisibilityFor(DynastyIndex);
    if ((dmDetectable * Visibility <> []) and (dmClassKnown in Visibility)) then
    begin
       Writer.WriteCardinal(fcResearch);
@@ -141,7 +141,7 @@ begin
    MarkAsDirty([dkNeedsHandleChanges]);
 end;
 
-procedure TResearchFeatureNode.HandleChanges(CachedSystem: TSystem);
+procedure TResearchFeatureNode.HandleChanges();
 var
    NewDisabledReasons: TDisabledReasons;
 begin
@@ -154,12 +154,12 @@ begin
    if ((FDisabledReasons = []) and FUpdateResearchScheduled) then
    begin
       FUpdateResearchScheduled := False;
-      UpdateResearch(CachedSystem);
+      UpdateResearch();
    end;
    inherited;
 end;
 
-procedure TResearchFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
+procedure TResearchFeatureNode.UpdateJournal(Journal: TJournalWriter);
 var
    Research: TResearch;
 begin
@@ -187,7 +187,7 @@ begin
       Journal.WriteString('');
 end;
 
-procedure TResearchFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
+procedure TResearchFeatureNode.ApplyJournal(Journal: TJournalReader);
 var
    Count, Index: Cardinal;
    ResearchID: TResearchID;
@@ -211,7 +211,7 @@ begin
       for Index := 0 to Count - 1 do // $R-
       begin
          ResearchID := Journal.ReadInt32(); // $R-
-         Research := CachedSystem.Encyclopedia.Researches[ResearchID];
+         Research := System.Encyclopedia.Researches[ResearchID];
          DurationAsInt64 := Journal.ReadInt64();
          Duration := TMillisecondsDuration(DurationAsInt64);
          FBankedResearch[Research] := Duration;
@@ -220,7 +220,7 @@ begin
    ResearchID := Journal.ReadInt32();
    if (ResearchID <> TResearch.kNil) then
    begin
-      FCurrentResearch := CachedSystem.Encyclopedia.Researches[ResearchID]; // $R-
+      FCurrentResearch := System.Encyclopedia.Researches[ResearchID]; // $R-
       FResearchStartTime := TTimeInMilliseconds.FromMilliseconds(Journal.ReadInt64());
    end;
    Count := Journal.ReadCardinal();
@@ -230,13 +230,13 @@ begin
       for Index := 0 to Count - 1 do // $R-
       begin
          ResearchID := Journal.ReadInt32(); // $R-
-         FSpecialties[Index] := CachedSystem.Encyclopedia.Researches[ResearchID];
+         FSpecialties[Index] := System.Encyclopedia.Researches[ResearchID];
       end;
    end;
    TopicName := Journal.ReadString();
    if (TopicName <> '') then
    begin
-      FTopic := CachedSystem.Encyclopedia.Topics[TopicName];
+      FTopic := System.Encyclopedia.Topics[TopicName];
    end
    else
       FTopic := nil;
@@ -381,20 +381,20 @@ begin
       Result := inherited;
 end;
 
-procedure TResearchFeatureNode.BankResearch(CachedSystem: TSystem);
+procedure TResearchFeatureNode.BankResearch();
 var
    Elapsed: TMillisecondsDuration;
 begin
    if (Assigned(FCurrentResearch)) then
    begin
       Assert(not FBankedResearch.Has(FCurrentResearch));
-      Elapsed := CachedSystem.Now - FResearchStartTime;
+      Elapsed := System.Now - FResearchStartTime;
       FBankedResearch[FCurrentResearch] := Elapsed;
       FCurrentResearch := nil;
    end;
 end;
 
-procedure TResearchFeatureNode.UpdateResearch(CachedSystem: TSystem);
+procedure TResearchFeatureNode.UpdateResearch();
 
    function TopicMatches(Topic: TTopic): Boolean;
    var
@@ -443,7 +443,7 @@ begin
    begin
       CancelEvent(FResearchEvent);
    end;
-   BankResearch(CachedSystem);
+   BankResearch();
    KnowledgeBase := TGetKnownResearchesMessage.Create(Parent.Owner);
    WeightedCandidates := TWeightedResearchHashTable.Create();
    TotalWeight := 0;
@@ -627,13 +627,13 @@ begin
       else
          BankedTime := TMillisecondsDuration.FromMilliseconds(0);
 
-      FResearchStartTime := CachedSystem.Now - BankedTime;
+      FResearchStartTime := System.Now - BankedTime;
 
       if (Duration.IsNegative) then
          Duration := TMillisecondsDuration.FromMilliseconds(0);
       Writeln(Parent.DebugName, ': Scheduled research ', FCurrentResearch.ID, '; T-', Duration.ToString());
 
-      FResearchEvent := CachedSystem.ScheduleEvent(Duration, @TriggerResearch, Self);
+      FResearchEvent := System.ScheduleEvent(Duration, @TriggerResearch, Self);
    finally
       WeightedCandidates.Free();
       KnowledgeBase.Free();

@@ -17,7 +17,7 @@ type
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
       constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
-      function InitFeatureNode(): TFeatureNode; override;
+      function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
    end;
 
    TMaterialPileFeatureNode = class(TFeatureNode, IMaterialPile)
@@ -36,16 +36,16 @@ type
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
       function GetMass(): Double; override;
       function GetMassFlowRate(): TRate; override;
-      procedure HandleChanges(CachedSystem: TSystem); override;
-      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
-      procedure ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynastyHashSet; CachedSystem: TSystem); override;
-      procedure ResetVisibility(CachedSystem: TSystem); override;
-      procedure HandleKnowledge(const DynastyIndex: Cardinal; const VisibilityHelper: TVisibilityHelper; const Sensors: ISensorsProvider); override;
+      procedure HandleChanges(); override;
+      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
+      procedure ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynasty.TArray); override;
+      procedure ResetVisibility(); override;
+      procedure HandleKnowledge(const DynastyIndex: Cardinal; const Sensors: ISensorsProvider); override;
    public
-      constructor Create(AFeatureClass: TMaterialPileFeatureClass);
+      constructor Create(ASystem: TSystem; AFeatureClass: TMaterialPileFeatureClass);
       destructor Destroy(); override;
-      procedure UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem); override;
-      procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
+      procedure UpdateJournal(Journal: TJournalWriter); override;
+      procedure ApplyJournal(Journal: TJournalReader); override;
    end;
 
 // TODO: handle our ancestor chain changing
@@ -70,15 +70,15 @@ begin
    Result := TMaterialPileFeatureNode;
 end;
 
-function TMaterialPileFeatureClass.InitFeatureNode(): TFeatureNode;
+function TMaterialPileFeatureClass.InitFeatureNode(ASystem: TSystem): TFeatureNode;
 begin
-   Result := TMaterialPileFeatureNode.Create(Self);
+   Result := TMaterialPileFeatureNode.Create(ASystem, Self);
 end;
 
 
-constructor TMaterialPileFeatureNode.Create(AFeatureClass: TMaterialPileFeatureClass);
+constructor TMaterialPileFeatureNode.Create(ASystem: TSystem; AFeatureClass: TMaterialPileFeatureClass);
 begin
-   inherited Create();
+   inherited Create(ASystem);
    FFeatureClass := AFeatureClass;
 end;
 
@@ -86,7 +86,7 @@ constructor TMaterialPileFeatureNode.CreateFromJournal(Journal: TJournalReader; 
 begin
    Assert(Assigned(AFeatureClass));
    FFeatureClass := AFeatureClass as TMaterialPileFeatureClass;
-   inherited CreateFromJournal(Journal, AFeatureClass, ASystem);
+   inherited;
 end;
 
 destructor TMaterialPileFeatureNode.Destroy();
@@ -130,7 +130,7 @@ begin
    Result := Parent.Owner;
 end;
 
-procedure TMaterialPileFeatureNode.HandleChanges(CachedSystem: TSystem);
+procedure TMaterialPileFeatureNode.HandleChanges();
 var
    Message: TRegisterMaterialPileBusMessage;
 begin
@@ -168,11 +168,11 @@ begin
    end;
 end;
 
-procedure TMaterialPileFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
+procedure TMaterialPileFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);
 var
    Visibility: TVisibility;
 begin
-   Visibility := Parent.ReadVisibilityFor(DynastyIndex, CachedSystem);
+   Visibility := Parent.ReadVisibilityFor(DynastyIndex);
    if ((dmDetectable * Visibility <> []) and (dmClassKnown in Visibility)) then
    begin
       case (FFeatureClass.FMaterial.UnitKind) of
@@ -220,26 +220,26 @@ begin
    end;
 end;
 
-procedure TMaterialPileFeatureNode.ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynastyHashSet; CachedSystem: TSystem);
+procedure TMaterialPileFeatureNode.ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynasty.TArray);
 begin
-   FMaterialKnowledge.Init(NewDynasties.Count);
+   FMaterialKnowledge.Init(Length(NewDynasties)); // $R-
 end;
 
-procedure TMaterialPileFeatureNode.ResetVisibility(CachedSystem: TSystem);
+procedure TMaterialPileFeatureNode.ResetVisibility();
 begin
    FMaterialKnowledge.Reset();
 end;
 
-procedure TMaterialPileFeatureNode.HandleKnowledge(const DynastyIndex: Cardinal; const VisibilityHelper: TVisibilityHelper; const Sensors: ISensorsProvider);
+procedure TMaterialPileFeatureNode.HandleKnowledge(const DynastyIndex: Cardinal; const Sensors: ISensorsProvider);
 begin
    FMaterialKnowledge.SetEntry(DynastyIndex, Sensors.Knows(FFeatureClass.FMaterial));
 end;
 
-procedure TMaterialPileFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
+procedure TMaterialPileFeatureNode.UpdateJournal(Journal: TJournalWriter);
 begin
 end;
 
-procedure TMaterialPileFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
+procedure TMaterialPileFeatureNode.ApplyJournal(Journal: TJournalReader);
 begin
 end;
 

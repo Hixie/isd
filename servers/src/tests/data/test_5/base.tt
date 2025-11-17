@@ -1,0 +1,14 @@
+research nothing {
+  id: 0 (root);
+}
+
+research unlock {
+  id: 1;
+  requires nothing;
+  takes 1 hour;
+  rewards material "Iron";
+  rewards material "Silicon";
+  rewards [
+    Technology unlocked.
+  ];
+}

@@ -16,7 +16,7 @@ type
    public
       constructor Create(AMaxStepsToOrbit, AStepsUpFromOrbit, AStepsDownFromTop: Cardinal; AMinSize: Double; ASensorKind: TVisibility);
       constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
-      function InitFeatureNode(): TFeatureNode; override;
+      function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
    end;
 
    TSpaceSensorFeatureNode = class(TSensorFeatureNode)
@@ -25,11 +25,11 @@ type
       FLastBottom, FLastTop: TAssetNode;
       FActualStepsUp: Cardinal;
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
-      procedure ApplyVisibility(const VisibilityHelper: TVisibilityHelper); override;
-      procedure ApplyKnowledge(const VisibilityHelper: TVisibilityHelper); override;
-      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
+      procedure ApplyVisibility(); override;
+      procedure ApplyKnowledge(); override;
+      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
-      constructor Create(AFeatureClass: TSpaceSensorFeatureClass);
+      constructor Create(ASystem: TSystem; AFeatureClass: TSpaceSensorFeatureClass);
    end;
 
 implementation
@@ -68,15 +68,15 @@ begin
    Result := TSpaceSensorFeatureNode;
 end;
 
-function TSpaceSensorFeatureClass.InitFeatureNode(): TFeatureNode;
+function TSpaceSensorFeatureClass.InitFeatureNode(ASystem: TSystem): TFeatureNode;
 begin
-   Result := TSpaceSensorFeatureNode.Create(Self);
+   Result := TSpaceSensorFeatureNode.Create(ASystem, Self);
 end;
 
 
-constructor TSpaceSensorFeatureNode.Create(AFeatureClass: TSpaceSensorFeatureClass);
+constructor TSpaceSensorFeatureNode.Create(ASystem: TSystem; AFeatureClass: TSpaceSensorFeatureClass);
 begin
-   inherited Create();
+   inherited Create(ASystem);
    FFeatureClass := AFeatureClass;
 end;
 
@@ -84,10 +84,10 @@ constructor TSpaceSensorFeatureNode.CreateFromJournal(Journal: TJournalReader; A
 begin
    Assert(Assigned(AFeatureClass));
    FFeatureClass := AFeatureClass as TSpaceSensorFeatureClass;
-   inherited CreateFromJournal(Journal, AFeatureClass, ASystem);
+   inherited;
 end;
 
-procedure TSpaceSensorFeatureNode.ApplyVisibility(const VisibilityHelper: TVisibilityHelper);
+procedure TSpaceSensorFeatureNode.ApplyVisibility();
 var
    Depth, Target: Cardinal;
    OwnerIndex: Cardinal;
@@ -102,7 +102,7 @@ var
            Asset.IsReal())) then // and we see non-ghosts regardless of who owns them
       begin
          Visibility := FFeatureClass.FSensorKind;
-         Asset.HandleVisibility(OwnerIndex, Visibility, VisibilityHelper);
+         Asset.HandleVisibility(OwnerIndex, Visibility);
          if (Visibility <> []) then
             Inc(FLastCountDetected);
       end;
@@ -128,7 +128,7 @@ begin
    FLastCountDetected := 0;
    if ((not Enabled) or not Assigned(Parent.Owner)) then
       exit; // no dynasty owns this sensor, nothing to apply
-   OwnerIndex := VisibilityHelper.GetDynastyIndex(Parent.Owner);
+   OwnerIndex := System.DynastyIndex[Parent.Owner];
    Feature := Self;
    Index := 0;
    while (Assigned(Feature) and not (Feature is TOrbitFeatureNode) and (Index < FFeatureClass.FMaxStepsToOrbit)) do
@@ -169,7 +169,7 @@ begin
    Assert(not Assigned(FKnownAssetClasses));
 end;
 
-procedure TSpaceSensorFeatureNode.ApplyKnowledge(const VisibilityHelper: TVisibilityHelper);
+procedure TSpaceSensorFeatureNode.ApplyKnowledge();
 var
    Depth, Target: Cardinal;
    OwnerIndex: Cardinal;
@@ -181,8 +181,8 @@ var
            (not Assigned(Asset.Owner)) or // we see unowned ghosts // TODO: this should be redundant, assert instead?
            Asset.IsReal())) then // and we see non-ghosts regardless of who owns them
       begin
-         if (Asset.IsVisibleFor(OwnerIndex, VisibilityHelper.System)) then
-            Asset.HandleKnowledge(OwnerIndex, VisibilityHelper, Self);
+         if (Asset.IsVisibleFor(OwnerIndex)) then
+            Asset.HandleKnowledge(OwnerIndex, Self);
       end;
       Result := Depth < Target;
       Inc(Depth);
@@ -203,7 +203,7 @@ begin
       exit;
    Assert(Enabled);
    Assert(Assigned(FLastTop));
-   OwnerIndex := VisibilityHelper.GetDynastyIndex(Parent.Owner);
+   OwnerIndex := System.DynastyIndex[Parent.Owner];
    Depth := 0;
    Target := FFeatureClass.FStepsDownFromTop;
    FLastTop.Walk(@SenseDown, @SenseUp);
@@ -226,12 +226,12 @@ begin
    FreeAndNil(FKnownAssetClasses);
 end;
 
-procedure TSpaceSensorFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
+procedure TSpaceSensorFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);
 var
    Visibility: TVisibility;
 begin
-   Visibility := Parent.ReadVisibilityFor(DynastyIndex, CachedSystem);
-   if (Enabled and (dmDetectable * Visibility <> []) and (dmClassKnown in Visibility)) then
+   Visibility := Parent.ReadVisibilityFor(DynastyIndex);
+   if ((dmDetectable * Visibility <> []) and (dmClassKnown in Visibility)) then
    begin
       Writer.WriteCardinal(fcSpaceSensor);
       Writer.WriteCardinal(Cardinal(FDisabledReasons));
@@ -239,11 +239,11 @@ begin
       Writer.WriteCardinal(FFeatureClass.FStepsUpFromOrbit);
       Writer.WriteCardinal(FFeatureClass.FStepsDownFromTop);
       Writer.WriteDouble(FFeatureClass.FMinSize);
-      if (dmInternals in Visibility) then
+      if (Enabled and (dmInternals in Visibility)) then
       begin
          Writer.WriteCardinal(fcSpaceSensorStatus);
-         Writer.WriteCardinal(FLastBottom.ID(CachedSystem, DynastyIndex));
-         Writer.WriteCardinal(FLastTop.ID(CachedSystem, DynastyIndex));
+         Writer.WriteCardinal(FLastBottom.ID(DynastyIndex));
+         Writer.WriteCardinal(FLastTop.ID(DynastyIndex));
          Writer.WriteCardinal(FLastCountDetected);
       end;
    end;

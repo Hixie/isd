@@ -32,10 +32,10 @@ type
    TInternalConnection = class abstract(TBaseOutgoingInternalConnection)
    protected
       FServer: TServer;
-      FConversation: specialize TSharedPointer<TInternalConversationHandle>;
+      FConversation: TInternalConversation;
       procedure Done(); override;
    public
-      constructor Create(AServer: TServer; AServerEntry: PServerEntry; AConversation: TInternalConversationHandle);
+      constructor Create(AServer: TServer; AServerEntry: PServerEntry; AConversation: TInternalConversation);
       procedure ReportConnectionError(ErrorCode: cint); override;
    end;
 
@@ -101,7 +101,7 @@ var
    Tokens: TTokenArray;
    Token: TToken;
    Index: Cardinal;
-   Conversation: TInternalConversationHandle;
+   Conversation: TInternalConversation;
    SystemSocket: TInternalSystemConnection;
    LoginSocket: TInternalLoginConnection;
    Score: Double;
@@ -136,7 +136,7 @@ begin
       // Connect to each system server dynasty has and forward the token
       if (Dynasty.ServerCount > 0) then
       begin
-         Conversation := TInternalConversationHandle.Create(Self);
+         Conversation := TInternalConversationInternals.Create(Self);
          for Index := 0 to Dynasty.ServerCount - 1 do // $R-
          begin
             SystemSocket := TInternalSystemConnection.Create(FServer, FServer.SystemServerDatabase.Servers[Dynasty.Servers[Index]^.ServerID], Conversation);
@@ -149,7 +149,7 @@ begin
             FServer.Add(SystemSocket);
             SystemSocket.RegisterToken(Dynasty, Salt, Hash);
          end;
-         Assert(Conversation.HasHolds);
+         Assert(Conversation.Value.HasHolds);
       end
       else
       begin
@@ -171,7 +171,7 @@ begin
       // Connect to each system server dynasty has and forward the logout request
       if (Dynasty.ServerCount > 0) then
       begin
-         Conversation := TInternalConversationHandle.Create(Self);
+         Conversation := TInternalConversationInternals.Create(Self);
          for Index := 0 to Dynasty.ServerCount - 1 do // $R-
          begin
             SystemSocket := TInternalSystemConnection.Create(FServer, FServer.SystemServerDatabase.Servers[Dynasty.Servers[Index]^.ServerID], Conversation);
@@ -184,7 +184,7 @@ begin
             FServer.Add(SystemSocket);
             SystemSocket.Logout(Dynasty);
          end;
-         Assert(Conversation.HasHolds);
+         Assert(Conversation.Value.HasHolds);
       end
       else
       begin
@@ -209,7 +209,7 @@ begin
       Tokens := Dynasty.Tokens;
       if (Length(Tokens) > 0) then
       begin
-         Conversation := TInternalConversationHandle.Create(Self);
+         Conversation := TInternalConversationInternals.Create(Self);
          SystemSocket := TInternalSystemConnection.Create(FServer, FServer.SystemServerDatabase.Servers[SystemServerID], Conversation);
          try
             SystemSocket.Connect();
@@ -222,7 +222,7 @@ begin
          begin
             SystemSocket.RegisterToken(Dynasty, Token.Salt, Token.Hash);
          end;
-         Assert(Conversation.HasHolds);
+         Assert(Conversation.Value.HasHolds);
       end
       else
       begin
@@ -260,7 +260,7 @@ begin
       Score := Arguments.ReadDouble();
       Dynasty.UpdateScore(SystemServerID, Score);
       // Now update login server.
-      Conversation := TInternalConversationHandle.Create(Self);
+      Conversation := TInternalConversationInternals.Create(Self);
       LoginSocket := TInternalLoginConnection.Create(FServer, FServer.LoginServer, Conversation);
       try
          LoginSocket.Connect();
@@ -270,7 +270,7 @@ begin
       end;
       FServer.Add(LoginSocket);
       LoginSocket.UpdateScore(Dynasty);
-      Assert(Conversation.HasHolds);
+      Assert(Conversation.Value.HasHolds);
    end
    else
       inherited;
@@ -323,7 +323,7 @@ begin
 end;
 
 
-constructor TInternalConnection.Create(AServer: TServer; AServerEntry: PServerEntry; AConversation: TInternalConversationHandle);
+constructor TInternalConnection.Create(AServer: TServer; AServerEntry: PServerEntry; AConversation: TInternalConversation);
 begin
    inherited Create(AServerEntry);
    FServer := AServer;

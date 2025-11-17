@@ -18,7 +18,7 @@ type
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
       constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
-      function InitFeatureNode(): TFeatureNode; override;
+      function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
    end;
 
    TMiningFeatureNode = class(TFeatureNode, IMiner)
@@ -34,13 +34,13 @@ type
       function GetDynasty(): TDynasty;
    protected
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
-      procedure HandleChanges(CachedSystem: TSystem); override;
-      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
+      procedure HandleChanges(); override;
+      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
-      constructor Create(AFeatureClass: TMiningFeatureClass);
+      constructor Create(ASystem: TSystem; AFeatureClass: TMiningFeatureClass);
       destructor Destroy(); override;
-      procedure UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem); override;
-      procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
+      procedure UpdateJournal(Journal: TJournalWriter); override;
+      procedure ApplyJournal(Journal: TJournalReader); override;
    end;
 
 // TODO: handle our ancestor chain changing
@@ -63,15 +63,15 @@ begin
    Result := TMiningFeatureNode;
 end;
 
-function TMiningFeatureClass.InitFeatureNode(): TFeatureNode;
+function TMiningFeatureClass.InitFeatureNode(ASystem: TSystem): TFeatureNode;
 begin
-   Result := TMiningFeatureNode.Create(Self);
+   Result := TMiningFeatureNode.Create(ASystem, Self);
 end;
 
 
-constructor TMiningFeatureNode.Create(AFeatureClass: TMiningFeatureClass);
+constructor TMiningFeatureNode.Create(ASystem: TSystem; AFeatureClass: TMiningFeatureClass);
 begin
-   inherited Create();
+   inherited Create(ASystem);
    FFeatureClass := AFeatureClass;
 end;
 
@@ -79,7 +79,7 @@ constructor TMiningFeatureNode.CreateFromJournal(Journal: TJournalReader; AFeatu
 begin
    Assert(Assigned(AFeatureClass));
    FFeatureClass := AFeatureClass as TMiningFeatureClass;
-   inherited CreateFromJournal(Journal, AFeatureClass, ASystem);
+   inherited;
 end;
 
 destructor TMiningFeatureNode.Destroy();
@@ -119,7 +119,7 @@ begin
    Result := Parent.Owner;
 end;
 
-procedure TMiningFeatureNode.HandleChanges(CachedSystem: TSystem);
+procedure TMiningFeatureNode.HandleChanges();
 var
    DisabledReasons: TDisabledReasons;
    Message: TRegisterMinerBusMessage;
@@ -142,12 +142,12 @@ begin
    inherited;
 end;
 
-procedure TMiningFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
+procedure TMiningFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);
 var
    Visibility: TVisibility;
    Flags: Byte;
 begin
-   Visibility := Parent.ReadVisibilityFor(DynastyIndex, CachedSystem);
+   Visibility := Parent.ReadVisibilityFor(DynastyIndex);
    if ((dmDetectable * Visibility <> []) and (dmClassKnown in Visibility)) then
    begin
       Writer.WriteCardinal(fcMining);
@@ -163,11 +163,11 @@ begin
    end;
 end;
 
-procedure TMiningFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
+procedure TMiningFeatureNode.UpdateJournal(Journal: TJournalWriter);
 begin
 end;
 
-procedure TMiningFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
+procedure TMiningFeatureNode.ApplyJournal(Journal: TJournalReader);
 begin
 end;
 

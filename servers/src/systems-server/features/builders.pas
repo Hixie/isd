@@ -136,7 +136,7 @@ type
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
       constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
-      function InitFeatureNode(): TFeatureNode; override;
+      function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
    end;
 
    TBuilderBusFeatureNode = class(TFeatureNode)
@@ -146,13 +146,13 @@ type
       procedure Reset();
       procedure Sync();
       function ManageBusMessage(Message: TBusMessage): TBusMessageResult; override;
-      procedure HandleChanges(CachedSystem: TSystem); override;
-      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
+      procedure HandleChanges(); override;
+      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
-      constructor Create();
+      constructor Create(ASystem: TSystem);
       destructor Destroy(); override;
-      procedure UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem); override;
-      procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
+      procedure UpdateJournal(Journal: TJournalWriter); override;
+      procedure ApplyJournal(Journal: TJournalReader); override;
       procedure RemoveBuilder(Builder: TBuilderFeatureNode); // will not call BuilderBusSync on caller
       procedure RemoveStructure(Structure: IStructure); // will not call BuilderBusSync on caller
    end;
@@ -166,7 +166,7 @@ type
    public
       constructor Create(ACapacity: Cardinal; ABuildRate: TRate);
       constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
-      function InitFeatureNode(): TFeatureNode; override;
+      function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
       property Capacity: Cardinal read FCapacity;
       property BuildRate: TRate read FBuildRate;
    end;
@@ -183,13 +183,13 @@ type
       function GetCapacity(): Cardinal; inline;
    protected
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
-      procedure HandleChanges(CachedSystem: TSystem); override;
-      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
+      procedure HandleChanges(); override;
+      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
-      constructor Create(AFeatureClass: TBuilderFeatureClass);
+      constructor Create(ASystem: TSystem; AFeatureClass: TBuilderFeatureClass);
       destructor Destroy(); override;
-      procedure UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem); override;
-      procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
+      procedure UpdateJournal(Journal: TJournalWriter); override;
+      procedure ApplyJournal(Journal: TJournalReader); override;
       procedure BuilderBusConnected(Bus: TBuilderBusFeatureNode); // must come from builder bus
       procedure BuilderBusReset(); // must come from builder bus; indicates bus is forgetting the registration; BuildingBusConnected will not be called again unless Bus.AddBuilder is called first
       procedure BuilderBusStartBuilding(Structure: IStructure); // must come from builder bus
@@ -784,15 +784,15 @@ begin
    Result := TBuilderBusFeatureNode;
 end;
 
-function TBuilderBusFeatureClass.InitFeatureNode(): TFeatureNode;
+function TBuilderBusFeatureClass.InitFeatureNode(ASystem: TSystem): TFeatureNode;
 begin
-   Result := TBuilderBusFeatureNode.Create();
+   Result := TBuilderBusFeatureNode.Create(ASystem);
 end;
 
 
-constructor TBuilderBusFeatureNode.Create();
+constructor TBuilderBusFeatureNode.Create(ASystem: TSystem);
 begin
-   inherited;
+   inherited Create(ASystem);
    FRecords.Init();
 end;
 
@@ -877,7 +877,7 @@ begin
    MarkAsDirty([dkNeedsHandleChanges]);
 end;
 
-procedure TBuilderBusFeatureNode.HandleChanges(CachedSystem: TSystem);
+procedure TBuilderBusFeatureNode.HandleChanges();
 var
    Builders: TBuilderFeatureNodeArray;
    BuilderIndex: Integer;
@@ -917,16 +917,16 @@ begin
    inherited;
 end;
 
-procedure TBuilderBusFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
+procedure TBuilderBusFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);
 begin
 end;
 
-procedure TBuilderBusFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
+procedure TBuilderBusFeatureNode.UpdateJournal(Journal: TJournalWriter);
 begin
    Journal.WriteCardinal(FRecords.NextPriority);
 end;
 
-procedure TBuilderBusFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
+procedure TBuilderBusFeatureNode.ApplyJournal(Journal: TJournalReader);
 begin
    FRecords.NextPriority := Journal.ReadCardinal(); // $R-
 end;
@@ -984,15 +984,15 @@ begin
    Result := TBuilderFeatureNode;
 end;
 
-function TBuilderFeatureClass.InitFeatureNode(): TFeatureNode;
+function TBuilderFeatureClass.InitFeatureNode(ASystem: TSystem): TFeatureNode;
 begin
-   Result := TBuilderFeatureNode.Create(Self);
+   Result := TBuilderFeatureNode.Create(ASystem, Self);
 end;
 
 
-constructor TBuilderFeatureNode.Create(AFeatureClass: TBuilderFeatureClass);
+constructor TBuilderFeatureNode.Create(ASystem: TSystem; AFeatureClass: TBuilderFeatureClass);
 begin
-   inherited Create();
+   inherited Create(ASystem);
    Assert(Assigned(AFeatureClass));
    FFeatureClass := AFeatureClass;
 end;
@@ -1001,7 +1001,7 @@ constructor TBuilderFeatureNode.CreateFromJournal(Journal: TJournalReader; AFeat
 begin
    Assert(Assigned(AFeatureClass));
    FFeatureClass := AFeatureClass as TBuilderFeatureClass;
-   inherited CreateFromJournal(Journal, AFeatureClass, ASystem);
+   inherited;
 end;
 
 destructor TBuilderFeatureNode.Destroy();
@@ -1027,7 +1027,7 @@ begin
    Result := FFeatureClass.Capacity;
 end;
 
-procedure TBuilderFeatureNode.HandleChanges(CachedSystem: TSystem);
+procedure TBuilderFeatureNode.HandleChanges();
 var
    Structure: IStructure;
    NewDisabledReasons: TDisabledReasons;
@@ -1060,12 +1060,12 @@ begin
    inherited;
 end;
 
-procedure TBuilderFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
+procedure TBuilderFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);
 var
    Visibility: TVisibility;
    Structure: IStructure;
 begin
-   Visibility := Parent.ReadVisibilityFor(DynastyIndex, CachedSystem);
+   Visibility := Parent.ReadVisibilityFor(DynastyIndex);
    if ((dmDetectable * Visibility <> []) and (dmClassKnown in Visibility) and (dmInternals in Visibility)) then
    begin
       Writer.WriteCardinal(fcBuilder);
@@ -1074,17 +1074,17 @@ begin
       Writer.WriteCardinal(Cardinal(FDisabledReasons));
       if (Assigned(FStructures)) then
          for Structure in FStructures do
-            Writer.WriteCardinal(Structure.GetAsset().ID(CachedSystem, DynastyIndex));
+            Writer.WriteCardinal(Structure.GetAsset().ID(DynastyIndex));
       Writer.WriteCardinal(0);
    end;
 end;
 
-procedure TBuilderFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
+procedure TBuilderFeatureNode.UpdateJournal(Journal: TJournalWriter);
 begin
    Journal.WriteCardinal(FPriority);
 end;
 
-procedure TBuilderFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
+procedure TBuilderFeatureNode.ApplyJournal(Journal: TJournalReader);
 begin
    FPriority := Journal.ReadCardinal(); // $R-
 end;

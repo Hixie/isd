@@ -66,7 +66,7 @@ type
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
       constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
-      function InitFeatureNode(): TFeatureNode; override;
+      function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
    end;
 
    TPeopleBusFeatureNode = class(TFeatureNode)
@@ -142,16 +142,14 @@ type
          end;
       var
          FRecords: TPeopleBusRecords;
-      constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
       function ManageBusMessage(Message: TBusMessage): TBusMessageResult; override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
-      procedure HandleChanges(CachedSystem: TSystem); override;
-      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
+      procedure HandleChanges(); override;
+      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
-      constructor Create();
       destructor Destroy(); override;
-      procedure UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem); override;
-      procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
+      procedure UpdateJournal(Journal: TJournalWriter); override;
+      procedure ApplyJournal(Journal: TJournalReader); override;
       procedure RemoveEmployer(Employer: IEmployer);
       procedure RemoveHousing(Housing: IHousing);
       procedure ClientChanged(); // e.g. if Housing.Workers changed
@@ -496,21 +494,11 @@ begin
    Result := TPeopleBusFeatureNode;
 end;
 
-function TPeopleBusFeatureClass.InitFeatureNode(): TFeatureNode;
+function TPeopleBusFeatureClass.InitFeatureNode(ASystem: TSystem): TFeatureNode;
 begin
-   Result := TPeopleBusFeatureNode.Create();
+   Result := TPeopleBusFeatureNode.Create(ASystem);
 end;
 
-
-constructor TPeopleBusFeatureNode.Create();
-begin
-   inherited;
-end;
-
-constructor TPeopleBusFeatureNode.CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem);
-begin
-   inherited;
-end;
 
 destructor TPeopleBusFeatureNode.Destroy();
 var
@@ -578,7 +566,7 @@ begin
       Result := inherited;
 end;
 
-procedure TPeopleBusFeatureNode.HandleChanges(CachedSystem: TSystem);
+procedure TPeopleBusFeatureNode.HandleChanges();
 var
    Dynasty: TDynasty;
    EmployerList: TPeopleBusRecords.TEmployerList.TReadOnlyView;
@@ -630,16 +618,16 @@ begin
    end;
 end;
 
-procedure TPeopleBusFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
+procedure TPeopleBusFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);
 begin
 end;
 
-procedure TPeopleBusFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
+procedure TPeopleBusFeatureNode.UpdateJournal(Journal: TJournalWriter);
 begin
    Journal.WriteCardinal(FRecords.NextPriority);
 end;
 
-procedure TPeopleBusFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
+procedure TPeopleBusFeatureNode.ApplyJournal(Journal: TJournalReader);
 begin
    FRecords.ResetNextPriority(TAutoPriority(Journal.ReadCardinal()));
 end;

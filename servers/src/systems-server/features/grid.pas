@@ -15,7 +15,7 @@ type
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
       constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
-      function InitFeatureNode(): TFeatureNode; override;
+      function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
    end;
 
    TParameterizedGridFeatureClass = class(TGridFeatureClass)
@@ -28,7 +28,7 @@ type
    public
       constructor Create(ABuildEnvironment: TBuildEnvironment; ACellSize: Double; ADimension: Cardinal);
       constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
-      function InitFeatureNode(): TFeatureNode; override;
+      function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
    end;
 
    TGridFeatureNode = class(TFeatureNode)
@@ -46,12 +46,12 @@ type
       function GetSize(): Double; override;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
-      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
+      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
-      constructor Create(ABuildEnvironment: TBuildEnvironment; ACellSize: Double; ADimension: Cardinal);
+      constructor Create(ASystem: TSystem; ABuildEnvironment: TBuildEnvironment; ACellSize: Double; ADimension: Cardinal);
       destructor Destroy(); override;
-      procedure UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem); override;
-      procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
+      procedure UpdateJournal(Journal: TJournalWriter); override;
+      procedure ApplyJournal(Journal: TJournalReader); override;
       function HandleCommand(Command: UTF8String; var Message: TMessage): Boolean; override;
       property Dimension: Cardinal read FDimension;
       property CellSize: Double read FCellSize;
@@ -83,7 +83,7 @@ begin
    Result := TGridFeatureNode;
 end;
 
-function TGenericGridFeatureClass.InitFeatureNode(): TFeatureNode;
+function TGenericGridFeatureClass.InitFeatureNode(ASystem: TSystem): TFeatureNode;
 begin
    Result := nil;
    Assert(False, 'Generic grid features cannot spawn feature nodes.');
@@ -119,15 +119,15 @@ begin
    Result := TGridFeatureNode;
 end;
 
-function TParameterizedGridFeatureClass.InitFeatureNode(): TFeatureNode;
+function TParameterizedGridFeatureClass.InitFeatureNode(ASystem: TSystem): TFeatureNode;
 begin
-   Result := TGridFeatureNode.Create(FBuildEnvironment, FCellSize, FDimension);
+   Result := TGridFeatureNode.Create(ASystem, FBuildEnvironment, FCellSize, FDimension);
 end;
 
 
-constructor TGridFeatureNode.Create(ABuildEnvironment: TBuildEnvironment; ACellSize: Double; ADimension: Cardinal);
+constructor TGridFeatureNode.Create(ASystem: TSystem; ABuildEnvironment: TBuildEnvironment; ACellSize: Double; ADimension: Cardinal);
 begin
-   inherited Create();
+   inherited Create(ASystem);
    FBuildEnvironment := ABuildEnvironment;
    FCellSize := ACellSize;
    FDimension := ADimension;
@@ -271,13 +271,13 @@ begin
    Result := False;
 end;
 
-procedure TGridFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
+procedure TGridFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);
 var
    Visibility: TVisibility;
    Child: TAssetNode;
 begin
    // You always know the size of a grid because if anything is inferred inside it, we need the size to place it.
-   Visibility := Parent.ReadVisibilityFor(DynastyIndex, CachedSystem);
+   Visibility := Parent.ReadVisibilityFor(DynastyIndex);
    if (Visibility <> []) then
    begin
       Writer.WriteCardinal(fcGrid);
@@ -286,9 +286,9 @@ begin
       Writer.WriteCardinal(FDimension);
       for Child in FChildren do
       begin
-         if (Child.IsVisibleFor(DynastyIndex, CachedSystem)) then
+         if (Child.IsVisibleFor(DynastyIndex)) then
          begin
-            Writer.WriteCardinal(Child.ID(CachedSystem, DynastyIndex));
+            Writer.WriteCardinal(Child.ID(DynastyIndex));
             Writer.WriteCardinal(PGridData(Child.ParentData)^.X);
             Writer.WriteCardinal(PGridData(Child.ParentData)^.Y);
          end;
@@ -297,7 +297,7 @@ begin
    end;
 end;
 
-procedure TGridFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
+procedure TGridFeatureNode.UpdateJournal(Journal: TJournalWriter);
 
    procedure ReportChild(Child: TAssetNode);
    begin
@@ -332,7 +332,7 @@ begin
    Journal.WriteAssetChangeKind(ckEndOfList);
 end;
 
-procedure TGridFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
+procedure TGridFeatureNode.ApplyJournal(Journal: TJournalReader);
 
    procedure AddChild();
    var
@@ -472,7 +472,7 @@ begin
          if (Message.CloseInput()) then
          begin
             Message.Reply();
-            Asset := AssetClass.Spawn(PlayerDynasty);
+            Asset := AssetClass.Spawn(PlayerDynasty, System);
             AdoptGridChild(Asset, X, Y);
             Assert(Asset.Mass = 0); // if you put something down, it shouldn't immediately have mass
             Assert(Asset.Size <= FCellSize, 'Tried to put ' + Asset.DebugName + ' of size ' + FloatToStr(Asset.Size) + 'm in cell size ' + FloatToStr(FCellSize) + 'm');

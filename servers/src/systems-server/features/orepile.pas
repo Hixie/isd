@@ -37,7 +37,7 @@ type
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
       constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
-      function InitFeatureNode(): TFeatureNode; override;
+      function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
    end;
 
    TOrePileFeatureNode = class(TFeatureNode, IOrePile)
@@ -59,16 +59,16 @@ type
       procedure Detaching(); override;
       function GetMass(): Double; override;
       function GetMassFlowRate(): TRate; override;
-      procedure HandleChanges(CachedSystem: TSystem); override;
-      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem); override;
-      procedure ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynastyHashSet; CachedSystem: TSystem); override;
-      procedure ResetVisibility(CachedSystem: TSystem); override;
-      procedure HandleKnowledge(const DynastyIndex: Cardinal; const VisibilityHelper: TVisibilityHelper; const Sensors: ISensorsProvider); override;
+      procedure HandleChanges(); override;
+      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
+      procedure ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynasty.TArray); override;
+      procedure ResetVisibility(); override;
+      procedure HandleKnowledge(const DynastyIndex: Cardinal; const Sensors: ISensorsProvider); override;
    public
-      constructor Create(AFeatureClass: TOrePileFeatureClass);
+      constructor Create(ASystem: TSystem; AFeatureClass: TOrePileFeatureClass);
       destructor Destroy(); override;
-      procedure UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem); override;
-      procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
+      procedure UpdateJournal(Journal: TJournalWriter); override;
+      procedure ApplyJournal(Journal: TJournalReader); override;
       function HandleCommand(Command: UTF8String; var Message: TMessage): Boolean; override;
    end;
 
@@ -256,15 +256,15 @@ begin
    Result := TOrePileFeatureNode;
 end;
 
-function TOrePileFeatureClass.InitFeatureNode(): TFeatureNode;
+function TOrePileFeatureClass.InitFeatureNode(ASystem: TSystem): TFeatureNode;
 begin
-   Result := TOrePileFeatureNode.Create(Self);
+   Result := TOrePileFeatureNode.Create(ASystem, Self);
 end;
 
 
-constructor TOrePileFeatureNode.Create(AFeatureClass: TOrePileFeatureClass);
+constructor TOrePileFeatureNode.Create(ASystem: TSystem; AFeatureClass: TOrePileFeatureClass);
 begin
-   inherited Create();
+   inherited Create(ASystem);
    FFeatureClass := AFeatureClass;
 end;
 
@@ -272,7 +272,7 @@ constructor TOrePileFeatureNode.CreateFromJournal(Journal: TJournalReader; AFeat
 begin
    Assert(Assigned(AFeatureClass));
    FFeatureClass := AFeatureClass as TOrePileFeatureClass;
-   inherited CreateFromJournal(Journal, AFeatureClass, ASystem);
+   inherited;
 end;
 
 destructor TOrePileFeatureNode.Destroy();
@@ -310,7 +310,7 @@ begin
    Result := Parent.Owner;
 end;
 
-procedure TOrePileFeatureNode.HandleChanges(CachedSystem: TSystem);
+procedure TOrePileFeatureNode.HandleChanges();
 var
    Message: TRegisterOrePileBusMessage;
 begin
@@ -358,13 +358,13 @@ begin
    end;
 end;
 
-procedure TOrePileFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; CachedSystem: TSystem);
+procedure TOrePileFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);
 var
    Ores: TOreFilter;
    Ore: TOres;
    Visibility: TVisibility;
 begin
-   Visibility := Parent.ReadVisibilityFor(DynastyIndex, CachedSystem);
+   Visibility := Parent.ReadVisibilityFor(DynastyIndex);
    if ((dmDetectable * Visibility <> []) and (dmClassKnown in Visibility)) then // TODO: should probably be able to recognize special kinds of ore piles even if you didn't research them?
    begin
       Writer.WriteCardinal(fcOrePile);
@@ -386,27 +386,27 @@ begin
    end;
 end;
 
-procedure TOrePileFeatureNode.ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynastyHashSet; CachedSystem: TSystem);
+procedure TOrePileFeatureNode.ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynasty.TArray);
 begin
-   FDynastyKnowledge.Init(NewDynasties.Count);
+   FDynastyKnowledge.Init(Length(NewDynasties)); // $R-
 end;
 
-procedure TOrePileFeatureNode.ResetVisibility(CachedSystem: TSystem);
+procedure TOrePileFeatureNode.ResetVisibility();
 begin
    FDynastyKnowledge.Reset();
 end;
 
-procedure TOrePileFeatureNode.HandleKnowledge(const DynastyIndex: Cardinal; const VisibilityHelper: TVisibilityHelper; const Sensors: ISensorsProvider);
+procedure TOrePileFeatureNode.HandleKnowledge(const DynastyIndex: Cardinal; const Sensors: ISensorsProvider);
 begin
    {$IFOPT C+} Assert(DynastyIndex < FDynastyKnowledge.Length); {$ENDIF}
    FDynastyKnowledge.AddKnowledge(DynastyIndex, Sensors.GetOreKnowledge());
 end;
 
-procedure TOrePileFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
+procedure TOrePileFeatureNode.UpdateJournal(Journal: TJournalWriter);
 begin
 end;
 
-procedure TOrePileFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
+procedure TOrePileFeatureNode.ApplyJournal(Journal: TJournalReader);
 begin
 end;
 

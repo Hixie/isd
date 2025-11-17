@@ -25,13 +25,13 @@ type
       FKnownAssetClasses: TGetKnownAssetClassesMessage;
       FDisabledReasons: TDisabledReasons;
       FLastCountDetected: Cardinal;
-      procedure ResetVisibility(CachedSystem: TSystem); override;
-      procedure HandleChanges(CachedSystem: TSystem); override;
+      procedure ResetVisibility(); override;
+      procedure HandleChanges(); override;
       property Enabled: Boolean read GetEnabled;
    public
       destructor Destroy(); override;
-      procedure UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem); override;
-      procedure ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem); override;
+      procedure UpdateJournal(Journal: TJournalWriter); override;
+      procedure ApplyJournal(Journal: TJournalReader); override;
    public // ISensorsProvider
       function Knows(AssetClass: TAssetClass): Boolean;
       function Knows(Material: TMaterial): Boolean;
@@ -89,13 +89,13 @@ begin
    Result := DebugName;
 end;
 
-procedure TSensorFeatureNode.ResetVisibility(CachedSystem: TSystem);
+procedure TSensorFeatureNode.ResetVisibility();
 begin
    Assert(not Assigned(FKnownMaterials));
    Assert(not Assigned(FKnownAssetClasses));
 end;
 
-procedure TSensorFeatureNode.HandleChanges(CachedSystem: TSystem);
+procedure TSensorFeatureNode.HandleChanges();
 var
    NewDisabledReasons: TDisabledReasons;
 begin
@@ -103,7 +103,7 @@ begin
    if (NewDisabledReasons <> FDisabledReasons) then
    begin
       FDisabledReasons := NewDisabledReasons;
-      MarkAsDirty([dkUpdateClients]);
+      MarkAsDirty([dkUpdateClients, dkAffectsVisibility]);
    end;
    inherited;
 end;
@@ -157,11 +157,11 @@ begin
    end;
 end;
 
-procedure TSensorFeatureNode.UpdateJournal(Journal: TJournalWriter; CachedSystem: TSystem);
+procedure TSensorFeatureNode.UpdateJournal(Journal: TJournalWriter);
 begin
 end;
 
-procedure TSensorFeatureNode.ApplyJournal(Journal: TJournalReader; CachedSystem: TSystem);
+procedure TSensorFeatureNode.ApplyJournal(Journal: TJournalReader);
 begin
 end;
 

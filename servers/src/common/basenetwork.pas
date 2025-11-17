@@ -11,26 +11,42 @@ uses
 type
    TBaseServer = class;
    TBaseIncomingCapableConnection = class;
+   TBaseIncomingInternalCapableConnection = class;
 
-   TBaseConversationHandle = class
+   TBaseConversationInternals = class abstract
    protected
       FConnection: TBaseIncomingCapableConnection;
       constructor Create(AConnection: TBaseIncomingCapableConnection);
    public
       procedure DiscardSocket();
    end;
+   TBaseConversation = specialize TSharedPointer<TBaseConversationInternals>;
 
-   TMessageConversationHandle = class(TBaseConversationHandle)
+   TMessageConversationInternals = class sealed(TBaseConversationInternals)
    protected
-      FInput: TStringStreamReader;
       FConversationID: Cardinal;
+      FInput: TStringStreamReader;
       FOutput: TStringStreamWriter;
       constructor Create(AMessage: UTF8String; AConnection: TBaseIncomingCapableConnection);
    public
       destructor Destroy(); override;
    end;
+   TMessageConversation = specialize TSharedPointer<TMessageConversationInternals>;
 
-   TConversationHashSet = specialize THashSet<TBaseConversationHandle, TObjectUtils>;
+   TInternalConversationInternals = class sealed(TBaseConversationInternals)
+   strict private
+      FFailed: Boolean;
+      FHolds: Cardinal;
+      function GetHasHolds(): Boolean;
+   public
+      constructor Create(AConnection: TBaseIncomingInternalCapableConnection);
+      procedure AddHold(Count: Cardinal = 1);
+      procedure RemoveHold(Count: Cardinal = 1);
+      procedure FailHold();
+      property HasHolds: Boolean read GetHasHolds;
+      property HasFailed: Boolean read FFailed;
+   end;
+   TInternalConversation = specialize TSharedPointer<TInternalConversationInternals>;
 
    TMessage = record
    public
@@ -40,14 +56,14 @@ type
          CommandString = String[MaxMessageNameLength];
    strict private
       FCommand: CommandString; // must be first, must be a short string
-      FConversation: specialize TSharedPointer<TMessageConversationHandle>;
+      FConversation: TMessageConversation;
       function GetInput(): TStringStreamReader;
       function GetOutput(): TStringStreamWriter;
       function GetInputClosed(): Boolean;
       function GetOutputClosed(): Boolean;
       function GetConnection(): TBaseIncomingCapableConnection;
    public
-      constructor Create(AConversation: TMessageConversationHandle);
+      constructor Create(AConversation: TMessageConversation);
       function CloseInput(): Boolean;
       procedure CloseOutput();
       procedure Error(const Code: UTF8String);
@@ -62,8 +78,6 @@ type
    TConnectionCallback = procedure (Connection: TBaseIncomingCapableConnection; Data: Pointer) is nested;
 
    TBaseIncomingCapableConnection = class(TWebSocket)
-   strict private
-      FConversations: TConversationHashSet;
    private
       {$IFOPT C+} FServer: TBaseServer; {$ENDIF}
    protected
@@ -71,8 +85,6 @@ type
    public
       constructor Create(AListenerSocket: TListenerSocket; AServer: TBaseServer);
       destructor Destroy(); override;
-      procedure TrackConversation(Conversation: TBaseConversationHandle);
-      procedure DiscardConversation(Conversation: TBaseConversationHandle);
       procedure Invoke(Callback: TConnectionCallback); virtual;
       procedure DefaultHandlerStr(var Message); override;
       {$IFOPT C+} procedure WriteFrame(const s: UTF8String); override; {$ENDIF}
@@ -95,20 +107,6 @@ type
       destructor Destroy(); override;
       procedure HoldsCleared(); virtual;
       procedure HoldsFailed(); virtual;
-   end;
-
-   TInternalConversationHandle = class(TBaseConversationHandle)
-   strict private
-      FFailed: Boolean;
-      FHolds: Cardinal;
-      function GetHasHolds(): Boolean;
-   public
-      constructor Create(AConnection: TBaseIncomingInternalCapableConnection);
-      procedure AddHold(Count: Cardinal = 1);
-      procedure RemoveHold(Count: Cardinal = 1);
-      procedure FailHold();
-      property HasHolds: Boolean read GetHasHolds;
-      property HasFailed: Boolean read FFailed;
    end;
 
    TBaseOutgoingInternalConnection = class(TNetworkSocket)
@@ -244,25 +242,19 @@ begin
 end;
 
 
-function ConversationHash32(const Key: TBaseConversationHandle): DWord;
-begin
-   Result := PtrUIntHash32(PtrUInt(Key));
-end;
-
-
-constructor TBaseConversationHandle.Create(AConnection: TBaseIncomingCapableConnection);
+constructor TBaseConversationInternals.Create(AConnection: TBaseIncomingCapableConnection);
 begin
    inherited Create();
    FConnection := AConnection;
 end;
 
-procedure TBaseConversationHandle.DiscardSocket();
+procedure TBaseConversationInternals.DiscardSocket();
 begin
    FConnection := nil;
 end;
 
 
-constructor TMessageConversationHandle.Create(AMessage: UTF8String; AConnection: TBaseIncomingCapableConnection);
+constructor TMessageConversationInternals.Create(AMessage: UTF8String; AConnection: TBaseIncomingCapableConnection);
 begin
    inherited Create(AConnection);
    FInput := TStringStreamReader.Create(AMessage);
@@ -270,7 +262,7 @@ begin
    FOutput := TStringStreamWriter.Create();
 end;
 
-destructor TMessageConversationHandle.Destroy();
+destructor TMessageConversationInternals.Destroy();
 begin
    FInput.Free();
    FOutput.Free();
@@ -278,14 +270,63 @@ begin
 end;
 
 
-constructor TMessage.Create(AConversation: TMessageConversationHandle);
+constructor TInternalConversationInternals.Create(AConnection: TBaseIncomingInternalCapableConnection);
 begin
+   inherited Create(AConnection);
+   Assert(FConnection is TBaseIncomingInternalCapableConnection);
+end;
+
+procedure TInternalConversationInternals.AddHold(Count: Cardinal = 1);
+begin
+   Inc(FHolds, Count);
+end;
+
+procedure TInternalConversationInternals.RemoveHold(Count: Cardinal = 1);
+begin
+   if (not FFailed) then
+   begin
+      if (Count > FHolds) then
+      begin
+         FHolds := 0;
+      end
+      else
+      begin
+         Dec(FHolds, Count);
+      end;
+      if (FHolds = 0) then
+      begin
+         Assert(Assigned(FConnection));
+         Assert(FConnection is TBaseIncomingInternalCapableConnection);
+         (FConnection as TBaseIncomingInternalCapableConnection).HoldsCleared();
+      end;
+   end;
+end;
+
+procedure TInternalConversationInternals.FailHold();
+begin
+   if (not FFailed) then
+   begin
+      FFailed := True;
+      (FConnection as TBaseIncomingInternalCapableConnection).HoldsFailed();
+   end;
+end;
+
+function TInternalConversationInternals.GetHasHolds(): Boolean;
+begin
+   Result := FHolds > 0;
+end;
+
+
+constructor TMessage.Create(AConversation: TMessageConversation);
+begin
+   Assert(AConversation.Assigned);
    FConversation := AConversation;
    FCommand := Input.ReadString(TMessage.MaxMessageNameLength);
 end;
 
 function TMessage.GetInput(): TStringStreamReader;
 begin
+   Assert(FConversation.Assigned);
    Result := FConversation.Value.FInput;
 end;
 
@@ -306,6 +347,7 @@ end;
 
 function TMessage.GetOutput(): TStringStreamWriter;
 begin
+   Assert(FConversation.Assigned);
    Result := FConversation.Value.FOutput;
 end;
 
@@ -316,22 +358,22 @@ end;
 
 function TMessage.GetConnection(): TBaseIncomingCapableConnection;
 begin
+   Assert(FConversation.Assigned);
    Result := FConversation.Value.FConnection;
 end;
 
 procedure TMessage.CloseOutput();
 begin
+   Assert(FConversation.Assigned);
    Assert(not OutputClosed);
    Output.Close();
-   if (Assigned(FConversation.Value.FConnection)) then
-   begin
+   if (FConversation.Value.FConnection.Connected) then
       FConversation.Value.FConnection.WriteFrame(Output.Serialize());
-      FConversation.Value.FConnection.DiscardConversation(FConversation.Value);
-   end;
 end;
 
 procedure TMessage.Error(const Code: UTF8String);
 begin
+   Assert(FConversation.Assigned);
    if (not InputClosed) then
    begin
       Input.Bail();
@@ -369,28 +411,11 @@ begin
    {$IFOPT C+}
    FServer := AServer;
    {$ENDIF}
-   FConversations := TConversationHashSet.Create(@ConversationHash32);
 end;
 
 destructor TBaseIncomingCapableConnection.Destroy();
-var
-   Conversation: TBaseConversationHandle;
 begin
-   for Conversation in FConversations do
-      Conversation.DiscardSocket();
-   FConversations.Free();
    inherited;
-end;
-
-procedure TBaseIncomingCapableConnection.TrackConversation(Conversation: TBaseConversationHandle);
-begin
-   FConversations.Add(Conversation);
-end;
-
-procedure TBaseIncomingCapableConnection.DiscardConversation(Conversation: TBaseConversationHandle);
-begin
-   FConversations.Remove(Conversation);
-   Conversation.DiscardSocket();
 end;
 
 procedure TBaseIncomingCapableConnection.Invoke(Callback: TConnectionCallback);
@@ -400,12 +425,11 @@ end;
 
 procedure TBaseIncomingCapableConnection.HandleMessage(Message: UTF8String);
 var
-   Conversation: TMessageConversationHandle;
+   Conversation: TMessageConversation;
    ParsedMessage: TMessage;
 begin
    ConsoleWriteln('Received WebSocket: ', Message);
-   Conversation := TMessageConversationHandle.Create(Message, Self);
-   TrackConversation(Conversation);
+   Conversation := TMessageConversationInternals.Create(Message, Self);
    ParsedMessage := TMessage.Create(Conversation);
    try
       DispatchStr(ParsedMessage);
@@ -611,53 +635,6 @@ begin
    Assert(FMode = cmControlMessages);
    Write(#$00);
    Disconnect();
-end;
-
-
-constructor TInternalConversationHandle.Create(AConnection: TBaseIncomingInternalCapableConnection);
-begin
-   inherited Create(AConnection);
-   Assert(FConnection is TBaseIncomingInternalCapableConnection);
-end;
-
-procedure TInternalConversationHandle.AddHold(Count: Cardinal = 1);
-begin
-   Inc(FHolds, Count);
-end;
-
-procedure TInternalConversationHandle.RemoveHold(Count: Cardinal = 1);
-begin
-   if (not FFailed) then
-   begin
-      if (Count > FHolds) then
-      begin
-         FHolds := 0;
-      end
-      else
-      begin
-         Dec(FHolds, Count);
-      end;
-      if (FHolds = 0) then
-      begin
-         Assert(Assigned(FConnection));
-         Assert(FConnection is TBaseIncomingInternalCapableConnection);
-         (FConnection as TBaseIncomingInternalCapableConnection).HoldsCleared();
-      end;
-   end;
-end;
-
-procedure TInternalConversationHandle.FailHold();
-begin
-   if (not FFailed) then
-   begin
-      FFailed := True;
-      (FConnection as TBaseIncomingInternalCapableConnection).HoldsFailed();
-   end;
-end;
-
-function TInternalConversationHandle.GetHasHolds(): Boolean;
-begin
-   Result := FHolds > 0;
 end;
 
 

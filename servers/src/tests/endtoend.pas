@@ -606,6 +606,7 @@ end;
 constructor TServerProcess.Create(AProcess: TProcess; APort: Word; APassword: UTF8String);
 begin
    inherited Create();
+   Assert(Assigned(AProcess));
    FProcess := AProcess;
    FPort := APort;
    FPassword := APassword;
@@ -615,6 +616,7 @@ end;
 class function TServerProcess.StartServer(const Executable, HostDirectory: UTF8String; Port: Word; Password: UTF8String; Index: Cardinal = 0): TServerProcess;
 var
    Arguments: array of UTF8String;
+   Process: TProcess;
 begin
    Arguments := [HostDirectory];
    if (Index > 0) then
@@ -622,7 +624,9 @@ begin
       SetLength(Arguments, Length(Arguments) + 1);
       Arguments[High(Arguments)] := IntToStr(Index);
    end;
-   Result := TServerProcess.Create(TProcess.Start(Executable, Arguments), Port, Password);
+   Process := TProcess.Start(Executable, Arguments);
+   Assert(Assigned(Process));
+   Result := TServerProcess.Create(Process, Port, Password);
 end;
 
 function TServerProcess.ConnectWebSocket(): TServerWebSocket;
@@ -767,12 +771,19 @@ begin
    StartServers(TestDirectory);
    Success := False;
    try
-      Writeln('Running...');
-      RunTestBody();
-      Success := True;
+      try
+         Writeln('Running...');
+         RunTestBody();
+         Success := True;
+      except
+         ReportCurrentException();
+         raise;
+      end;
    finally
       Writeln('Shutting down...');
       CloseServers(Success);
+      if (not Success) then
+         Writeln('FAILED');
    end;
 end;
 

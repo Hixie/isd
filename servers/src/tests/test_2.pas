@@ -19,7 +19,7 @@ var
    ModelSystem: TModelSystem;
    SystemsServerIPC, LoginServerIPC: TServerIPCSocket;
    MinTime, MaxTime: Int64;
-   TimePinned: Boolean;
+   TimePinned: Boolean; // means that time is not currently advancing for the server
 
    procedure AdvanceTime(Delta: Int64);
    begin
@@ -82,7 +82,7 @@ begin
    AdvanceTime(1000 * Days); // crash the colony ship, get lots of technologies
    ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 'Technology unlocked.');
 
-   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 10); // crash
+   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 18); // crash
    Grid := specialize GetUpdatedFeature<TModelGridFeature>(ModelSystem);
    HomeRegion := Grid.Parent;
    ColonyShip := FindColonyShip(ModelSystem);   
