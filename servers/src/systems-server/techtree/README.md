@@ -26,7 +26,7 @@ prefix indent on each line is stripped.
 
 ## Lengths
 
-Lengths are numbers followed by "m", "cm", or "mm" to specify the unit.
+Lengths are numbers followed by "AU", "km", "m", "cm", or "mm" to specify the unit.
 
 
 # Topics
@@ -105,7 +105,7 @@ class classid {
   feature: TResearchFeatureClass provides "topic1", provides "topic2";
   feature: TSizeFeatureClass 100m;
   feature: TSolarSystemFeatureClass group threshold 1m, gravitational influence 1;
-  feature: TSpaceSensorFeatureClass 1 to orbit, up 2 down 3, min size 4, inference, light, class, internals;
+  feature: TSpaceSensorFeatureClass 1 to orbit, up 2 down 3, min size 4m, inference, light, class, internals;
   feature: TStaffingFeatureClass 10 jobs;
   feature: TStructureFeatureClass size 100m, materials (
     "Component Name 1": "Material Name 1" * 1000,

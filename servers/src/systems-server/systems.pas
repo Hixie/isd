@@ -2378,6 +2378,7 @@ end;
 
 function TAssetNode.ID(DynastyIndex: Cardinal; AllowZero: Boolean = False): TAssetID;
 begin
+   Assert(Assigned(System));
    if (System.IsLongVisibilityMode) then
    begin
       Result := FDynastyNotes.AsLongDynasties^[DynastyIndex].AssetID;
@@ -2920,6 +2921,8 @@ var
       end;
       Include(Asset.FDirty, dkUpdateClients);
       Include(Asset.FDirty, dkDescendantUpdateClients);
+      Exclude(Asset.FDirty, dkAffectsVisibility);
+      Exclude(Asset.FDirty, dkDescendantsVisibilityNew);
       Result := True;
    end;
 
@@ -3025,6 +3028,8 @@ procedure TSystem.RecomputeVisibility(DynastyCountChanged, HaveNewNodes: Boolean
       begin
          Asset.ResetVisibility();
       end;
+      Exclude(Asset.FDirty, dkAffectsVisibility);
+      Assert(not (dkDescendantsVisibilityNew in Asset.FDirty));
       Result := True;
    end;
 
@@ -3102,6 +3107,7 @@ begin
    Assert((dkAffectsVisibility in FChanges) or not (dkAffectsDynastyCount in FChanges)); // dkAffectsDynastyCount requires dkAffectsVisibility
    AllChanges := [];
    repeat
+      Writeln('System changes: ', specialize SetToString<TDirtyKinds>(FChanges));
       LastChanges := FChanges;
       AllChanges := AllChanges + FChanges;
       FChanges := [];

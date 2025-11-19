@@ -102,8 +102,17 @@ begin
    NewDisabledReasons := CheckDisabled(Parent);
    if (NewDisabledReasons <> FDisabledReasons) then
    begin
+      if ((FDisabledReasons = []) or (NewDisabledReasons = [])) then
+      begin
+         // turned on or off
+         MarkAsDirty([dkUpdateClients, dkAffectsVisibility]);
+      end
+      else
+      begin
+         // we just changed what the reason was, so we're still disabled, so won't affect visibility
+         MarkAsDirty([dkUpdateClients]);
+      end;
       FDisabledReasons := NewDisabledReasons;
-      MarkAsDirty([dkUpdateClients, dkAffectsVisibility]);
    end;
    inherited;
 end;

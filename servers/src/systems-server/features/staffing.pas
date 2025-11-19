@@ -56,7 +56,14 @@ constructor TStaffingFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeRead
 begin
    inherited Create();
    FJobs := ReadNumber(Reader.Tokens, 1, High(FJobs)); // $R-
-   Reader.Tokens.ReadIdentifier('jobs');
+   if (FJobs = 1) then
+   begin
+      Reader.Tokens.ReadIdentifier('job');
+   end
+   else
+   begin
+      Reader.Tokens.ReadIdentifier('jobs');
+   end;
 end;
 
 function TStaffingFeatureClass.GetFeatureNodeClass(): FeatureNodeReference;
@@ -104,8 +111,10 @@ begin
    begin
       FBus.RemoveEmployer(Self);
       FWorkers := 0;
+      Assert(FPriority <> 0);
       FPriority := 0;
       FBus := nil;
+      MarkAsDirty([dkUpdateJournal]);
    end;
 end;
 
@@ -118,13 +127,17 @@ begin
    Exclude(DisabledReasons, drUnderstaffed); // TODO: consider explicitly listing the reasons for which we wouldn't bother staffing instead
    if (DisabledReasons <> []) then
    begin
-      FPriority := 0;
+      if (FPriority <> 0) then
+      begin
+         FPriority := 0;
+         MarkAsDirty([dkUpdateJournal]);
+      end;
       if (Assigned(FBus)) then
       begin
          FBus.RemoveEmployer(Self);
          FBus := nil;
          FWorkers := 0;
-         MarkAsDirty([dkUpdateClients]);
+         MarkAsDirty([dkUpdateClients, dkNeedsHandleChanges]);
       end;
    end
    else
@@ -135,6 +148,7 @@ begin
          if (InjectBusMessage(Message) <> mrHandled) then
          begin
             FPriority := NoPriority;
+            MarkAsDirty([dkUpdateJournal]);
          end
          else
          begin
@@ -180,7 +194,14 @@ end;
 
 procedure TStaffingFeatureNode.UpdateJournal(Journal: TJournalWriter);
 begin
-   Journal.WriteCardinal(FPriority);
+   if (FPriority = NoPriority) then
+   begin
+      Journal.WriteCardinal(0);
+   end
+   else
+   begin
+      Journal.WriteCardinal(FPriority);
+   end;
 end;
 
 procedure TStaffingFeatureNode.ApplyJournal(Journal: TJournalReader);
@@ -208,9 +229,14 @@ procedure TStaffingFeatureNode.PeopleBusDisconnected();
 begin
    Assert(Assigned(FBus));
    FBus := nil;
-   FWorkers := 0;
+   Assert(FPriority <> 0);
    FPriority := 0;
-   MarkAsDirty([dkUpdateClients, dkNeedsHandleChanges]);
+   MarkAsDirty([dkUpdateJournal]);
+   if (FWorkers > 0) then
+   begin
+      FWorkers := 0;
+      MarkAsDirty([dkUpdateClients, dkNeedsHandleChanges]);
+   end;
 end;
 
 function TStaffingFeatureNode.GetJobs(): Cardinal;
@@ -226,6 +252,7 @@ end;
 procedure TStaffingFeatureNode.SetAutoPriority(Value: TAutoPriority);
 begin
    FPriority := Value;
+   MarkAsDirty([dkUpdateJournal]);
 end;
 
 function TStaffingFeatureNode.GetAsset(): TAssetNode;

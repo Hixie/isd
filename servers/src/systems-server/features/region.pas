@@ -1255,9 +1255,7 @@ begin
             Material := Consumer.GetMaterialConsumerMaterial();
             if (Assigned(Material)) then
             begin
-               // we truncate here because otherwise we might end up using more material than we have
-               // (consider two consumers who have both reached 0.5, when the total material refined is 1.0)
-               TransferQuantity := CeilUInt64(SyncDuration * Rate);
+               TransferQuantity := CeilUInt64(SyncDuration * Rate); // TODO: use Trunc and keep track of progress
                DesiredTransferQuantity := Consumer.GetMaterialConsumerMaxDelivery();
                if (TransferQuantity > DesiredTransferQuantity) then
                   TransferQuantity := DesiredTransferQuantity;

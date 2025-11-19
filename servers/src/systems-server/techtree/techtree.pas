@@ -50,7 +50,7 @@ implementation
 
 uses
    {$IFDEF VERBOSE} unicode, {$ENDIF}
-   typedump, exceptions, fileutils, rtlutils, stringutils, hashtable, hashfunctions, icons;
+   typedump, exceptions, fileutils, rtlutils, stringutils, hashtable, hashfunctions, icons, astronomy;
 
 constructor TTechnologyTree.Create();
 begin
@@ -909,6 +909,7 @@ begin
       Tokens.Error('Invalid length "%d"; must be greater than zero', [Value]);
    Keyword := Tokens.ReadIdentifier();
    case Keyword of
+      'AU': Result := Value * AU;
       'km': Result := Value * 1000.0;
       'm': Result := Value;
       'cm': Result := Value / 100.0;

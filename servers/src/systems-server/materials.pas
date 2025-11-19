@@ -259,7 +259,6 @@ begin
    // Return how much the value was actually changed.
    Assert(Delta <> 0);
    Assert(Delta > 0);
-   Assert(Has(Material));
    if (Delta <= Self[Material]) then
    begin
       Result := Delta;
@@ -268,7 +267,8 @@ begin
    else
    begin
       Result := Self[Material];
-      Self[Material] := 0;
+      if (Result > 0) then
+         Self[Material] := 0;
    end;
 end;
 

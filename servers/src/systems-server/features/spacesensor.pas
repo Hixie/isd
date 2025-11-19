@@ -60,6 +60,7 @@ begin
    Reader.Tokens.ReadIdentifier('min');
    Reader.Tokens.ReadIdentifier('size');
    FMinSize := ReadLength(Reader.Tokens);
+   Reader.Tokens.ReadComma();
    inherited CreateFromTechnologyTree(Reader);
 end;
 
@@ -127,7 +128,7 @@ begin
    FActualStepsUp := 0;
    FLastCountDetected := 0;
    if ((not Enabled) or not Assigned(Parent.Owner)) then
-      exit; // no dynasty owns this sensor, nothing to apply
+      exit; // no dynasty owns this sensor, nothing to apply // TODO: consider whether neutral sensors should still report number of detected assets
    OwnerIndex := System.DynastyIndex[Parent.Owner];
    Feature := Self;
    Index := 0;
@@ -202,6 +203,7 @@ begin
    if (not Assigned(FLastBottom)) then
       exit;
    Assert(Enabled);
+   Assert(Assigned(Parent.Owner));
    Assert(Assigned(FLastTop));
    OwnerIndex := System.DynastyIndex[Parent.Owner];
    Depth := 0;
@@ -239,12 +241,24 @@ begin
       Writer.WriteCardinal(FFeatureClass.FStepsUpFromOrbit);
       Writer.WriteCardinal(FFeatureClass.FStepsDownFromTop);
       Writer.WriteDouble(FFeatureClass.FMinSize);
-      if (Enabled and (dmInternals in Visibility)) then
+      if (Enabled and (Assigned(Parent.Owner)) and (dmInternals in Visibility)) then
       begin
          Writer.WriteCardinal(fcSpaceSensorStatus);
-         Writer.WriteCardinal(FLastBottom.ID(DynastyIndex));
-         Writer.WriteCardinal(FLastTop.ID(DynastyIndex));
-         Writer.WriteCardinal(FLastCountDetected);
+         if (Assigned(FLastBottom)) then
+         begin
+            Assert(Assigned(FLastTop));
+            Writer.WriteCardinal(FLastBottom.ID(DynastyIndex));
+            Writer.WriteCardinal(FLastTop.ID(DynastyIndex));
+            Writer.WriteCardinal(FLastCountDetected);
+         end
+         else
+         begin
+            Assert(FLastCountDetected = 0);
+            Assert(not Assigned(FLastTop));
+            Writer.WriteCardinal(0);
+            Writer.WriteCardinal(0);
+            Writer.WriteCardinal(0);
+         end;
       end;
    end;
 end;

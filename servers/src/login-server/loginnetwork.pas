@@ -467,7 +467,7 @@ begin
       FServer.UserDatabase.RegisterScoreUpdate(DynastyID, ScoreRecord.Score);
       {$IFDEF TESTSUITE}
       Inc(FServer.FDebugScoresReceived);
-      if (Assigned(FServer.FDebugAwaitScores.Value)) then
+      if (FServer.FDebugAwaitScores.Assigned) then
       begin
          FServer.FDebugAwaitScores.Value.RemoveHold();
          if (not FServer.FDebugAwaitScores.Value.HasHolds) then
@@ -481,7 +481,7 @@ begin
    else
    if (Command = icAwaitScores) then
    begin
-      if (Assigned(FServer.FDebugAwaitScores.Value)) then
+      if (FServer.FDebugAwaitScores.Assigned) then
       begin
          Writeln('received multiple simultaneous score holds');
          Disconnect();

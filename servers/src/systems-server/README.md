@@ -474,7 +474,7 @@ that is at least `<resolution>` meters in size and is in an orbit
 examined during this walk.
 
 The trailing `<feature>`, if present, is a `fcSpaceSensorStatus`
-feature, documented next.
+feature, documented next. It is omitted if the sensor is disabled.
 
 
 #### `fcSpaceSensorStatus` (0x06)
@@ -483,24 +483,28 @@ feature, documented next.
 <featuredata>       ::= <nearest-orbit>
                         <top-orbit>
                         <count>
-<nearest-orbit>     ::= <assetid>
-<top-orbit>         ::= <assetid>
+<nearest-orbit>     ::= <assetid> | <zero32>
+<top-orbit>         ::= <assetid> | <zero32>
 <count>             ::= <uint32> ; number of detected assets
 ```
 
-Reports the "top" and "bottom" nodes of the tree that were affected by
-the sensor sweep of the immedietaly preceding `fcSpaceSensor` feature
-(see `fcSpaceSensor`), as well as the total number of detected nodes.
+The status of an `fcSpaceSensor`.
+
+Reports the nodes that are the nearest orbit to the sensor (bottom),
+and the furthest orbit that could be reached by the sensor (top)
+during its sweep, as well as the total number of detected nodes. By
+definition, these nodes are visible to the user, because they are
+ancestors of the asset with the `fcSpaceSensor`, and ancestors of
+assets are always at least inferred.
+
+If the sensor could not detect anything, e.g. because its `<reach>` is
+too low given its position, then the "top" and "bottom" nodes will be
+zero.
 
 This feature, if present, always follows a `fcSpaceSensor` feature. If
 there are multiple sensors, they may each have a trailing
 `fcSpaceSensorStatus`; each status applies to the immediately
 preceding sensor.
-
-(`<nearest-orbit>` and `<top-orbit>` are always visible to the player
-because they are by definition ancestors of the asset with the
-`fcSpaceSensor`, and ancestors of assets are always at least
-inferred. So these IDs are never zero.)
 
 
 #### `fcPlanetaryBody` (0x07)

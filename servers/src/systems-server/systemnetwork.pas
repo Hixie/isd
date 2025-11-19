@@ -135,7 +135,9 @@ end;
 
 procedure TConnection.Invoke(Callback: TConnectionCallback);
 begin
+   Assert(FWriter.BufferLength = 0);
    Callback(Self, FWriter);
+   Assert(FWriter.BufferLength = 0);
 end;
 
 procedure TConnection.HandleIPC(const Command: UTF8String; const Arguments: TBinaryStreamReader);

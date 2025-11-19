@@ -18,9 +18,11 @@ type
       FConnection: TBaseIncomingCapableConnection;
       constructor Create(AConnection: TBaseIncomingCapableConnection);
    public
+      destructor Destroy(); override;
       procedure DiscardSocket();
    end;
    TBaseConversation = specialize TSharedPointer<TBaseConversationInternals>;
+   TBaseConversationHashSet = specialize THashSet<TBaseConversationInternals, TObjectUtils>;
 
    TMessageConversationInternals = class sealed(TBaseConversationInternals)
    protected
@@ -58,8 +60,8 @@ type
       FCommand: CommandString; // must be first, must be a short string
       FConversation: TMessageConversation;
       function GetInput(): TStringStreamReader;
-      function GetOutput(): TStringStreamWriter;
       function GetInputClosed(): Boolean;
+      function GetOutput(): TStringStreamWriter;
       function GetOutputClosed(): Boolean;
       function GetConnection(): TBaseIncomingCapableConnection;
    public
@@ -80,11 +82,14 @@ type
    TBaseIncomingCapableConnection = class(TWebSocket)
    private
       {$IFOPT C+} FServer: TBaseServer; {$ENDIF}
+      FConversations: TBaseConversationHashSet;
    protected
       procedure HandleMessage(Message: UTF8String); override;
    public
       constructor Create(AListenerSocket: TListenerSocket; AServer: TBaseServer);
       destructor Destroy(); override;
+      procedure TrackConversation(Conversation: TBaseConversationInternals);
+      procedure ForgetConversation(Conversation: TBaseConversationInternals);
       procedure Invoke(Callback: TConnectionCallback); virtual;
       procedure DefaultHandlerStr(var Message); override;
       {$IFOPT C+} procedure WriteFrame(const s: UTF8String); override; {$ENDIF}
@@ -177,6 +182,11 @@ begin
    {$HINTS ON}
 end;
 
+function BaseConversationsHash32(const Key: TBaseConversationInternals): DWord;
+begin
+   Result := ObjectHash32(Key);
+end;
+
 procedure ConsoleWriteln(const Prefix, S: UTF8String);
 var
    Index, Codepoint, Count: Cardinal;
@@ -246,6 +256,20 @@ constructor TBaseConversationInternals.Create(AConnection: TBaseIncomingCapableC
 begin
    inherited Create();
    FConnection := AConnection;
+   FConnection.TrackConversation(Self);
+end;
+
+destructor TBaseConversationInternals.Destroy();
+var
+   Connection: TBaseIncomingCapableConnection;
+begin
+   if (Assigned(FConnection)) then
+   begin
+      Connection := FConnection;
+      FConnection := nil;
+      Connection.ForgetConversation(Self);
+   end;
+   inherited
 end;
 
 procedure TBaseConversationInternals.DiscardSocket();
@@ -295,9 +319,8 @@ begin
       end;
       if (FHolds = 0) then
       begin
-         Assert(Assigned(FConnection));
-         Assert(FConnection is TBaseIncomingInternalCapableConnection);
-         (FConnection as TBaseIncomingInternalCapableConnection).HoldsCleared();
+         if (Assigned(FConnection)) then
+            (FConnection as TBaseIncomingInternalCapableConnection).HoldsCleared();
       end;
    end;
 end;
@@ -307,7 +330,8 @@ begin
    if (not FFailed) then
    begin
       FFailed := True;
-      (FConnection as TBaseIncomingInternalCapableConnection).HoldsFailed();
+      if (Assigned(FConnection)) then
+         (FConnection as TBaseIncomingInternalCapableConnection).HoldsFailed();
    end;
 end;
 
@@ -326,7 +350,6 @@ end;
 
 function TMessage.GetInput(): TStringStreamReader;
 begin
-   Assert(FConversation.Assigned);
    Result := FConversation.Value.FInput;
 end;
 
@@ -347,7 +370,6 @@ end;
 
 function TMessage.GetOutput(): TStringStreamWriter;
 begin
-   Assert(FConversation.Assigned);
    Result := FConversation.Value.FOutput;
 end;
 
@@ -358,22 +380,23 @@ end;
 
 function TMessage.GetConnection(): TBaseIncomingCapableConnection;
 begin
-   Assert(FConversation.Assigned);
    Result := FConversation.Value.FConnection;
 end;
 
 procedure TMessage.CloseOutput();
+var
+   Frame: RawByteString;
 begin
-   Assert(FConversation.Assigned);
-   Assert(not OutputClosed);
    Output.Close();
-   if (FConversation.Value.FConnection.Connected) then
-      FConversation.Value.FConnection.WriteFrame(Output.Serialize());
+   if (Assigned(Connection) and Connection.Connected) then
+   begin
+      Frame := Output.Serialize();
+      Connection.WriteFrame(Frame);
+   end;
 end;
 
 procedure TMessage.Error(const Code: UTF8String);
 begin
-   Assert(FConversation.Assigned);
    if (not InputClosed) then
    begin
       Input.Bail();
@@ -408,14 +431,30 @@ end;
 constructor TBaseIncomingCapableConnection.Create(AListenerSocket: TListenerSocket; AServer: TBaseServer);
 begin
    inherited Create(AListenerSocket);
-   {$IFOPT C+}
-   FServer := AServer;
-   {$ENDIF}
+   {$IFOPT C+} FServer := AServer; {$ENDIF}
+   FConversations := TBaseConversationHashSet.Create(@BaseConversationsHash32);
 end;
 
 destructor TBaseIncomingCapableConnection.Destroy();
+var
+   Conversation: TBaseConversationInternals;
 begin
+   for Conversation in FConversations do
+      Conversation.DiscardSocket();
+   FreeAndNil(FConversations);
    inherited;
+end;
+
+procedure TBaseIncomingCapableConnection.TrackConversation(Conversation: TBaseConversationInternals);
+begin
+   Assert(not FConversations.Has(Conversation));
+   FConversations.Add(Conversation);
+end;
+
+procedure TBaseIncomingCapableConnection.ForgetConversation(Conversation: TBaseConversationInternals);
+begin
+   Assert(FConversations.Has(Conversation));
+   FConversations.Remove(Conversation);
 end;
 
 procedure TBaseIncomingCapableConnection.Invoke(Callback: TConnectionCallback);
@@ -761,7 +800,7 @@ begin
       else
       begin
          Assert(Assigned(FClock));
-         Assert(not EventIsDueBefore(FNextEvent, FClock.Now()));
+         Assert(FNextEvent^.FTime >= FClock.Now());
          FClock.UnlatchUntil(FNextEvent^.FTime);
          NextTime := MillisecondsBetween(FNextEvent^.FTime, FClock.Now());
          Assert(NextTime >= 0);

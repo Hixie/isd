@@ -375,6 +375,7 @@ begin
    if (Command = 'mark-read') then
    begin
       Result := True;
+      Assert(Assigned(Message.Connection)); // we get here synchronously from connection code, so it hasn't had time to go away yet
       PlayerDynasty := (Message.Connection as TConnection).PlayerDynasty;
       if (PlayerDynasty <> Parent.Owner) then
       begin
@@ -393,6 +394,7 @@ begin
    if (Command = 'mark-unread') then
    begin
       Result := True;
+      Assert(Assigned(Message.Connection)); // we get here synchronously from connection code, so it hasn't had time to go away yet
       PlayerDynasty := (Message.Connection as TConnection).PlayerDynasty;
       if (PlayerDynasty <> Parent.Owner) then
       begin
