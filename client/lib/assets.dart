@@ -56,7 +56,7 @@ abstract class Feature extends Node {
   RendererType get rendererType;
 
   bool get debugExpectVirtualChildren => false;
-  
+
   String? get status => null;
 
   Widget buildRenderer(BuildContext context); // this one is abstract; containers always need to build something
@@ -506,8 +506,8 @@ class _AssetInspectorState extends State<AssetInspector> {
     for (final Listenable listenable in _listenables) {
       listenable.removeListener(_update);
     }
-  } 
-  
+  }
+
   @override
   Widget build(BuildContext context) {
     final AssetNode node = widget.node;

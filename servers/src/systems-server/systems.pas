@@ -285,7 +285,7 @@ type
       constructor Create(AAsset: TAssetNode);
       property Asset: TAssetNode read FAsset;
    end;
-   
+
    // The pre-walk callback is called for each asset in a depth-first
    // pre-order traversal of the asset/feature tree, and skips
    // children of nodes for which the callback returns false. The

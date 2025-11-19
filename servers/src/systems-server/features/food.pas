@@ -195,7 +195,7 @@ procedure TInitFoodMessage.Process();
          Result := Trunc(Value); // $R-
       end;
    end;
-   
+
 var
    Dynasty: TDynasty;
    FoodReport: PFoodReport;

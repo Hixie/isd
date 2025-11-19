@@ -54,7 +54,7 @@ class MessageBoardFeature extends ContainerFeature {
 
   @override
   bool get debugExpectVirtualChildren => true;
-  
+
   @override
   Widget buildRenderer(BuildContext context) {
     return NoZoom(

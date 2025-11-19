@@ -92,7 +92,7 @@ begin
    LoginServerIPC := FLoginServer.ConnectIPCSocket();
 
    LoginServerIPC.AwaitScores(1);
-   
+
    // Check high scores.
    LoginServer.SendWebSocketStringMessage('0'#00'get-high-scores'#00);
    Scores := LoginServer.GetStreamReader(LoginServer.ReadWebSocketBinaryMessage());
@@ -480,12 +480,12 @@ begin
       Verify(Rate = 100.0 / (60.0 * 60.0 * 1000.0));
       Verify(DisabledReasons = %00000010); // not built yet
    end;
-   
+
    SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.ID) + #00'build'#00'0'#00'2'#00 + IntToStr(AssetClass2) + #00);
    Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
    VerifyPositiveResponse(Response);
    FreeAndNil(Response);
-   
+
    TimePinned := True;
    ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 6); // the grid, the piles, the new table, the new rally point; still not the drill
    Verify(ModelSystem.CurrentTime = MaxTime);

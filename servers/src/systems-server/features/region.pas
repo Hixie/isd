@@ -36,7 +36,7 @@ type
       function Update(ARate: TRate; ASourceLimiting, ATargetLimiting: Boolean): Boolean; // returns whether anything changed
       procedure SetNoRegion(); inline;
       procedure Reset();
-   end; 
+   end;
    {$IF SIZEOF(TRegionClientFields) > 3*8} {$FATAL} {$ENDIF}
 
    IMiner = interface ['IMiner']
@@ -258,7 +258,7 @@ implementation
 uses
    sysutils, planetary, exceptions, isdnumbers, math, hashfunctions;
 
-   
+
 function TRegionClientFields.GetNeedsConnection(): Boolean;
 begin
    Result := (not Assigned(FRegion)) and (FDisabledReasons = []);
@@ -1101,7 +1101,7 @@ begin
       Assert(not Assigned(FNextEvent));
       exit;
    end;
-   
+
    CachedSystem := System;
    SyncDuration := CachedSystem.Now - FAnchorTime;
 
@@ -1491,7 +1491,7 @@ begin
       for Dynasty in FData.Dynasties do
       begin
          DynastyData := FData[Dynasty];
-         
+
          DynastyData^.FMiners.RemoveAll(nil);
          DynastyData^.FOrePiles.RemoveAll(nil);
          DynastyData^.FRefineries.RemoveAll(nil);
@@ -1843,7 +1843,7 @@ begin
       end;
       if (TimeUntilNextEvent > TimeUntilGroundEmpty) then
          TimeUntilNextEvent := TimeUntilGroundEmpty;
-      
+
       Assert(TimeUntilNextEvent.IsFinite or FDynamic or FAnchorTime.IsInfinite);
       if (not TimeUntilNextEvent.IsInfinite) then
       begin

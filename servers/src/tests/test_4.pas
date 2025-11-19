@@ -82,7 +82,7 @@ begin
    ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 'Technology unlocked.');
    ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 18); // crash
    HomeRegion := specialize GetUpdatedFeature<TModelGridFeature>(ModelSystem).Parent;
-   
+
    SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.ID) + #00'get-buildings'#00'1'#00'1'#00);
    Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
    VerifyPositiveResponse(Response);
@@ -105,7 +105,7 @@ begin
       Verify(Flags = %00000010); // rate limited by target (no piles)
       Hole := Parent;
    end;
-   
+
    TimePinned := True;
    SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.ID) + #00'build'#00'0'#00'1'#00 + IntToStr(AssetClass2) + #00);
    Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
@@ -150,7 +150,7 @@ begin
       Verify(Capacity = 1000);
       Verify(Parent = IronTable);
    end;
-   
+
    TimePinned := True;
    SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(IronTable.ID) + #00'disable' + #00);
    Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
@@ -171,7 +171,7 @@ begin
       Verify(Capacity = 1000);
       Verify(Parent = IronTable);
    end;
-   
+
    TimePinned := True;
    SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.ID) + #00'build'#00'0'#00'2'#00 + IntToStr(AssetClass3) + #00);
    Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
@@ -213,7 +213,7 @@ begin
       Verify(Structures.Length = 0);
       Verify(Parent = SiliconTable);
    end;
-   
+
    TimePinned := True;
    SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.ID) + #00'build'#00'1'#00'0'#00 + IntToStr(AssetClass4) + #00);
    Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
@@ -272,7 +272,7 @@ begin
       Verify(ModelSystem.Assets[Structures[0]] = SiliconTable);
       Rally := Parent;
    end;
-   
+
    AdvanceTime(10 * Days);
    ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 3);
    with (specialize GetUpdatedFeature<TModelMiningFeature>(ModelSystem)) do
@@ -432,7 +432,7 @@ begin
    VerifyPositiveResponse(Response);
    FreeAndNil(Response);
    ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 3);
-   
+
    with (specialize GetUpdatedFeature<TModelRefiningFeature>(ModelSystem, 1)) do
    begin
       Verify(DisabledReasons = %00000000);
@@ -471,7 +471,7 @@ begin
       Verify(Structures.Length = 0);
       Verify(Parent = Rally);
    end;
-   
+
    AdvanceTime(10 * Days);
 
    FreeAndNil(ModelSystem);

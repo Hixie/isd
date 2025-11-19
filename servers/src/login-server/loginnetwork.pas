@@ -32,7 +32,7 @@ type
       property Message: TMessage read FMessage;
    end;
    TPendingMessage = specialize TSharedPointer<TPendingMessageInternals>;
-   
+
    TDynastyServerOutgoingInternalConnection = class(TBaseOutgoingInternalConnection)
    protected
       FClientMessage: TPendingMessage;
@@ -166,7 +166,7 @@ begin
 
    // Create a pending message that will get closed and freed when the internal messages (below) are done.
    PendingMessage := TPendingMessageInternals.Create(Message);
-   
+
    // Connect to dynasty server and create account
    InternalDynastyConnectionSocket := TInternalDynastyConnection.Create(PendingMessage, FServer, DynastyServerDetails);
    try
@@ -495,7 +495,7 @@ begin
       end;
       AwaitScores := TInternalConversationInternals.Create(Self);
       AwaitScores.Value.AddHold(ExpectedScores);
-      AwaitScores.Value.RemoveHold(FServer.FDebugScoresReceived); 
+      AwaitScores.Value.RemoveHold(FServer.FDebugScoresReceived);
       FServer.FDebugAwaitScores := AwaitScores;
    end
    {$ENDIF}

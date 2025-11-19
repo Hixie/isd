@@ -11,7 +11,7 @@ type
    TPriority = 0..2147483647;
    TManualPriority = 1..1073741823;
    TAutoPriority = 1073741824..2147483646;
-   
+
 const
    NoPriority = 2147483647; // used by some features to track that they couldn't find a bus, by others as a marker for deleted nodes; should never be exposed (even internally)
 
@@ -24,7 +24,7 @@ type
       drUnowned // The asset is not associated with a dynasty.
    );
    TDisabledReasons = set of TDisabledReason;
-   
+
    TCheckDisabledBusMessage = class(TBusMessage)
    strict private
       FReasons: TDisabledReasons;
@@ -32,7 +32,7 @@ type
       procedure AddReason(Reason: TDisabledReason);
       property Reasons: TDisabledReasons read FReasons;
    end; // should be injected using Parent.HandleBusMessage
-   
+
 function CheckDisabled(Asset: TAssetNode; CanOperateWhileUnowned: Boolean = False): TDisabledReasons;
 
 implementation

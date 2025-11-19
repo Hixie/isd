@@ -313,7 +313,7 @@ begin
    Assert(FWorkers = 0);
    FPeopleBus := Bus;
 end;
-      
+
 procedure TPopulationFeatureNode.PeopleBusAssignJobs(Count: Cardinal);
 begin
    if (FWorkers <> Count) then
@@ -322,7 +322,7 @@ begin
       MarkAsDirty([dkUpdateClients]);
    end;
 end;
-      
+
 procedure TPopulationFeatureNode.PeopleBusDisconnected();
 begin
    Assert(Assigned(FPeopleBus));
@@ -332,27 +332,27 @@ begin
    FPriority := 0; // TODO: also update clients here if we ever send this to the clients
    FPeopleBus := nil;
 end;
-      
+
 function TPopulationFeatureNode.GetWorkers(): Cardinal;
 begin
    Result := FPopulation;
 end;
-      
+
 function TPopulationFeatureNode.GetPriority(): TPriority;
 begin
    Result := FPriority;
 end;
-      
+
 procedure TPopulationFeatureNode.SetAutoPriority(Value: TAutoPriority);
 begin
    FPriority := Value;
 end;
-      
+
 function TPopulationFeatureNode.GetAsset(): TAssetNode;
 begin
    Result := Parent;
 end;
-      
+
 initialization
    RegisterFeatureClass(TPopulationFeatureClass);
 end.

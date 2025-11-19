@@ -14,7 +14,7 @@ type
 
    TPeopleBusMessage = class abstract(TPhysicalConnectionBusMessage)
    end;
-   
+
    IEmployer = interface ['IEmployer']
       procedure PeopleBusConnected(Bus: TPeopleBusFeatureNode);
       procedure PeopleBusAssignWorkers(Count: Cardinal);
@@ -60,7 +60,7 @@ type
       class function GreaterThan(const A, B: T): Boolean; static; inline;
       class function Compare(const A, B: T): Int64; static; inline;
    end;
-   
+
    TPeopleBusFeatureClass = class(TFeatureClass)
    strict protected
       function GetFeatureNodeClass(): FeatureNodeReference; override;
@@ -258,7 +258,7 @@ begin
    FCurrent := nil;
    Result := False;
 end;
-      
+
 function TPeopleBusFeatureNode.TPeopleBusRecords.TDynastyEnumerator.GetEnumerator(): TDynastyEnumerator;
 begin
    Result := Self;
@@ -275,7 +275,7 @@ begin
    Result := FNextPriority;
    FNextPriority := FNextPriority + 1; // $R-
 end;
-      
+
 procedure TPeopleBusFeatureNode.TPeopleBusRecords.ResetNextPriority(Value: TAutoPriority);
 begin
    FNextPriority := Value;
@@ -483,7 +483,7 @@ begin
    Result := Housing^.GetReadOnlyView();
 end;
 
-   
+
 constructor TPeopleBusFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
 begin
    inherited Create();

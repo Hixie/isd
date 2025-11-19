@@ -15,7 +15,7 @@ type
    TBuilderBusFeatureNode = class;
    TBuilderFeatureNode = class;
    TBuilderHashSet = specialize TObjectSet<TBuilderFeatureNode>;
-   
+
    IStructure = interface ['IStructure']
       procedure BuilderBusConnected(Bus: TBuilderBusFeatureNode); // must come from builder bus
       procedure BuilderBusReset(); // must come from builder bus, can assume all other participants (notably, builders) were also reset
@@ -47,7 +47,7 @@ type
 
    TBuilderFeatureNodeArray = array of TBuilderFeatureNode;
    IStructureArray = array of IStructure;
-   
+
    TBuilderBusRecords = record // TODO: possible improvements to performance are available by inlining a bunch of this, if the compiler doesn't do it for us
    strict private
       FNextPriority: TAutoPriority;

@@ -111,7 +111,7 @@ begin
    CloseServers(Success);
    if (not Success) then
       raise Exception.Create('failed to shut down servers');
-   
+
    StartServers(FTestDirectory);
 
    SystemsServer := FSystemsServers[0].ConnectWebSocket();

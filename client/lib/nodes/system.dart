@@ -55,7 +55,7 @@ class SystemNode extends WorldNode {
   }
 
   // TODO: implement attach/detach/dispose
-  
+
   AssetNode get root => _root!;
   AssetNode? _root;
   set root(AssetNode value) {

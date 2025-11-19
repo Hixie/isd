@@ -85,12 +85,12 @@ begin
    ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 18); // crash
    Grid := specialize GetUpdatedFeature<TModelGridFeature>(ModelSystem);
    HomeRegion := Grid.Parent;
-   ColonyShip := FindColonyShip(ModelSystem);   
+   ColonyShip := FindColonyShip(ModelSystem);
    Verify(Grid.Children.Length = 1);
    Verify(Grid.Children[0].X = 0);
    Verify(Grid.Children[0].Y = 3);
    Verify(ModelSystem.Assets[(ModelSystem.Assets[Grid.Children[0].AssetID].Features[TModelProxyFeature] as TModelProxyFeature).Child] = ColonyShip);
-   
+
    // some digging and building tests
    SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.ID) + #00'get-buildings'#00'0'#00'0'#00);
    Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
@@ -120,7 +120,7 @@ begin
    Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
    VerifyPositiveResponse(Response);
    FreeAndNil(Response);
-   
+
    ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 3);
    Verify(ModelSystem.CurrentTime = MaxTime);
    with (specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem)) do
@@ -145,7 +145,7 @@ begin
    Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
    VerifyPositiveResponse(Response);
    FreeAndNil(Response);
-   
+
    ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 3);
    Verify(ModelSystem.CurrentTime = MaxTime);
    with (specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem, 0)) do
@@ -166,7 +166,7 @@ begin
    Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
    VerifyPositiveResponse(Response);
    FreeAndNil(Response);
-   
+
    ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 5);
    Verify(ModelSystem.CurrentTime = MaxTime);
    with (specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem, 0)) do
@@ -181,7 +181,7 @@ begin
       Verify(PileMassFlowRate = 0);
       Verify(MaterialName = 'Silicon');
    end;
-   
+
    FreeAndNil(ModelSystem);
 
    SystemsServerIPC.CloseSocket();

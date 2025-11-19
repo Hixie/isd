@@ -51,7 +51,7 @@ abstract class WorldNode extends Node with ChangeNotifier {
     super.dispose();
     _parent = null; // because ChangeNotifier.dispose doesn't call super.dispose
   }
-  
+
   // in meters
   double get diameter;
 
@@ -62,7 +62,7 @@ abstract class WorldNode extends Node with ChangeNotifier {
   Offset findLocationForChild(WorldNode child, List<VoidCallback> callbacks);
 
   final Set<VoidCallback> _transientListeners = <VoidCallback>{};
-  
+
   void addTransientListener(VoidCallback callback) {
     _transientListeners.add(callback);
   }
@@ -70,7 +70,7 @@ abstract class WorldNode extends Node with ChangeNotifier {
   void addTransientListeners(List<VoidCallback> callbacks) {
     _transientListeners.addAll(callbacks);
   }
-  
+
   void _triggerTransients() {
     if (_parent != null) {
       final List<VoidCallback> listeners = _transientListeners.toList();

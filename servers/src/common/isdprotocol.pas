@@ -60,7 +60,7 @@ const
    fcOnOff = $1D;
    fcStaffing = $1E;
    fcHighestKnownFeatureCode = fcStaffing;
-   
+
 {$IFOPT C+}
 // Stdout control codes for tests.
 const
