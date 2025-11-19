@@ -51,6 +51,7 @@ class _HudLayoutState extends State<HudLayout> implements HudLayoutInterface {
     setState(() {
       _handles.remove(handle);
       _handles.add(handle);
+      // TODO: make the window bounce a little so that if you try to show it while it's already up, you can tell which it is
     });
   }
 

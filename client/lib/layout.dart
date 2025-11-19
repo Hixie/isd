@@ -47,7 +47,7 @@ class WorldConstraints extends Constraints {
       return _precomputedPositions[node]! * scale;
     }
     assert(node.parent != null); // root should always be precomputed
-    return parentOffset + node.parent!.findLocationForChild(node, callbacks) * scale;
+    return parentOffset + node.worldParent!.findLocationForChild(node, callbacks) * scale;
   }
 
   @override

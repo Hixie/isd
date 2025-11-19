@@ -54,6 +54,8 @@ class SystemNode extends WorldNode {
     }
   }
 
+  // TODO: implement attach/detach/dispose
+  
   AssetNode get root => _root!;
   AssetNode? _root;
   set root(AssetNode value) {
@@ -114,8 +116,8 @@ class SystemNode extends WorldNode {
     Offset result = Offset.zero;
     WorldNode node = asset;
     while (node != this) {
-      result += node.parent!.findLocationForChild(node, <VoidCallback>[notifyListeners]);
-      node = node.parent!;
+      result += node.worldParent!.findLocationForChild(node, <VoidCallback>[notifyListeners]);
+      node = node.worldParent!;
     }
     return result;
   }
@@ -152,7 +154,7 @@ class SystemNode extends WorldNode {
     return sendCallback(<Object>['play', id, ...messageParts]);
   }
 
-  static SystemNode of(WorldNode node) {
+  static SystemNode of(Node node) {
     while (node is! SystemNode) {
       assert(node.parent != null);
       node = node.parent!;

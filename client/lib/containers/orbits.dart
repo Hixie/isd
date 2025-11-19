@@ -32,33 +32,40 @@ class OrbitFeature extends ContainerFeature {
   final Map<AssetNode, Orbit> children;
 
   @override
-  void attach(AssetNode parent) {
+  void attach(Node parent) {
     super.attach(parent);
-    originChild.attach(parent);
+    originChild.attach(this);
     for (AssetNode child in children.keys) {
-      child.attach(parent);
+      child.attach(this);
     }
   }
 
   @override
   void detach() {
-    // if a child's parent is not the same as our parent,
-    // then maybe it was already added to some other container
-    if (originChild.parent == parent)
+    if (originChild.parent == this)
       originChild.detach();
     for (AssetNode child in children.keys) {
-      if (child.parent == parent)
+      if (child.parent == this)
         child.detach();
     }
     super.detach();
   }
 
   @override
+  void dispose() {
+    if (originChild.parent == this)
+      originChild.dispose();
+    for (AssetNode child in children.keys) {
+      if (child.parent == this)
+        child.dispose();
+    }
+    super.dispose();
+  }
+
+  @override
   void walk(WalkCallback callback) {
-    assert(originChild.parent == parent);
     originChild.walk(callback);
     for (AssetNode child in children.keys) {
-      assert(child.parent == parent);
       child.walk(callback);
     }
   }

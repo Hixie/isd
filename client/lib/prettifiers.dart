@@ -24,7 +24,7 @@ String prettyQuantity(int quantity, { String zero = '0', String singular = '', S
     return zero;
   }
   if (quantity == 1) {
-    return '$quantity$plural';
+    return '$quantity$singular';
   }
   if (quantity < 1e6) {
     return '$quantity$plural';
@@ -58,6 +58,9 @@ String prettyHp(double hp) {
 }
 
 String prettyNumber(double number) {
+  if (number < 0.0) {
+    return '-${prettyNumber(-number)}';
+  }
   if (number == 0.0) {
     return '0';
   }

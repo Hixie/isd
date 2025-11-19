@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 
 import 'containers/orbits.dart';
@@ -33,31 +34,29 @@ enum RendererType {
   space,
 }
 
-abstract class Feature {
-  Feature();
+abstract class Feature extends Node {
+  Feature({ AssetNode? super.parent });
 
   /// Current host for this feature.
   ///
-  /// Only valid after init() is called.
-  AssetNode get parent => _parent!;
-  AssetNode? _parent;
+  /// Only valid while attached.
+  @override
+  AssetNode get parent => super.parent! as AssetNode;
+
+  @override
+  void attach(Node parent) {
+    assert(parent is AssetNode);
+    super.attach(parent);
+  }
 
   void init(Feature? oldFeature) {
     assert(oldFeature == null || oldFeature.runtimeType == runtimeType);
   }
 
-  void attach(AssetNode parent) {
-    assert(_parent == null);
-    _parent = parent;
-  }
-
-  void detach() {
-    assert(_parent != null);
-    _parent = null;
-  }
-
   RendererType get rendererType;
 
+  bool get debugExpectVirtualChildren => false;
+  
   String? get status => null;
 
   Widget buildRenderer(BuildContext context); // this one is abstract; containers always need to build something
@@ -65,7 +64,7 @@ abstract class Feature {
   Widget? buildHeader(BuildContext context) => null;
 
   Widget? buildDialog(BuildContext context) {
-    print('warning: $runtimeType has no buildDialog');
+    debugPrint('warning: $runtimeType has no buildDialog');
      return null;
   }
 
@@ -103,11 +102,6 @@ class AssetNode extends WorldNode {
   AssetNode({ super.parent, required this.id });
 
   final int id;
-
-  @override
-  void notifyListeners() {
-    super.notifyListeners();
-  }
 
   int get assetClassID => _assetClassID!;
   int? _assetClassID;
@@ -208,7 +202,8 @@ class AssetNode extends WorldNode {
   final List<Feature> _features = <Feature>[];
   ContainerFeature? _container;
 
-  void updateFeatures(List<Feature> newFeatures) {
+  List<Feature> updateFeatures(List<Feature> newFeatures) {
+    final List<Feature> oldFeatures = <Feature>[];
     ContainerFeature? newContainer;
     int index = 0;
     for (index = 0; index < newFeatures.length; index += 1) {
@@ -219,7 +214,7 @@ class AssetNode extends WorldNode {
         if (_container == oldFeature)
           _container = null;
         if (oldFeature.runtimeType != newFeature.runtimeType) {
-          oldFeature.detach();
+          oldFeatures.add(oldFeature);
           oldFeature = null;
         }
         _features[index] = newFeature;
@@ -228,6 +223,8 @@ class AssetNode extends WorldNode {
         _features.add(newFeature);
       }
       newFeature.init(oldFeature);
+      if (oldFeature != null)
+        oldFeatures.add(oldFeature);
       newFeature.attach(this);
       if (newFeature is ContainerFeature) {
         assert(newContainer == null);
@@ -238,12 +235,13 @@ class AssetNode extends WorldNode {
       final Feature oldFeature = _features[index];
       if (_container == oldFeature)
         _container = null;
-      oldFeature.detach();
+      oldFeatures.add(oldFeature);
     }
     _features.length = newFeatures.length;
     assert(_container == null);
     _container = newContainer;
     notifyListeners();
+    return oldFeatures;
   }
 
   @override
@@ -254,16 +252,14 @@ class AssetNode extends WorldNode {
 
   @override
   double get maxRenderDiameter {
-    if ((parent is AssetNode) && ((parent! as AssetNode)._container is OrbitFeature)) {
-      // TODO: this feels like a hack
-      return parent!.maxRenderDiameter;
+    if (parent is OrbitFeature) { // TODO: this is a hack
+      return worldParent!.maxRenderDiameter;
     }
     return super.maxRenderDiameter; // returns this.diameter
   }
 
   @override
   Offset findLocationForChild(WorldNode child, List<VoidCallback> callbacks) {
-    assert(child.parent == this, '$this was asked for location of child $child but that child\'s parent is ${child.parent}');
     assert(child is AssetNode);
     if (_container != null) {
       return _container!.findLocationForChild(child as AssetNode, callbacks);
@@ -309,6 +305,9 @@ class AssetNode extends WorldNode {
   @override
   void dispose() {
     _hud?.cancel();
+    for (Feature feature in _features) {
+      feature.dispose();
+    }
     super.dispose();
   }
 
@@ -343,6 +342,7 @@ class AssetNode extends WorldNode {
       }
     }
     if (isVirtual) {
+      assert((parent is Feature) && (parent! as Feature).debugExpectVirtualChildren);
       // virtual assets only have RendererType.ui renderers
       assert(overlays == null);
       assert(backgrounds == null);
@@ -359,6 +359,7 @@ class AssetNode extends WorldNode {
       }
       return result;
     }
+    assert((parent is! Feature) || (!(parent! as Feature).debugExpectVirtualChildren));
     // non-virtual assets assume a RenderWorld world
     backgrounds ??= <Widget>[];
     if (backgrounds.isEmpty) {
@@ -366,7 +367,7 @@ class AssetNode extends WorldNode {
       backgrounds.insert(0, WorldIcon(
         node: this,
         diameter: diameter,
-        maxDiameter: parent!.maxRenderDiameter,
+        maxDiameter: worldParent!.maxRenderDiameter,
         icon: icon,
         ghost: isGhost,
       ));
@@ -375,7 +376,7 @@ class AssetNode extends WorldNode {
       backgrounds.add(WorldFields(
         node: this,
         icon: icon,
-        maxDiameter: parent!.maxRenderDiameter,
+        maxDiameter: worldParent!.maxRenderDiameter,
         diameter: diameter,
         children: boxes,
      ));
@@ -384,7 +385,7 @@ class AssetNode extends WorldNode {
       backgrounds.insert(0, WorldTapDetector(
         node: this,
         diameter: diameter,
-        maxDiameter: parent!.maxRenderDiameter,
+        maxDiameter: worldParent!.maxRenderDiameter,
         shape: shape,
         onTap: showInspector,
       ));
@@ -395,7 +396,7 @@ class AssetNode extends WorldNode {
     if (backgrounds.length > 1) {
       return WorldStack(
         node: this,
-        maxDiameter: parent!.maxRenderDiameter,
+        maxDiameter: worldParent!.maxRenderDiameter,
         diameter: diameter,
         children: backgrounds,
       );
@@ -466,7 +467,7 @@ class AssetNode extends WorldNode {
   String toString() => '<$_className:$name#${hashCode.toRadixString(16)}>';
 }
 
-class AssetInspector extends StatelessWidget {
+class AssetInspector extends StatefulWidget {
   const AssetInspector(this.system, this.dynastyManager, this.node, { super.key, this.onClose });
 
   final SystemNode system;
@@ -475,180 +476,219 @@ class AssetInspector extends StatelessWidget {
   final VoidCallback? onClose;
 
   @override
+  State<AssetInspector> createState() => _AssetInspectorState();
+}
+
+class _AssetInspectorState extends State<AssetInspector> {
+  @override
+  void dispose() {
+    _unsubscribe();
+    super.dispose();
+  }
+
+  void _update() {
+    setState(() { });
+  }
+
+  List<Listenable> _listenables = <Listenable>[];
+
+  void _resubscribe(List<Listenable> newList) {
+    if (!listEquals(newList, _listenables)) {
+      _unsubscribe();
+      _listenables = newList;
+      for (final Listenable listenable in _listenables) {
+        listenable.addListener(_update);
+      }
+    }
+  }
+
+  void _unsubscribe() {
+    for (final Listenable listenable in _listenables) {
+      listenable.removeListener(_update);
+    }
+  } 
+  
+  @override
   Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: node,
-      builder: (BuildContext context, Widget? child) {
-        final List<Widget> details = <Widget>[
-          if (node.name.isNotEmpty) // we'll put the asset name in the header
+    final AssetNode node = widget.node;
+    final List<Listenable> dependencies = <Listenable>[];
+    dependencies.add(node);
+    final List<Widget> details = <Widget>[
+      if (node.name.isNotEmpty) // we'll put the asset name in the header
+        Padding(
+          padding: dialogPadding,
+          child: Text(node.className, style: bold),
+        ),
+      Padding(
+        padding: dialogPadding,
+        child: Text(node.description, softWrap: true, overflow: TextOverflow.visible),
+      ),
+    ];
+    if (node.ownerDynasty == null) {
+      assert(!node.isGhost);
+      details.add(
+        const Padding(
+          padding: dialogPadding,
+          child: Text('No dynasty controls this.'),
+        ),
+      );
+    } else if (node.ownerDynasty == widget.dynastyManager.currentDynasty) {
+      if (node.isGhost) {
+        details.add(
+          const Padding(
+            padding: dialogPadding,
+            child: Text('We have planned to build this.'),
+          ),
+        );
+      } else {
+        details.add(
+          const Padding(
+            padding: dialogPadding,
+            child: Text('We control this.'),
+          ),
+        );
+      }
+    } else {
+      assert(!node.isGhost);
+      details.add(
+        const Padding(
+          padding: dialogPadding,
+          child: Text('Another dynasty controls this.'),
+        ),
+      );
+    }
+    details.add(
+      Padding(
+        padding: dialogPadding,
+        child: Row(
+          children: <Widget>[
+            Expanded(child: Text('Size: ${prettyLength(node.size)}')),
+            Expanded(
+              child: node.massFlowRate != 0.0
+                ? ValueListenableBuilder<double>(
+                    valueListenable: widget.system.spaceTime.asListenable(),
+                    builder: (BuildContext context, double time, Widget? child) {
+                      return Text('Mass: ${prettyMass(node.mass + node.massFlowRate * (time - node.timeOrigin))}');
+                    },
+                  )
+                : Text(node.mass == 0.0 ? node.isGhost ? 'Not yet built' : 'Massless' : 'Mass: ${prettyMass(node.mass)}'),
+            ),
+          ],
+        ),
+      ),
+    );
+    final WorldNode? parentAsset = node.worldParent;
+    if (parentAsset != null)
+      dependencies.add(parentAsset);
+    if (parentAsset is AssetNode) {
+      final double fontSize = DefaultTextStyle.of(context).style.fontSize!;
+      final IconsManager icons = IconsManagerProvider.of(context);
+      // TODO: all this stuff with orbits is hacky, why can't the orbit feature do it itself
+      if (node.parent is OrbitFeature) {
+        final AssetNode grandparentAsset = parentAsset.worldParent! as AssetNode; // orbit can't be root of system
+        dependencies.add(grandparentAsset);
+        if (parentAsset.parent is OrbitFeature) {
+          final OrbitFeature orbit = parentAsset.parent! as OrbitFeature;
+          final AssetNode orbittingParent = orbit.originChild;
+          dependencies.add(orbittingParent);
+          final double distance = orbit.findLocationForChild(parentAsset, const <VoidCallback>[]).distance - orbittingParent.diameter / 2.0;
+          details.add(
             Padding(
               padding: dialogPadding,
-              child: Text(node.className, style: bold),
-            ),
-          Padding(
-            padding: dialogPadding,
-            child: Text(node.description, softWrap: true, overflow: TextOverflow.visible),
-          ),
-        ];
-        if (node.ownerDynasty == null) {
-          assert(!node.isGhost);
-          details.add(
-            const Padding(
-              padding: dialogPadding,
-              child: Text('No dynasty controls this.'),
+              child: Text.rich(
+                TextSpan(
+                  text: 'Location: ${distance > 0 ? "Orbitting ${prettyLength(distance)} above" : "Flying over"} ',
+                  children: <InlineSpan>[
+                    orbittingParent.describe(context, icons, iconSize: fontSize),
+                  ],
+                ),
+              ),
             ),
           );
-        } else if (node.ownerDynasty == dynastyManager.currentDynasty) {
-          if (node.isGhost) {
-            details.add(
-              const Padding(
-                padding: dialogPadding,
-                child: Text('We have planned to build this.'),
-              ),
-            );
-          } else {
-            details.add(
-              const Padding(
-                padding: dialogPadding,
-                child: Text('We control this.'),
-              ),
-            );
-          }
         } else {
-          assert(!node.isGhost);
           details.add(
-            const Padding(
+            Padding(
               padding: dialogPadding,
-              child: Text('Another dynasty controls this.'),
+              child: Text.rich(
+                TextSpan(
+                  text: 'Location: In ',
+                  children: <InlineSpan>[
+                    grandparentAsset.describe(context, icons, iconSize: fontSize),
+                  ],
+                ),
+              ),
             ),
           );
         }
+      } else {
         details.add(
           Padding(
             padding: dialogPadding,
-            child: Row(
-              children: <Widget>[
-                Expanded(child: Text('Size: ${prettyLength(node.size)}')),
-                Expanded(
-                  child: node.massFlowRate != 0.0
-                    ? ValueListenableBuilder<double>(
-                        valueListenable: system.spaceTime.asListenable(),
-                        builder: (BuildContext context, double time, Widget? child) {
-                          return Text('Mass: ${prettyMass(node.mass + node.massFlowRate * (time - node.timeOrigin))}');
-                        },
-                      )
-                    : Text(node.mass == 0.0 ? node.isGhost ? 'Not yet built' : 'Massless' : 'Mass: ${prettyMass(node.mass)}'),
-                ),
-              ],
-            ),
-          ),
-        );
-        if (node.parent is AssetNode) {
-          final double fontSize = DefaultTextStyle.of(context).style.fontSize!;
-          final IconsManager icons = IconsManagerProvider.of(context);
-          if ((node.parent! as AssetNode)._container is OrbitFeature) {
-            if ((node.parent!.parent is AssetNode) && ((node.parent!.parent! as AssetNode)._container is OrbitFeature)) {
-              // TODO: this feels like a hack
-              details.add(
-                Padding(
-                  padding: dialogPadding,
-                  child: Text.rich(
-                    TextSpan(
-                      text: 'Location: Orbitting ',
-                      children: <InlineSpan>[
-                        ((node.parent!.parent! as AssetNode)._container! as OrbitFeature).originChild.describe(context, icons, iconSize: fontSize),
-                        // TODO: add our orbit semi major axis here
-                      ],
-                    ),
-                  ),
-                ),
-              );
-            } else {
-              details.add(
-                Padding(
-                  padding: dialogPadding,
-                  child: Text.rich(
-                    TextSpan(
-                      text: 'Location: In ',
-                      children: <InlineSpan>[
-                        (node.parent!.parent! as AssetNode).describe(context, icons, iconSize: fontSize),
-                      ],
-                    ),
-                  ),
-                ),
-              );
-            }
-          } else {
-            details.add(
-              Padding(
-                padding: dialogPadding,
-                child: Text.rich(
-                  TextSpan(
-                    text: 'Location: ',
-                    children: <InlineSpan>[
-                      (node.parent! as AssetNode).describe(context, icons, iconSize: fontSize),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          }
-        }
-        for (Feature feature in node._features) {
-          final Widget? section = feature.buildDialog(context);
-          if (section != null) {
-            details.add(Padding(
-              key: ObjectKey(feature),
-              padding: sectionPadding,
-              child: section,
-            ));
-          }
-        }
-        if ((node.parent is AssetNode) && ((node.parent! as AssetNode)._container is OrbitFeature)) {
-          // TODO: this feels like a hack
-          final Widget? section = (node.parent! as AssetNode)._container!.buildDialog(context);
-          if (section != null) {
-            details.add(Padding(
-              key: ObjectKey(node.parent),
-              padding: sectionPadding,
-              child: section,
-            ));
-          }
-        }
-        details.add(const Padding(padding: dialogPadding));
-        return HudDialog(
-          onClose: onClose,
-          heading: Builder(
-            builder: (BuildContext context) {
-              final double iconSize = DefaultTextStyle.of(context).style.fontSize!;
-              return Row(
-                children: <Widget>[
-                  node.asIcon(context, size: iconSize),
-                  const SizedBox(width: 12.0),
-                  Expanded(child: Text(node.nameOrClassName)),
+            child: Text.rich(
+              TextSpan(
+                text: 'Location: ',
+                children: <InlineSpan>[
+                  parentAsset.describe(context, icons, iconSize: fontSize),
                 ],
-              );
-            },
-          ),
-          buttons: <Widget>[
-            IconButton(
-              icon: const Icon(Icons.location_searching),
-              onPressed: () {
-                ZoomProvider.centerOn(context, node);
-              },
-            ),
-          ],
-          child: DefaultTextStyle.merge(
-            softWrap: false,
-            overflow: TextOverflow.ellipsis,
-            child: SingleChildScrollView(
-              child: ListBody(
-                children: details,
               ),
             ),
           ),
         );
-      },
+      }
+    }
+    for (Feature feature in node._features) {
+      final Widget? section = feature.buildDialog(context);
+      if (section != null) {
+        details.add(Padding(
+          key: ObjectKey(feature),
+          padding: sectionPadding,
+          child: section,
+        ));
+      }
+    }
+    if (node.parent is OrbitFeature) {
+      // TODO: this is more of the same hack as above
+      assert(dependencies.contains(parentAsset));
+      final Widget section = (node.parent! as OrbitFeature).buildDialog(context);
+      details.add(Padding(
+        key: ObjectKey(node.parent),
+        padding: sectionPadding,
+        child: section,
+      ));
+    }
+    details.add(const Padding(padding: dialogPadding)); // TODO: should this be a SizedBox.height?
+    _resubscribe(dependencies);
+    return HudDialog(
+      onClose: widget.onClose,
+      heading: Builder(
+        builder: (BuildContext context) {
+          final double iconSize = DefaultTextStyle.of(context).style.fontSize!;
+          return Row(
+            children: <Widget>[
+              node.asIcon(context, size: iconSize),
+              const SizedBox(width: 12.0),
+              Expanded(child: Text(node.nameOrClassName)),
+            ],
+          );
+        },
+      ),
+      buttons: <Widget>[
+        IconButton(
+          icon: const Icon(Icons.location_searching),
+          onPressed: () {
+            ZoomProvider.centerOn(context, node);
+          },
+        ),
+      ],
+      child: DefaultTextStyle.merge(
+        softWrap: false,
+        overflow: TextOverflow.ellipsis,
+        child: SingleChildScrollView(
+          child: ListBody(
+            children: details,
+          ),
+        ),
+      ),
     );
   }
 }

@@ -21,7 +21,7 @@ class OnOffFeature extends AbilityFeature {
       _state = _OnOffHudState(this);
     } else {
       _state = (oldFeature as OnOffFeature)._state;
-      _state.update(enabled);
+      _state.update(this);
     }
   }
 
@@ -112,9 +112,16 @@ class OnOffFeature extends AbilityFeature {
 }
 
 class _OnOffHudState extends ChangeNotifier {
-  _OnOffHudState(this.feature) : _enabled = feature.enabled;
+  _OnOffHudState(OnOffFeature feature) : _feature = feature, _enabled = feature.enabled;
 
-  final OnOffFeature feature;
+  OnOffFeature get feature => _feature;
+  OnOffFeature _feature;
+  set feature(OnOffFeature value) {
+    if (_feature != value) {
+      _feature = value;
+      notifyListeners();
+    }
+  }
 
   bool get enabled => _enabled;
   bool _enabled = false;
@@ -134,15 +141,16 @@ class _OnOffHudState extends ChangeNotifier {
     }
   }
 
-  void update(bool value) {
-    enabled = value;
-    updating = false;
+  void update(OnOffFeature feature) {
+    _feature = feature;
+    enabled = feature.enabled;
+    updating = false; // TODO: technically we should way for the system.play message to return
   }
 
   VoidCallback? get toggleEnabledSwitch => updating ? null : _toggleEnabledSwitch;
 
   void _toggleEnabledSwitch() {
-    final SystemNode system = SystemNode.of(feature.parent);
+    final SystemNode system = SystemNode.of(feature);
     updating = true;
     enabled = !enabled;
     if (enabled) {

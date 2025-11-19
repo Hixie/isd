@@ -151,8 +151,8 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
         oldPos += _precomputedPositions[currentNode]!;
         break;
       } else {
-        oldPos += currentNode.parent!.findLocationForChild(currentNode, <VoidCallback>[]);
-        currentNode = currentNode.parent!;
+        oldPos += currentNode.worldParent!.findLocationForChild(currentNode, <VoidCallback>[]);
+        currentNode = currentNode.worldParent!;
       }
     }
     Offset newPos = Offset.zero;
@@ -162,8 +162,8 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
         newPos += _precomputedPositions[currentNode]!;
         break;
       } else {
-        newPos += currentNode.parent!.findLocationForChild(currentNode, <VoidCallback>[]);
-        currentNode = currentNode.parent!;
+        newPos += currentNode.worldParent!.findLocationForChild(currentNode, <VoidCallback>[]);
+        currentNode = currentNode.worldParent!;
       }
     }
     final Offset delta = oldPos - newPos;
@@ -233,8 +233,8 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
       while (true) {
         _precomputedPositions[node!] = offset;
         if (node.parent != null) {
-          offset -= node.parent!.findLocationForChild(node, <VoidCallback>[_handlePositionChange]);
-          node = node.parent;
+          offset -= node.worldParent!.findLocationForChild(node, <VoidCallback>[_handlePositionChange]);
+          node = node.worldParent;
         } else {
           if (node != widget.rootNode) {
             // TODO: more gracefully handle the case of a node going away
@@ -244,7 +244,7 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
               WorldNode? node = _centerNode;
               while (node != null) {
                 print('  - $node');
-                node = node.parent;
+                node = node.worldParent;
               }
               print('');
               _badNode = _centerNode;

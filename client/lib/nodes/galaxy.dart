@@ -130,6 +130,8 @@ class GalaxyNode extends WorldNode {
     }
   }
 
+  // TODO: implement attach/detach/dispose
+  
   final Set<SystemNode> systems = <SystemNode>{};
 
   List<Widget>? _children;

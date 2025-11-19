@@ -21,29 +21,34 @@ class SurfaceFeature extends ContainerFeature {
   }
 
   @override
-  void attach(AssetNode parent) {
+  void attach(Node parent) {
     super.attach(parent);
     for (AssetNode child in children.keys) {
-      child.attach(parent);
+      child.attach(this);
     }
   }
 
   @override
   void detach() {
     for (AssetNode child in children.keys) {
-      if (child.parent == parent) {
+      if (child.parent == this)
         child.detach();
-        // if its parent is not the same as our parent,
-        // then maybe it was already added to some other container
-      }
     }
     super.detach();
   }
 
   @override
+  void dispose() {
+    for (AssetNode child in children.keys) {
+      if (child.parent == this)
+        child.dispose();
+    }
+    super.dispose();
+  }
+
+  @override
   void walk(WalkCallback callback) {
     for (AssetNode child in children.keys) {
-      assert(child.parent == parent);
       child.walk(callback);
     }
   }

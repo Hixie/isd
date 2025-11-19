@@ -6,14 +6,24 @@ import '../assets.dart';
 import '../hud.dart';
 import '../nodes/system.dart';
 import '../stringstream.dart';
+import '../types.dart';
 import '../widgets.dart';
 
 class ResearchFeature extends AbilityFeature {
   ResearchFeature({
+    required this.disabledReason,
     required this.current,
   });
 
+  final DisabledReason disabledReason;
   final String current;
+
+  @override
+  String get status {
+    if (!disabledReason.enabled)
+      return disabledReason.description;
+    return 'Ready';
+  }
 
   @override
   RendererType get rendererType => RendererType.ui;
@@ -59,6 +69,7 @@ class ResearchFeature extends AbilityFeature {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
+              Text('Status: $status'),
               current.isEmpty
                 ? const Text('No research topic selected.', style: italic)
                 : Text.rich(

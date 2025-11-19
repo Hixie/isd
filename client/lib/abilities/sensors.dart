@@ -3,10 +3,12 @@ import 'package:flutter/material.dart' hide Material;
 import '../assets.dart';
 import '../icons.dart';
 import '../prettifiers.dart';
+import '../types.dart';
 import '../widgets.dart';
 
 class SpaceSensorFeature extends AbilityFeature {
   SpaceSensorFeature({
+    required this.disabledReason,
     required this.reach,
     required this.up,
     required this.down,
@@ -16,6 +18,7 @@ class SpaceSensorFeature extends AbilityFeature {
     required this.detectedCount,
   });
 
+  final DisabledReason disabledReason;
   final int reach;
   final int up;
   final int down;
@@ -23,6 +26,13 @@ class SpaceSensorFeature extends AbilityFeature {
   final AssetNode? nearestOrbit;
   final AssetNode? topOrbit;
   final int? detectedCount;
+
+  @override
+  String get status {
+    if (!disabledReason.enabled)
+      return disabledReason.description;
+    return 'Ready';
+  }
 
   @override
   RendererType get rendererType => RendererType.none;
@@ -39,6 +49,7 @@ class SpaceSensorFeature extends AbilityFeature {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
+              Text('Status: $status'),
               Text('Resolution: ${prettyLength(minSize)}'),
               Text('Penetration: ${prettyQuantity(reach, zero: "none", singular: " level", plural: " levels")}'),
               Text('Range: ${prettyQuantity(up, zero: "zero orbits", singular: " orbit", plural: " orbits")}'),
@@ -73,12 +84,21 @@ class SpaceSensorFeature extends AbilityFeature {
 
 class GridSensorFeature extends AbilityFeature {
   GridSensorFeature({
+    required this.disabledReason,
     required this.grid,
     required this.detectedCount,
   });
 
+  final DisabledReason disabledReason;
   final AssetNode? grid;
   final int? detectedCount;
+
+  @override
+  String get status {
+    if (!disabledReason.enabled)
+      return disabledReason.description;
+    return 'Ready';
+  }
 
   @override
   RendererType get rendererType => RendererType.none;
@@ -95,6 +115,7 @@ class GridSensorFeature extends AbilityFeature {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
+              Text('Status: $status'),
               if (grid != null)
                 Text.rich(
                   TextSpan(
@@ -116,10 +137,19 @@ class GridSensorFeature extends AbilityFeature {
 
 class InternalSensorFeature extends AbilityFeature {
   InternalSensorFeature({
+    required this.disabledReason,
     required this.detectedCount,
   });
 
+  final DisabledReason disabledReason;
   final int? detectedCount;
+
+  @override
+  String get status {
+    if (!disabledReason.enabled)
+      return disabledReason.description;
+    return 'Ready';
+  }
 
   @override
   RendererType get rendererType => RendererType.none;
@@ -134,6 +164,7 @@ class InternalSensorFeature extends AbilityFeature {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
+              Text('Status: $status'),
               if (detectedCount != null)
                 Text('Detected ${prettyQuantity(detectedCount!, zero: "nothing", singular: " object", plural: " objects")}.'),
             ],

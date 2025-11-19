@@ -19,26 +19,29 @@ class ProxyFeature extends ContainerFeature {
   }
 
   @override
-  void attach(AssetNode parent) {
+  void attach(Node parent) {
     super.attach(parent);
     if (child != null)
-      child!.attach(parent);
+      child!.attach(this);
   }
 
   @override
   void detach() {
-    if (child != null && child!.parent == parent) {
+    if (child?.parent == this)
       child!.detach();
-      // if its parent is not the same as our parent,
-      // then maybe it was already added to some other container
-    }
     super.detach();
+  }
+
+  @override
+  void dispose() {
+    if (child?.parent == this)
+      child!.dispose();
+    super.dispose();
   }
 
   @override
   void walk(WalkCallback callback) {
     if (child != null) {
-      assert(child!.parent == parent);
       child!.walk(callback);
     }
   }

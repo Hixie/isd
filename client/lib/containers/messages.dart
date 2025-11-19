@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../assets.dart';
 import '../widgets.dart';
+import '../world.dart';
 
 class MessageBoardFeature extends ContainerFeature {
   MessageBoardFeature(this.children);
@@ -16,29 +17,34 @@ class MessageBoardFeature extends ContainerFeature {
   }
 
   @override
-  void attach(AssetNode parent) {
+  void attach(Node parent) {
     super.attach(parent);
     for (AssetNode child in children) {
-      child.attach(parent);
+      child.attach(this);
     }
   }
 
   @override
   void detach() {
     for (AssetNode child in children) {
-      if (child.parent == parent) {
+      if (child.parent == this)
         child.detach();
-        // if its parent is not the same as our parent,
-        // then maybe it was already added to some other container
-      }
     }
     super.detach();
   }
 
   @override
+  void dispose() {
+    for (AssetNode child in children) {
+      if (child.parent == this)
+        child.dispose();
+    }
+    super.dispose();
+  }
+
+  @override
   void walk(WalkCallback callback) {
     for (AssetNode child in children) {
-      assert(child.parent == parent);
       child.walk(callback);
     }
   }
@@ -46,6 +52,9 @@ class MessageBoardFeature extends ContainerFeature {
   @override
   RendererType get rendererType => RendererType.ui;
 
+  @override
+  bool get debugExpectVirtualChildren => true;
+  
   @override
   Widget buildRenderer(BuildContext context) {
     return NoZoom(

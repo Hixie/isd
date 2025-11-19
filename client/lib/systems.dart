@@ -17,6 +17,7 @@ import 'abilities/region.dart';
 import 'abilities/research.dart';
 import 'abilities/rubble.dart';
 import 'abilities/sensors.dart';
+import 'abilities/staffing.dart';
 import 'abilities/stars.dart';
 import 'abilities/structure.dart';
 import 'assetclasses.dart';
@@ -90,7 +91,8 @@ class SystemServer {
   static const int fcInternalSensor = 0x1B;
   static const int fcInternalSensorStatus = 0x1C;
   static const int fcOnOff = 0x1D;
-  static const int expectedVersion = fcOnOff;
+  static const int fcStaffing = 0x1E;
+  static const int expectedVersion = fcStaffing;
 
   Future<void> _handleLogin() async {
     final StreamReader reader = await _connection.send(<String>['login', token], queue: false);
@@ -147,6 +149,7 @@ class SystemServer {
       system.offset = Offset(x - galaxy.diameter / 2.0, y - galaxy.diameter / 2.0);
       galaxy.addSystem(system);
       AssetNode? asset;
+      final List<Feature> obsoleteFeatures = <Feature>[];
       while ((asset = _readAsset(reader)) != null) {
         asset!;
         final int ownerDynastyID = reader.readUInt32();
@@ -238,6 +241,7 @@ class SystemServer {
                 max: structuralIntegrityMax == 0 ? null : structuralIntegrityMax,
               ));
             case fcSpaceSensor:
+              final DisabledReason disabledReason = DisabledReason(reader.readUInt32());
               final int reach = reader.readUInt32();
               final int up = reader.readUInt32();
               final int down = reader.readUInt32();
@@ -255,6 +259,7 @@ class SystemServer {
                 reader.restoreCheckpoint();
               }
               features.add(SpaceSensorFeature(
+                disabledReason: disabledReason,
                 reach: reach,
                 up: up,
                 down: down,
@@ -292,10 +297,16 @@ class SystemServer {
               }
               features.add(GridFeature(cellSize, width, height, children));
             case fcPopulation:
-              final int count = reader.readInt64();
+              final DisabledReason disabledReason = DisabledReason(reader.readUInt32());
+              final int count = reader.readUInt32();
+              final int max = reader.readUInt32();
+              final int jobs = reader.readUInt32();
               final double happiness = reader.readDouble();
               features.add(PopulationFeature(
+                disabledReason: disabledReason,
                 count: count,
+                max: max,
+                jobs: jobs,
                 happiness: happiness,
               ));
             case fcMessageBoard:
@@ -374,8 +385,12 @@ class SystemServer {
               }
               features.add(KnowledgeFeature(assetClasses: assetClasses, materials: materials));
               case fcResearch:
+                final DisabledReason disabledReason = DisabledReason(reader.readUInt32());
                 final String research = reader.readString();
-                features.add(ResearchFeature(current: research));
+                features.add(ResearchFeature(
+                  disabledReason: disabledReason,
+                  current: research,
+                ));
               case fcMining:
                 final double maxRate = reader.readDouble();
                 final DisabledReason disabledReason = DisabledReason(reader.readUInt32());
@@ -453,6 +468,7 @@ class SystemServer {
                   material: material,
                 ));
             case fcGridSensor:
+              final DisabledReason disabledReason = DisabledReason(reader.readUInt32());
               AssetNode? grid;
               int? count;
               reader.saveCheckpoint();
@@ -464,6 +480,7 @@ class SystemServer {
                 reader.restoreCheckpoint();
               }
               features.add(GridSensorFeature(
+                disabledReason: disabledReason,
                 grid: grid,
                 detectedCount: count,
               ));
@@ -483,6 +500,7 @@ class SystemServer {
                 assignedStructures: assignedStructures,
               ));
             case fcInternalSensor:
+              final DisabledReason disabledReason = DisabledReason(reader.readUInt32());
               int? count;
               reader.saveCheckpoint();
               if (!reader.done && reader.readUInt32() == fcInternalSensorStatus) {
@@ -492,11 +510,16 @@ class SystemServer {
                 reader.restoreCheckpoint();
               }
               features.add(InternalSensorFeature(
+                disabledReason: disabledReason,
                 detectedCount: count,
               ));
             case fcOnOff:
               final bool enabled = reader.readBool();
               features.add(OnOffFeature(enabled: enabled));
+            case fcStaffing:
+              final int jobs = reader.readUInt32();
+              final int workers = reader.readUInt32();
+              features.add(StaffingFeature(jobs: jobs, workers: workers));
             default:
               throw NetworkError(
                 'Client does not support feature code 0x${featureCode.toRadixString(16).padLeft(8, "0")}, '
@@ -505,7 +528,10 @@ class SystemServer {
           }
           lastFeatureCode = featureCode;
         }
-        asset.updateFeatures(features);
+        obsoleteFeatures.addAll(asset.updateFeatures(features));
+      }
+      for (Feature node in obsoleteFeatures) {
+        node.dispose();
       }
       system.markAsUpdated();
       assert(() {
