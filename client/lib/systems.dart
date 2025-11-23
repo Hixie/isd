@@ -24,6 +24,7 @@ import 'assetclasses.dart';
 import 'assets.dart';
 import 'binarystream.dart';
 import 'connection.dart';
+import 'containers/assetpile.dart';
 import 'containers/grid.dart';
 import 'containers/messages.dart';
 import 'containers/orbits.dart';
@@ -92,7 +93,8 @@ class SystemServer {
   static const int fcInternalSensorStatus = 0x1C;
   static const int fcOnOff = 0x1D;
   static const int fcStaffing = 0x1E;
-  static const int expectedVersion = fcStaffing;
+  static const int fcAssetPile = 0x1F;
+  static const int expectedVersion = fcAssetPile;
 
   Future<void> _handleLogin() async {
     final StreamReader reader = await _connection.send(<String>['login', token], queue: false);
@@ -122,10 +124,6 @@ class SystemServer {
     return _assets.putIfAbsent(id, () => AssetNode(id: id));
   }
 
-  Future<StreamReader> _send(List<Object> messageParts) {
-    return _connection.send(messageParts);
-  }
-
   static const bool _verbose = false;
 
   void _handleUpdate(Uint8List message) {
@@ -138,7 +136,7 @@ class SystemServer {
       final SpaceTime spaceTime = SpaceTime(clock, currentTime, timeFactor);
       final SystemNode system = _systems.putIfAbsent(systemID, () => SystemNode(
         id: systemID,
-        sendCallback: _send,
+        sendCallback: _connection.send,
         spaceTime: spaceTime,
       ));
       final int rootAssetID = reader.readUInt32();
@@ -520,6 +518,13 @@ class SystemServer {
               final int jobs = reader.readUInt32();
               final int workers = reader.readUInt32();
               features.add(StaffingFeature(jobs: jobs, workers: workers));
+            case fcAssetPile:
+              final List<AssetNode> children = <AssetNode>[];
+              AssetNode? child;
+              while ((child = _readAsset(reader)) != null) {
+                children.add(child!);
+              }
+              features.add(AssetPileFeature(children));
             default:
               throw NetworkError(
                 'Client does not support feature code 0x${featureCode.toRadixString(16).padLeft(8, "0")}, '
@@ -531,7 +536,7 @@ class SystemServer {
         obsoleteFeatures.addAll(asset.updateFeatures(features));
       }
       for (Feature node in obsoleteFeatures) {
-        node.dispose();
+        node.detach();
       }
       system.markAsUpdated();
       assert(() {

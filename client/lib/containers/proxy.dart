@@ -28,15 +28,8 @@ class ProxyFeature extends ContainerFeature {
   @override
   void detach() {
     if (child?.parent == this)
-      child!.detach();
-    super.detach();
-  }
-
-  @override
-  void dispose() {
-    if (child?.parent == this)
       child!.dispose();
-    super.dispose();
+    super.detach();
   }
 
   @override

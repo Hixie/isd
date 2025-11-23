@@ -306,7 +306,7 @@ class AssetNode extends WorldNode {
   void dispose() {
     _hud?.cancel();
     for (Feature feature in _features) {
-      feature.dispose();
+      feature.detach();
     }
     super.dispose();
   }
@@ -656,7 +656,7 @@ class _AssetInspectorState extends State<AssetInspector> {
         child: section,
       ));
     }
-    details.add(const Padding(padding: dialogPadding)); // TODO: should this be a SizedBox.height?
+    details.add(const SizedBox(height: 12.0));
     _resubscribe(dependencies);
     return HudDialog(
       onClose: widget.onClose,

@@ -32,18 +32,9 @@ class SurfaceFeature extends ContainerFeature {
   void detach() {
     for (AssetNode child in children.keys) {
       if (child.parent == this)
-        child.detach();
-    }
-    super.detach();
-  }
-
-  @override
-  void dispose() {
-    for (AssetNode child in children.keys) {
-      if (child.parent == this)
         child.dispose();
     }
-    super.dispose();
+    super.detach();
   }
 
   @override

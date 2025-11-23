@@ -43,23 +43,12 @@ class OrbitFeature extends ContainerFeature {
   @override
   void detach() {
     if (originChild.parent == this)
-      originChild.detach();
-    for (AssetNode child in children.keys) {
-      if (child.parent == this)
-        child.detach();
-    }
-    super.detach();
-  }
-
-  @override
-  void dispose() {
-    if (originChild.parent == this)
       originChild.dispose();
     for (AssetNode child in children.keys) {
       if (child.parent == this)
         child.dispose();
     }
-    super.dispose();
+    super.detach();
   }
 
   @override

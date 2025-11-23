@@ -61,6 +61,10 @@ class Game {
     }
   }
 
+  void reportError(String message) {
+    _handleSyncError(message);
+  }
+  
   ValueListenable<Credentials?> get credentials => _credentials;
   final ValueNotifier<Credentials?> _credentials = ValueNotifier<Credentials?>(null);
 

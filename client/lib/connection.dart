@@ -173,9 +173,10 @@ class Connection {
       final bool success = reader.readBool();
       if (conversationId == 0) {
         // login conversation
+        assert(!_conversations.containsKey(conversationId));
         if (!success) {
           if (onError != null)
-            onError!(NetworkError('credentials rejected by server: ${reader.readString()}'), Duration.zero);
+            onError!(NetworkError(reader.readString()), Duration.zero);
         }
       } else {
         final _Conversation? conversation = _conversations.remove(conversationId);

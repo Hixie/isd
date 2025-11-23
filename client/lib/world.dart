@@ -11,27 +11,15 @@ abstract class Node {
   //
   // For orphan nodes (e.g. while nodes are being parsed in an update message)
   // and for the root node, this will be null.
-  //
-  // Changing this (via attach/detach) does _not_ trigger notifications. This is
-  // expected to be set before the node is used in the render tree. When a
-  // node's parent changes, the parent is expected to trigger notifications so
-  // that _it_ can be rebuilt; the child does not need to update.
   Node? get parent => _parent;
   Node? _parent;
 
   // ignore: use_setters_to_change_properties
   void attach(Node parent) {
-    // it's possible that _parent is not null here
-    // because the child might get updated before the old parent
     _parent = parent;
   }
 
   void detach() {
-    assert(_parent != null);
-    _parent = null;
-  }
-
-  void dispose() {
     _parent = null;
   }
 
@@ -46,10 +34,16 @@ abstract class WorldNode extends Node with ChangeNotifier {
   @override
   WorldNode? get _worldParent => this;
 
+  // This is used by the layout logic to track when the center node changes.
+  ValueSetter<WorldNode>? onDispose;
+  
   @override
   void dispose() {
-    super.dispose();
-    _parent = null; // because ChangeNotifier.dispose doesn't call super.dispose
+    if (onDispose != null) {
+      onDispose!(this);
+    }
+    super.detach();
+    super.dispose(); // ChangeNotifier.dispose doesn't call super.dispose, so Node can't have a dispose method
   }
 
   // in meters

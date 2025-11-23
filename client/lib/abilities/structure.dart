@@ -1,8 +1,11 @@
 import 'dart:math' as math;
 
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart' hide Material;
 
 import '../assets.dart';
+import '../connection.dart' show NetworkError;
+import '../dialogs.dart';
+import '../game.dart';
 import '../icons.dart';
 import '../materials.dart';
 import '../nodes/system.dart';
@@ -273,11 +276,11 @@ class StructureFeature extends AbilityFeature {
     final double fontSize = DefaultTextStyle.of(context).style.fontSize!;
     final IconsManager icons = IconsManagerProvider.of(context);
     final SystemNode system = SystemNode.of(parent);
-    Widget result;
+    Widget progressBar;
     if ((materialsRate == 0.0) && (structuralIntegrityRate == 0.0)) {
-      result = _buildProgressBar(context, icons, system, 0.0, fontSize: fontSize);
+      progressBar = _buildProgressBar(context, icons, system, 0.0, fontSize: fontSize);
     } else {
-      result = ValueListenableBuilder<double>(
+      progressBar = ValueListenableBuilder<double>(
         valueListenable: spaceTime.asListenable(),
         builder: (BuildContext context, double time, Widget? widget) {
           final double elapsed = time - timeOrigin; // ms
@@ -290,7 +293,28 @@ class StructureFeature extends AbilityFeature {
         const Text('Structural integrity and construction', style: bold),
         Padding(
           padding: featurePadding,
-          child: result,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              progressBar,
+              const SizedBox(height: 8.0),
+              OutlinedButton(
+                onPressed: () async {
+                  final Game game = GameProvider.of(context);
+                  try {
+                    await system.play(<Object>[parent.id, 'dismantle']);
+                  } on NetworkError catch (e) {
+                    if (e.message == 'no destructors') {
+                      game.reportError('Could not dismantle ${parent.nameOrClassName}; no available disassembly teams');
+                    } else {
+                      rethrow;
+                    }
+                  }
+                },
+                child: Text('${parent.mass > 0 ? "Dismantle" : "Remove"} ${parent.nameOrClassName}'),
+              ),
+            ],
+          ),
         ),
       ],
     );

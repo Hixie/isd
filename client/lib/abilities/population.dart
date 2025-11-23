@@ -42,7 +42,7 @@ class PopulationFeature extends AbilityFeature {
             children: <Widget>[
               Text('Status: $status'),
               Text('Total population: ${prettyQuantity(count, zero: "none", singular: " person", plural: " people")}'),
-              Text('Capacity: ${prettyQuantity(count, zero: "none", singular: " person", plural: " people")}'),
+              Text('Capacity: ${prettyQuantity(max, zero: "none", singular: " person", plural: " people")}'),
               Text('Working population: ${prettyQuantity(jobs, zero: "none", singular: " worker", plural: " workers")}'),
               Text('Mean happiness: ${prettyHappiness(happiness)}'),
               Text('Total happiness: ${prettyHappiness(happiness * count)}'),

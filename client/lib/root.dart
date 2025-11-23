@@ -140,9 +140,21 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
     ));
   }
 
+  final List<WorldNode> _centerNodeChain = <WorldNode>[];
+
+  void _centerNodeChainUpdate(WorldNode node) {
+    _changeCenterNode(node.worldParent!);
+  }
+  
   void _changeCenterNode(WorldNode node) {
     if (node == _centerNode)
       return;
+
+    for (WorldNode chain in _centerNodeChain) {
+      chain.onDispose = null;
+    }
+    _centerNodeChain.clear();
+      
     Offset oldPos = Offset.zero;
     WorldNode currentNode;
     currentNode = _centerNode;
@@ -168,6 +180,13 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
     }
     final Offset delta = oldPos - newPos;
     _centerNode = node;
+
+    WorldNode? chain = node;
+    while (chain != null) {
+      chain.onDispose = _centerNodeChainUpdate;
+      chain = chain.worldParent;
+    }
+    
     _panTween.begin = _panTween.begin! - delta;
     _panTween.end = _panTween.end! - delta;
     _handlePositionChange();
@@ -222,7 +241,7 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
     }
   }
 
-  WorldNode? _badNode;
+  WorldNode? _badNode; // TODO: remove this
 
   @override
   Widget build(BuildContext context) {
@@ -236,8 +255,9 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
           offset -= node.worldParent!.findLocationForChild(node, <VoidCallback>[_handlePositionChange]);
           node = node.worldParent;
         } else {
+          assert(node == widget.rootNode);
+          // TODO: remove this, it should be obsolete debugging logic at this point
           if (node != widget.rootNode) {
-            // TODO: more gracefully handle the case of a node going away
             if (_centerNode != _badNode) {
               print('***** confused - center node ($_centerNode) is not in tree anymore *****');
               print('  root node is ${widget.rootNode}; ancestors of center node are:');
@@ -250,6 +270,7 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
               _badNode = _centerNode;
             }
           }
+          // TODO: remove the above
           break;
         }
       }
