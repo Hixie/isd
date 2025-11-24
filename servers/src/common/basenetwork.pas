@@ -171,7 +171,7 @@ type
 implementation
 
 uses
-   sysutils, isderrors, utf8, unicode, exceptions, hashfunctions,
+   sysutils, utf8, unicode, exceptions, hashfunctions,
    {$IFDEF TESTSUITE} time, {$ENDIF}
    sigint, errors, dateutils, isdprotocol, stringutils;
 
@@ -808,10 +808,14 @@ begin
             NextTime := High(cint);
       end;
       if (NextTime <> 0) then
+      begin
          Select(NextTime); // $R-
+         CompleteDemolition();
+      end;
       while (Assigned(FNextEvent) and EventIsDueBefore(FNextEvent, FClock.Now())) do
       begin
          RunEvent(FNextEvent);
+         CompleteDemolition();
       end;
       ReportChanges();
       CompleteDemolition();

@@ -5,7 +5,7 @@ unit materials;
 interface
 
 uses
-   hashtable, hashfunctions, hashsettight, genericutils, stringutils, icons, isdnumbers, time;
+   hashtable, hashfunctions, hashsettight, genericutils, stringutils, isdnumbers, time, isdprotocol;
 
 type
    TMaterial = class;
@@ -27,6 +27,7 @@ type
    TMaterialQuantity = record
       Material: TMaterial;
       Quantity: UInt64;
+      procedure Init(AMaterial: TMaterial; AQuantity: UInt64);
       procedure Dec(Delta: UInt64);
    end;
 
@@ -181,6 +182,13 @@ begin
    inherited Create(@UTF8StringHash32, ACount);
 end;
 
+
+
+procedure TMaterialQuantity.Init(AMaterial: TMaterial; AQuantity: UInt64);
+begin
+   Material := AMaterial;
+   Quantity := AQuantity;
+end;
 
 procedure TMaterialQuantity.Dec(Delta: UInt64);
 begin

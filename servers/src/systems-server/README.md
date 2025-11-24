@@ -29,12 +29,12 @@ Fields:
  * Command (string)
  * additional fields defined by the command
 
+The connection must have had a successful `login` prior to this message.
+
 The command is routed to the given asset, which must be owned by the
 dynasty. For details about which commands are available for assets
 with various features, see the feature definitions below. Unless
-otherwise stated, features support no commands.
-
-The connection must have had a successful `login` prior to this message.
+otherwise stated, features do not support any commands.
 
 
 ## Change notifications
@@ -453,6 +453,16 @@ known). The current structural integrity can't be greater than the
 amount of material present, regardless of the indicated rate of
 increase.
 
+Structures support the following command:
+
+ * `dismantle`: No fields. Can only be sent to unowned assets or
+   assets owned by the player. If there are destructors nearly (e.g. a
+   population center), removes the asset, transferring any resources
+   to other assets as necessary. If anything cannot be removed, the
+   asset will instead be replaced by a rubble pile with those
+   materials. If there's no nearby destructors, responsds with a "`no
+   destructors`" error.
+
 
 #### `fcSpaceSensor` (0x05)
 
@@ -616,10 +626,15 @@ This feature supports the following commands:
 For the `<disabled>` field, see below.
 
 The `<count>` is the number of people at this population center. The
-`<max>` is the maximum number of people that can be housed at this
-population center. The `<jobs>` is the number of people who are
-working at some `fcStaffing` feature. The `<happiness>` is their mean
-happiness; it might be a NaN, if the happiness cannot be determined.
+`<max>` is the maximum number of people that can be comfortably housed
+at this population center (On occasion, `<count>` may exceed it,
+especially if it is zero; this indicates overpopulation and is likely
+to have a negative impact on happiness.) The `<jobs>` is the number of
+people who are working at some `fcStaffing` feature. The `<happiness>`
+is their mean happiness; it might be a NaN, if the happiness cannot be
+determined.
+
+> TODO: overpopulation should affect happiness
 
 
 #### `fcMessageBoard` (0x0C)
@@ -705,11 +720,12 @@ Indicates that the asset contains, possibly among other things, a pile
 of rubble.
 
 The contents are listed as pairs of material ID and quantity (in
-units). Only known materials are listed. The balance of materials is
-given at the end of the list, paired with the material ID zero.
+units). Only known materials are listed. The balance of materials
+(i.e. the quantity of unknown materials) is given at the end of the
+list, paired with the material ID zero. Materials may be listed
+multiple times.
 
-> TODO: have some command to move materials to material piles, and
-> ores into ore piles
+> TODO: have some command to move materials to material piles
 
 
 #### `fcProxy` (0x0F)
@@ -1128,6 +1144,18 @@ Staff comes from `fcPopulation` centers.
 The `<jobs>` is zero if the dynasty does not have access to the
 asset's internals and does not know about the asset class. Otherwise,
 it is non-zero.
+
+
+#### `fcAssetPile` (0x1F)
+
+```bnf
+<featuredata>       ::= <assets>* <zero32>
+<assets>            ::= <assetid>
+```
+
+Child assets of a `fcAssetPile` (the `<assets>`) are piled on top of
+the asset in a haphazard fashion. Each child's size will not exceed
+the parent's, but their sum can.
 
 
 ### `<disabled>`

@@ -30,7 +30,6 @@ type
    protected
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
       procedure AdoptSolarSystemChild(Child: TAssetNode; DistanceFromCenter, Theta, HillDiameter: Double);
-      procedure DropChild(Child: TAssetNode); override;
       procedure ParentMarkedAsDirty(ParentDirtyKinds, NewDirtyKinds: TDirtyKinds); override;
       procedure AddPolarChildFromJournal(Child: TAssetNode; Distance, Theta, HillDiameter: Double); // meters
       function GetMass(): Double; override;
@@ -43,6 +42,7 @@ type
    public
       constructor Create(ASystem: TSystem; AFeatureClass: TSolarSystemFeatureClass);
       destructor Destroy(); override;
+      procedure DropChild(Child: TAssetNode); override;
       procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader); override;
       procedure AddCartesianChild(Child: TAssetNode; X, Y: Double); // meters, first must be at 0,0; call ComputeHillSpheres after calling AddCartesianChild for all children // marks the child as new
@@ -70,7 +70,7 @@ type
 implementation
 
 uses
-   math, isdprotocol, encyclopedia, exceptions;
+   math, isdprotocol, exceptions;
 
 type
    TSolarSystemJournalState = (jsNew, jsChanged);

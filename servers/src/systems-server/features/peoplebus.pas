@@ -528,7 +528,7 @@ function TPeopleBusFeatureNode.ManageBusMessage(Message: TBusMessage): TBusMessa
 begin
    if (Message is TPeopleBusMessage) then
    begin
-      Result := DeferOrManageBusMessage(Message);
+      Result := DeferOrHandleBusMessage(Message);
    end
    else
       Result := inherited;
@@ -563,7 +563,7 @@ begin
       Result := True;
    end
    else
-      Result := inherited;
+      Result := False;
 end;
 
 procedure TPeopleBusFeatureNode.HandleChanges();

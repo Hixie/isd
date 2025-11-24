@@ -88,6 +88,8 @@ class classid {
   feature: TBuilderFeatureClass capacity 1, build 1 hp/h;
   feature: TFoodBusFeatureClass;
   feature: TFoodGenerationFeatureClass size 10;
+  feature: TGridSensorFeatureClass inference, light, class, internals; // sensor types
+  feature: TInternalSensorFeatureClass inference, light, class, internals; // sensor types
   feature: TKnowledgeBusFeatureClass;
   feature: TKnowledgeFeatureClass;
   feature: TMaterialPileFeatureClass for "Iron", capacity 10kg; // or 10 units
@@ -103,9 +105,10 @@ class classid {
   feature: TRefiningFeatureClass for "Iron", max throughput 1kg/s;
   feature: TRegionFeatureClass at depth 2, 5 materials of quantity 1000000000000000; // (a thousand trillion units) ("of quantity ..." is optional, defaults to max)
   feature: TResearchFeatureClass provides "topic1", provides "topic2";
+  feature: TRubblePileFeatureClass; // not much use in the tech tree
   feature: TSizeFeatureClass 100m;
   feature: TSolarSystemFeatureClass group threshold 1m, gravitational influence 1;
-  feature: TSpaceSensorFeatureClass 1 to orbit, up 2 down 3, min size 4m, inference, light, class, internals;
+  feature: TSpaceSensorFeatureClass 1 to orbit, up 2 down 3, min size 4m, inference, light, class, internals; // inference etc are sensor types
   feature: TStaffingFeatureClass 10 jobs;
   feature: TStructureFeatureClass size 100m, materials (
     "Component Name 1": "Material Name 1" * 1000,
@@ -121,6 +124,5 @@ The following features are not supported:
  * TGenericGridFeatureClass (use TParameterizedGridFeatureClass)
  * TOrbitFeatureClass
  * TPlanetaryBodyFeatureClass
- * TRubblePileFeatureClass
  * TStarFeatureClass
  * TSurfaceFeatureClass

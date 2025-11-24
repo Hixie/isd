@@ -55,7 +55,7 @@ type
       procedure ReadCloseBrace();
       procedure ReadOpenParenthesis();
       procedure ReadCloseParenthesis();
-      procedure ReadComma();
+      procedure ReadComma(); // see also ReadComma in techtree.pas
       procedure ReadColon();
       procedure ReadSemicolon();
       procedure ReadPercentage();

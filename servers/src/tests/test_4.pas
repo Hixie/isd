@@ -75,14 +75,15 @@ begin
    MinTime := 0;
    MaxTime := 0;
    TimePinned := True;
-
+   
    ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 127);
 
    AdvanceTime(1000 * Days);
    ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 'Technology unlocked.');
    ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 18); // crash
-   HomeRegion := specialize GetUpdatedFeature<TModelGridFeature>(ModelSystem).Parent;
 
+   HomeRegion := specialize GetUpdatedFeature<TModelGridFeature>(ModelSystem).Parent;
+   
    SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.ID) + #00'get-buildings'#00'1'#00'1'#00);
    Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
    VerifyPositiveResponse(Response);
@@ -432,7 +433,6 @@ begin
    VerifyPositiveResponse(Response);
    FreeAndNil(Response);
    ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 3);
-
    with (specialize GetUpdatedFeature<TModelRefiningFeature>(ModelSystem, 1)) do
    begin
       Verify(DisabledReasons = %00000000);
@@ -472,6 +472,19 @@ begin
       Verify(Parent = Rally);
    end;
 
+   TimePinned := True;
+   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(SiliconTable.ID) + #00'dismantle' + #00);
+   Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
+   VerifyPositiveResponse(Response);
+   FreeAndNil(Response);
+   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 3);
+   with (specialize GetUpdatedFeature<TModelRubblePileFeature>(ModelSystem)) do
+   begin
+      Verify(KnownContents.Length = 1);
+      Verify(KnownContents[0].MaterialID = 9); // Iron
+      Verify(KnownContents[0].Quantity = 1);
+   end;
+   
    AdvanceTime(10 * Days);
 
    FreeAndNil(ModelSystem);

@@ -35,7 +35,6 @@ type
       function GetOrCreateRegionAt(X, Y: Integer): TAssetNode; // X,Y constrained as above
    protected
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
-      procedure DropChild(Child: TAssetNode); override;
       function GetMass(): Double; override;
       function GetMassFlowRate(): TRate; override;
       function GetSize(): Double; override;
@@ -45,6 +44,7 @@ type
    public
       constructor Create(ASystem: TSystem; AFeatureClass: TSurfaceFeatureClass; ASize: Double);
       destructor Destroy(); override;
+      procedure DropChild(Child: TAssetNode); override;
       procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader); override;
       procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); override;

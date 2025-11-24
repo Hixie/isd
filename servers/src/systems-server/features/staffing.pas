@@ -169,7 +169,7 @@ begin
          (Message as TCheckDisabledBusMessage).AddReason(drUnderstaffed);
    end
    else
-      Result := inherited;
+      Result := False;
 end;
 
 procedure TStaffingFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);

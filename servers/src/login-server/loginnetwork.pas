@@ -11,7 +11,7 @@ unit loginnetwork;
 interface
 
 uses
-   corenetwork, stringstream, users, logindynasty, isderrors, clock,
+   corenetwork, stringstream, users, logindynasty, clock,
    servers, basenetwork, binaries, galaxy, astronomy, binarystream, sharedpointer;
 
 const

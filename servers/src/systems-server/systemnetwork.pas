@@ -8,10 +8,10 @@ interface
 // (right now we assert when they relogin because we can't find anything to send them)
 
 uses
-   configuration, servers, baseunix, authnetwork, serverstream,
-   materials, corenetwork, binarystream, basenetwork, systemdynasty,
-   astronomy, systems, hashtable, genericutils, basedynasty,
-   encyclopedia, clock;
+   encyclopedia, configuration, servers, baseunix, authnetwork,
+   serverstream, materials, corenetwork, binarystream, basenetwork,
+   systemdynasty, astronomy, systems, hashtable, genericutils,
+   basedynasty, clock;
 
 type
    TSystemHashTable = class(specialize THashTable<Cardinal, TSystem, CardinalUtils>)
@@ -103,9 +103,9 @@ type
 implementation
 
 uses
-   sysutils, hashfunctions, isdprotocol, passwords, exceptions, space,
-   orbit, spacesensor, structure, errors, plot, planetary,
-   population, messages, knowledge, isderrors, food, research;
+   sysutils, hashfunctions, isdprotocol, passwords, exceptions, orbit,
+   spacesensor, structure, errors, plot, planetary, population,
+   messages, knowledge, food, research, space;
 
 constructor TSystemHashTable.Create();
 begin

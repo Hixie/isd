@@ -49,7 +49,6 @@ type
       function GetOrbitName(): UTF8String;
    protected
       procedure AdoptOrbitingChild(Child: TAssetNode); // Child must be an orbit.
-      procedure DropChild(Child: TAssetNode); override;
       procedure ParentMarkedAsDirty(ParentDirtyKinds, NewDirtyKinds: TDirtyKinds); override;
       function GetMass(): Double; override;
       function GetMassFlowRate(): TRate; override;
@@ -66,6 +65,7 @@ type
    public
       constructor Create(ASystem: TSystem);
       destructor Destroy(); override;
+      procedure DropChild(Child: TAssetNode); override;
       procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader); override;
       function GetHillDiameter(Child: TAssetNode; ChildPrimaryMass: Double): Double;
@@ -83,7 +83,7 @@ type
 implementation
 
 uses
-   sysutils, isdprotocol, math, exceptions, encyclopedia;
+   sysutils, isdprotocol, math, exceptions;
 
 type
    POrbitData = ^TOrbitData;
@@ -192,12 +192,12 @@ destructor TOrbitFeatureNode.Destroy();
 var
    Child: TAssetNode;
 begin
-   FreeAndNil(FPrimaryChild);
    for Child in FChildren do
    begin
       Assert(Assigned(Child));
       Child.Free(); // calls DropChild
    end;
+   FreeAndNil(FPrimaryChild);
    inherited;
 end;
 
@@ -226,7 +226,15 @@ begin
       Child.ParentData := nil;
    end
    else
+   begin
       FPrimaryChild := nil;
+      if (Length(FChildren) > 0) then
+      begin
+         XXX;
+         // TODO: reparent the children
+         // the heaviest child should become the new primary child
+      end;
+   end;
    inherited;
 end;
 

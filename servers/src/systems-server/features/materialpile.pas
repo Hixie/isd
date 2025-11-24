@@ -36,6 +36,7 @@ type
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
       function GetMass(): Double; override;
       function GetMassFlowRate(): TRate; override;
+      function HandleBusMessage(Message: TBusMessage): Boolean; override;
       procedure HandleChanges(); override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
       procedure ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynasty.TArray); override;
@@ -53,7 +54,7 @@ type
 implementation
 
 uses
-   exceptions, sysutils, knowledge, messages, isdprotocol;
+   exceptions, sysutils, knowledge, messages, isdprotocol, rubble, commonbuses;
 
 constructor TMaterialPileFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
 begin
@@ -91,6 +92,8 @@ end;
 
 destructor TMaterialPileFeatureNode.Destroy();
 begin
+   if (Assigned(FRegion)) then
+      FRegion.RemoveMaterialPile(Self);
    FMaterialKnowledge.Done();
    inherited;
 end;
@@ -128,6 +131,49 @@ end;
 function TMaterialPileFeatureNode.GetDynasty(): TDynasty;
 begin
    Result := Parent.Owner;
+end;
+
+function TMaterialPileFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
+var
+   Quantity: UInt64;
+begin
+   if (Message is TRubbleCollectionMessage) then
+   begin
+      if (Assigned(FRegion)) then
+      begin
+         Quantity := FRegion.ExtractMaterialPile(Self);
+         FRegion := nil;
+         (Message as TRubbleCollectionMessage).AddMaterial(FFeatureClass.FMaterial, Quantity);
+         MarkAsDirty([dkUpdateClients, dkNeedsHandleChanges]);
+      end;
+      Result := False;
+   end
+   else
+   if (Message is TDismantleMessage) then
+   begin
+      Writeln(DebugName, ' received ', Message.ClassName);
+      if (not Assigned(Parent.Owner)) then
+      begin
+         // TODO: once we support frozen piles, transfer the contents to the region's material piles on behalf of the Messsage.Owner
+         Assert(not Assigned(FRegion));
+      end
+      else
+      begin
+         Assert((Message as TDismantleMessage).Owner = Parent.Owner);
+         if (Assigned(FRegion)) then
+         begin
+            Writeln('  calling region to rehome pile contents');
+            Quantity := FRegion.RehomeMaterialPile(Self);
+            FRegion := nil;
+            if (Quantity > 0) then
+               (Message as TDismantleMessage).AddExcessMaterial(FFeatureClass.FMaterial, Quantity);
+            MarkAsDirty([dkUpdateClients, dkNeedsHandleChanges]);
+         end;
+      end;
+      Result := False;
+   end
+   else
+      Result := False;
 end;
 
 procedure TMaterialPileFeatureNode.HandleChanges();

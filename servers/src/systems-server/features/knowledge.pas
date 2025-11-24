@@ -20,36 +20,36 @@ type
       FKnownMaterials: TMaterialHashSet;
       // TODO: add a separate 64 bit field tracking the ores specifically
       FOwner: TDynasty;
-      FCachedSystem: TSystem;
+      FSystem: TSystem;
    public
-      constructor Create(AKnownMaterials: TMaterialHashSet; AOwner: TDynasty; ACachedSystem: TSystem);
+      constructor Create(AKnownMaterials: TMaterialHashSet; AOwner: TDynasty; ASystem: TSystem);
       procedure AddKnownMaterial(Material: TMaterial); inline;
       property Owner: TDynasty read FOwner;
-      property CachedSystem: TSystem read FCachedSystem;
+      property System: TSystem read FSystem;
    end;
 
    TCollectKnownAssetClassesMessage = class(TGlobalKnowledgeBusMessage)
    private
       FKnownAssetClasses: TAssetClassHashSet;
       FOwner: TDynasty;
-      FCachedSystem: TSystem;
+      FSystem: TSystem;
    public
-      constructor Create(AKnownAssetClasses: TAssetClassHashSet; AOwner: TDynasty; ACachedSystem: TSystem);
+      constructor Create(AKnownAssetClasses: TAssetClassHashSet; AOwner: TDynasty; ASystem: TSystem);
       procedure AddKnownAssetClass(AssetClass: TAssetClass); inline;
       property Owner: TDynasty read FOwner;
-      property CachedSystem: TSystem read FCachedSystem;
+      property System: TSystem read FSystem;
    end;
 
    TCollectKnownResearchesMessage = class(TGlobalKnowledgeBusMessage)
    private
       FKnownResearches: TResearchHashSet;
       FOwner: TDynasty;
-      FCachedSystem: TSystem;
+      FSystem: TSystem;
    public
-      constructor Create(AKnownResearches: TResearchHashSet; AOwner: TDynasty; ACachedSystem: TSystem);
+      constructor Create(AKnownResearches: TResearchHashSet; AOwner: TDynasty; ASystem: TSystem);
       procedure AddKnownResearch(Research: TResearch); inline;
       property Owner: TDynasty read FOwner;
-      property CachedSystem: TSystem read FCachedSystem;
+      property System: TSystem read FSystem;
    end;
 
    TCallback = procedure of object;
@@ -154,12 +154,12 @@ implementation
 uses
    sysutils, isdprotocol, typedump;
 
-constructor TCollectKnownMaterialsMessage.Create(AKnownMaterials: TMaterialHashSet; AOwner: TDynasty; ACachedSystem: TSystem);
+constructor TCollectKnownMaterialsMessage.Create(AKnownMaterials: TMaterialHashSet; AOwner: TDynasty; ASystem: TSystem);
 begin
    inherited Create();
    FKnownMaterials := AKnownMaterials;
    FOwner := AOwner;
-   FCachedSystem := ACachedSystem;
+   FSystem := ASystem;
 end;
 
 procedure TCollectKnownMaterialsMessage.AddKnownMaterial(Material: TMaterial);
@@ -168,12 +168,12 @@ begin
 end;
 
 
-constructor TCollectKnownAssetClassesMessage.Create(AKnownAssetClasses: TAssetClassHashSet; AOwner: TDynasty; ACachedSystem: TSystem);
+constructor TCollectKnownAssetClassesMessage.Create(AKnownAssetClasses: TAssetClassHashSet; AOwner: TDynasty; ASystem: TSystem);
 begin
    inherited Create();
    FKnownAssetClasses := AKnownAssetClasses;
    FOwner := AOwner;
-   FCachedSystem := ACachedSystem;
+   FSystem := ASystem;
 end;
 
 procedure TCollectKnownAssetClassesMessage.AddKnownAssetClass(AssetClass: TAssetClass);
@@ -183,14 +183,14 @@ begin
 end;
 
 
-constructor TCollectKnownResearchesMessage.Create(AKnownResearches: TResearchHashSet; AOwner: TDynasty; ACachedSystem: TSystem);
+constructor TCollectKnownResearchesMessage.Create(AKnownResearches: TResearchHashSet; AOwner: TDynasty; ASystem: TSystem);
 begin
    inherited Create();
    FKnownResearches := AKnownResearches;
    FOwner := AOwner;
-   FCachedSystem := ACachedSystem;
+   FSystem := ASystem;
    Assert(FKnownResearches.IsEmpty);
-   FKnownResearches.Add(FCachedSystem.Encyclopedia.Researches[0]);
+   FKnownResearches.Add(FSystem.Encyclopedia.Researches[0]);
 end;
 
 procedure TCollectKnownResearchesMessage.AddKnownResearch(Research: TResearch);
@@ -366,7 +366,7 @@ function TKnowledgeBusFeatureNode.ManageBusMessage(Message: TBusMessage): TBusMe
 begin
    if (Message is TKnowledgeBusMessage) then
    begin
-      Result := DeferOrManageBusMessage(Message);
+      Result := DeferOrHandleBusMessage(Message);
       Assert((not (Message is TTargetedKnowledgeBusMessage)) or (Result = mrHandled));
       Assert((not (Message is TGlobalKnowledgeBusMessage)) or (Result = mrInjected));
    end
@@ -494,15 +494,13 @@ function TKnowledgeFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
    function CanSeeKnowledge(Target: TDynasty): Boolean;
    var
       Visibility: TVisibility;
-      CachedSystem: TSystem;
    begin
       if (not Assigned(FResearch)) then
       begin
          Result := False;
          exit;
       end;
-      CachedSystem := System;
-      Visibility := Parent.ReadVisibilityFor(CachedSystem.DynastyIndex[Target]);
+      Visibility := Parent.ReadVisibilityFor(System.DynastyIndex[Target]);
       Result := dmInternals in Visibility;
    end;
 

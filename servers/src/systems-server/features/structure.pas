@@ -5,7 +5,8 @@ unit structure;
 interface
 
 uses
-   systems, serverstream, materials, techtree, builders, region, time, commonbuses, systemdynasty;
+   systems, serverstream, materials, techtree, builders, region, time,
+   commonbuses, systemdynasty, basenetwork;
 
 type
    TStructureFeatureClass = class;
@@ -63,7 +64,7 @@ type
       Region: TRegionFeatureNode;
       Flags: set of TBuildingStateFlags; // could use AnnotatedPointers instead
       Priority: TPriority;
-      procedure IncStructuralIntegrity(const Delta: Double);
+      function IncStructuralIntegrity(const Delta: Double; Threshold: Cardinal): Boolean;
    end;
 
    // TODO: if MaterialsQuantity changes whether it equals 0, then MarkAsDirty([dkAffectsVisibility])
@@ -96,6 +97,7 @@ type
       procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader); override;
       procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); override;
+      function HandleCommand(Command: UTF8String; var Message: TMessage): Boolean; override;
    private // IStructure
       procedure BuilderBusConnected(Bus: TBuilderBusFeatureNode); // must come from builder bus
       procedure BuilderBusReset(); // must come from builder bus, can assume all other participants were also reset
@@ -118,7 +120,9 @@ type
 implementation
 
 uses
-   sysutils, isdprotocol, exceptions, rubble, plasticarrays, genericutils, math;
+   sysutils, isdprotocol, exceptions, rubble, plasticarrays,
+   genericutils, math, systemnetwork, encyclopedia, population,
+   assetpile;
 
 constructor TMaterialLineItem.Create(AComponentName: UTF8String; AMaterial: TMaterial; AQuantity: Cardinal);
 begin
@@ -127,8 +131,11 @@ begin
    Quantity := AQuantity;
 end;
 
-procedure TBuildingState.IncStructuralIntegrity(const Delta: Double);
+function TBuildingState.IncStructuralIntegrity(const Delta: Double; Threshold: Cardinal): Boolean;
+var
+   WasAbove: Boolean;
 begin
+   WasAbove := StructuralIntegrity >= Threshold;
    if (Delta > High(StructuralIntegrity) - StructuralIntegrity) then
    begin
       StructuralIntegrity := High(StructuralIntegrity);
@@ -141,6 +148,7 @@ begin
    begin
       StructuralIntegrity := MaterialsQuantity;
    end;
+   Result := WasAbove <> (StructuralIntegrity >= Threshold);
 end;
 
 
@@ -408,8 +416,11 @@ end;
 function TStructureFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
 var
    RubbleMessage: TRubbleCollectionMessage;
+   DismantleMessage: TDismantleMessage;
+   TotalQuantity, CurrentQuantity: Cardinal;
    Index: Cardinal;
    LineItem: TMaterialLineItem;
+   Store: TStoreMaterialBusMessage;
 begin
    if (Message is TCheckDisabledBusMessage) then
    begin
@@ -424,14 +435,76 @@ begin
       RubbleMessage := Message as TRubbleCollectionMessage;
       RubbleMessage.Grow(FFeatureClass.BillOfMaterialsLength);
       Assert(FFeatureClass.BillOfMaterialsLength > 0);
+      if (Assigned(FBuildingState)) then
+      begin
+         TotalQuantity := FBuildingState^.MaterialsQuantity;
+         FBuildingState^.MaterialsQuantity := 0;
+      end
+      else
+      begin
+         TotalQuantity := FFeatureClass.TotalQuantity;
+         InitBuildingState();
+      end;
       for Index := 0 to FFeatureClass.BillOfMaterialsLength - 1 do // $R-
       begin
          LineItem := FFeatureClass.BillOfMaterials[Index];
-         RubbleMessage.AddMaterial(LineItem.Material, LineItem.Quantity);
+         if (LineItem.Quantity < TotalQuantity) then
+         begin
+            RubbleMessage.AddMaterial(LineItem.Material, LineItem.Quantity);
+            Dec(TotalQuantity, LineItem.Quantity);
+         end
+         else
+         begin
+            RubbleMessage.AddMaterial(LineItem.Material, TotalQuantity);
+            break;
+         end;
       end;
+      MarkAsDirty([dkUpdateClients, dkUpdateJournal, dkNeedsHandleChanges]);
    end
    else
-      Result := inherited;
+   if (Message is TDismantleMessage) then
+   begin
+      DismantleMessage := Message as TDismantleMessage;
+      Assert((not Assigned(Parent.Owner)) or (DismantleMessage.Owner = Parent.Owner));
+      if (Assigned(FBuildingState)) then
+      begin
+         TotalQuantity := FBuildingState^.MaterialsQuantity;
+         FBuildingState^.MaterialsQuantity := 0;
+      end
+      else
+      begin
+         TotalQuantity := FFeatureClass.TotalQuantity;
+         InitBuildingState();
+      end;
+      if (TotalQuantity > 0) then
+      begin
+         for Index := 0 to FFeatureClass.BillOfMaterialsLength - 1 do // $R-
+         begin
+            LineItem := FFeatureClass.BillOfMaterials[Index];
+            if (LineItem.Quantity < TotalQuantity) then
+            begin
+               CurrentQuantity := LineItem.Quantity;
+            end
+            else
+            begin
+               CurrentQuantity := TotalQuantity;
+            end;
+            Assert(CurrentQuantity <= TotalQuantity);
+            Store := TStoreMaterialBusMessage.Create(DismantleMessage.Target, DismantleMessage.Owner, LineItem.Material, CurrentQuantity);
+            DismantleMessage.Target.Parent.Parent.InjectBusMessage(Store);
+            if (Store.RemainingQuantity > 0) then
+               DismantleMessage.AddExcessMaterial(LineItem.Material, Store.RemainingQuantity);
+            FreeAndNil(Store);
+            Dec(TotalQuantity, CurrentQuantity);
+            if (TotalQuantity = 0) then
+               break;
+         end;
+      end;
+      MarkAsDirty([dkUpdateClients, dkUpdateJournal, dkNeedsHandleChanges]);
+      Result := False;
+   end
+   else
+      Result := False;
 end;
 
 procedure TStructureFeatureNode.ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynasty.TArray);
@@ -786,7 +859,11 @@ begin
 end;
 
 procedure TStructureFeatureNode.StopBuilding(); // called by builder
+var
+   Delta: Double;
+   Changes: TDirtyKinds;
 begin
+   Writeln(DebugName, ' StopBuilding');
    Assert(Assigned(FBuildingState));
    Assert(FBuildingState^.StructuralIntegrityRate.IsNotZero);
    FBuildingState^.Builder := nil;
@@ -808,8 +885,11 @@ begin
       if (Assigned(FBuildingState^.NextEvent)) then
       begin
          Assert(not FBuildingState^.AnchorTime.IsInfinite);
-         FBuildingState^.IncStructuralIntegrity((System.Now - FBuildingState^.AnchorTime) * FBuildingState^.StructuralIntegrityRate);
-         MarkAsDirty([dkUpdateJournal, dkUpdateClients]);
+         Delta := (System.Now - FBuildingState^.AnchorTime) * FBuildingState^.StructuralIntegrityRate;
+         Changes := [dkUpdateJournal, dkUpdateClients];
+         if (FBuildingState^.IncStructuralIntegrity(Delta, FFeatureClass.MinimumFunctionalQuantity)) then
+            Include(Changes, dkNeedsHandleChanges);
+         MarkAsDirty(Changes);
          Assert(FBuildingState^.StructuralIntegrity <= FFeatureClass.TotalQuantity);
       end;
    end;
@@ -879,6 +959,7 @@ end;
 
 procedure TStructureFeatureNode.StartMaterialConsumer(ActualRate: TRate); // quantity per second
 begin
+   Writeln(DebugName, ' StartMaterialConsumer(', ActualRate.ToString('units'), ')');
    Assert(Assigned(FBuildingState));
    Assert(Assigned(FBuildingState^.Region));
    Assert(Assigned(FBuildingState^.PendingMaterial));
@@ -891,18 +972,8 @@ end;
 procedure TStructureFeatureNode.DeliverMaterialConsumer(Delivery: UInt64);
 var
    Duration: TMillisecondsDuration;
-   CachedSystem: TSystem;
-
-   procedure MeasureDuration();
-   begin
-      if (not Assigned(CachedSystem)) then
-      begin
-         CachedSystem := System;
-         Duration := System.Now - FBuildingState^.AnchorTime;
-      end;
-   end;
-
 begin
+   Writeln(DebugName, ' DeliverMaterialConsumer(', Delivery, ')');
    Assert(Assigned(FBuildingState));
    Assert(Assigned(FBuildingState^.PendingMaterial));
    Assert(Assigned(FBuildingState^.Region));
@@ -910,10 +981,11 @@ begin
    Assert(Delivery <= FBuildingState^.PendingQuantity);
    Assert((Delivery = 0) or (not FBuildingState^.AnchorTime.IsInfinite)); // nextevent might be nil already but even then we must not have reset the anchor time yet
    Assert((Delivery = 0) or (FBuildingState^.MaterialsQuantityRate.IsNotZero));
-   CachedSystem := nil;
+   if (FBuildingState^.MaterialsQuantityRate.IsNotZero or
+       (FBuildingState^.StructuralIntegrityRate.IsNotZero and (FBuildingState^.StructuralIntegrity < FBuildingState^.MaterialsQuantity))) then
+      Duration := System.Now - FBuildingState^.AnchorTime;
    if (Delivery > 0) then
    begin
-      MeasureDuration();
       Assert(Delivery <= Ceil(Duration * FBuildingState^.MaterialsQuantityRate));
       Inc(FBuildingState^.MaterialsQuantity, Delivery);
       Dec(FBuildingState^.PendingQuantity, Delivery);
@@ -924,6 +996,7 @@ begin
          if (Assigned(FBuildingState^.NextEvent)) then
          begin
             CancelEvent(FBuildingState^.NextEvent);
+            Writeln('  Entering static regime.');
             {$IFOPT C+} FBuildingState^.AnchorTime := TTimeInMilliseconds.NegInfinity; {$ENDIF}
          end;
          // Retrigger building:
@@ -933,8 +1006,7 @@ begin
    end;
    if (FBuildingState^.StructuralIntegrityRate.IsNotZero and (FBuildingState^.StructuralIntegrity < FBuildingState^.MaterialsQuantity)) then
    begin
-      MeasureDuration();
-      FBuildingState^.IncStructuralIntegrity(Duration * FBuildingState^.StructuralIntegrityRate);
+      FBuildingState^.IncStructuralIntegrity(Duration * FBuildingState^.StructuralIntegrityRate, FFeatureClass.MinimumFunctionalQuantity); // result ignored, we always do dkNeedsHandleChanges
       Assert((FBuildingState^.PendingQuantity > 0) = (Assigned(FBuildingState^.PendingMaterial)));
       MarkAsDirty([dkUpdateClients, dkUpdateJournal, dkNeedsHandleChanges]);
    end;
@@ -943,6 +1015,7 @@ end;
 procedure TStructureFeatureNode.DisconnectMaterialConsumer();
 begin
    // DeliverMaterialConsumer will be called first
+   Writeln(DebugName, ' DisconnectMaterialConsumer');
    Assert(Assigned(FBuildingState));
    Assert(Assigned(FBuildingState^.Region));
    FBuildingState^.Region := nil;
@@ -962,6 +1035,7 @@ var
    RemainingTime: TMillisecondsDuration;
    TimeUntilMaterialFunctional, TimeUntilIntegrityFunctional: TMillisecondsDuration;
 begin
+   Writeln(DebugName, ' RescheduleNextEvent');
    Assert(Assigned(FBuildingState));
    if (Assigned(FBuildingState^.NextEvent)) then
    begin
@@ -979,9 +1053,11 @@ begin
    begin
       Assert((FBuildingState^.PendingQuantity > 0) xor (FBuildingState^.MaterialsQuantity = FFeatureClass.TotalQuantity));
       RemainingTime := (FBuildingState^.MaterialsQuantity - FBuildingState^.StructuralIntegrity) / FBuildingState^.StructuralIntegrityRate;
+      // we may shorten this in case we would hit the structural integrity sooner, see below
    end
    else
    begin
+      Writeln('  Nothing to wait for.');
       // nothing to wait for
       exit;
    end;
@@ -1020,12 +1096,15 @@ begin
    Assert(RemainingTime.IsNotZero);
    FBuildingState^.NextEvent := System.ScheduleEvent(RemainingTime, @HandleEvent, Self);
    FBuildingState^.AnchorTime := System.Now;
+   Writeln('  ANCHORED: ', FBuildingState^.AnchorTime.ToString());
 end;
 
 procedure TStructureFeatureNode.HandleEvent(var Data);
 var
    Duration: TMillisecondsDuration;
+   Changes: TDirtyKinds;
 begin
+   Writeln(DebugName, ' HandleEvent');
    // if we get here, we're in one of these states:
    //   - we were hoping to build ourselves, and we have waited long enough that we should have all the materials we need
    //       - and that worked out and we are entirely done
@@ -1107,8 +1186,10 @@ begin
    begin
       Duration := System.Now - FBuildingState^.AnchorTime;
       Assert(Duration.IsNotZero and Duration.IsPositive);
-      FBuildingState^.IncStructuralIntegrity(Duration * FBuildingState^.StructuralIntegrityRate);
-      MarkAsDirty([dkUpdateClients, dkUpdateJournal]);
+      Changes := [dkUpdateClients, dkUpdateJournal];
+      if (FBuildingState^.IncStructuralIntegrity(Duration * FBuildingState^.StructuralIntegrityRate, FFeatureClass.MinimumFunctionalQuantity)) then
+         Include(Changes, dkNeedsHandleChanges);
+      MarkAsDirty(Changes);
       if (FBuildingState^.StructuralIntegrity = FFeatureClass.TotalQuantity) then
       begin
          // we're done!
@@ -1134,6 +1215,116 @@ begin
          MarkAsDirty([dkUpdateClients, dkUpdateJournal, dkNeedsHandleChanges]);
       end;
    end;
+   if (Assigned(FBuildingState)) then
+      Writeln('  Anchor time = ', FBuildingState^.AnchorTime.ToString());
+end;
+
+function TStructureFeatureNode.HandleCommand(Command: UTF8String; var Message: TMessage): Boolean;
+var
+   FindDestructors: TFindDestructorsMessage;
+   DismantleMessage: TDismantleMessage;
+   ExcessAssets: TAssetNode.TArray;
+   ExcessMaterials: TMaterialQuantityHashTable;
+   RubbleComposition: TMaterialQuantityArray;
+   Child: TAssetNode;
+   Material: TMaterial;
+   Index: Cardinal;
+   Handled: Boolean;
+   PlayerDynasty: TDynasty;
+   OldSize: Double;
+begin
+   if (Command = ccDismantle) then
+   begin
+      if (Message.CloseInput()) then
+      begin
+         Message.Reply();
+         PlayerDynasty := (Message.Connection as TConnection).PlayerDynasty;
+         if (Assigned(Parent.Owner) and (PlayerDynasty <> Parent.Owner)) then
+         begin
+            Message.Error(ieInvalidMessage);
+         end
+         else
+         begin
+            Writeln('DISMANTLE LOGIC CALLED');
+            Writeln('TARGET: ', DebugName);
+            if (Parent.Mass <> 0.0) then
+            begin
+               Writeln('SEARCHING FOR DESTRUCTORS');
+               FindDestructors := TFindDestructorsMessage.Create(PlayerDynasty);
+               try
+                  if (InjectBusMessage(FindDestructors) <> mrHandled) then
+                  begin
+                     Writeln('NO DESTRUCTOR DETECTED');
+                     Message.Error(ieNoDestructors);
+                     exit;
+                  end;
+               finally
+                  FreeAndNil(FindDestructors);
+               end;
+            end;
+            OldSize := Parent.Size;
+            Writeln('DESTRUCTOR DETECTED');
+            DismantleMessage := TDismantleMessage.Create(PlayerDynasty, Parent);
+            Writeln('SENDING DISMANTLE MESSAGE');
+            Handled := Parent.HandleBusMessage(DismantleMessage);
+            Assert(not Handled, 'TDismantleMessage must not be marked as handled');
+            if (DismantleMessage.HasExcess) then
+            begin
+               Writeln('EXCESS DETECTED');
+               ExcessAssets := DismantleMessage.ExtractExcessAssets();
+               for Child in ExcessAssets do
+                  Child.Parent.DropChild(Child);
+               Parent.Become((System.Encyclopedia as TEncyclopedia).RubblePile);
+               if (not Assigned(Parent.Owner)) then
+               begin
+                  MarkAsDirty([dkAffectsDynastyCount]);
+                  Parent.Owner := PlayerDynasty;
+               end;
+               Assert(Parent.Owner = PlayerDynasty);
+               if (DismantleMessage.ExcessPopulation > 0) then
+               begin
+                  Writeln('POPULATION PLACED ON RUBBLE ', DismantleMessage.ExcessPopulation);
+                  (Parent.Features[0] as TPopulationFeatureNode).AbsorbPopulation(DismantleMessage.ExcessPopulation);
+               end;
+               (Parent.Features[1] as TRubblePileFeatureNode).Resize(OldSize);
+               if (DismantleMessage.HasExcessMaterials) then
+               begin
+                  ExcessMaterials := DismantleMessage.ExtractExcessMaterials();
+                  SetLength(RubbleComposition, ExcessMaterials.Count);
+                  Index := 0;
+                  for Material in ExcessMaterials do
+                  begin
+                     Writeln('RUBBLE CONTENTS: ', Material.Name, ' ', ExcessMaterials[Material] * Material.MassPerUnit, 'kg');
+                     RubbleComposition[Index].Init(Material, ExcessMaterials[Material]);
+                     Inc(Index);
+                  end;
+                  FreeAndNil(ExcessMaterials);
+                  (Parent.Features[1] as TRubblePileFeatureNode).AbsorbRubble(RubbleComposition);
+               end;
+               for Child in ExcessAssets do
+               begin
+                  (Parent.Features[2] as TAssetPileFeatureNode).AdoptChild(Child);
+                  Writeln('RUBBLE CONTENTS: ', Child.DebugName);
+               end;
+               // TODO: send dkMassChanged if the mass changed
+            end
+            else
+            begin
+               Writeln('ASSET DESTRUCTION AUTHORIZED');
+               // MarkAsDirty([dkAffectsDynastyCount]); // TODO: add this in if it's possible for this to be relevant (currently it shouldn't be possible)
+               Parent.ReportPermanentlyGone();
+               Parent.Parent.DropChild(Parent);
+               System.Server.ScheduleDemolition(Self);
+               // TODO: handle the case of removing an orbit's primary child
+            end;
+            FreeAndNil(DismantleMessage);
+            Writeln('DISMANTLE LOGIC COMPLETED');
+            Message.CloseOutput();
+         end;
+      end;
+   end
+   else
+      Result := False;
 end;
 
 initialization

@@ -8,23 +8,15 @@ uses
    systems, serverstream, materials, techtree, tttokenizer;
 
 type
-   TRubbleCompositionEntry = record
-      Material: TMaterial;
-      Quantity: UInt64;
-      constructor Create(AMaterial: TMaterial; AQuantity: UInt64);
-   end;
-
-   TRubbleComposition = array of TRubbleCompositionEntry;
-
    TRubbleCollectionMessage = class(TBusMessage)
    private
       FCount: Cardinal;
-      FResult: TRubbleComposition;
-      function GetComposition(): TRubbleComposition;
+      FResult: TMaterialQuantityArray;
+      function GetComposition(): TMaterialQuantityArray;
    public
       procedure Grow(Count: Cardinal);
       procedure AddMaterial(Material: TMaterial; Quantity: UInt64);
-      property Composition: TRubbleComposition read GetComposition;
+      property Composition: TMaterialQuantityArray read GetComposition;
    end;
 
 type
@@ -38,7 +30,7 @@ type
 
    TRubblePileFeatureNode = class(TFeatureNode)
    strict private
-      FComposition: TRubbleComposition;
+      FComposition: TMaterialQuantityArray;
       FDiameter: Double;
    protected
       function GetMass(): Double; override; // kg
@@ -46,23 +38,18 @@ type
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
-      constructor Create(ASystem: TSystem; ADiameter: Double; AComposition: TRubbleComposition);
+      constructor Create(ASystem: TSystem; ADiameter: Double; AComposition: TMaterialQuantityArray);
       procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader); override;
       procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); override;
+      procedure Resize(NewSize: Double);
+      procedure AbsorbRubble(Composition: TMaterialQuantityArray);
    end;
 
 implementation
 
 uses
-   isdprotocol, sysutils, exceptions, knowledge, commonbuses;
-
-constructor TRubbleCompositionEntry.Create(AMaterial: TMaterial; AQuantity: UInt64);
-begin
-   Material := AMaterial;
-   Quantity := AQuantity;
-end;
-
+   isdprotocol, sysutils, exceptions, knowledge, commonbuses, region;
 
 procedure TRubbleCollectionMessage.Grow(Count: Cardinal);
 begin
@@ -75,10 +62,10 @@ end;
 procedure TRubbleCollectionMessage.AddMaterial(Material: TMaterial; Quantity: UInt64);
 begin
    Assert(Length(FResult) > FCount);
-   FResult[FCount].Create(Material, Quantity);
+   FResult[FCount].Init(Material, Quantity);
 end;
 
-function TRubbleCollectionMessage.GetComposition(): TRubbleComposition;
+function TRubbleCollectionMessage.GetComposition(): TMaterialQuantityArray;
 begin
    SetLength(FResult, FCount);
    Result := FResult;
@@ -98,26 +85,35 @@ end;
 
 function TRubblePileFeatureClass.InitFeatureNode(ASystem: TSystem): TFeatureNode;
 begin
-   Result := nil;
-   // TODO: create a technology that knows how to create a pile from a mass of material
-   raise Exception.Create('Cannot create a TRubblePileFeatureNode from a prototype; it must have a unique composition.');
+   Result := TRubblePileFeatureNode.Create(ASystem, 0.0, []);
 end;
 
 
-constructor TRubblePileFeatureNode.Create(ASystem: TSystem; ADiameter: Double; AComposition: TRubbleComposition);
+constructor TRubblePileFeatureNode.Create(ASystem: TSystem; ADiameter: Double; AComposition: TMaterialQuantityArray);
+var
+   CompositionEntry: TMaterialQuantity;
 begin
    inherited Create(ASystem);
    FDiameter := ADiameter;
    FComposition := AComposition;
+   for CompositionEntry in FComposition do
+   begin
+      Assert(CompositionEntry.Quantity > 0);
+      Assert(Assigned(CompositionEntry.Material));
+   end;
 end;
 
 function TRubblePileFeatureNode.GetMass(): Double; // kg
 var
-   CompositionEntry: TRubbleCompositionEntry;
+   CompositionEntry: TMaterialQuantity;
 begin
    Result := 0.0;
    for CompositionEntry in FComposition do
+   begin
+      Assert(CompositionEntry.Quantity > 0);
+      Assert(Assigned(CompositionEntry.Material));
       Result := Result + CompositionEntry.Quantity * CompositionEntry.Material.MassPerUnit;
+   end;
 end;
 
 function TRubblePileFeatureNode.GetSize(): Double;
@@ -128,12 +124,14 @@ end;
 function TRubblePileFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
 var
    RubbleMessage: TRubbleCollectionMessage;
-   Entry: TRubbleCompositionEntry;
+   DismantleMessage: TDismantleMessage;
+   Store: TStoreMaterialBusMessage;
+   Entry: TMaterialQuantity;
 begin
-   Result := False;
    if (Message is TCheckDisabledBusMessage) then
    begin
       (Message as TCheckDisabledBusMessage).AddReason(drStructuralIntegrity);
+      Result := False;
    end
    else
    if (Message is TRubbleCollectionMessage) then
@@ -142,7 +140,28 @@ begin
       RubbleMessage.Grow(Length(FComposition)); // $R-
       for Entry in FComposition do
          RubbleMessage.AddMaterial(Entry.Material, Entry.Quantity);
-   end;
+      SetLength(FComposition, 0);
+      MarkAsDirty([dkUpdateClients, dkUpdateJournal]);
+      Result := False;
+   end
+   else
+   if (Message is TDismantleMessage) then
+   begin
+      DismantleMessage := Message as TDismantleMessage;
+      Assert((not Assigned(Parent.Owner)) or (DismantleMessage.Owner = Parent.Owner));
+      for Entry in FComposition do
+      begin
+         Store := TStoreMaterialBusMessage.Create(DismantleMessage.Target, DismantleMessage.Owner, Entry.Material, Entry.Quantity);
+         DismantleMessage.Target.Parent.Parent.InjectBusMessage(Store);
+         if (Store.RemainingQuantity > 0) then
+            DismantleMessage.AddExcessMaterial(Entry.Material, Store.RemainingQuantity);
+         FreeAndNil(Store);
+      end;
+      SetLength(FComposition, 0);
+      MarkAsDirty([dkUpdateClients, dkUpdateJournal]);
+   end
+   else
+      Result := False;
 end;
 
 procedure TRubblePileFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);
@@ -159,6 +178,8 @@ begin
       InjectBusMessage(KnownMaterials); // we ignore the result - it doesn't matter if it wasn't handled
       for Index := Low(FComposition) to High(FComposition) do // $R-
       begin
+         Assert(Assigned(FComposition[Index].Material));
+         Assert(FComposition[Index].Quantity > 0);
          if (KnownMaterials.Knows(FComposition[Index].Material)) then
          begin
             Writer.WriteInt32(FComposition[Index].Material.ID);
@@ -182,6 +203,8 @@ begin
    if (Length(FComposition) > 0) then
       for Index := Low(FComposition) to High(FComposition) do // $R-
       begin
+         Assert(Assigned(FComposition[Index].Material));
+         Assert(FComposition[Index].Quantity > 0);
          Journal.WriteMaterialReference(FComposition[Index].Material);
          Journal.WriteUInt64(FComposition[Index].Quantity);
       end;
@@ -190,19 +213,60 @@ end;
 procedure TRubblePileFeatureNode.ApplyJournal(Journal: TJournalReader);
 var
    Index: Cardinal;
+   Material: TMaterial;
+   Quantity: UInt64;
 begin
    FDiameter := Journal.ReadDouble();
    SetLength(FComposition, Journal.ReadCardinal());
    if (Length(FComposition) > 0) then
       for Index := Low(FComposition) to High(FComposition) do // $R-
       begin
-         FComposition[Index].Create(Journal.ReadMaterialReference(), Journal.ReadUInt64());
+         Material := Journal.ReadMaterialReference();
+         Assert(Assigned(Material));
+         Quantity := Journal.ReadUInt64();
+         FComposition[Index].Init(Material, Quantity);
+         Assert(Assigned(FComposition[Index].Material));
+         Assert(FComposition[Index].Quantity > 0);
       end;
 end;
 
 procedure TRubblePileFeatureNode.DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean);
 begin
    IsDefinitelyReal := True;
+end;
+
+procedure TRubblePileFeatureNode.Resize(NewSize: Double);
+begin
+   FDiameter := NewSize;
+end;
+
+procedure TRubblePileFeatureNode.AbsorbRubble(Composition: TMaterialQuantityArray);
+var
+   IndexSrc, IndexDst: Cardinal;
+   CompositionEntry: TMaterialQuantity;
+begin
+   Assert(Length(Composition) > 0);
+   if (Length(FComposition) = 0) then
+   begin
+      FComposition := Composition;
+   end
+   else
+   begin
+      IndexDst := Length(FComposition); // $R-
+      SetLength(FComposition, Length(FComposition) + Length(Composition));
+      for IndexSrc := Low(Composition) to High(Composition) do // $R-
+      begin
+         FComposition[IndexDst] := Composition[IndexSrc];
+         Inc(IndexDst);
+      end;
+   end;
+   {$IFOPT C+}
+   for CompositionEntry in FComposition do
+   begin
+      Assert(CompositionEntry.Quantity > 0);
+      Assert(Assigned(CompositionEntry.Material));
+   end;
+   {$ENDIF}
 end;
 
 initialization

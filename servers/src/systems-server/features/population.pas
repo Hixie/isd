@@ -8,7 +8,9 @@ uses
    systems, serverstream, materials, food, systemdynasty, techtree,
    peoplebus, commonbuses;
 
-// TODO: people need to actually join the population center presumably
+// TODO: people try to move to the "best" houses
+// TODO: people in houses beyond the max are unhappy
+// TODO: disabled houses count as max=0
 
 type
    TPopulationFeatureClass = class(TFeatureClass)
@@ -27,7 +29,7 @@ type
    TPopulationFeatureNode = class(TFeatureNode, IFoodConsumer, IHousing)
    private
       // source of truth
-      FPopulation: Cardinal; // TODO: if this changes, call FPeopleBus.ClientChanged
+      FPopulation: Cardinal; // if this changes, call FPeopleBus.ClientChanged
       FPriority: TPriority; // TODO: if ancestor chain changes, and priority is NoPriority, reset it to zero and mark as dirty
       FDisabledReasons: TDisabledReasons;
       FMeanHappiness: Double;
@@ -54,6 +56,7 @@ type
       procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader); override;
       procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); override;
+      procedure AbsorbPopulation(Count: Cardinal);
    public // IHousing
       procedure PeopleBusConnected(Bus: TPeopleBusFeatureNode);
       procedure PeopleBusAssignJobs(Count: Cardinal);
@@ -67,7 +70,7 @@ type
 implementation
 
 uses
-   isdprotocol, messages, orbit, sysutils, math;
+   exceptions, isdprotocol, messages, orbit, sysutils, math, rubble;
 
 const
    MeanIndividualMass = 70; // kg // TODO: allow species to diverge and such, with different demographics, etc
@@ -193,7 +196,10 @@ end;
 function TPopulationFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
 var
    HelpMessage: TNotificationMessage;
+   DismantleMessage: TDismantleMessage;
    Injected: TBusMessageResult;
+   Rehome: TRehomePopulation;
+   Capacity: Cardinal;
 begin
    if (Message is TCrashReportMessage) then
    begin
@@ -207,15 +213,82 @@ begin
       Injected := InjectBusMessage(HelpMessage);
       if (Injected <> mrHandled) then
          Writeln('Discarding message from population center ("', HelpMessage.Body, '")');
-      Result := False; // TCrashReportMessage is handled when you explode yourself due to the crash (notifying someone isn't handling it!)
       FreeAndNil(HelpMessage);
       FMeanHappiness := FMeanHappiness - 0.1; // $R-
       System.ReportScoreChanged(Parent.Owner);
+      Result := False; // TCrashReportMessage is handled when you explode yourself due to the crash (notifying someone isn't handling it!)
+   end
+   else
+   if (Message is TRubbleCollectionMessage) then
+   begin
+      XXX; // TODO: we should account for the mass of dead bodies
+      Result := False;
    end
    else
    if (Message is TInitFoodMessage) then
    begin
       (Message as TInitFoodMessage).RequestFoodToEat(Self, FPopulation);
+      Result := False;
+   end
+   else
+   if (Message is TFindDestructorsMessage) then
+   begin
+      Result := (Message as TFindDestructorsMessage).Owner = Parent.Owner;
+   end
+   else
+   if (Message is TRehomePopulation) then
+   begin
+      if (FPopulation < FFeatureClass.MaxPopulation) then
+      begin
+         Rehome := Message as TRehomePopulation;
+         Assert(FFeatureClass.MaxPopulation >= FPopulation);
+         Capacity := FFeatureClass.MaxPopulation - FPopulation; // $R-
+         if (Rehome.RemainingPopulation < Capacity) then
+         begin
+            Inc(FPopulation, Rehome.RemainingPopulation);
+            Rehome.Rehome(Rehome.RemainingPopulation);
+            Assert(Rehome.RemainingPopulation = 0);
+            Result := True;
+         end
+         else
+         begin
+            FPopulation := FFeatureClass.MaxPopulation;
+            Rehome.Rehome(Capacity);
+            Result := False;
+         end;
+         MarkAsDirty([dkNeedsHandleChanges, dkUpdateClients, dkUpdateJournal]);
+      end
+      else
+         Result := False;
+   end
+   else
+   if (Message is TDismantleMessage) then
+   begin
+      Writeln(DebugName, ' getting dismantled with population ', FPopulation);
+      DismantleMessage := Message as TDismantleMessage;
+      if (not Assigned(Parent.Owner)) then
+      begin
+         Assert(FPopulation = 0);
+      end
+      else
+      begin
+         Assert(DismantleMessage.Owner = Parent.Owner);
+         if (FPopulation > 0) then
+         begin
+            Rehome := TRehomePopulation.Create(DismantleMessage.Target, FPopulation);
+            DismantleMessage.Target.Parent.Parent.InjectBusMessage(Rehome);
+            FPopulation := 0;
+            if (Rehome.RemainingPopulation > 0) then
+            begin
+               DismantleMessage.AddExcessPopulation(Rehome.RemainingPopulation);
+               Writeln('  some pops remained! ', Rehome.RemainingPopulation);
+            end
+            else
+               Writeln('  pops rehomed');
+            FreeAndNil(Rehome);
+            MarkAsDirty([dkNeedsHandleChanges, dkUpdateClients, dkUpdateJournal]);
+         end;
+      end;
       Result := False;
    end
    else
@@ -249,13 +322,13 @@ var
    NewDisabledReasons: TDisabledReasons;
    Message: TRegisterHousingMessage;
 begin
+   Assert(Assigned(Parent));
    NewDisabledReasons := CheckDisabled(Parent);
    if (NewDisabledReasons <> FDisabledReasons) then
    begin
       FDisabledReasons := NewDisabledReasons;
       MarkAsDirty([dkUpdateClients]);
    end;
-   // TODO: people try to move to the "best" houses, but if they can't, they get unhappy
    Assert((FPopulation = 0) or Assigned(Parent.Owner));
    if ((FPopulation > 0) and (not Assigned(FPeopleBus)) and (FPriority <> NoPriority)) then
    begin
@@ -305,6 +378,13 @@ end;
 procedure TPopulationFeatureNode.DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean);
 begin
    IsDefinitelyReal := FPopulation > 0; // TODO: if FPopulation ever changes whether it's 0 or not, MarkAsDirty([dkAffectsVisibility])
+end;
+
+procedure TPopulationFeatureNode.AbsorbPopulation(Count: Cardinal);
+begin
+   Inc(FPopulation, Count);
+   if (Assigned(FPeopleBus)) then
+      FPeopleBus.ClientChanged();
 end;
 
 procedure TPopulationFeatureNode.PeopleBusConnected(Bus: TPeopleBusFeatureNode);

@@ -6,7 +6,7 @@ interface
 
 uses
    corenetwork, binarystream, basenetwork, dynasty, hashtable, genericutils,
-   basedynasty, authnetwork, servers, sharedpointer, passwords, unixtype;
+   basedynasty, authnetwork, servers, passwords, unixtype;
 
 type
    TDynastyHashTable = class(specialize THashTable<Cardinal, TDynasty, CardinalUtils>)
@@ -71,7 +71,7 @@ type
 implementation
 
 uses
-   sysutils, hashfunctions, isdprotocol, configuration, astronomy, isderrors, errors;
+   sysutils, hashfunctions, isdprotocol, configuration, astronomy, errors;
 
 constructor TDynastyHashTable.Create();
 begin

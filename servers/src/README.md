@@ -43,7 +43,44 @@ The server responds with the same field format. Replies always start
 with a field that says `reply`, then the conversation ID (uint32),
 then either a `T` if the command was successful, followed by some
 extra data specific to the command, or an `F` indicating failure,
-followed by an error code from the list in `common/isderrors.pas`.
+followed by an error code from this list:
+
+   'invalid message': message was incorrect in some way. For example,
+   sending a `play` message to an asset that is not owned by the
+   player, with a command that is only valid for player-owned assets,
+   will return this (see [systems-server/README.md]).
+   
+   'unrecognized credentials': invalid username or password.
+   
+   'inadequate username': the username did not fulfill the
+   requirements described in [login-server/README.md].
+   
+   'inadequate password': the password did not fulfill the
+   requirements described in [login-server/README.md].
+   
+   'internal error': some error was caught on the server side. This
+   does not indicate a client problem. Please report such errors.
+   
+   'unknown file code': an invalid file code was specified for the
+   `get-file` command (see [login-server/README.md]).
+   
+   'not logged in': a command was sent that expects the connection to
+   be authenticated, before the `login` command was successfully sent.
+   
+   'invalid command': the command is not recognized. Only commands
+   documented in these README files are known.
+   
+   'unknown dynasty': the specified dynasty is not recognized, for
+   example when requesting dynasty scores via `get-scores` (see
+   [login-server/README.md]).
+   
+   'no destructors': a `play`/`dismantle` command (see
+   [systems-server/README.md]) was sent to an asset that cannot find a
+   destructor (such as a population center), so the asset cannot be
+   dismantled. For example, this may happen when trying to dismantle a
+   star, unless the player has especially advanced (as yet
+   unimplemented) technology.
+
 
 Replies are not guaranteed to be sent back in the order that messages
 were received (hence the conversation ID field).
@@ -69,13 +106,13 @@ Messages are then sent from the client to the server in
 4-byte-length-prefixed frames. Within each frame, data is sent as
 either 4-byte integers, raw bytes, or 8-byte doubles. Strings are sent
 by first sending a 4-byte integer giving the byte length of the
-string, then that many raw bytes.
+string, then that many raw bytes. Numbers are sent little-endian.
 
 Each frame starts with a string giving the command.
 
 For example, a simple message with one command "x" could be sent as:
 
-    00 00 00 05 00 00 00 01 78
+    05 00 00 00 01 00 00 00 78
     -+--------- ----------- --
      |          -+------------
      |           |

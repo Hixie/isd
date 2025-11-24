@@ -5,7 +5,7 @@ unit encyclopedia;
 interface
 
 uses
-   systems, configuration, astronomy, space, materials, random, techtree, systemdynasty;
+   techtree, systems, configuration, astronomy, materials, random, systemdynasty, space;
 
 type
    TEncyclopedia = class(TEncyclopediaView)
@@ -18,7 +18,7 @@ type
          FSpace, FOrbits: TAssetClass;
          FPlaceholderShip: TAssetClass;
          FPlaceholderShipInstructionManual: TResearch;
-         FCrater: TAssetClass;
+         FCrater, FRubblePile: TAssetClass;
          FMessage: TAssetClass;
          FStars: array[TStarCategory] of TAssetClass;
          FPlanetaryBody, FRegion: TAssetClass;
@@ -40,53 +40,38 @@ type
       procedure RegisterMaterials(const AMaterials: TMaterialHashSet);
       procedure RegisterMaterials(const AMaterials: TMaterial.TArray);
       procedure ProcessTechTree(TechTree: TTechnologyTree);
-      property SpaceClass: TAssetClass read FSpace;
-      property PlaceholderShip: TAssetClass read FPlaceholderShip;
       property PlaceholderShipInstructionManual: TResearch read FPlaceholderShipInstructionManual;
-      property StarClass[Category: TStarCategory]: TAssetClass read GetStarClass;
       function WrapAssetForOrbit(Child: TAssetNode): TAssetNode;
       function CreateLoneStar(StarID: TStarID; System: TSystem): TAssetNode;
       procedure CondenseProtoplanetaryDisks(Space: TSolarSystemFeatureNode; System: TSystem);
       procedure FindTemperatureEquilibria(System: TSystem);
       procedure SpawnColonyShip(Dynasty: TDynasty; System: TSystem);
       function Craterize(Diameter: Double; OldAsset, NewAsset: TAssetNode): TAssetNode; override;
+      function HandleBusMessage(Asset: TAssetNode; Message: TBusMessage): Boolean; override;
+      property MinMassPerOreUnit: Double read FMinMassPerOreUnit;
+   public // built-in asset classes
+      property SpaceClass: TAssetClass read FSpace;
+      property PlaceholderShip: TAssetClass read FPlaceholderShip;
       property RegionClass: TAssetClass read FRegion;
       property MessageClass: TAssetClass read FMessage;
-      property MinMassPerOreUnit: Double read FMinMassPerOreUnit;
+      property RubblePile: TAssetClass read FRubblePile;
+      property StarClass[Category: TStarCategory]: TAssetClass read GetStarClass;
    end;
-
-const
-   // built-in asset classes
-   idSpace = -1;
-   idOrbits = -2;
-   idPlaceholderShip = -3;
-   idMessage = -4;
-   idCrater = -5;
-   idStars = -100; // -100..-199
-   idPlanetaryBody = -200;
-   idRegion = -201;
-
-const
-   // built-in materials
-   idDarkMatter = -1;
-
-const
-   // built-in research
-   idPlaceholderShipInstructionManualResearch = -1;
-
+   
 implementation
 
 uses
-   sysutils, math, floatutils, exceptions, isdnumbers, icons,
-   protoplanetary, time,
+   sysutils, math, floatutils, exceptions, isdnumbers, protoplanetary,
+   time, isdprotocol, commonbuses,
    // this must import every feature, so they get registered:
-   builders, food, grid, gridsensor, internalsensor, knowledge,
-   materialpile, messages, mining, name, onoff, orbit, orepile,
-   peoplebus, planetary, plot, population, proxy, refining, region,
-   research, rubble, size, spacesensor, staffing, stellar, structure,
-   surface;
+   assetpile, builders, food, grid, gridsensor, internalsensor,
+   knowledge, materialpile, messages, mining, name, onoff, orbit,
+   orepile, peoplebus, planetary, plot, population, proxy, refining,
+   region, research, rubble, size, spacesensor, staffing, stellar,
+   structure, surface;
 
 var
+   // TODO: find a way to get this to the client
    InstructionManualText: UTF8String =
       'Congratulations on your purchase of a Interstellar Dynasty Colony Ship.'#10 +
       'This ship will take you and your party of up to 1000 colonists to your new world, ' +
@@ -106,6 +91,7 @@ begin
    if (Result = 0) then
       Result := 1;
 end;
+
 
 constructor TEncyclopedia.Create(Settings: PSettings; const AMaterials: TMaterial.TArray; TechTree: TTechnologyTree);
 
@@ -243,6 +229,21 @@ begin
    );
    RegisterAssetClass(FCrater);
 
+   FRubblePile := TAssetClass.Create(
+      idRubblePile,
+      'Rubble pile',
+      'Rubble pile',
+      'The remains of some form of destruction.',
+      [
+         TPopulationFeatureClass.Create(True, 0),
+         TRubblePileFeatureClass.Create(),
+         TAssetPileFeatureClass.Create()
+      ],
+      RubblePileIcon,
+      []
+   );
+   RegisterAssetClass(FRubblePile);
+
    FRegion := TAssetClass.Create(
       idRegion,
       'Geological region',
@@ -311,7 +312,8 @@ begin
          TReward.CreateForAssetClass(FMessage),
          TReward.CreateForAssetClass(FPlanetaryBody),
          TReward.CreateForAssetClass(FRegion),
-         TReward.CreateForAssetClass(FCrater)
+         TReward.CreateForAssetClass(FCrater),
+         TReward.CreateForAssetClass(FRubblePile)
       ]
    );
    FResearches[FPlaceholderShipInstructionManual.ID] := FPlaceholderShipInstructionManual;
@@ -722,7 +724,7 @@ end;
 
 function TEncyclopedia.Craterize(Diameter: Double; OldAsset, NewAsset: TAssetNode): TAssetNode;
 var
-   Composition: TRubbleComposition;
+   Composition: TMaterialQuantityArray;
    RubbleCollectionMessage: TRubbleCollectionMessage;
 begin
    Assert(Assigned(NewAsset));
@@ -744,6 +746,31 @@ begin
       TProxyFeatureNode.Create(NewAsset.System, NewAsset),
       TRubblePileFeatureNode.Create(NewAsset.System, Diameter, Composition)
    ]);
+end;
+
+function TEncyclopedia.HandleBusMessage(Asset: TAssetNode; Message: TBusMessage): Boolean;
+var
+   DismantleMessage: TDismantleMessage;
+begin
+   if (Message is TPhysicalConnectionWithExclusionBusMessage) then
+   begin
+      if ((Message as TPhysicalConnectionWithExclusionBusMessage).Asset = Asset) then
+      begin
+         Result := True;
+         exit;
+      end;
+   end;
+   if (Message is TDismantleMessage) then
+   begin
+      DismantleMessage := Message as TDismantleMessage;
+      if (Assigned(Asset.Owner) and (DismantleMessage.Owner <> Asset.Owner)) then
+      begin
+         DismantleMessage.AddExcessAsset(Asset);
+         Result := True;
+         exit;
+      end;
+   end;
+   Result := False;
 end;
 
 end.

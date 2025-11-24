@@ -60,7 +60,7 @@ type
 implementation
 
 uses
-   isdprotocol, sysutils, exceptions, math, rubble;
+   isdprotocol, sysutils, exceptions, math, rubble, commonbuses;
 
 constructor TAllocateOresBusMessage.Create(ADepth: Cardinal; ATargetCount: Cardinal; ATargetQuantity: UInt64);
 begin
@@ -153,19 +153,16 @@ function TPlanetaryBodyFeatureNode.ManageBusMessage(Message: TBusMessage): TBusM
 var
    AllocateResourcesMessage: TAllocateOresBusMessage;
    OreIndex: TOres;
-
    Material: TMaterial;
    ConsiderOre, IncludeOre: Boolean;
    TargetCount, RemainingCount, Index: Cardinal;
    CurrentFraction, IncludedFraction: Fraction32;
    ApproximateMass, CandidateMass, MaxMass: Double;
    SelectedOres: TOreFilter;
-   CachedSystem: TSystem;
 begin
    if (Message is TAllocateOresBusMessage) then
    begin
       AllocateResourcesMessage := Message as TAllocateOresBusMessage;
-      CachedSystem := System;
       TargetCount := AllocateResourcesMessage.TargetCount;
       Assert(TargetCount > 0);
       SelectedOres.Clear();
@@ -235,7 +232,7 @@ begin
       begin
          if (SelectedOres[OreIndex]) then
          begin
-            Material := CachedSystem.Encyclopedia.Materials[OreIndex];
+            Material := System.Encyclopedia.Materials[OreIndex];
             CandidateMass := (FComposition[OreIndex] / IncludedFraction) * (AllocateResourcesMessage.TargetQuantity * Material.MassPerUnit);
             MaxMass := FComposition[OreIndex] * ApproximateMass; // the amount of material that's left
             if (CandidateMass > MaxMass) then
@@ -268,11 +265,13 @@ end;
 
 function TPlanetaryBodyFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
 begin
-   if (Message is TRubbleCollectionMessage) then
+   if ((Message is TRubbleCollectionMessage) or (Message is TDismantleMessage)) then
    begin
-      Assert(False, 'TPlanetaryBodyFeatureNode should never see TRubbleCollectionMessage');
-   end;
-   Result := False;
+      Assert(False, ClassName + ' should never see ' + Message.ClassName);
+      Result := False;
+   end
+   else
+      Result := False;
 end;
 
 procedure TPlanetaryBodyFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);

@@ -3,9 +3,9 @@
 program main;
 
 uses
-   sysutils, configuration, csvdocument, servers, materials, clock,
-   exceptions, intutils, techtree, encyclopedia, systemnetwork, strutils,
-   isdprotocol;
+   sysutils, techtree, configuration, csvdocument, servers, materials, clock,
+   exceptions, intutils, encyclopedia, systemnetwork, strutils, isdprotocol
+   {$IFDEF DEBUG}, debug {$ENDIF};
 
 procedure AssertHandler(const Message: ShortString; const FileName: ShortString; LineNumber: LongInt; ErrorAddr: Pointer);
 begin

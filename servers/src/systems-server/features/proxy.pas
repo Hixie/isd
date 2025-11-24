@@ -20,8 +20,6 @@ type
    private
       FChild: TAssetNode;
    protected
-      procedure AdoptChild(Child: TAssetNode); override;
-      procedure DropChild(Child: TAssetNode); override;
       function GetMass(): Double; override;
       function GetMassFlowRate(): TRate; override;
       function GetSize(): Double; override;
@@ -31,6 +29,8 @@ type
    public
       constructor Create(ASystem: TSystem; AChild: TAssetNode);
       destructor Destroy(); override;
+      procedure AdoptChild(Child: TAssetNode); override;
+      procedure DropChild(Child: TAssetNode); override;
       procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader); override;
       property Child: TAssetNode read FChild;

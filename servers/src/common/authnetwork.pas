@@ -25,7 +25,7 @@ type
 implementation
 
 uses
-   isdprotocol, isderrors, intutils;
+   isdprotocol, intutils;
 
 function TAuthenticatableBaseIncomingConnection.VerifyLogin(var Message: TMessage): Integer;
 {$I *}

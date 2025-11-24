@@ -279,7 +279,7 @@ function TFoodBusFeatureNode.ManageBusMessage(Message: TBusMessage): TBusMessage
 begin
    if (Message is TInitFoodMessage) then
    begin
-      Result := DeferOrManageBusMessage(Message);
+      Result := DeferOrHandleBusMessage(Message);
       Assert(Result = mrInjected, 'TInitFoodMessage should not be marked as handled');
    end
    else

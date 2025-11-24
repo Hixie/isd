@@ -98,6 +98,8 @@ end;
 
 destructor TRefiningFeatureNode.Destroy();
 begin
+   if (FStatus.Connected) then
+      FStatus.Region.RemoveRefinery(Self);
    inherited;
 end;
 

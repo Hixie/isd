@@ -40,7 +40,6 @@ type
       function GetChild(X, Y: Cardinal; GhostOwner: TDynasty): TAssetNode; // to only get non-ghosts, set GhostOwner to nil
       procedure AdoptGridChild(Child: TAssetNode; X, Y: Cardinal);
    protected
-      procedure DropChild(Child: TAssetNode); override;
       function GetMass(): Double; override;
       function GetMassFlowRate(): TRate; override;
       function GetSize(): Double; override;
@@ -50,6 +49,7 @@ type
    public
       constructor Create(ASystem: TSystem; ABuildEnvironment: TBuildEnvironment; ACellSize: Double; ADimension: Cardinal);
       destructor Destroy(); override;
+      procedure DropChild(Child: TAssetNode); override;
       procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader); override;
       function HandleCommand(Command: UTF8String; var Message: TMessage): Boolean; override;
@@ -60,7 +60,7 @@ type
 implementation
 
 uses
-   sysutils, isdprotocol, orbit, exceptions, knowledge, systemnetwork, isderrors;
+   sysutils, isdprotocol, orbit, exceptions, knowledge, systemnetwork;
 
 type
    PGridData = ^TGridData;
@@ -243,19 +243,17 @@ function TGridFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
 var
    Child, Crater, OldChild: TAssetNode;
    X, Y: Cardinal;
-   CachedSystem: TSystem;
 begin
    if (Message is TReceiveCrashingAssetMessage) then
    begin
       Writeln(ClassName, ' handling ', Message.ClassName, ' which has ', Length(TReceiveCrashingAssetMessage(Message).Assets), ' crashing assets');
-      CachedSystem := System;
       for Child in TReceiveCrashingAssetMessage(Message).Assets do
       begin
-         X := CachedSystem.RandomNumberGenerator.GetCardinal(0, Dimension);
-         Y := CachedSystem.RandomNumberGenerator.GetCardinal(0, Dimension);
+         X := System.RandomNumberGenerator.GetCardinal(0, Dimension);
+         Y := System.RandomNumberGenerator.GetCardinal(0, Dimension);
          OldChild := GetChild(X, Y, nil);
          Assert(CellSize >= Child.Size);
-         Crater := CachedSystem.Encyclopedia.Craterize(CellSize, OldChild, Child);
+         Crater := System.Encyclopedia.Craterize(CellSize, OldChild, Child);
          Writeln('  Placed crater ', Crater.DebugName, ' (', Crater.Size, 'm diameter) for child ', Child.DebugName, ' (', Child.Size, 'm diameter) at ', X, ',', Y, ' (cell with ', CellSize, 'm diameter)');
          AdoptGridChild(Crater, X, Y);
       end;
@@ -385,7 +383,6 @@ var
    AssetClass: TAssetClass;
    Asset: TAssetNode;
    PlayerDynasty: TDynasty;
-   CachedSystem: TSystem;
 begin
    // what can i build at coordinates x,y?
    // build something at coordinates x,y
@@ -397,7 +394,7 @@ begin
       if ((X >= FDimension) or (Y >= FDimension)) then
       begin
          Writeln('Client requested buildings for a cell out of range: ', X, ',', Y);
-         Message.Error(ieInvalidCommand);
+         Message.Error(ieInvalidMessage);
          exit;
       end;
       PlayerDynasty := (Message.Connection as TConnection).PlayerDynasty;
@@ -405,7 +402,7 @@ begin
       if (Assigned(GetChild(X, Y, PlayerDynasty))) then
       begin
          Writeln('Client requested buildings for that already has a child: ', X, ',', Y);
-         Message.Error(ieInvalidCommand);
+         Message.Error(ieInvalidMessage);
          exit;
       end;
       if (Message.CloseInput()) then
@@ -426,7 +423,7 @@ begin
       end;
    end
    else
-   if (Command = 'build') then
+   if (Command = ccBuild) then
    begin
       Result := True;
       X := Message.Input.ReadCardinal();
@@ -434,7 +431,7 @@ begin
       if ((X >= FDimension) or (Y >= FDimension)) then
       begin
          Writeln('Client requested a build for a cell out of range: ', X, ',', Y);
-         Message.Error(ieInvalidCommand);
+         Message.Error(ieInvalidMessage);
          exit;
       end;
       PlayerDynasty := (Message.Connection as TConnection).PlayerDynasty;
@@ -442,16 +439,15 @@ begin
       if (Assigned(GetChild(X, Y, PlayerDynasty))) then
       begin
          Writeln('Client requested a build for that already has a child: ', X, ',', Y);
-         Message.Error(ieInvalidCommand);
+         Message.Error(ieInvalidMessage);
          exit;
       end;
       AssetClassID := Message.Input.ReadLongint();
-      CachedSystem := System;
-      AssetClass := CachedSystem.Encyclopedia.AssetClasses[AssetClassID];
+      AssetClass := System.Encyclopedia.AssetClasses[AssetClassID];
       if (not Assigned(AssetClass)) then
       begin
          Writeln('Client requested a build for an unknown asset class ID: ', AssetClassID);
-         Message.Error(ieInvalidCommand);
+         Message.Error(ieInvalidMessage);
          exit;
       end;
       KnownAssetClasses := TGetKnownAssetClassesMessage.Create((Message.Connection as TConnection).PlayerDynasty);
@@ -460,13 +456,13 @@ begin
          if (not KnownAssetClasses.Knows(AssetClass)) then
          begin
             Writeln('Client requested a build for an asset class ID they do not know: ', AssetClassID);
-            Message.Error(ieInvalidCommand);
+            Message.Error(ieInvalidMessage);
             exit;
          end;
          if (not AssetClass.CanBuild(FBuildEnvironment)) then
          begin
             Writeln('Client requested a build with a non-matching build environment.');
-            Message.Error(ieInvalidCommand);
+            Message.Error(ieInvalidMessage);
             exit;
          end;
          if (Message.CloseInput()) then
@@ -483,7 +479,7 @@ begin
       end;
    end
    else
-      Result := inherited;
+      Result := False;
 end;
 
 initialization

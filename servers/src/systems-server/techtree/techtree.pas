@@ -50,7 +50,8 @@ implementation
 
 uses
    {$IFDEF VERBOSE} unicode, {$ENDIF}
-   typedump, exceptions, fileutils, rtlutils, stringutils, hashtable, hashfunctions, icons, astronomy;
+   typedump, exceptions, fileutils, rtlutils, stringutils, hashtable,
+   hashfunctions, astronomy, isdprotocol;
 
 constructor TTechnologyTree.Create();
 begin
@@ -168,7 +169,7 @@ type
    end;
 
 var
-   FeatureClasses: TFeatureClassHashTable;
+   FeatureClasses: TFeatureClassHashTable = nil;
 
 function Parse(Tokens: TTokenizer; Materials: TMaterial.TArray): TTechnologyTree;
 var
@@ -843,6 +844,8 @@ end;
 
 procedure RegisterFeatureClass(FeatureClass: FeatureClassReference);
 begin
+   if (not Assigned(FeatureClasses)) then
+      FeatureClasses := TFeatureClassHashTable.Create();
    Assert(not FeatureClasses.Has(FeatureClass.ClassName));
    FeatureClasses[FeatureClass.ClassName] := FeatureClass;
 end;
@@ -999,8 +1002,6 @@ begin
       Tokens.ReadComma();
 end;
 
-initialization
-   FeatureClasses := TFeatureClassHashTable.Create();
 finalization
    FeatureClasses.Free();
 end.

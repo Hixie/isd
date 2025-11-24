@@ -568,6 +568,16 @@ type
       property Workers: Cardinal read FWorkers write FWorkers;
    end;
 
+   TModelAssetPileFeature = class (TModelFeature)
+   protected
+      procedure ResetChildren(); override;
+      procedure WalkChildren(Callback: TAssetWalkChildrenCallback); override;
+   public
+      procedure UpdateFrom(Stream: TServerStreamReader); override;
+   public
+      Children: specialize PlasticArray <UInt32, specialize IncomparableUtils<UInt32>>;
+   end;
+
 const
    ModelFeatureClasses: array[1..fcHighestKnownFeatureCode] of TModelFeatureClass = (
      TModelStarFeature,
@@ -599,13 +609,14 @@ const
      TModelInternalSensorFeature,
      TModelInternalSensorStatusFeature,
      TModelOnOffFeature,
-     TModelStaffingFeature
-   );
+     TModelStaffingFeature,
+     TModelAssetPileFeature
+  );
 
 implementation
 
 uses
-   sysutils, hashfunctions, typinfo;
+   sysutils, hashfunctions, typinfo, exceptions;
 
 function GetPropertyAsString(Target: TObject; PropertyInfo: PPropInfo): UTF8String;
 begin
@@ -741,10 +752,17 @@ var
 
    procedure GetDescription(Asset: TModelAsset);
    begin
-      Lines.Push(' - #' + IntToStr(Asset.ID) + ' ' + Asset.ToString() + ' (' + IntToStr(Asset.FeatureCount) + ' features)');
-      Asset.Describe(Lines, '   ');
-      Lines.Push('');
-      Asset.WalkChildren(@GetDescription);
+      if (not Assigned(Asset)) then
+      begin
+         Lines.Push(' - <nil>');
+      end
+      else
+      begin
+         Lines.Push(' - #' + IntToStr(Asset.ID) + ' ' + Asset.ToString() + ' (' + IntToStr(Asset.FeatureCount) + ' features)');
+         Asset.Describe(Lines, '   ');
+         Lines.Push('');
+         Asset.WalkChildren(@GetDescription);
+      end;
    end;
 
 var
@@ -926,7 +944,7 @@ end;
 procedure TModelAsset.UpdateFrom(Stream: TServerStreamReader);
 var
    FeatureCode: UInt32;
-   Index: Cardinal;
+   Index, Count: Cardinal;
 begin
    Owner := Stream.ReadCardinal();
    Mass := Stream.ReadDouble();
@@ -950,14 +968,19 @@ begin
       begin
          FFeatures[Index].Free();
          FFeatures[Index] := ModelFeatureClasses[FeatureCode].CreateFor(ModelSystem, Self);
-         FFeatures.Length := Index + 1; // $R-
       end;
       FFeatures[Index].UpdateFrom(Stream);
       Inc(Index);
       FeatureCode := Stream.ReadCardinal();
    end;
    Assert(FFeatures.Length >= Index);
-   FFeatures.Length := Index;
+   Count := Index;
+   while (Index < FFeatures.Length) do
+   begin
+      FFeatures[Index].Free();
+      Inc(Index);
+   end;
+   FFeatures.Length := Count;
 end;
 
 procedure TModelAsset.WalkChildren(Callback: TAssetWalkChildrenCallback);
@@ -1533,6 +1556,37 @@ begin
    FWorkers := Stream.ReadCardinal();
 end;
 
-initialization
+
+procedure TModelAssetPileFeature.UpdateFrom(Stream: TServerStreamReader);
+var
+   Child: Cardinal;
+begin
+   ResetChildren();
+   while (True) do
+   begin
+      Child := Stream.ReadCardinal();
+      if (Child = 0) then
+         break;
+      ModelSystem.Assets[Child].FParent := Self;
+      Children.Push(Child);
+   end;
+end;
+
+procedure TModelAssetPileFeature.ResetChildren();
+begin
+   inherited;
+   Children.Empty();
+end;
+
+procedure TModelAssetPileFeature.WalkChildren(Callback: TAssetWalkChildrenCallback);
+var
+   Index: Cardinal;
+   System: TModelSystem;
+begin
+   System := ModelSystem;
+   if (not Children.IsEmpty) then
+      for Index := 0 to Children.Length - 1 do // $R-
+         Callback(System.Assets[Children[Index]]);
+end;
 
 end.

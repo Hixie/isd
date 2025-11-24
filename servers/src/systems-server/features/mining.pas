@@ -84,6 +84,8 @@ end;
 
 destructor TMiningFeatureNode.Destroy();
 begin
+   if (FStatus.Connected) then
+      FStatus.Region.RemoveMiner(Self);
    inherited;
 end;
 

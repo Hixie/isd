@@ -38,15 +38,14 @@ type
       FChildren: TAssetNode.TArray;
    protected
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
-      procedure AdoptChild(Child: TAssetNode); override;
-      procedure DropChild(Child: TAssetNode); override;
-      function GetFeatureName(): UTF8String; override;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
       constructor Create(ASystem: TSystem; AFeatureClass: TMessageBoardFeatureClass);
       destructor Destroy(); override;
+      procedure AdoptChild(Child: TAssetNode); override;
+      procedure DropChild(Child: TAssetNode); override;
       procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader); override;
    end;
@@ -81,7 +80,7 @@ type
 implementation
 
 uses
-   systemnetwork, systemdynasty, isderrors, isdprotocol, sysutils;
+   systemnetwork, systemdynasty, isdprotocol, sysutils;
 
 type
    PMessageBoardData = ^TMessageBoardData;
@@ -170,11 +169,6 @@ begin
    inherited;
 end;
 
-function TMessageBoardFeatureNode.GetFeatureName(): UTF8String;
-begin
-   Result := '';
-end;
-
 procedure TMessageBoardFeatureNode.Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback);
 var
    Child: TAssetNode;
@@ -189,17 +183,15 @@ var
    Notification: TNotificationMessage;
    MessageFeature: TMessageFeatureNode;
    KnowledgeFeature: TKnowledgeFeatureNode;
-   CachedSystem: TSystem;
 begin
    if (Message is TNotificationMessage) then
    begin
       Notification := Message as TNotificationMessage;
       if (Notification.Source.Owner = Parent.Owner) then
       begin
-         CachedSystem := System;
          Child := FFeatureClass.FMessageAssetClass.Spawn(Parent.Owner, System);
          MessageFeature := Child.GetFeatureByClass(TMessageFeatureClass) as TMessageFeatureNode;
-         MessageFeature.SetMessage(CachedSystem.SystemID, CachedSystem.Now, Notification.Body);
+         MessageFeature.SetMessage(System.SystemID, System.Now, Notification.Body);
          KnowledgeFeature := Child.GetFeatureByClass(TKnowledgeFeatureClass) as TKnowledgeFeatureNode;
          KnowledgeFeature.SetKnowledge(Notification.Research);
          AdoptChild(Child);
@@ -372,14 +364,14 @@ function TMessageFeatureNode.HandleCommand(Command: UTF8String; var Message: TMe
 var
    PlayerDynasty: TDynasty;
 begin
-   if (Command = 'mark-read') then
+   if (Command = ccMarkRead) then
    begin
       Result := True;
       Assert(Assigned(Message.Connection)); // we get here synchronously from connection code, so it hasn't had time to go away yet
       PlayerDynasty := (Message.Connection as TConnection).PlayerDynasty;
       if (PlayerDynasty <> Parent.Owner) then
       begin
-         Message.Error(ieInvalidCommand);
+         Message.Error(ieInvalidMessage);
          exit;
       end;
       if (Message.CloseInput()) then
@@ -391,14 +383,14 @@ begin
       end;
    end
    else
-   if (Command = 'mark-unread') then
+   if (Command = ccMarkUnread) then
    begin
       Result := True;
       Assert(Assigned(Message.Connection)); // we get here synchronously from connection code, so it hasn't had time to go away yet
       PlayerDynasty := (Message.Connection as TConnection).PlayerDynasty;
       if (PlayerDynasty <> Parent.Owner) then
       begin
-         Message.Error(ieInvalidCommand);
+         Message.Error(ieInvalidMessage);
          exit;
       end;
       if (Message.CloseInput()) then
@@ -410,7 +402,7 @@ begin
       end;
    end
    else
-      Result := inherited;
+      Result := False;
 end;
 
 procedure TMessageFeatureNode.DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean);

@@ -5,9 +5,9 @@ unit systems;
 interface
 
 uses
-   systemdynasty, configuration, hashtable, genericutils,
-   icons, serverstream, stringstream, random, materials, basenetwork,
-   time, tttokenizer, stringutils, hashsettight, rtlutils;
+   systemdynasty, configuration, hashtable, genericutils, isdprotocol,
+   serverstream, stringstream, random, materials, basenetwork,
+   time, tttokenizer, stringutils, hashsettight, rtlutils, plasticarrays;
 
 // VISIBILITY
 //
@@ -276,7 +276,10 @@ type
 
    TBusMessage = class abstract(TDebugObject) end;
    TPhysicalConnectionBusMessage = class abstract(TBusMessage) end; // orbits don't propagate these up
-   TAssetManagementBusMessage = class abstract(TBusMessage) end; // automatically handled by root node
+   // TODO: should we have some kind of bus message that is the kind of message that regions automatically manage and don't propagate
+
+   TAssetManagementBusMessage = class abstract(TBusMessage) // automatically handled by root node
+   end;
 
    TAssetGoingAway = class(TAssetManagementBusMessage)
    private
@@ -478,7 +481,8 @@ type
       dkAffectsVisibility, // system needs to redo a visibility scan
       dkVisibilityDidChange, // one or more dynasties changed whether they can see this node (set during CheckVisibilityChanged)
       dkAffectsDynastyCount, // system needs to redo a dynasty census (requires dkAffectsVisibility)
-      dkAffectsKnowledge // any nodes caching knowledge of descendants should reset caches
+      dkAffectsKnowledge, // any nodes caching knowledge of descendants should reset caches
+      dkMassChanged // Mass or MassFlowRate changed // TODO: set this where appropriate, handle where appropriate
    );
    TDirtyKinds = set of TDirtyKind;
    //  [1] removed when propagating to parent
@@ -487,13 +491,19 @@ type
 const
    dkNewNode = [ // initial dirty flags used on creation
       dkJournalNew, dkVisibilityNew,
-      dkNeedsHandleChanges, dkUpdateClients, dkUpdateJournal,
+      dkUpdateClients, dkUpdateJournal, dkNeedsHandleChanges,
       dkVisibilityDidChange, dkAffectsVisibility, dkAffectsKnowledge,
       dkDescendantNeedsHandleChanges, dkDescendantUpdateClients, dkDescendantUpdateJournal
       // dkAffectsDynastyCount is set conditionally
    ];
+   dkIdentityChanged = [
+      dkUpdateClients, dkUpdateJournal,
+      dkAffectsNames, dkVisibilityDidChange, dkAffectsVisibility, dkAffectsKnowledge
+   ];
    dkAffectsTreeStructure = [ // set on old/new parents when child's parent changes
-      dkAffectsVisibility, dkAffectsKnowledge, dkUpdateClients, dkUpdateJournal, dkChildren, dkChildAffectsNames
+      dkUpdateClients, dkUpdateJournal, 
+      dkAffectsVisibility, dkAffectsKnowledge,
+      dkChildren, dkChildAffectsNames
    ];
 
 type
@@ -529,8 +539,6 @@ type
       procedure AssetCreated(); virtual; // called when we are associated with an asset after the asset is created; Parent is still nil
       procedure Attaching(); virtual; // called when we are newly in a subtree rooted in a system
       procedure Detaching(); virtual; // called when an ancestor is about to lose its Parent
-      procedure AdoptChild(Child: TAssetNode); virtual;
-      procedure DropChild(Child: TAssetNode); virtual;
       procedure MarkAsDirty(DirtyKinds: TDirtyKinds); inline; // Utility function, calls Parent.MarkAsDirty().
       procedure ParentMarkedAsDirty(ParentDirtyKinds, NewDirtyKinds: TDirtyKinds); virtual; // Called when the parent is marked as dirty.
       function GetMass(): Double; virtual; // kg
@@ -541,7 +549,7 @@ type
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); virtual;
       function InjectBusMessage(Message: TBusMessage): TBusMessageResult; // (send message up the tree) returns true if message found a bus
       function ManageBusMessage(Message: TBusMessage): TBusMessageResult; virtual; // (consider sending message down the tree) returns true if feature was a bus for this message or should stop propagation
-      function DeferOrManageBusMessage(Message: TBusMessage): TBusMessageResult; // convenience function for ManageBusMessage that tries to inject it higher, and if that rejects, has the asset handle it (typically used for management buses)
+      function DeferOrHandleBusMessage(Message: TBusMessage): TBusMessageResult; // convenience function for ManageBusMessage that tries to inject it higher, and if that rejects, has the asset handle it (typically used for management buses)
       function HandleBusMessage(Message: TBusMessage): Boolean; virtual; // (send message down the tree) returns true if feature handled the message or should stop propagation
       procedure ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynasty.TArray); virtual; // OldDynasties is nil the first time this is called
       procedure ResetVisibility(); virtual;
@@ -557,6 +565,8 @@ type
       constructor Create(ASystem: TSystem);
       constructor Create(); unimplemented;
       destructor Destroy(); override;
+      procedure AdoptChild(Child: TAssetNode); virtual;
+      procedure DropChild(Child: TAssetNode); virtual;
       procedure UpdateJournal(Journal: TJournalWriter); virtual;
       procedure ApplyJournal(Journal: TJournalReader); virtual;
       function HandleCommand(Command: UTF8String; var Message: TMessage): Boolean; virtual;
@@ -617,6 +627,7 @@ type
       function GetMinMassPerOreUnit(): Double; virtual; abstract;
    public
       function Craterize(Diameter: Double; OldAsset, NewAsset: TAssetNode): TAssetNode; virtual; abstract;
+      function HandleBusMessage(Asset: TAssetNode; Message: TBusMessage): Boolean; virtual; abstract; // return true to skip this asset
       property AssetClasses[ID: TAssetClassID]: TAssetClass read GetAssetClass;
       property Researches[ID: TResearchID]: TResearch read GetResearch;
       property Topics[Name: UTF8String]: TTopic read GetTopic;
@@ -627,6 +638,7 @@ type
    public
       type
          TArray = array of TAssetNode;
+         TPlasticArray = specialize PlasticArray<TAssetNode, TObjectUtils>;
    strict private
       const
          AttachedBit = $01;
@@ -647,14 +659,13 @@ type
       function GetDensity(): Double; // kg/m^3
       function GetAssetName(): UTF8String;
       function GetHappiness(): Double;
-      procedure MarkAsDirty(DirtyKinds: TDirtyKinds); virtual;
-      procedure ReportChildIsPermanentlyGone(Child: TAssetNode); virtual;
       function GetDebugName(): UTF8String;
    private
       procedure SetParent(AParent: TFeatureNode); inline;
       function GetParent(): TFeatureNode; inline;
       function GetHasParent(): Boolean; inline;
       function GetIsAttached(): Boolean; virtual;
+      procedure SetOwner(NewOwner: TDynasty);
       procedure UpdateID(DynastyIndex: Cardinal; ID: TAssetID); // used from ApplyJournal
       function GetSystem(): TSystem; virtual;
    public
@@ -663,11 +674,13 @@ type
       constructor Create(ASystem: TSystem; AAssetClass: TAssetClass; AOwner: TDynasty; AFeatures: TFeatureNode.TArray);
       constructor CreateFromJournal(ASystem: TSystem; Journal: TJournalReader);
       destructor Destroy(); override;
+      procedure Become(AAssetClass: TAssetClass);
       procedure ReportPermanentlyGone();
       function GetFeatureByClass(FeatureClass: FeatureClassReference): TFeatureNode; // returns nil if feature is absent
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback);
       function InjectBusMessage(Message: TBusMessage): TBusMessageResult; // called by a node to send a message up the tree to a bus (ManageBusMessage); returns true if bus was found
       function HandleBusMessage(Message: TBusMessage): Boolean; // called by a bus (ManageBusMessage) to send a message down the tree; returs true if message was handled
+      procedure MarkAsDirty(DirtyKinds: TDirtyKinds); virtual;
       procedure ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynasty.TArray); // OldDynasties is nil the first time this is called
       procedure ResetVisibility();
       procedure ApplyVisibility();
@@ -689,7 +702,7 @@ type
       property IsAttached: Boolean read GetIsAttached;
       property Dirty: TDirtyKinds read FDirty;
       property AssetClass: TAssetClass read FAssetClass;
-      property Owner: TDynasty read FOwner;
+      property Owner: TDynasty read FOwner write SetOwner;
       property Features[Index: Cardinal]: TFeatureNode read GetFeature;
       property Mass: Double read GetMass; // kg
       property MassFlowRate: TRate read GetMassFlowRate; // kg/s
@@ -794,6 +807,7 @@ type
       property Journal: TJournalWriter read FJournalWriter;
       property Now: TTimeInMilliseconds read GetNow;
       property TimeFactor: TTimeFactor read FTimeFactor; // if this ever supports being changed, we need to be super careful about code that checks Now around the time it updates (e.g. to write a time to disk, read it back from disk, etc), and need to make sure Now doesn't ever go backwards or forwards in time discontinuously
+      property Server: TBaseServer read FServer;
    public // Visibility API
       procedure AddSpecificVisibility(const Dynasty: TDynasty; const Visibility: TVisibility; const Asset: TAssetNode); inline;
       procedure AddSpecificVisibilityByIndex(const Index: Cardinal; const Visibility: TVisibility; const Asset: TAssetNode);
@@ -812,7 +826,7 @@ uses
    exceptions, typedump,
    hashfunctions,
    math, {$IFDEF DEBUG} debug, {$ENDIF}
-   isdprotocol, providers;
+   providers;
 
 function UpdateDirtyKindsForAncestor(DirtyKinds: TDirtyKinds): TDirtyKinds;
 begin
@@ -864,9 +878,8 @@ type
    TRootAssetNode = class(TAssetNode)
    private
       function GetIsAttached(): Boolean; override;
-   protected
+   public
       procedure MarkAsDirty(DirtyKinds: TDirtyKinds); override;
-      procedure ReportChildIsPermanentlyGone(Child: TAssetNode); override;
    end;
 
 function TRootAssetNode.GetIsAttached(): Boolean;
@@ -878,12 +891,6 @@ procedure TRootAssetNode.MarkAsDirty(DirtyKinds: TDirtyKinds);
 begin
    inherited;
    System.MarkAsDirty(UpdateDirtyKindsForAncestor(DirtyKinds));
-end;
-
-procedure TRootAssetNode.ReportChildIsPermanentlyGone(Child: TAssetNode);
-begin
-   Assert(not Assigned(Parent));
-   System.ReportChildIsPermanentlyGone(Child);
 end;
 
 
@@ -1523,6 +1530,10 @@ end;
 
 function TFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
 begin
+   Assert(
+      TMethod(@Self.HandleBusMessage).Code = Pointer(@TFeatureNode.HandleBusMessage),
+      'If you override HandleBusMessage, there''s no need to call the inherited method. Just default to false.'
+   );
    // TODO: should this use Walk and subclasses call this, instead of subclasses having to duplicate walk logic?
    Result := False;
 end;
@@ -1539,7 +1550,7 @@ begin
    Result := mrDeferred;
 end;
 
-function TFeatureNode.DeferOrManageBusMessage(Message: TBusMessage): TBusMessageResult;
+function TFeatureNode.DeferOrHandleBusMessage(Message: TBusMessage): TBusMessageResult;
 var
    Handled: Boolean;
 begin
@@ -1603,6 +1614,10 @@ end;
 
 function TFeatureNode.HandleCommand(Command: UTF8String; var Message: TMessage): Boolean;
 begin
+   Assert(
+      TMethod(@Self.HandleCommand).Code = Pointer(@TFeatureNode.HandleCommand),
+      'If you override HandleCommand, there''s no need to call the inherited method. Just default to false.'
+   );
    Result := False;
 end;
 
@@ -1884,7 +1899,54 @@ begin
    inherited;
 end;
 
+procedure TAssetNode.Become(AAssetClass: TAssetClass);
+var
+   Children: TAssetNode.TPlasticArray;
+   
+   function CollectChildren(Child: TAssetNode): Boolean;
+   begin
+      if (Child <> Self) then
+      begin
+         Children.Push(Child);
+         Result := False;
+      end
+      else
+         Result := True;
+   end;
+   
+var
+   Child: TAssetNode;
+   Feature: TFeatureNode;
+begin
+   Walk(@CollectChildren, nil);
+   for Child in Children do
+   begin
+      Child.ReportPermanentlyGone();
+      Child.Parent.DropChild(Child);
+      FreeAndNil(Child);
+   end;
+   FAssetClass := AAssetClass;
+   for Feature in FFeatures do
+      System.Server.ScheduleDemolition(Feature);
+   FFeatures := FAssetClass.SpawnFeatureNodes(System);
+   for Feature in FFeatures do
+      Feature.SetParent(Self);
+   MarkAsDirty(dkIdentityChanged);
+end;
+
 procedure TAssetNode.ReportPermanentlyGone();
+
+   function PropagateToChildren(Child: TAssetNode): Boolean;
+   begin
+      if (Child <> Self) then
+      begin
+         Child.ReportPermanentlyGone();
+         Result := False;
+      end
+      else
+         Result := True;
+   end;
+   
 var
    Message: TAssetGoingAway;
    Injected: TBusMessageResult;
@@ -1895,7 +1957,8 @@ begin
    Injected := InjectBusMessage(Message);
    Assert(Injected = mrInjected, 'TAssetGoingAway should always be injected but not marked handled.');
    FreeAndNil(Message);
-   ReportChildIsPermanentlyGone(Self);
+   System.ReportChildIsPermanentlyGone(Self);
+   Walk(@PropagateToChildren, nil);
 end;
 
 function TAssetNode.GetFeatureByClass(FeatureClass: FeatureClassReference): TFeatureNode;
@@ -1944,7 +2007,7 @@ begin
       Rate := Feature.MassFlowRate;
       Result := Result + Rate;
       {$IFOPT C+}
-      if (Rate.IsNotZero) then
+      //if (Rate.IsNotZero) then
       begin
          SetLength(DebugFeatures, Length(DebugFeatures) + 1);
          DebugFeatures[High(DebugFeatures)] := Feature.ClassName + ': ' + Rate.ToString('kg');
@@ -1952,18 +2015,21 @@ begin
       {$ENDIF}
    end;
    {$IFOPT C+}
-   if (Length(DebugFeatures) > 1) then
+   if (Result.IsNotZero) then
    begin
-      Writeln('! ', DebugName, ' has mass flow rate ', Result.ToString('kg'), ' coming from:');
-      for Line in DebugFeatures do
+      if (Length(DebugFeatures) > 1) then
       begin
-         Writeln('!    ', Line);
+         Writeln('! ', DebugName, ' has mass flow rate ', Result.ToString('kg'), ' coming from:');
+         for Line in DebugFeatures do
+         begin
+            Writeln('!    ', Line);
+         end;
+      end
+      else
+      if (Length(DebugFeatures) > 0) then
+      begin
+         Writeln('! ', DebugName, ' has mass flow rate ', Result.ToString('kg'), ' coming from ', DebugFeatures[0]);
       end;
-   end
-   else
-   if (Length(DebugFeatures) > 0) then
-   begin
-      Writeln('! ', DebugName, ' has mass flow rate ', Result.ToString('kg'), ' coming from ', DebugFeatures[0]);
    end;
    {$ENDIF}
 end;
@@ -2081,9 +2147,14 @@ function TAssetNode.HandleBusMessage(Message: TBusMessage): Boolean;
 var
    Feature: TFeatureNode;
 begin
+   if (System.Encyclopedia.HandleBusMessage(Self, Message)) then
+   begin
+      Result := False;
+      exit;
+   end;
    for Feature in FFeatures do
    begin
-      Result := Feature.HandleBusMessage(Message);
+      Result := Feature.HandleBusMessage(Message); // propagates message down the tree
       if (Result) then
          exit;
    end;
@@ -2336,28 +2407,28 @@ end;
 
 procedure TAssetNode.ApplyJournal(Journal: TJournalReader);
 var
-   NewAssetClass: TAssetClass;
+   OldAssetClass: TAssetClass;
    Feature: TFeatureNode;
    SpawnFeatures: Boolean;
 begin
-   NewAssetClass := Journal.ReadAssetClassReference();
-   if (not Assigned(AssetClass)) then
-   begin
-      FAssetClass := NewAssetClass;
-      SpawnFeatures := True;
-   end
-   else
-   begin
-      Assert(NewAssetClass = AssetClass);
-      SpawnFeatures := False;
-   end;
-   FOwner := Journal.ReadDynastyReference();
+   OldAssetClass := FAssetClass;
+   FAssetClass := Journal.ReadAssetClassReference();
+   SpawnFeatures := FAssetClass <> OldAssetClass;
+   FOwner := Journal.ReadDynastyReference(); // IncRef/DecRef is done in TSystem.ApplyJournal
    if (SpawnFeatures) then
    begin
-      Assert(Length(FFeatures) = 0);
+      if (Length(FFeatures) > 0) then
+      begin
+         for Feature in FFeatures do
+         begin
+            Feature.Free();
+         end;
+      end;
       FFeatures := FAssetClass.SpawnFeatureNodesFromJournal(Journal, System);
       for Feature in FFeatures do
+      begin
          Feature.SetParent(Self);
+      end;
    end
    else
    begin
@@ -2367,13 +2438,6 @@ begin
    begin
       raise EJournalError.Create('missing end of asset marker (0x' + HexStr(jcEndOfAsset, 8) + ')');
    end;
-end;
-
-procedure TAssetNode.ReportChildIsPermanentlyGone(Child: TAssetNode);
-begin
-   Assert(HasParent);
-   Assert(IsAttached);
-   Parent.Parent.ReportChildIsPermanentlyGone(Child);
 end;
 
 function TAssetNode.ID(DynastyIndex: Cardinal; AllowZero: Boolean = False): TAssetID;
@@ -2439,6 +2503,27 @@ end;
 function TAssetNode.GetIsAttached(): Boolean;
 begin
    Result := FParent and AttachedBit > 0;
+end;
+
+procedure TAssetNode.SetOwner(NewOwner: TDynasty);
+var
+   OldOwner: TDynasty;
+begin
+   Assert(NewOwner <> FOwner);
+   OldOwner := FOwner;
+   if (Assigned(FOwner)) then
+   begin
+      FOwner.DecRef();
+   end;
+   if (not System.HasDynasty(NewOwner)) then
+      MarkAsDirty([dkAffectsDynastyCount]);
+   FOwner := NewOwner;
+   if (not System.HasDynasty(OldOwner)) then
+      MarkAsDirty([dkAffectsDynastyCount]);
+   if (Assigned(FOwner)) then
+   begin
+      FOwner.IncRef();
+   end;
 end;
 
 procedure TAssetNode.UpdateID(DynastyIndex: Cardinal; ID: TAssetID);
@@ -2596,6 +2681,7 @@ var
    Asset: TAssetNode;
    Code, Index: Cardinal;
    AssetID: TAssetID;
+   Orphans: TAssetNode.TPlasticArray;
 begin
    Assign(FJournalFile, FileName);
    FileMode := 0;
@@ -2650,6 +2736,7 @@ begin
                try
                   ID := JournalReader.ReadPtrUInt();
                   Asset := TAssetNode.CreateFromJournal(Self, JournalReader);
+                  Assert(not JournalReader.FAssetMap.Has(ID));
                   JournalReader.FAssetMap[ID] := Asset;
                except
                   ReportCurrentException();
@@ -2671,7 +2758,12 @@ begin
                   ID := JournalReader.ReadPtrUInt();
                   Asset := JournalReader.FAssetMap[ID];
                   Asset.Parent.DropChild(Asset);
-                  // The actual freeing will happen below when we clear out orphans.
+                  Orphans.Push(Asset); // these are freed below
+                  JournalReader.FAssetMap.Remove(ID);
+                  // we don't have to worry about notifying anyone
+                  // else, because the nodes don't have time to set up
+                  // relationships while reading the journal; that
+                  // happens later during the change updates.
                except
                   ReportCurrentException();
                   raise;
@@ -2682,9 +2774,8 @@ begin
          end;
       end;
       // Clear orphans.
-      for Asset in JournalReader.FAssetMap.Values do
-         if ((Asset <> FRoot) and not Assigned(Asset.Parent)) then
-            Asset.Free();
+      for Asset in Orphans do
+         Asset.Free();
    finally
       JournalReader.Free();
       Close(FJournalFile);

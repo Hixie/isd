@@ -57,7 +57,7 @@ type
 implementation
 
 uses
-   exceptions, sysutils, arrayutils, isdprotocol, isderrors, knowledge, messages;
+   exceptions, sysutils, arrayutils, isdprotocol, knowledge, messages;
 
 constructor TResearchTimeHashTable.Create();
 begin
@@ -300,13 +300,13 @@ var
    Topic: TTopic;
    TopicName: UTF8String;
 begin
-   if (Command = 'get-topics') then
+   if (Command = ccGetTopics) then
    begin
       Result := True;
       PlayerDynasty := (Message.Connection as TConnection).PlayerDynasty;
       if (PlayerDynasty <> Parent.Owner) then
       begin
-         Message.Error(ieInvalidCommand);
+         Message.Error(ieInvalidMessage);
          exit;
       end;
       if (Message.CloseInput()) then
@@ -331,12 +331,12 @@ begin
       end;
    end
    else
-   if (Command = 'set-topic') then
+   if (Command = ccSetTopic) then
    begin
       PlayerDynasty := (Message.Connection as TConnection).PlayerDynasty;
       if (PlayerDynasty <> Parent.Owner) then
       begin
-         Message.Error(ieInvalidCommand);
+         Message.Error(ieInvalidMessage);
          exit;
       end;
       TopicName := Message.Input.ReadString();
@@ -349,7 +349,7 @@ begin
          Topic := System.Encyclopedia.Topics[TopicName];
          if (not Assigned(Topic)) then
          begin
-            Message.Error(ieInvalidCommand);
+            Message.Error(ieInvalidMessage);
             exit;
          end;
          Topics := TTopicHashSet.Create();
@@ -357,7 +357,7 @@ begin
             DetermineTopics(Topics, nil);
             if (not Topics.Has(Topic)) then
             begin
-               Message.Error(ieInvalidCommand);
+               Message.Error(ieInvalidMessage);
                exit;
             end;
          finally
@@ -378,7 +378,7 @@ begin
       Result := True;
    end
    else
-      Result := inherited;
+      Result := False;
 end;
 
 procedure TResearchFeatureNode.BankResearch();

@@ -33,7 +33,7 @@ type
 implementation
 
 uses
-   exceptions, sysutils, systemnetwork, systemdynasty, isderrors,
+   exceptions, sysutils, systemnetwork, systemdynasty,
    knowledge, messages, typedump, commonbuses;
 
 constructor TOnOffFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
@@ -67,7 +67,7 @@ begin
          (Message as TCheckDisabledBusMessage).AddReason(drManuallyDisabled);
    end
    else
-      Result := inherited;
+      Result := False;
 end;
 
 procedure TOnOffFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);
@@ -96,13 +96,13 @@ function TOnOffFeatureNode.HandleCommand(Command: UTF8String; var Message: TMess
 var
    PlayerDynasty: TDynasty;
 begin
-   if (Command = 'enable') then
+   if (Command = ccEnable) then
    begin
       Result := True;
       PlayerDynasty := (Message.Connection as TConnection).PlayerDynasty;
       if (PlayerDynasty <> Parent.Owner) then
       begin
-         Message.Error(ieInvalidCommand);
+         Message.Error(ieInvalidMessage);
          exit;
       end;
       if (Message.CloseInput()) then
@@ -122,13 +122,13 @@ begin
       end;
    end
    else
-   if (Command = 'disable') then
+   if (Command = ccDisable) then
    begin
       Result := True;
       PlayerDynasty := (Message.Connection as TConnection).PlayerDynasty;
       if (PlayerDynasty <> Parent.Owner) then
       begin
-         Message.Error(ieInvalidCommand);
+         Message.Error(ieInvalidMessage);
          exit;
       end;
       if (Message.CloseInput()) then
@@ -146,7 +146,7 @@ begin
       end;
    end
    else
-      Result := inherited;
+      Result := False;
 end;
 
 initialization

@@ -24,6 +24,7 @@ type
    protected
       function GetMass(): Double; override;
       function GetSize(): Double; override;
+      function HandleBusMessage(Message: TBusMessage): Boolean; override;
       procedure ApplyVisibility(); override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
       function GetAssetName(): UTF8String;
@@ -40,7 +41,7 @@ type
 implementation
 
 uses
-   isdprotocol;
+   isdprotocol, rubble, commonbuses;
 
 const
    MassSalt = $04551455;
@@ -132,6 +133,17 @@ begin
    end;
    // TODO: when we generate the description dynamically, vary the temperature also
    // Result := Result * Modifier(0.9, 1.1, StarID, TemperatureSalt);
+end;
+
+function TStarFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
+begin
+   if ((Message is TRubbleCollectionMessage) or (Message is TDismantleMessage)) then
+   begin
+      Assert(False, ClassName + ' should never see ' + Message.ClassName);
+      Result := False;
+   end
+   else
+      Result := False;
 end;
 
 procedure TStarFeatureNode.ApplyVisibility();

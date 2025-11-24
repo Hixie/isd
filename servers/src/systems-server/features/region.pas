@@ -119,6 +119,25 @@ type
       property TransferredManifest: TMaterialQuantity read GetTransferredManifest;
    end;
 
+   TStoreMaterialBusMessage = class(TPhysicalConnectionWithExclusionBusMessage)
+   strict private
+      FDynasty: TDynasty;
+      FRequest: TMaterialQuantity;
+      FStored: UInt64;
+      function GetRemainingQuantity(): UInt64; inline;
+      function GetFulfilled(): Boolean; inline;
+      function GetTransferredManifest(): TMaterialQuantity; inline;
+   public
+      constructor Create(AAsset: TAssetNode; ADynasty: TDynasty; ARequest: TMaterialQuantity); overload;
+      constructor Create(AAsset: TAssetNode; ADynasty: TDynasty; AMaterial: TMaterial; AQuantity: UInt64); overload;
+      procedure Store(ADelivery: UInt64);
+      property Dynasty: TDynasty read FDynasty;
+      property Material: TMaterial read FRequest.Material;
+      property RemainingQuantity: UInt64 read GetRemainingQuantity;
+      property Fulfilled: Boolean read GetFulfilled;
+      property TransferredManifest: TMaterialQuantity read GetTransferredManifest;
+   end;
+
    TRegionFeatureClass = class(TFeatureClass)
    strict private
       FDepth: Cardinal;
@@ -182,7 +201,7 @@ type
             function GetDynastyMode(): TDynastyMode; inline;
             function GetSingleDynastyData(): PPerDynastyData; inline;
          public
-            {$IFOPT C+} function HasData(Dynasty: TDynasty): Boolean; {$ENDIF}
+            function HasDynasty(Dynasty: TDynasty): Boolean; inline;
             property Data[Dynasty: TDynasty]: PPerDynastyData read GetData; default;
             property Dynasties: TDynastyEnumerator read GetDynastyEnumerator;
             property DynastyMode: TDynastyMode read GetDynastyMode;
@@ -217,6 +236,7 @@ type
       function GetTotalMaterialPileMass(Dynasty: TDynasty; Material: TMaterial): Double; // kg
       function GetTotalMaterialPileMassFlowRate(Dynasty: TDynasty; Material: TMaterial): TRate; // kg/s
       function GetIsMinable(): Boolean;
+      procedure ReturnOreToGround(DynastyData: PPerDynastyData; TotalOrePileMass, TotalTransferMass: Double);
    protected
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
       function GetMass(): Double; override;
@@ -242,6 +262,10 @@ type
       // TODO: RemoveFactory
       procedure RemoveMaterialConsumer(MaterialConsumer: IMaterialConsumer);
       procedure SyncForMaterialConsumer(); // call when a material consumer thinks it might be done
+      procedure RehomeOreForPile(OrePile: IOrePile); // removes the pile, and if there isn't enough remaining capacity, puts some back in the ground.
+      procedure FlattenOrePileIntoGround(OrePile: IOrePile); // removes the pile, and moves all of its contents into the ground
+      function ExtractMaterialPile(MaterialPile: IMaterialPile): UInt64; // removes the pile and its contents; returns the quantity of material the pile had.
+      function RehomeMaterialPile(MaterialPile: IMaterialPile): UInt64; // removes the pile, and if there isn't enough remaining capacity, returns the quantity remaining.
       function GetOrePileMass(Pile: IOrePile): Double; // kg
       function GetOrePileMassFlowRate(Pile: IOrePile): TRate; // kg/s
       function GetOresPresentForPile(Pile: IOrePile): TOreFilter;
@@ -256,8 +280,7 @@ type
 implementation
 
 uses
-   sysutils, planetary, exceptions, isdnumbers, math, hashfunctions;
-
+   sysutils, planetary, exceptions, isdnumbers, math, hashfunctions, rubble;
 
 function TRegionClientFields.GetNeedsConnection(): Boolean;
 begin
@@ -368,6 +391,60 @@ procedure TObtainMaterialBusMessage.Deliver(ADelivery: UInt64);
 begin
    Assert(FDelivery + ADelivery <= FRequest.Quantity);
    Inc(FDelivery, ADelivery);
+end;
+
+
+constructor TStoreMaterialBusMessage.Create(AAsset: TAssetNode; ADynasty: TDynasty; ARequest: TMaterialQuantity);
+begin
+   inherited Create(AAsset);
+   Assert(Assigned(ADynasty));
+   Assert(Assigned(ARequest.Material));
+   FDynasty := ADynasty;
+   FRequest := ARequest;
+   Assert(FRequest.Quantity > 0);
+   Assert(not Fulfilled);
+end;
+
+constructor TStoreMaterialBusMessage.Create(AAsset: TAssetNode; ADynasty: TDynasty; AMaterial: TMaterial; AQuantity: UInt64);
+begin
+   inherited Create(AAsset);
+   Assert(Assigned(ADynasty));
+   Assert(Assigned(AMaterial));
+   FDynasty := ADynasty;
+   FRequest.Material := AMaterial;
+   FRequest.Quantity := AQuantity;
+   Assert(FRequest.Quantity > 0);
+   Assert(not Fulfilled);
+end;
+
+function TStoreMaterialBusMessage.GetRemainingQuantity(): UInt64;
+begin
+   Result := FRequest.Quantity - FStored; // $R-
+end;
+
+function TStoreMaterialBusMessage.GetFulfilled(): Boolean;
+begin
+   Result := FStored >= FRequest.Quantity;
+end;
+
+function TStoreMaterialBusMessage.GetTransferredManifest(): TMaterialQuantity;
+begin
+   if (FStored > 0) then
+   begin
+      Result.Material := FRequest.Material;
+      Result.Quantity := FStored;
+   end
+   else
+   begin
+      Result.Material := nil;
+      Result.Quantity := 0;
+   end;
+end;
+
+procedure TStoreMaterialBusMessage.Store(ADelivery: UInt64);
+begin
+   Assert(FStored + ADelivery <= FRequest.Quantity);
+   Inc(FStored, ADelivery);
 end;
 
 
@@ -566,8 +643,7 @@ begin
    Result := FSingleDynastyData;
 end;
 
-{$IFOPT C+}
-function TRegionFeatureNode.TRegionData.HasData(Dynasty: TDynasty): Boolean;
+function TRegionFeatureNode.TRegionData.HasDynasty(Dynasty: TDynasty): Boolean;
 begin
    if (not Assigned(FDynasty)) then
    begin
@@ -583,7 +659,6 @@ begin
       Result := FDynastyTable.Has(Dynasty);
    end;
 end;
-{$ENDIF}
 
 
 destructor TRegionFeatureNode.TRegionData.TDynastyEnumerator.Destroy();
@@ -657,11 +732,9 @@ end;
 function TRegionFeatureNode.GetMass(): Double;
 var
    Ore: TOres;
-   CachedSystem: TSystem;
    Encyclopedia: TEncyclopediaView;
 begin
-   CachedSystem := System;
-   Encyclopedia := CachedSystem.Encyclopedia;
+   Encyclopedia := System.Encyclopedia;
    Result := 0.0;
    Assert(Length(FGroundComposition) > 0);
    for Ore := Low(FGroundComposition) to High(FGroundComposition) do // $R-
@@ -669,7 +742,7 @@ begin
    // The ore pile composition (see GetOrePileMass) and the material
    // pile composition are exposed on the various pile assets.
    if (FDynamic) then
-      Result := Result + (CachedSystem.Now - FAnchorTime) * MassFlowRate;
+      Result := Result + (System.Now - FAnchorTime) * MassFlowRate;
 end;
 
 function TRegionFeatureNode.GetMassFlowRate(): TRate;
@@ -704,7 +777,7 @@ var
    OrePile: IOrePile;
    DynastyData: PPerDynastyData;
 begin
-   Assert(FData.HasData(Dynasty));
+   Assert(FData.HasDynasty(Dynasty));
    Result := 0.0;
    DynastyData := FData[Dynasty];
    if (DynastyData^.FOrePiles.IsNotEmpty) then
@@ -717,14 +790,12 @@ end;
 function TRegionFeatureNode.GetTotalOrePileMass(Dynasty: TDynasty): Double; // kg total for all piles
 var
    Ore: TOres;
-   CachedSystem: TSystem;
    Encyclopedia: TEncyclopediaView;
    DynastyData: PPerDynastyData;
 begin
-   Assert(FData.HasData(Dynasty));
+   Assert(FData.HasDynasty(Dynasty));
    DynastyData := FData[Dynasty];
-   CachedSystem := System;
-   Encyclopedia := CachedSystem.Encyclopedia;
+   Encyclopedia := System.Encyclopedia;
    Result := 0.0;
    if (Length(DynastyData^.FOrePileComposition) > 0) then
       for Ore := Low(DynastyData^.FOrePileComposition) to High(DynastyData^.FOrePileComposition) do // $R-
@@ -733,7 +804,7 @@ begin
    if (FDynamic) then
    begin
       Assert(not FAnchorTime.IsInfinite);
-      Result := Result + (CachedSystem.Now - FAnchorTime) * GetTotalOrePileMassFlowRate(Dynasty);
+      Result := Result + (System.Now - FAnchorTime) * GetTotalOrePileMassFlowRate(Dynasty);
    end;
    Assert(Result >= 0.0);
 end;
@@ -744,7 +815,7 @@ var
    Refinery: IRefinery;
    DynastyData: PPerDynastyData;
 begin
-   Assert(FData.HasData(Dynasty));
+   Assert(FData.HasDynasty(Dynasty));
    Result := TRate.Zero;
    if (FDynamic) then
    begin
@@ -813,7 +884,7 @@ function TRegionFeatureNode.GetTotalMaterialPileQuantity(Dynasty: TDynasty; Mate
 var
    DynastyData: PPerDynastyData;
 begin
-   Assert(FData.HasData(Dynasty));
+   Assert(FData.HasDynasty(Dynasty));
    DynastyData := FData[Dynasty];
    if (not Assigned(DynastyData^.FMaterialPileComposition)) then
    begin
@@ -840,7 +911,7 @@ var
    Consumer: IMaterialConsumer;
    DynastyData: PPerDynastyData;
 begin
-   Assert(FData.HasData(Dynasty));
+   Assert(FData.HasDynasty(Dynasty));
    DynastyData := FData[Dynasty];
    Result := TRate.Zero;
    if (DynastyData^.FRefineries.IsNotEmpty and Material.IsOre) then
@@ -867,7 +938,7 @@ var
    Pile: IMaterialPile;
    DynastyData: PPerDynastyData;
 begin
-   Assert(FData.HasData(Dynasty));
+   Assert(FData.HasDynasty(Dynasty));
    DynastyData := FData[Dynasty];
    Result := 0;
    if (DynastyData^.FMaterialPiles.IsNotEmpty) then
@@ -884,7 +955,7 @@ function TRegionFeatureNode.GetTotalMaterialPileMass(Dynasty: TDynasty; Material
 var
    DynastyData: PPerDynastyData;
 begin
-   Assert(FData.HasData(Dynasty));
+   Assert(FData.HasDynasty(Dynasty));
    DynastyData := FData[Dynasty];
    if (not Assigned(DynastyData^.FMaterialPileComposition)) then
    begin
@@ -911,7 +982,7 @@ var
    Consumer: IMaterialConsumer;
    DynastyData: PPerDynastyData;
 begin
-   Assert(FData.HasData(Dynasty));
+   Assert(FData.HasDynasty(Dynasty));
    DynastyData := FData[Dynasty];
    Result := TRate.Zero;
    if (DynastyData^.FRefineries.IsNotEmpty and Material.IsOre) then
@@ -955,9 +1026,11 @@ begin
        (Message is TRegisterRefineryBusMessage) or
        (Message is TRegisterMaterialPileBusMessage) or
        (Message is TRegisterMaterialConsumerBusMessage) or
-       (Message is TObtainMaterialBusMessage)) then
+       (Message is TObtainMaterialBusMessage) or
+       (Message is TStoreMaterialBusMessage) or
+       (Message is TFindDestructorsMessage)) then
    begin
-      Result := DeferOrManageBusMessage(Message);
+      Result := DeferOrHandleBusMessage(Message);
    end
    else
       Result := mrDeferred;
@@ -965,22 +1038,14 @@ end;
 
 function TRegionFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
 var
-   CachedSystem: TSystem;
-
-   procedure CacheSystem(); inline;
-   begin
-      if (not Assigned(CachedSystem)) then
-         CachedSystem := System;
-   end;
-
-var
    MinerMessage: TRegisterMinerBusMessage;
    OrePileMessage: TRegisterOrePileBusMessage;
    RefineryMessage: TRegisterRefineryBusMessage;
    MaterialPileMessage: TRegisterMaterialPileBusMessage;
    MaterialConsumerMessage: TRegisterMaterialConsumerBusMessage;
    Obtain: TObtainMaterialBusMessage;
-   DeliverySize: UInt64;
+   Store: TStoreMaterialBusMessage;
+   DeliverySize, Capacity, Usage: UInt64;
    MaterialPile: IMaterialPile;
    DynastyData: PPerDynastyData;
 begin
@@ -1044,29 +1109,83 @@ begin
    if (Message is TObtainMaterialBusMessage) then
    begin
       Obtain := Message as TObtainMaterialBusMessage;
-      DynastyData := FData[Obtain.Dynasty];
-      Assert(Obtain.Quantity > 0);
-      SyncAndReconsider();
-      if (Assigned(DynastyData^.FMaterialPileComposition) and DynastyData^.FMaterialPileComposition.Has(Obtain.Material)) then
+      if (FData.HasDynasty(Obtain.Dynasty)) then
       begin
-         DeliverySize := DynastyData^.FMaterialPileComposition[Obtain.Material];
-         if (DeliverySize > 0) then
+         DynastyData := FData[Obtain.Dynasty];
+         Assert(Obtain.Quantity > 0);
+         SyncAndReconsider();
+         if (Assigned(DynastyData^.FMaterialPileComposition) and DynastyData^.FMaterialPileComposition.Has(Obtain.Material)) then
          begin
-            if (DeliverySize > Obtain.Quantity) then
-               DeliverySize := Obtain.Quantity;
-            Obtain.Deliver(DeliverySize);
-            DynastyData^.DecMaterialPile(Obtain.Material, DeliverySize);
-            if (DynastyData^.FMaterialPiles.IsNotEmpty) then
-               for MaterialPile in DynastyData^.FMaterialPiles.Without(nil) do
-                  if (MaterialPile.GetMaterialPileMaterial() = Obtain.Material) then
-                     MaterialPile.RegionAdjustedMaterialPiles();
-            MarkAsDirty([dkUpdateJournal]);
+            DeliverySize := DynastyData^.FMaterialPileComposition[Obtain.Material];
+            if (DeliverySize > 0) then
+            begin
+               if (DeliverySize > Obtain.Quantity) then
+                  DeliverySize := Obtain.Quantity;
+               Obtain.Deliver(DeliverySize);
+               DynastyData^.DecMaterialPile(Obtain.Material, DeliverySize);
+               if (DynastyData^.FMaterialPiles.IsNotEmpty) then
+                  for MaterialPile in DynastyData^.FMaterialPiles.Without(nil) do
+                     if (MaterialPile.GetMaterialPileMaterial() = Obtain.Material) then
+                        MaterialPile.RegionAdjustedMaterialPiles();
+               MarkAsDirty([dkUpdateJournal]);
+            end;
          end;
       end;
       Result := Obtain.Fulfilled;
    end
    else
-      Result := inherited;
+   if (Message is TStoreMaterialBusMessage) then
+   begin
+      Store := Message as TStoreMaterialBusMessage;
+      Writeln(DebugName, ' received ', Store.ClassName, ' message for ', Store.RemainingQuantity, ' units of ', Store.Material.Name);
+      if (FData.HasDynasty(Store.Dynasty)) then
+      begin
+         Capacity := GetTotalMaterialPileCapacity(Store.Dynasty, Store.Material);
+         Writeln('  we have ', Capacity, ' units of total capacity for ', Store.Material.Name);
+         if (Capacity > 0) then
+         begin
+            DynastyData := FData[Store.Dynasty];
+            Assert(Store.RemainingQuantity > 0);
+            SyncAndReconsider();
+            if (Assigned(DynastyData^.FMaterialPileComposition) and DynastyData^.FMaterialPileComposition.Has(Store.Material)) then
+            begin
+               Usage := DynastyData^.FMaterialPileComposition[Store.Material];
+               if (Usage < Capacity) then
+               begin
+                  Dec(Capacity, Usage);
+               end
+               else
+               begin
+                  Writeln('  (meaning we are completely full)');
+                  Capacity := 0;
+               end;
+            end;
+            if (Capacity > 0) then
+            begin
+               Writeln('  we have ', Capacity, ' units of remaining capacity for ', Store.Material.Name);
+               if (Capacity > Store.RemainingQuantity) then
+                  Capacity := Store.RemainingQuantity;
+               Writeln('  taking ', Capacity, ' units');
+               Store.Store(Capacity);
+               DynastyData^.IncMaterialPile(Store.Material, Capacity);
+               if (DynastyData^.FMaterialPiles.IsNotEmpty) then
+                  for MaterialPile in DynastyData^.FMaterialPiles.Without(nil) do
+                     if (MaterialPile.GetMaterialPileMaterial() = Store.Material) then
+                        MaterialPile.RegionAdjustedMaterialPiles();
+               MarkAsDirty([dkUpdateJournal]);
+            end;
+         end;
+      end;
+      Result := Store.Fulfilled;
+   end
+   else
+   if ((Message is TRubbleCollectionMessage) or (Message is TDismantleMessage)) then
+   begin
+      Assert(False, ClassName + ' should never see ' + Message.ClassName);
+      Result := False;
+   end
+   else
+      Result := False;
 end;
 
 procedure TRegionFeatureNode.Sync();
@@ -1077,7 +1196,7 @@ var
    Consumer: IMaterialConsumer;
    MaterialPile: IMaterialPile;
    Rate: TRate;
-   TotalCompositionMass, TotalTransferMass, ApproximateTransferQuantity, ActualTransfer, CurrentOrePileMass, OrePileCapacity: Double;
+   TotalCompositionMass, TotalTransferMass, ApproximateTransferQuantity, ActualTransfer, TotalOrePileMass, OrePileCapacity: Double;
    {$IFDEF DEBUG}
    OrePileRecordedMass: Double;
    {$ENDIF}
@@ -1085,7 +1204,6 @@ var
    Ore: TOres;
    OrePilesAffected, MaterialPilesAffected: Boolean;
    Material: TMaterial;
-   CachedSystem: TSystem;
    Encyclopedia: TEncyclopediaView;
    Quantity: UInt64;
    TransferQuantity, ActualTransferQuantity, DesiredTransferQuantity: UInt64;
@@ -1095,6 +1213,7 @@ var
    Dynasty: TDynasty;
    DynastyData: PPerDynastyData;
 begin
+   Writeln(DebugName, ' Sync(Active=', FActive, '; Dynamic=', FDynamic, '; Now=', System.Now.ToString(), '; AnchorTime=', FAnchorTime.ToString(), ')');
    Assert(FActive);
    if (not FDynamic) then
    begin
@@ -1102,8 +1221,7 @@ begin
       exit;
    end;
 
-   CachedSystem := System;
-   SyncDuration := CachedSystem.Now - FAnchorTime;
+   SyncDuration := System.Now - FAnchorTime;
 
    if (SyncDuration.IsZero) then
    begin
@@ -1116,7 +1234,7 @@ begin
    Busy := true;
    {$ENDIF}
 
-   Encyclopedia := CachedSystem.Encyclopedia;
+   Encyclopedia := System.Encyclopedia;
 
    GroundChanged := False;
    GroundWasMinable := IsMinable;
@@ -1140,14 +1258,14 @@ begin
       {$IFDEF DEBUG}
       if (DynastyData^.FOrePiles.IsNotEmpty) then
       begin
-         CurrentOrePileMass := GetTotalOrePileMass(Dynasty);
+         TotalOrePileMass := GetTotalOrePileMass(Dynasty);
          OrePileRecordedMass := 0.0;
          if (Length(DynastyData^.FOrePileComposition) > 0) then
             for Ore := Low(DynastyData^.FOrePileComposition) to High(DynastyData^.FOrePileComposition) do // $R-
             begin
                OrePileRecordedMass := OrePileRecordedMass + Encyclopedia.Materials[Ore].MassPerUnit * DynastyData^.FOrePileComposition[Ore];
             end;
-         Assert(CurrentOrePileMass <= OrePileCapacity + 0.00001, 'already over capacity');
+         Assert(TotalOrePileMass <= OrePileCapacity + 0.00001, 'already over ore capacity: ' + FloatToStr(TotalOrePileMass) + 'kg ore in piles with capacity ' + FloatToStr(OrePileCapacity) + 'kg');
       end;
       {$ENDIF}
 
@@ -1196,7 +1314,7 @@ begin
                Distribution[Ore] := Fraction32.FromDouble(FGroundComposition[Ore] * Encyclopedia.Materials[Ore].MassPerUnit / TotalCompositionMass);
             end;
             Fraction32.NormalizeArray(@Distribution[Low(TOres)], Length(Distribution));
-            Ore := TOres(Fraction32.ChooseFrom(@Distribution[Low(TOres)], Length(Distribution), CachedSystem.RandomNumberGenerator) + Low(TOres));
+            Ore := TOres(Fraction32.ChooseFrom(@Distribution[Low(TOres)], Length(Distribution), System.RandomNumberGenerator) + Low(TOres));
             Quantity := FGroundComposition[Ore];
             Assert(Quantity > 0);
             // TODO: consider truncating and remembering how much is left over for next time
@@ -1275,48 +1393,17 @@ begin
 
       // Can't use GetTotalOrePileMass() because FNextEvent might not be nil so it
       // might attempt to re-apply the mass flow rate from before the sync.
-      CurrentOrePileMass := 0.0;
+      TotalOrePileMass := 0.0;
       if (Length(DynastyData^.FOrePileComposition) > 0) then
          for Ore := Low(DynastyData^.FOrePileComposition) to High(DynastyData^.FOrePileComposition) do // $R-
          begin
-            CurrentOrePileMass := CurrentOrePileMass + Encyclopedia.Materials[Ore].MassPerUnit * DynastyData^.FOrePileComposition[Ore];
+            TotalOrePileMass := TotalOrePileMass + Encyclopedia.Materials[Ore].MassPerUnit * DynastyData^.FOrePileComposition[Ore];
          end;
-      if (CurrentOrePileMass > OrePileCapacity) then
+      if (TotalOrePileMass > OrePileCapacity) then
       begin
-         TotalTransferMass := CurrentOrePileMass - OrePileCapacity;
-         Assert(TotalTransferMass >= 0);
-         ActualTransfer := 0.0;
-         for Ore in TOres do
-         begin
-            TransferQuantity := RoundUInt64(DynastyData^.FOrePileComposition[Ore] * TotalTransferMass / CurrentOrePileMass);
-            if (TransferQuantity > 0) then
-            begin
-               Dec(DynastyData^.FOrePileComposition[Ore], TransferQuantity);
-               Inc(FGroundComposition[Ore], TransferQuantity);
-               OrePilesAffected := True;
-               GroundChanged := True;
-               ActualTransfer := ActualTransfer + TransferQuantity * Encyclopedia.Materials[Ore].MassPerUnit;
-            end;
-         end;
-
-         if (ActualTransfer < TotalTransferMass) then
-         begin
-            Fraction32.InitArray(@Distribution[Low(TOres)], Length(Distribution));
-            for Ore in TOres do
-            begin
-               Distribution[Ore] := Fraction32.FromDouble(DynastyData^.FOrePileComposition[Ore] * Encyclopedia.Materials[Ore].MassPerUnit / CurrentOrePileMass);
-            end;
-            Fraction32.NormalizeArray(@Distribution[Low(TOres)], Length(Distribution));
-            Ore := TOres(Fraction32.ChooseFrom(@Distribution[Low(TOres)], Length(Distribution), CachedSystem.RandomNumberGenerator) + Low(TOres));
-            Quantity := DynastyData^.FOrePileComposition[Ore];
-            Assert(Quantity > 0);
-            TransferQuantity := RoundUInt64((TotalTransferMass - ActualTransfer) / Encyclopedia.Materials[Ore].MassPerUnit);
-            Dec(DynastyData^.FOrePileComposition[Ore], TransferQuantity);
-            OrePilesAffected := True;
-            ActualTransfer := ActualTransfer + TransferQuantity * Encyclopedia.Materials[Ore].MassPerUnit;
-            Inc(FGroundComposition[Ore], TransferQuantity);
-            GroundChanged := True;
-         end;
+         ReturnOreToGround(DynastyData, TotalOrePileMass, TotalOrePileMass - OrePileCapacity);
+         OrePilesAffected := True;
+         GroundChanged := True;
       end;
 
       if (OrePilesAffected and DynastyData^.FOrePiles.IsNotEmpty) then
@@ -1330,14 +1417,6 @@ begin
          for MaterialPile in DynastyData^.FMaterialPiles.Without(nil) do
             MaterialPile.RegionAdjustedMaterialPiles();
       end;
-
-      {$IFDEF DEBUG}
-      if (DynastyData^.FOrePiles.IsNotEmpty) then
-      begin
-         CurrentOrePileMass := GetTotalOrePileMass(Dynasty);
-         Assert(CurrentOrePileMass <= OrePileCapacity, 'now over capacity');
-      end;
-      {$ENDIF}
    end;
 
    if (GroundChanged) then
@@ -1352,7 +1431,7 @@ begin
       end;
    end;
 
-   FAnchorTime := CachedSystem.Now;
+   FAnchorTime := System.Now;
 
    {$IFOPT C+} Assert(Busy); Busy := False; {$ENDIF}
 end;
@@ -1372,6 +1451,43 @@ begin
       FDynamic := False;
    end;
    MarkAsDirty([dkNeedsHandleChanges]);
+end;
+
+procedure TRegionFeatureNode.ReturnOreToGround(DynastyData: PPerDynastyData; TotalOrePileMass, TotalTransferMass: Double);
+var
+   Ore: TOres;
+   ActualTransfer: Double;
+   TransferQuantity, TotalQuantity: UInt64;
+   Distribution: TOreFractions;
+begin
+   Assert(TotalTransferMass >= 0);
+   ActualTransfer := 0.0;
+   for Ore in TOres do
+   begin
+      TransferQuantity := RoundUInt64(DynastyData^.FOrePileComposition[Ore] * TotalTransferMass / TotalOrePileMass);
+      if (TransferQuantity > 0) then
+      begin
+         Dec(DynastyData^.FOrePileComposition[Ore], TransferQuantity);
+         Inc(FGroundComposition[Ore], TransferQuantity);
+         ActualTransfer := ActualTransfer + TransferQuantity * System.Encyclopedia.Materials[Ore].MassPerUnit;
+      end;
+   end;
+   if (ActualTransfer < TotalTransferMass) then
+   begin
+      Fraction32.InitArray(@Distribution[Low(TOres)], Length(Distribution));
+      for Ore in TOres do
+      begin
+         Distribution[Ore] := Fraction32.FromDouble(DynastyData^.FOrePileComposition[Ore] * System.Encyclopedia.Materials[Ore].MassPerUnit / TotalOrePileMass);
+      end;
+      Fraction32.NormalizeArray(@Distribution[Low(TOres)], Length(Distribution));
+      Ore := TOres(Fraction32.ChooseFrom(@Distribution[Low(TOres)], Length(Distribution), System.RandomNumberGenerator) + Low(TOres));
+      TotalQuantity := DynastyData^.FOrePileComposition[Ore];
+      Assert(TotalQuantity > 0);
+      TransferQuantity := RoundUInt64((TotalTransferMass - ActualTransfer) / System.Encyclopedia.Materials[Ore].MassPerUnit);
+      Dec(DynastyData^.FOrePileComposition[Ore], TransferQuantity);
+      ActualTransfer := ActualTransfer + TransferQuantity * System.Encyclopedia.Materials[Ore].MassPerUnit;
+      Inc(FGroundComposition[Ore], TransferQuantity);
+   end;
 end;
 
 procedure TRegionFeatureNode.HandleScheduledEvent(var Data);
@@ -1454,7 +1570,7 @@ procedure TRegionFeatureNode.HandleChanges();
 
 var
    OrePileCapacity, RemainingOrePileCapacity: Double;
-   CurrentGroundMass, CurrentOrePileMass, MinMassTransfer: Double;
+   CurrentGroundMass, TotalOrePileMass, MinMassTransfer: Double;
    AllDynastyMiningRate, Rate, TotalMinerMaxRate, TotalMiningToRefineryRate, RefiningRate, MaterialConsumptionRate: TRate;
    TimeUntilGroundEmpty, TimeUntilOrePilesFull, TimeUntilAnyOrePileEmpty, TimeUntilThisOrePileEmpty,
    TimeUntilAnyMaterialPileFull, TimeUntilThisMaterialPileFull, TimeUntilAnyMaterialPileEmpty, TimeUntilNextEvent: TMillisecondsDuration;
@@ -1495,7 +1611,7 @@ begin
          DynastyData^.FRefineries.RemoveAll(nil);
          DynastyData^.FMaterialPiles.RemoveAll(nil);
          DynastyData^.FMaterialConsumers.RemoveAll(nil);
-         CurrentOrePileMass := GetTotalOrePileMass(Dynasty);
+         TotalOrePileMass := GetTotalOrePileMass(Dynasty);
          MaterialCapacities := nil;
          MaterialFactoryRates := nil;
          MaterialConsumerCounts := nil;
@@ -1762,7 +1878,7 @@ begin
          end;
 
          // Miners
-         RemainingOrePileCapacity := OrePileCapacity - CurrentOrePileMass;
+         RemainingOrePileCapacity := OrePileCapacity - TotalOrePileMass;
          MinMassTransfer := GetMinOreMassTransfer();
          TimeUntilOrePilesFull := TMillisecondsDuration.Infinity;
          if (CurrentGroundMass > 0) then
@@ -1890,6 +2006,145 @@ begin
 end;
 
 // TODO: factories
+
+procedure TRegionFeatureNode.RehomeOreForPile(OrePile: IOrePile);
+var
+   Dynasty: TDynasty;
+   DynastyData: PPerDynastyData;
+   TotalOrePileCapacity, TotalOrePileMass: Double;
+begin
+   SyncAndReconsider();
+   Assert(not FDynamic);
+   Dynasty := OrePile.GetDynasty();
+   DynastyData := FData[Dynasty];
+   DynastyData^.FOrePiles.Replace(OrePile, nil);
+   TotalOrePileCapacity := 0.0;
+   if (DynastyData^.FOrePiles.IsNotEmpty) then
+   begin
+      for OrePile in DynastyData^.FOrePiles.Without(nil) do
+      begin
+         TotalOrePileCapacity := TotalOrePileCapacity + OrePile.GetOrePileCapacity();
+      end;
+   end;
+   TotalOrePileMass := GetTotalOrePileMass(Dynasty);
+   if (TotalOrePileCapacity < TotalOrePileMass) then
+   begin
+      ReturnOreToGround(DynastyData, TotalOrePileMass, TotalOrePileMass - TotalOrePileCapacity);
+   end;
+   MarkAsDirty([dkNeedsHandleChanges, dkUpdateClients, dkUpdateJournal]);
+end;
+
+procedure TRegionFeatureNode.FlattenOrePileIntoGround(OrePile: IOrePile);
+var
+   Dynasty: TDynasty;
+   DynastyData: PPerDynastyData;
+   PileRatio, TotalOrePileCapacity, TotalOrePileMass, CurrentOrePileMass: Double;
+begin
+   SyncAndReconsider();
+   Assert(not FDynamic);
+   Dynasty := OrePile.GetDynasty();
+   DynastyData := FData[Dynasty];
+   TotalOrePileMass := GetTotalOrePileMass(Dynasty);
+   if (TotalOrePileMass > 0.0) then
+   begin
+      TotalOrePileCapacity := 0.0;
+      if (DynastyData^.FOrePiles.IsNotEmpty) then
+      begin
+         for OrePile in DynastyData^.FOrePiles.Without(nil) do
+         begin
+            TotalOrePileCapacity := TotalOrePileCapacity + OrePile.GetOrePileCapacity();
+         end;
+      end;
+      PileRatio := OrePile.GetOrePileCapacity() / TotalOrePileCapacity;
+      CurrentOrePileMass := TotalOrePileMass * PileRatio;
+      ReturnOreToGround(DynastyData, TotalOrePileMass, CurrentOrePileMass);
+   end;
+   DynastyData^.FOrePiles.Replace(OrePile, nil);
+   MarkAsDirty([dkNeedsHandleChanges, dkUpdateClients, dkUpdateJournal]);
+end;
+
+function TRegionFeatureNode.ExtractMaterialPile(MaterialPile: IMaterialPile): UInt64;
+var
+   Dynasty: TDynasty;
+   DynastyData: PPerDynastyData;
+   Material: TMaterial;
+   PileRatio: Double;
+begin
+   SyncAndReconsider();
+   Assert(not FDynamic);
+   Dynasty := MaterialPile.GetDynasty();
+   DynastyData := FData[Dynasty];
+   Material := MaterialPile.GetMaterialPileMaterial();
+   if (Assigned(DynastyData^.FMaterialPileComposition) and DynastyData^.FMaterialPileComposition.Has(Material)) then
+   begin
+      PileRatio := MaterialPile.GetMaterialPileCapacity() / GetTotalMaterialPileCapacity(Dynasty, Material);
+      Result := RoundUInt64(GetTotalMaterialPileQuantity(Dynasty, Material) * PileRatio);
+      DynastyData^.DecMaterialPile(Material, Result);
+   end
+   else
+      Result := 0;
+   DynastyData^.FMaterialPiles.Replace(MaterialPile, nil);
+   MarkAsDirty([dkNeedsHandleChanges, dkUpdateClients, dkUpdateJournal]);
+end;
+
+function TRegionFeatureNode.RehomeMaterialPile(MaterialPile: IMaterialPile): UInt64;
+var
+   Dynasty: TDynasty;
+   DynastyData: PPerDynastyData;
+   Material: TMaterial;
+   PileRatio: Double;
+   PileCapacity, TotalCapacity, RemainingCapacity, RemainingQuantity, AffectedQuantity, TotalMaterialQuantity: UInt64;
+begin
+   Writeln(DebugName, ' :: RehomeMaterialPile');
+   SyncAndReconsider();
+   Assert(not FDynamic);
+   Dynasty := MaterialPile.GetDynasty();
+   DynastyData := FData[Dynasty];
+   Material := MaterialPile.GetMaterialPileMaterial();
+   Writeln('  rehoming ', Material.Name);
+   if (Assigned(DynastyData^.FMaterialPileComposition) and DynastyData^.FMaterialPileComposition.Has(Material)) then
+   begin
+      PileCapacity := MaterialPile.GetMaterialPileCapacity();
+      TotalCapacity := GetTotalMaterialPileCapacity(Dynasty, Material);
+      Assert(PileCapacity <= TotalCapacity);
+      PileRatio := PileCapacity / TotalCapacity;
+      TotalMaterialQuantity := GetTotalMaterialPileQuantity(Dynasty, Material);
+      AffectedQuantity := RoundUInt64(TotalMaterialQuantity * PileRatio);
+      Assert(TotalMaterialQuantity >= AffectedQuantity);
+      if (AffectedQuantity > 0) then
+      begin
+         RemainingCapacity := TotalCapacity - PileCapacity;
+         RemainingQuantity := TotalMaterialQuantity - AffectedQuantity;
+         if (RemainingCapacity <= RemainingQuantity) then
+         begin
+            // nothing fits at all, we're completely full
+            Result := AffectedQuantity;
+         end
+         else
+         if (RemainingCapacity - RemainingQuantity < AffectedQuantity) then
+         begin
+            // we can't fit it all in the remaining capacity
+            Result := AffectedQuantity - (RemainingCapacity - RemainingQuantity);
+         end
+         else
+         begin
+            Assert(TotalMaterialQuantity <= RemainingCapacity);
+            // it all fits in the remaining capacity
+            Result := 0;
+         end;
+         if (Result > 0) then
+         begin
+            DynastyData^.DecMaterialPile(Material, Result);
+         end;
+      end
+      else
+         Result := 0; // the pile didn't have anything in it
+   end
+   else
+      Result := 0; // we don't have any of that material
+   DynastyData^.FMaterialPiles.Replace(MaterialPile, nil);
+   MarkAsDirty([dkNeedsHandleChanges, dkUpdateClients, dkUpdateJournal]);
+end;
 
 procedure TRegionFeatureNode.RemoveMaterialConsumer(MaterialConsumer: IMaterialConsumer);
 begin

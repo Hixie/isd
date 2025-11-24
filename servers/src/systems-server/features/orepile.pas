@@ -59,6 +59,7 @@ type
       procedure Detaching(); override;
       function GetMass(): Double; override;
       function GetMassFlowRate(): TRate; override;
+      function HandleBusMessage(Message: TBusMessage): Boolean; override;
       procedure HandleChanges(); override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
       procedure ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynasty.TArray); override;
@@ -77,7 +78,7 @@ type
 implementation
 
 uses
-   exceptions, sysutils, systemnetwork, knowledge, messages, isdprotocol;
+   exceptions, sysutils, systemnetwork, knowledge, messages, isdprotocol, rubble, commonbuses;
 
 function TOreMaterialKnowledgePackage.GetIsPointer(): Boolean;
 begin
@@ -277,6 +278,8 @@ end;
 
 destructor TOrePileFeatureNode.Destroy();
 begin
+   if (FRegion.Assigned) then
+      FRegion.Unwrap().RemoveOrePile(Self);
    FDynastyKnowledge.Done();
    inherited;
 end;
@@ -308,6 +311,48 @@ end;
 function TOrePileFeatureNode.GetDynasty(): TDynasty;
 begin
    Result := Parent.Owner;
+end;
+
+function TOrePileFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
+begin
+   if (Message is TRubbleCollectionMessage) then
+   begin
+      if (FRegion.Assigned) then
+      begin
+         FRegion.Unwrap().FlattenOrePileIntoGround(Self);
+         FRegion.Clear();
+         MarkAsDirty([dkUpdateClients, dkNeedsHandleChanges]);
+      end;
+      Result := False;
+   end
+   else
+   if (Message is TDismantleMessage) then
+   begin
+      if (not Assigned(Parent.Owner)) then
+      begin
+         // TODO: when we add the ability to have an ore pile hold ore separate from the region, we should
+         // handle this case by moving the ore to region on behalf of the Message.Owner dynasty.
+         ASsert(not FRegion.Assigned);
+      end
+      else
+      begin
+         Assert((Message as TDismantleMessage).Owner = Parent.Owner);
+         if (FRegion.Assigned) then
+         begin
+            FRegion.Unwrap().RehomeOreForPile(Self);
+            FRegion.Clear();
+         end
+         else
+         begin
+            // TODO: when we add the ability to have an ore pile hold ore separate from the region, we should
+            // handle this case by moving the ore to region on behalf of the Message.Owner dynasty.
+         end;
+      end;
+      Assert(not FRegion.Assigned);
+      Result := False;
+   end
+   else
+      Result := False;
 end;
 
 procedure TOrePileFeatureNode.HandleChanges();
@@ -412,7 +457,6 @@ end;
 
 function TOrePileFeatureNode.HandleCommand(Command: UTF8String; var Message: TMessage): Boolean;
 var
-   CachedSystem: TSystem;
    PlayerDynasty: TDynasty;
    DynastyIndex: Cardinal;
    OreKnowledge: TOreFilter;
@@ -420,12 +464,11 @@ var
    Ore: TOres;
    Total: Double;
 begin
-   if (Command = 'analyze') then
+   if (Command = ccAnalyze) then
    begin
       Result := True;
-      CachedSystem := System;
       PlayerDynasty := (Message.Connection as TConnection).PlayerDynasty;
-      DynastyIndex := CachedSystem.DynastyIndex[PlayerDynasty];
+      DynastyIndex := System.DynastyIndex[PlayerDynasty];
       // TODO: check if we have the right visibility on the ore pile to do an analysis
       if (Message.CloseInput()) then
       begin
@@ -439,7 +482,7 @@ begin
             begin
                Total := Total + OreQuantities[Ore];
             end;
-            Message.Output.WriteInt64(CachedSystem.Now.AsInt64);
+            Message.Output.WriteInt64(System.Now.AsInt64);
             Message.Output.WriteDouble(Total);
             for Ore in TOres do
             begin
@@ -454,7 +497,7 @@ begin
       end;
    end
    else
-      Result := inherited;
+      Result := False;
 end;
 
 initialization
