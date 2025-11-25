@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
-import 'binarystream.dart';
 import 'stringstream.dart';
 import 'websocket/websocket.dart';
 
@@ -71,11 +70,7 @@ class Connection {
   final Duration? timeout;
 
   WebSocket? _websocket;
-  CodeTables? _codeTables;
   bool _active = true;
-
-  // only valid when handling a message synchronously
-  CodeTables get codeTables => _codeTables!;
 
   Timer? _timer;
   Completer<void>? _hold;
@@ -93,7 +88,6 @@ class Connection {
     _timer = null;
     _websocket?.close();
     _websocket = null;
-    _codeTables = null;
     assert(_hold == null);
     if (_conversations.isEmpty) {
       _hold = Completer<void>();
@@ -119,7 +113,6 @@ class Connection {
           }
           log('$url connecting; ${_conversations.length} conversations to send');
           _websocket = await WebSocket.connect(url, onText: _textHandler, onBinary: _binaryHandler);
-          _codeTables = CodeTables();
           if (!_active) {
             return;
           }
@@ -142,7 +135,6 @@ class Connection {
           log('$url stream terminated with ${_conversations.length} conversations pending');
         } finally {
           _websocket = null;
-          _codeTables = null;
           _connected.value = false;
         }
       } on Exception catch (e) {
@@ -250,7 +242,6 @@ class Connection {
     _timer = null;
     _websocket?.close();
     _websocket = null;
-    _codeTables = null;
     connectionStatus.removeFailedConnection(this);
   }
 

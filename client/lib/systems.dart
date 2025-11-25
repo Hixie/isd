@@ -96,7 +96,10 @@ class SystemServer {
   static const int fcAssetPile = 0x1F;
   static const int expectedVersion = fcAssetPile;
 
+  final SystemSingletons _singletons = SystemSingletons();
+  
   Future<void> _handleLogin() async {
+    _singletons.reset();
     final StreamReader reader = await _connection.send(<String>['login', token], queue: false);
     final int version = reader.readInt();
     if (version > expectedVersion) {
@@ -127,7 +130,7 @@ class SystemServer {
   static const bool _verbose = false;
 
   void _handleUpdate(Uint8List message) {
-    final BinaryStreamReader reader = BinaryStreamReader(message, _connection.codeTables);
+    final BinaryStreamReader reader = BinaryStreamReader(message, _singletons);
     AssetNode? colonyShip;
     while (!reader.done) {
       final int systemID = reader.readUInt32();
@@ -160,10 +163,7 @@ class SystemServer {
         asset.timeOrigin = currentTime;
         asset.size = reader.readDouble();
         asset.name = reader.readString();
-        asset.assetClassID = reader.readInt32();
-        asset.icon = reader.readString();
-        asset.className = reader.readString();
-        asset.description = reader.readString();
+        asset.assetClass = reader.readAssetClass(allowUnknowns: true)!;
         int lastFeatureCode = 0x00;
         int featureCode;
         final List<Feature> features = <Feature>[];
@@ -282,10 +282,8 @@ class SystemServer {
               features.add(SurfaceFeature(children));
             case fcGrid:
               final double cellSize = reader.readDouble();
-              final int width = reader.readUInt32();
-              assert(width > 0);
-              final int height = reader.readUInt32();
-              assert(height > 0);
+              final int dimension = reader.readUInt32();
+              assert(dimension > 0);
               final Map<AssetNode, GridParameters> children = <AssetNode, GridParameters>{};
               AssetNode? child;
               while ((child = _readAsset(reader)) != null) {
@@ -293,7 +291,13 @@ class SystemServer {
                 final int y = reader.readUInt32();
                 children[child!] = (x: x, y: y);
               }
-              features.add(GridFeature(cellSize, width, height, children));
+              final List<Buildable> buildables = <Buildable>[];
+              AssetClass? assetClass;
+              while ((assetClass = reader.readAssetClass()) != null) {
+                final int size = reader.readUInt8();
+                buildables.add((assetClass: assetClass!, size: size));
+              }
+              features.add(GridFeature(cellSize, dimension, buildables, children));
             case fcPopulation:
               final DisabledReason disabledReason = DisabledReason(reader.readUInt32());
               final int count = reader.readUInt32();
@@ -348,13 +352,8 @@ class SystemServer {
                 switch (kind) {
                   case 0x00: break loop;
                   case 0x01:
-                    final int id = reader.readInt32();
-                    final String icon = reader.readString();
-                    final String name = reader.readString();
-                    final String description = reader.readString();
-                    final AssetClass assetClass = AssetClass(id: id, icon: icon, name: name, description: description);
-                    assetClasses[id] = assetClass;
-                    system.registerAssetClass(assetClass);
+                    final AssetClass assetClass = reader.readAssetClass()!;
+                    assetClasses[assetClass.id] = assetClass;
                   case 0x02:
                     final int id = reader.readInt32();
                     final String icon = reader.readString();

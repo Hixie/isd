@@ -5,7 +5,6 @@ import 'dart:ui';
 import 'package:flutter/rendering.dart' hide Gradient;
 import 'package:flutter/widgets.dart' hide Gradient;
 
-import '../assetclasses.dart';
 import '../assets.dart';
 import '../layout.dart';
 import '../materials.dart';
@@ -79,17 +78,6 @@ class SystemNode extends WorldNode {
 
   @override
   double get diameter => root.diameter;
-
-  // Tracks all asset classes ever seen during this session in this system.
-  final Map<int, AssetClass> _assetClasses = <int, AssetClass>{};
-
-  void registerAssetClass(AssetClass assetClass) {
-    // TODO: when we deduplicate asset classes in the protocol:
-    // assert(!_assetClasses.containsKey(assetClass.id));
-    _assetClasses[assetClass.id] = assetClass;
-  }
-
-  AssetClass assetClass(int id) => _assetClasses[id]!;
 
   // Tracks all materials ever seen during this session in this system.
   final Map<int, Material> _materials = <int, Material>{};

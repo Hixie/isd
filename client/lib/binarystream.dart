@@ -1,21 +1,30 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-class CodeTables {
+import 'assetclasses.dart';
+
+class SystemSingletons {
   final Map<int, String> _strings = <int, String>{};
-  final Map<int, Object> _objects = <int, Object>{};
+  final Map<int, AssetClass> _assetClasses = <int, AssetClass>{};
+
+  AssetClass assetClass(int id) => _assetClasses[id]!;
+
+  void reset() {
+    _strings.clear();
+    _assetClasses.clear();
+  }
 }
 
 typedef ObjectReader = Object Function();
 
 class BinaryStreamReader {
-  BinaryStreamReader(this._bytes, this._codeTables) : _source = _bytes.buffer.asByteData(_bytes.offsetInBytes, _bytes.lengthInBytes);
+  BinaryStreamReader(this._bytes, this._singletons) : _source = _bytes.buffer.asByteData(_bytes.offsetInBytes, _bytes.lengthInBytes);
 
   final Uint8List _bytes;
   final ByteData _source;
   int _position = 0;
 
-  final CodeTables _codeTables;
+  final SystemSingletons _singletons;
 
   bool readBool() {
     final int result = _source.getUint8(_position);
@@ -66,17 +75,27 @@ class BinaryStreamReader {
   String readString() {
     assert(!checkpointed);
     final int code = readInt32();
-    return _codeTables._strings.putIfAbsent(code, readRawString);
+    return _singletons._strings.putIfAbsent(code, readRawString);
   }
 
-  // TODO: remove, obsolete?
-  T readObject<T>(ObjectReader reader) {
+  AssetClass _readRawAssetClass(int id) {
+    return AssetClass(
+      id: id,
+      icon: readString(),
+      name: readString(),
+      description: readString(),
+    );
+  }
+  
+  AssetClass? readAssetClass({ bool allowUnknowns = false }) {
     assert(!checkpointed);
     final int code = readInt32();
     if (code == 0) {
-      return null as T;
+      if (allowUnknowns)
+        return _readRawAssetClass(0);
+      return null;
     }
-    return _codeTables._objects.putIfAbsent(code, reader) as T;
+    return _singletons._assetClasses.putIfAbsent(code, () => _readRawAssetClass(code));
   }
 
   List<int>? _checkpoints;

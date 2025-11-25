@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 
+import 'assetclasses.dart';
 import 'containers/orbits.dart';
 import 'dynasty.dart';
 import 'hud.dart';
@@ -103,11 +104,11 @@ class AssetNode extends WorldNode {
 
   final int id;
 
-  int get assetClassID => _assetClassID!;
-  int? _assetClassID;
-  set assetClassID(int value) {
-    if (_assetClassID != value) {
-      _assetClassID = value;
+  AssetClass get assetClass => _assetClass!;
+  AssetClass? _assetClass;
+  set assetClass(AssetClass value) {
+    if (_assetClass != value) {
+      _assetClass = value;
       notifyListeners();
     }
   }
@@ -169,34 +170,7 @@ class AssetNode extends WorldNode {
     }
   }
 
-  String get icon => _icon!;
-  String? _icon;
-  set icon(String value) {
-    if (_icon != value) {
-      _icon = value;
-      notifyListeners();
-    }
-  }
-
-  String get className => _className!;
-  String? _className;
-  set className(String value) {
-    if (_className != value) {
-      _className = value;
-      notifyListeners();
-    }
-  }
-
-  String get nameOrClassName => name.isEmpty ? className : name;
-
-  String get description => _description!;
-  String? _description;
-  set description(String value) {
-    if (_description != value) {
-      _description = value;
-      notifyListeners();
-    }
-  }
+  String get nameOrClassName => name.isEmpty ? assetClass.name : name;
 
   Iterable<Feature> get features => _features;
   final List<Feature> _features = <Feature>[];
@@ -368,14 +342,14 @@ class AssetNode extends WorldNode {
         node: this,
         diameter: diameter,
         maxDiameter: worldParent!.maxRenderDiameter,
-        icon: icon,
+        icon: assetClass.icon,
         ghost: isGhost,
       ));
     }
     if (boxes != null) {
       backgrounds.add(WorldFields(
         node: this,
-        icon: icon,
+        icon: assetClass.icon,
         maxDiameter: worldParent!.maxRenderDiameter,
         diameter: diameter,
         children: boxes,
@@ -414,7 +388,7 @@ class AssetNode extends WorldNode {
   }
 
   Widget asIcon(BuildContext context, { required double size, IconsManager? icons, String? tooltip }) {
-    return IconsManager.icon(context, icon, size: size, icons: icons, tooltip: tooltip);
+    return IconsManager.icon(context, assetClass.icon, size: size, icons: icons, tooltip: tooltip);
   }
 
   InlineSpan describe(BuildContext context, IconsManager icons, { required double iconSize }) {
@@ -426,7 +400,7 @@ class AssetNode extends WorldNode {
     return TextSpan(
       children: <InlineSpan>[
         WidgetSpan(child: icon),
-        TextSpan(text: name.isNotEmpty ? ' $name' : ' $className'),
+        TextSpan(text: name.isNotEmpty ? ' $name' : ' ${assetClass.name}'),
         WidgetSpan(
           child: Padding(
             padding: const EdgeInsets.only(left: 4.0, bottom: 1.0),
@@ -458,13 +432,13 @@ class AssetNode extends WorldNode {
           ),
         ),
         if (name.isNotEmpty)
-          TextSpan(text: ' ($className)'),
+          TextSpan(text: ' (${assetClass.name})'),
       ],
     );
   }
 
   @override
-  String toString() => '<$_className:$name#${hashCode.toRadixString(16)}>';
+  String toString() => '<${assetClass.name}:$name#${hashCode.toRadixString(16)}>';
 }
 
 class AssetInspector extends StatefulWidget {
@@ -517,11 +491,11 @@ class _AssetInspectorState extends State<AssetInspector> {
       if (node.name.isNotEmpty) // we'll put the asset name in the header
         Padding(
           padding: dialogPadding,
-          child: Text(node.className, style: bold),
+          child: Text(node.assetClass.name, style: bold),
         ),
       Padding(
         padding: dialogPadding,
-        child: Text(node.description, softWrap: true, overflow: TextOverflow.visible),
+        child: Text(node.assetClass.description, softWrap: true, overflow: TextOverflow.visible),
       ),
     ];
     if (node.ownerDynasty == null) {

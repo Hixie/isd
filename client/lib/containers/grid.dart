@@ -14,19 +14,20 @@ import '../layout.dart';
 import '../nodes/system.dart';
 import '../shaders.dart';
 import '../spacetime.dart';
-import '../stringstream.dart';
 import '../widgets.dart';
 import '../world.dart';
 
+typedef Buildable = ({AssetClass assetClass, int size});
 typedef GridParameters = ({int x, int y}); // could also just store this as an index, and use half the memory
 
 class GridFeature extends ContainerFeature {
-  GridFeature(this.cellSize, this.width, this.height, this.children);
+  GridFeature(this.cellSize, this.dimension, this.buildables, this.children);
 
   final double cellSize;
-  final int width;
-  final int height;
+  final int dimension;
 
+  final List<Buildable> buildables;
+  
   // consider this read-only; the entire GridFeature gets replaced when the child list changes
   final Map<AssetNode, GridParameters> children;
 
@@ -34,8 +35,8 @@ class GridFeature extends ContainerFeature {
   Offset findLocationForChild(AssetNode child, List<VoidCallback> callbacks) {
     final GridParameters childData = children[child]!;
     return Offset(
-      (childData.x - width / 2 + 0.5) * cellSize,
-      (childData.y - height / 2 + 0.5) * cellSize,
+      (childData.x - dimension / 2 + 0.5) * cellSize,
+      (childData.y - dimension / 2 + 0.5) * cellSize,
     );
   }
 
@@ -68,24 +69,25 @@ class GridFeature extends ContainerFeature {
 
   @override
   Widget buildRenderer(BuildContext context) {
-    final List<Widget> childList = List<Widget>.generate(width * height, (int index) => DefaultGridCell(
+    final List<Widget> childList = List<Widget>.generate(dimension * dimension, (int index) => DefaultGridCell(
       key: ValueKey<int>(index),
       diameter: cellSize,
       maxDiameter: parent.diameter,
       node: parent,
-      x: index % width,
-      y: index ~/ width,
+      buildables: buildables,
+      x: index % dimension,
+      y: index ~/ dimension,
     ));
     for (AssetNode child in children.keys) {
       final GridParameters parameters = children[child]!;
-      childList[parameters.y * width + parameters.x] = child.build(context);
+      childList[parameters.y * dimension + parameters.x] = child.build(context);
     }
     return GridWidget(
       spaceTime: SystemNode.of(parent).spaceTime,
       node: parent,
       cellSize: cellSize,
-      width: width,
-      height: height,
+      width: dimension,
+      height: dimension,
       children: childList,
     );
   }
@@ -120,6 +122,7 @@ class DefaultGridCell extends StatelessWidget {
   const DefaultGridCell({
     super.key,
     required this.node,
+    required this.buildables,
     required this.diameter,
     required this.maxDiameter,
     required this.x,
@@ -127,6 +130,7 @@ class DefaultGridCell extends StatelessWidget {
   });
 
   final AssetNode node;
+  final List<Buildable> buildables;
   final double diameter;
   final double maxDiameter;
   final int x;
@@ -138,7 +142,7 @@ class DefaultGridCell extends StatelessWidget {
       node: node,
       diameter: diameter,
       maxDiameter: maxDiameter,
-      child: CellBuildButton(node: node, x: x, y: y),
+      child: CellBuildButton(node: node, buildables: buildables, x: x, y: y),
     );
   }
 }
@@ -147,11 +151,13 @@ class CellBuildButton extends StatefulWidget {
   const CellBuildButton({
     super.key,
     required this.node,
+    required this.buildables,
     required this.x,
     required this.y,
   });
 
   final AssetNode node;
+  final List<Buildable> buildables;
   final int x;
   final int y;
 
@@ -198,6 +204,7 @@ class _CellBuildButtonState extends State<CellBuildButton> {
        child: BuildUi(
          system: SystemNode.of(widget.node),
          node: widget.node,
+         buildables: widget.buildables,
          x: widget.x,
          y: widget.y,
        ),
@@ -250,12 +257,14 @@ class BuildUi extends StatefulWidget {
     super.key,
     required this.system,
     required this.node,
+    required this.buildables,
     required this.x,
     required this.y,
   }); // TODO: hard-code the key to be on all the arguments
 
   final SystemNode system;
   final AssetNode node;
+  final List<Buildable> buildables;
   final int x;
   final int y;
 
@@ -264,82 +273,30 @@ class BuildUi extends StatefulWidget {
 }
 
 class _BuildUiState extends State<BuildUi> {
-  final List<AssetClass> _options = <AssetClass>[];
-
-  bool _pending = true;
-  bool _tired = false;
-  Timer? _loadTimer;
-
-  @override
-  void initState() {
-    super.initState();
-    widget.system
-      .play(<Object>[widget.node.id, 'get-buildings', widget.x, widget.y])
-      .then((StreamReader reader) {
-        if (mounted) {
-          _loadTimer?.cancel();
-          setState(() {
-            while (!reader.eof) {
-              _options.add(AssetClass(
-                id: reader.readInt(),
-                icon: reader.readString(),
-                name: reader.readString(),
-                description: reader.readString(),
-              ));
-            }
-            _options.sort(AssetClass.alphabeticalSort);
-            _pending = false;
-            _tired = false;
-          });
-        }
-      });
-    _loadTimer = Timer(const Duration(milliseconds: 750), _loading);
-  }
-
-  void _loading() {
-    setState(() {
-      _tired = true;
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
-    Widget body;
-    if (_pending) {
-      if (_tired) {
-        body = const Center(
-          child: CircularProgressIndicator(),
-        );
-      } else {
-        body = const SizedBox.shrink();
-      }
-    } else {
-      final IconsManager icons = IconsManagerProvider.of(context);
-      final TextTheme textTheme = Theme.of(context).textTheme;
-      body = Padding(
-        padding: const EdgeInsets.fromLTRB(0.0, 0.0, 4.0, 0.0),
-        child: ListView.builder(
-          padding: const EdgeInsets.fromLTRB(22.0, 4.0, 20.0, 24.0),
-          itemCount: _options.length,
-          itemBuilder: (BuildContext context, int index) {
-            return BuildTile(
-              assetClass: _options[index],
-              icons: icons,
-              textTheme: textTheme,
-              onBuild: () {
-                widget.system.play(<Object>[widget.node.id, 'build', widget.x, widget.y, _options[index].id]);
-                HudHandle.of(context).cancel();
-              },
-            );
-          },
-        ),
-      );
-    }
-    return AnimatedSwitcher(
-      child: body,
-      duration: const Duration(milliseconds: 160),
-      switchInCurve: Curves.easeInOut,
-      switchOutCurve: Curves.easeInOut,
+    final List<Buildable> options = widget.buildables
+      .toList()
+      ..sort((Buildable a, Buildable b) => a.assetClass.name.compareTo(b.assetClass.name));
+    final IconsManager icons = IconsManagerProvider.of(context);
+    final TextTheme textTheme = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(0.0, 0.0, 4.0, 0.0),
+      child: ListView.builder(
+        padding: const EdgeInsets.fromLTRB(22.0, 4.0, 20.0, 24.0),
+        itemCount: options.length,
+        itemBuilder: (BuildContext context, int index) {
+          return BuildTile(
+            assetClass: options[index].assetClass,
+            icons: icons,
+            textTheme: textTheme,
+            onBuild: () {
+              widget.system.play(<Object>[widget.node.id, 'build', widget.x, widget.y, options[index].assetClass.id]);
+              HudHandle.of(context).cancel();
+            },
+          );
+        },
+      ),
     );
   }
 }
