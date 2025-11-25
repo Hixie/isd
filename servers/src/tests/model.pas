@@ -5,7 +5,7 @@ unit model;
 interface
 
 uses
-   hashtable, binarystream, genericutils, isdprotocol, plasticarrays, unixutils, endtoend, stringutils;
+   hashtable, binarystream, genericutils, isdprotocol, plasticarrays, unixutils, stringutils;
 
 type
    TModelSystem = class;
@@ -36,10 +36,29 @@ type
       property ModelSystem: TModelSystem read FModelSystem;
    end;
 
+   PAssetClass = ^TAssetClass;
+   TAssetClass = record
+      ID: Int32;
+      Icon: UTF8String;
+      Name: UTF8String;
+      Description: UTF8String;
+   end;
+   
+   TServerStreamReader = class(TBinaryStreamReader)
+   private
+      FModel: TModelSystem;
+   public
+      constructor Create(const Input: RawByteString; AModel: TModelSystem);
+      function ReadStringReference(): UTF8String;
+      function ReadAssetClass(ZeroIndicatesNil: Boolean): PAssetClass;
+   end;
+
    TModelSystem = class
    strict private
       type
-         TModelAssetHashTable = specialize THashTable <UInt32, TModelAsset, CardinalUtils>;
+         TStringHashTable = specialize THashTable<UInt32, UTF8String, CardinalUtils>;
+         TAssetClassHashTable = specialize THashTable<Int32, TAssetClass, LongintUtils>;
+         TModelAssetHashTable = specialize THashTable<UInt32, TModelAsset, CardinalUtils>;
          TModelAssetArray = specialize PlasticArray<TModelAsset, TObjectUtils>;
       var
          FAssets: TModelAssetHashTable;
@@ -50,6 +69,9 @@ type
    private
       var
          FArena: PArena;
+         FStrings: TStringHashTable;
+         FAssetClasses: TAssetClassHashTable;
+         FUnknownAssetClasses: specialize PlasticArray<PAssetClass, PointerUtils>;
    public
       constructor Create();
       destructor Destroy(); override;
@@ -97,20 +119,13 @@ type
       FMassFlowRate: Double;
       FSize: Double;
       FName: UTF8String;
-      FAssetClassID: Int32;
-      FIcon: UTF8String;
-      FAssetClassName: UTF8String;
-      FDescription: UTF8String;
+      FAssetClass: PAssetClass;
    published
       property Owner: UInt32 read FOwner write FOwner;
       property Mass: Double read FMass write FMass;
       property MassFlowRate: Double read FMassFlowRate write FMassFlowRate;
       property Size: Double read FSize write FSize;
       property Name: UTF8String read FName write FName;
-      property AssetClassID: Int32 read FAssetClassID write FAssetClassID;
-      property Icon: UTF8String read FIcon write FIcon;
-      property AssetClassName: UTF8String read FAssetClassName write FAssetClassName;
-      property Description: UTF8String read FDescription write FDescription;
    public
       function HasFeature(FeatureClass: TModelFeatureClass): Boolean;
       property ID: UInt32 read FID;
@@ -120,6 +135,7 @@ type
       property FeatureCount: Cardinal read GetFeatureCount;
       function ToString(): UTF8String; override;
       procedure Describe(var Output: specialize PlasticArray<UTF8String, UTF8StringUtils>; Indent: UTF8String = '');
+      property AssetClass: PAssetClass read FAssetClass write FAssetClass;
    end;
 
    TModelFeature = class abstract
@@ -281,6 +297,10 @@ type
             AssetID: UInt32;
             X, Y: UInt32;
          end;
+         TBuildable = record
+            AssetClass: PAssetClass;
+            Size: Cardinal;
+         end;
    protected
       procedure ResetChildren(); override;
       procedure WalkChildren(Callback: TAssetWalkChildrenCallback); override;
@@ -288,13 +308,13 @@ type
       procedure UpdateFrom(Stream: TServerStreamReader); override;
    strict private
       FCellSize: Double;
-      FWidth, FHeight: UInt32;
+      FDimension: UInt32;
    public
       Children: specialize PlasticArray <TChild, specialize IncomparableUtils<TChild>>;
+      Buildables: specialize PlasticArray <TBuildable, specialize IncomparableUtils<TBuildable>>;
    published
       property CellSize: Double read FCellSize write FCellSize;
-      property Width: UInt32 read FWidth write FWidth;
-      property Height: UInt32 read FHeight write FHeight;
+      property Dimension: UInt32 read FDimension write FDimension;
    end;
 
    TModelPopulationFeature = class (TModelFeature)
@@ -376,8 +396,7 @@ type
          public
             procedure UpdateFrom(Stream: TServerStreamReader); override;
          public
-            AssetClassID: Int32;
-            Icon, Name, Description: UTF8String;
+            AssetClass: PAssetClass;
          end;
          TMaterialKnowledge = class (TKnowledge)
          public
@@ -727,21 +746,87 @@ begin
 end;
 
 
+constructor TServerStreamReader.Create(const Input: RawByteString; AModel: TModelSystem);
+begin
+   inherited Create(Input);
+   FModel := AModel;
+end;
+
+function TServerStreamReader.ReadStringReference(): UTF8String;
+var
+   Code: Cardinal;
+   Value: UTF8String;
+begin
+   Code := ReadCardinal();
+   if (not FModel.FStrings.Has(Code)) then
+   begin
+      Value := ReadString();
+      FModel.FStrings[Code] := Value;
+   end;
+   Result := FModel.FStrings[Code];
+end;
+
+function TServerStreamReader.ReadAssetClass(ZeroIndicatesNil: Boolean): PAssetClass;
+var
+   ID: Longint;
+begin
+   ID := ReadInt32();
+   if (ID = 0) then
+   begin
+      if (ZeroIndicatesNil) then
+      begin
+         Result := nil;
+      end
+      else
+      begin
+         New(Result);
+         FModel.FUnknownAssetClasses.Push(Result);
+         Result^.ID := ID;
+         Result^.Icon := ReadStringReference();
+         Result^.Name := ReadStringReference();
+         Result^.Description := ReadStringReference();
+      end;
+   end
+   else
+   if (not FModel.FAssetClasses.Has(ID)) then
+   begin
+      FModel.FAssetClasses.AddDefault(ID);
+      Result := FModel.FAssetClasses.ItemsPtr[ID];
+      Result^.ID := ID;
+      Result^.Icon := ReadStringReference();
+      Result^.Name := ReadStringReference();
+      Result^.Description := ReadStringReference();
+   end
+   else
+   begin
+      Result := FModel.FAssetClasses.ItemsPtr[ID];
+      Assert(Result^.ID = ID);
+   end;
+end;
+
+
 constructor TModelSystem.Create();
 begin
    inherited;
    FArena := TArena.AllocateArena(Self);
+   FStrings := TStringHashTable.Create(@Integer32Hash32);
+   FAssetClasses := TAssetClassHashTable.Create(@LongintHash32);      
    FAssets := TModelAssetHashTable.Create(@Integer32Hash32, 8);
 end;
 
 destructor TModelSystem.Destroy();
 var
    Asset: TModelAsset;
+   AssetClass: PAssetClass;
 begin
    if (Assigned(FAssets)) then
       for Asset in FAssets.Values do
          Asset.Free();
    FreeAndNil(FAssets);
+   FreeAndNil(FAssetClasses);
+   FreeAndNil(FStrings);
+   for AssetClass in FUnknownAssetClasses do
+      Dispose(AssetClass);
    TArena.FreeArena(FArena);
    inherited;
 end;
@@ -951,10 +1036,7 @@ begin
    MassFlowRate := Stream.ReadDouble();
    Size := Stream.ReadDouble();
    Name := Stream.ReadStringReference();
-   AssetClassID := Stream.ReadInt32();
-   Icon := Stream.ReadStringReference();
-   AssetClassName := Stream.ReadStringReference();
-   Description := Stream.ReadStringReference();
+   AssetClass := Stream.ReadAssetClass(False);
    Index := 0;
    FeatureCode := Stream.ReadCardinal();
    while (FeatureCode <> 0) do
@@ -993,7 +1075,7 @@ end;
 
 function TModelAsset.ToString(): UTF8String;
 begin
-   Result := AssetClassName;
+   Result := AssetClass^.Name;
    if (Name <> '') then
       Result := Result + ' ' + Name;
 end;
@@ -1250,11 +1332,12 @@ end;
 procedure TModelGridFeature.UpdateFrom(Stream: TServerStreamReader);
 var
    Child: TChild;
+   AssetClass: PAssetClass;
+   Buildable: TBuildable;
 begin
    ResetChildren();
    CellSize := Stream.ReadDouble();
-   Width := Stream.ReadCardinal();
-   Height := Stream.ReadCardinal();
+   Dimension := Stream.ReadCardinal();
    while (True) do
    begin
       Child.AssetID := Stream.ReadCardinal();
@@ -1264,6 +1347,19 @@ begin
       Child.Y := Stream.ReadCardinal();
       ModelSystem.Assets[Child.AssetID].FParent := Self;
       Children.Push(Child);
+   end;
+   Buildables.Empty();
+   while (True) do
+   begin
+      AssetClass := Stream.ReadAssetClass(True);
+      if (Assigned(AssetClass)) then
+      begin
+         Buildable.AssetClass := AssetClass;
+         Buildable.Size := Stream.ReadByte();
+         Buildables.Push(Buildable);
+      end
+      else
+         break;
    end;
 end;
 
@@ -1377,10 +1473,8 @@ end;
 
 procedure TModelKnowledgeFeature.TAssetKnowledge.UpdateFrom(Stream: TServerStreamReader);
 begin
-   AssetClassID := Stream.ReadInt32();
-   Icon := Stream.ReadStringReference();
-   Name := Stream.ReadStringReference();
-   Description := Stream.ReadStringReference();
+   AssetClass := Stream.ReadAssetClass(True);
+   Assert(Assigned(AssetClass));
 end;
 
 

@@ -23,9 +23,11 @@ type
    protected
       FKnownMaterials: TGetKnownMaterialsMessage;
       FKnownAssetClasses: TGetKnownAssetClassesMessage;
+      FSubscription: TKnowledgeSubscription;
       FDisabledReasons: TDisabledReasons;
       FLastCountDetected: Cardinal;
       procedure ResetVisibility(); override;
+      procedure HandleKnowledgeChanged();
       procedure HandleChanges(); override;
       property Enabled: Boolean read GetEnabled;
    public
@@ -35,14 +37,17 @@ type
    public // ISensorsProvider
       function Knows(AssetClass: TAssetClass): Boolean;
       function Knows(Material: TMaterial): Boolean;
+      function CollectMatchingAssetClasses(Filter: TKnowledgeFilter): TAssetClass.TArray;
       function GetOreKnowledge(): TOreFilter;
       function GetDebugName(): UTF8String;
    end;
 
+   // TODO: unsubscribe when the ancestor chain changes
+
 implementation
 
 uses
-   sysutils, orbit, typedump;
+   sysutils, orbit, typedump, exceptions;
 
 constructor TSensorFeatureClass.Create(ASensorKind: TVisibility);
 begin
@@ -79,6 +84,8 @@ end;
 
 destructor TSensorFeatureNode.Destroy();
 begin
+   if (FSubscription.Subscribed) then
+      FSubscription.Unsubscribe();
    Assert(not Assigned(FKnownMaterials));
    Assert(not Assigned(FKnownAssetClasses));
    inherited;
@@ -93,6 +100,13 @@ procedure TSensorFeatureNode.ResetVisibility();
 begin
    Assert(not Assigned(FKnownMaterials));
    Assert(not Assigned(FKnownAssetClasses));
+end;
+
+procedure TSensorFeatureNode.HandleKnowledgeChanged();
+begin
+   Assert(FSubscription.Subscribed);
+   FSubscription.Reset();
+   MarkAsDirty([dkAffectsVisibility]);
 end;
 
 procedure TSensorFeatureNode.HandleChanges();
@@ -144,6 +158,14 @@ begin
    // If something fails here, it probably means that someone's HandleKnowledge is calling MarkAsDirty
    // and the knowledge feature we're relying on is blowing away its cache.
    Result := FKnownAssetClasses.Knows(AssetClass);
+   if (not FSubscription.Subscribed) then
+   begin
+      FSubscription := FKnownAssetClasses.Subscribe(@HandleKnowledgeChanged);
+   end
+   else
+   begin
+      Assert(FKnownAssetClasses.Bus = FSubscription.Bus);
+   end;
 end;
 
 function TSensorFeatureNode.Knows(Material: TMaterial): Boolean;
@@ -152,6 +174,28 @@ begin
    // If something fails here, it probably means that someone's HandleKnowledge is calling MarkAsDirty
    // and the knowledge feature we're relying on is blowing away its cache.
    Result := FKnownMaterials.Knows(Material);
+   if (not FSubscription.Subscribed) then
+   begin
+      FSubscription := FKnownMaterials.Subscribe(@HandleKnowledgeChanged);
+   end
+   else
+   begin
+      Assert(FKnownMaterials.Bus = FSubscription.Bus);
+   end;
+end;
+
+function TSensorFeatureNode.CollectMatchingAssetClasses(Filter: TKnowledgeFilter): TAssetClass.TArray;
+var
+   AssetClass: TAssetClass;
+   Collection: TAssetClass.TPlasticArray;
+begin
+   SyncKnowledge();
+   for AssetClass in FKnownAssetClasses do
+   begin
+      if (Filter(AssetClass)) then
+         Collection.Push(AssetClass);
+   end;
+   Result := Collection.Distill();
 end;
 
 function TSensorFeatureNode.GetOreKnowledge(): TOreFilter;

@@ -38,7 +38,8 @@ var
    SystemsServerCount: QWord;
    Index: QWord;
    LoginServer, DynastyServer, SystemsServer: TServerWebSocket;
-   HomeRegion, Hole, IronTable, SiliconTable, Rally: TModelAsset;
+   Hole, IronTable, SiliconTable, Rally: TModelAsset;
+   HomeRegion: TModelGridFeature;
    AssetClass1, AssetClass2, AssetClass3, AssetClass4: Integer;
 begin
    LoginServer := FLoginServer.ConnectWebSocket();
@@ -82,19 +83,15 @@ begin
    ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 'Technology unlocked.');
    ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 18); // crash
 
-   HomeRegion := specialize GetUpdatedFeature<TModelGridFeature>(ModelSystem).Parent;
+   HomeRegion := specialize GetUpdatedFeature<TModelGridFeature>(ModelSystem);
    
-   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.ID) + #00'get-buildings'#00'1'#00'1'#00);
-   Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
-   VerifyPositiveResponse(Response);
-   AssetClass1 := GetAssetClassFromBuildingsList(Response, 'Drilling Hole');
-   AssetClass2 := GetAssetClassFromBuildingsList(Response, 'Iron team table');
-   AssetClass3 := GetAssetClassFromBuildingsList(Response, 'Silicon Table');
-   AssetClass4 := GetAssetClassFromBuildingsList(Response, 'Builder rally point');
-   FreeAndNil(Response);
+   AssetClass1 := GetAssetClassFromBuildingsList(HomeRegion, 'Drilling Hole');
+   AssetClass2 := GetAssetClassFromBuildingsList(HomeRegion, 'Iron team table');
+   AssetClass3 := GetAssetClassFromBuildingsList(HomeRegion, 'Silicon Table');
+   AssetClass4 := GetAssetClassFromBuildingsList(HomeRegion, 'Builder rally point');
 
    TimePinned := True;
-   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.ID) + #00'build'#00'0'#00'0'#00 + IntToStr(AssetClass1) + #00);
+   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.Parent.ID) + #00'build'#00'0'#00'0'#00 + IntToStr(AssetClass1) + #00);
    Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
    VerifyPositiveResponse(Response);
    FreeAndNil(Response);
@@ -108,7 +105,7 @@ begin
    end;
 
    TimePinned := True;
-   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.ID) + #00'build'#00'0'#00'1'#00 + IntToStr(AssetClass2) + #00);
+   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.Parent.ID) + #00'build'#00'0'#00'1'#00 + IntToStr(AssetClass2) + #00);
    Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
    VerifyPositiveResponse(Response);
    FreeAndNil(Response);
@@ -174,7 +171,7 @@ begin
    end;
 
    TimePinned := True;
-   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.ID) + #00'build'#00'0'#00'2'#00 + IntToStr(AssetClass3) + #00);
+   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.Parent.ID) + #00'build'#00'0'#00'2'#00 + IntToStr(AssetClass3) + #00);
    Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
    VerifyPositiveResponse(Response);
    FreeAndNil(Response);
@@ -216,7 +213,7 @@ begin
    end;
 
    TimePinned := True;
-   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.ID) + #00'build'#00'1'#00'0'#00 + IntToStr(AssetClass4) + #00);
+   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.Parent.ID) + #00'build'#00'1'#00'0'#00 + IntToStr(AssetClass4) + #00);
    Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
    VerifyPositiveResponse(Response);
    FreeAndNil(Response);

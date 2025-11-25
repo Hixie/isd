@@ -13,6 +13,7 @@ type
       FSize: Double;
    strict protected
       function GetFeatureNodeClass(): FeatureNodeReference; override;
+      function GetDefaultSize(): Double; override;
    public
       constructor Create(ASize: Double);
       constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
@@ -45,6 +46,11 @@ begin
    inherited Create();
    // feature: TSizeFeatureClass 20m;
    FSize := ReadLength(Reader.Tokens);
+end;
+
+function TSizeFeatureClass.GetDefaultSize(): Double;
+begin
+   Result := FSize;
 end;
 
 function TSizeFeatureClass.GetFeatureNodeClass(): FeatureNodeReference;

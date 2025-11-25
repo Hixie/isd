@@ -14,7 +14,7 @@ type
    strict private
       FResearches: specialize PlasticArray<TResearch, TObjectUtils>;
       FTopics: specialize PlasticArray<TTopic, TObjectUtils>;
-      FAssetClasses: specialize PlasticArray<TAssetClass, TObjectUtils>;
+      FAssetClasses: TAssetClass.TPlasticArray;
       FMaterials: specialize PlasticArray<TMaterial, TObjectUtils>;
    private
       procedure AddResearch(Research: TResearch);

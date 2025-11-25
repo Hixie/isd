@@ -5,11 +5,9 @@ unit endtoend;
 interface
 
 uses
-   sysutils, harness, unixtype, unixutils, configuration, stringstream, hashtable, genericutils, binarystream;
+   sysutils, harness, unixtype, unixutils, configuration, stringstream, binarystream;
 
 type
-   TServerStreamReader = class;
-
    TServerWebSocket = class
    strict private
       const
@@ -30,17 +28,12 @@ type
          FPendingFrameLength: QWord;
          FPendingFrameIndex: Cardinal;
          FPendingFramePayload: RawByteString;
-      type
-         TStringHashTable = specialize THashTable <UInt32, UTF8String, CardinalUtils>;
       procedure ReceiveWebSocketBytes();
       procedure ParseHandshake();
       procedure ParseFrame();
    private
-      var
-         FStrings: TStringHashTable;
       procedure OpenWebSocket(Port: Word);
    public
-      constructor Create();
       destructor Destroy(); override;
       procedure SendWebSocketStringMessage(const Data: UTF8String);
       procedure SendWebSocketBinaryMessage(var Data; const DataLength: Cardinal);
@@ -48,15 +41,6 @@ type
       function ReadWebSocketStringMessage(): UTF8String;
       function ReadWebSocketBinaryMessage(): RawByteString;
       procedure CloseWebSocket();
-      function GetStreamReader(const Input: RawByteString): TServerStreamReader;
-   end;
-
-   TServerStreamReader = class(TBinaryStreamReader)
-   strict private
-      FWebSocket: TServerWebSocket;
-   public
-      constructor Create(const Input: RawByteString; WebSocket: TServerWebSocket);
-      function ReadStringReference(): UTF8String;
    end;
 
 type
@@ -133,7 +117,7 @@ implementation
 
 uses
    exceptions, fileutils, passwords, sockets, baseunix, base64,
-   csvdocument, servers, isdprotocol, strutils, hashfunctions;
+   csvdocument, servers, isdprotocol, strutils;
 
 const
    TestPasswordLength = 64;
@@ -217,12 +201,6 @@ begin
 end;
 
 
-constructor TServerWebSocket.Create();
-begin
-   inherited;
-   FStrings := TStringHashTable.Create(@Integer32Hash32, 8);
-end;
-
 procedure TServerWebSocket.OpenWebSocket(Port: Word);
 const
    CRLF = #13#10;
@@ -263,7 +241,6 @@ end;
 destructor TServerWebSocket.Destroy();
 begin
    Assert(FWebSocket = 0, 'Call CloseWebSocket before freeing websocket object');
-   FreeAndNil(FStrings);
    inherited;
 end;
 
@@ -486,32 +463,6 @@ begin
    if (fpClose(FWebSocket) <> 0) then
       raise EKernelError.Create(fpGetErrNo);
    FWebSocket := 0;
-end;
-
-function TServerWebSocket.GetStreamReader(const Input: RawByteString): TServerStreamReader;
-begin
-   Result := TServerStreamReader.Create(Input, Self);
-end;
-
-
-constructor TServerStreamReader.Create(const Input: RawByteString; WebSocket: TServerWebSocket);
-begin
-   inherited Create(Input);
-   FWebSocket := WebSocket;
-end;
-
-function TServerStreamReader.ReadStringReference(): UTF8String;
-var
-   Code: Cardinal;
-   Value: UTF8String;
-begin
-   Code := ReadCardinal();
-   if (not FWebSocket.FStrings.Has(Code)) then
-   begin
-      Value := ReadString();
-      FWebSocket.FStrings[Code] := Value;
-   end;
-   Result := FWebSocket.FStrings[Code];
 end;
 
 

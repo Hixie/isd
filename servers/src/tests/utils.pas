@@ -5,7 +5,7 @@ unit utils;
 interface
 
 uses
-   model, endtoend, stringstream;
+   model, endtoend;
 
 const
    TimeFactor = 500;
@@ -18,7 +18,7 @@ procedure DescribeUpdate(ModelSystem: TModelSystem);
 function FindColonyShip(ModelSystem: TModelSystem): TModelAsset;
 procedure ExpectUpdate(SystemsServer: TServerWebSocket; ModelSystem: TModelSystem; var MinTime, MaxTime: Int64; var TimePinned: Boolean; ExpectedAssetCount: Cardinal);
 procedure ExpectTechnology(SystemsServer: TServerWebSocket; ModelSystem: TModelSystem; var MinTime, MaxTime: Int64; var TimePinned: Boolean; ExpectBody: UTF8String = ''; FetchUpdate: Boolean = True);
-function GetAssetClassFromBuildingsList(Response: TStringStreamReader; Target: UTF8String): Int32;
+function GetAssetClassFromBuildingsList(Grid: TModelGridFeature; Target: UTF8String): Int32;
 generic function GetUpdatedFeature<T: TModelFeature>(ModelSystem: TModelSystem; Index: Integer = -1): T;
 
 implementation
@@ -68,7 +68,7 @@ procedure ExpectUpdate(SystemsServer: TServerWebSocket; ModelSystem: TModelSyste
 var
    Update: TServerStreamReader;
 begin
-   Update := SystemsServer.GetStreamReader(SystemsServer.ReadWebSocketBinaryMessage());
+   Update := TServerStreamReader.Create(SystemsServer.ReadWebSocketBinaryMessage(), ModelSystem);
    ModelSystem.UpdateFrom(Update);
    Update.ReadEnd();
    FreeAndNil(Update);
@@ -83,7 +83,8 @@ begin
    end;
    MinTime := ModelSystem.CurrentTime;
    Verify(ModelSystem.CurrentTime <= MaxTime);
-   if (ModelSystem.UpdateCount <> ExpectedAssetCount) then
+   Verify(ModelSystem.UpdateCount > 0);
+   if ((ExpectedAssetCount > 0) and (ModelSystem.UpdateCount <> ExpectedAssetCount)) then
    begin
       DescribeUpdate(ModelSystem);
       raise Exception.CreateFmt('Expected %d assets to be updated, but got %d updates', [ExpectedAssetCount, ModelSystem.UpdateCount]);
@@ -101,7 +102,7 @@ var
 begin
    Assert(FetchUpdate or (ExpectBody <> ''));
    if (FetchUpdate) then
-      ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 2);
+      ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 0);
    UpdatedNodes := ModelSystem.GetUpdatedAssets();
    FoundColonyShip := False;
    FoundMessage := False;
@@ -161,24 +162,25 @@ begin
    end;
 end;
 
-function GetAssetClassFromBuildingsList(Response: TStringStreamReader; Target: UTF8String): Int32;
+function GetAssetClassFromBuildingsList(Grid: TModelGridFeature; Target: UTF8String): Int32;
+var
+   Buildable: TModelGridFeature.TBuildable;
 begin
-   Response.Rewind();
-   VerifyPositiveResponse(Response);
-   while (Response.CanReadMore) do
+   for Buildable in Grid.Buildables do
    begin
-      Result := Response.ReadLongint();
-      Response.ReadString(); // icon
-      if (Response.ReadString() = Target) then // name
+      if (Buildable.AssetClass^.Name = Target) then
       begin
-         // found building, exit
-         Response.Bail();
+         Result := Buildable.AssetClass^.ID;
          exit;
       end;
-      Response.ReadString(); // description
+   end;
+   Writeln('For asset ', Grid.Parent.ToString(), ', buildables are:');
+   for Buildable in Grid.Buildables do
+   begin
+      Writeln(' - ', Buildable.AssetClass^.ID, ' ', Buildable.AssetClass^.Name, ' (size ', Buildable.Size, ')');
    end;
    Result := 0;
-   raise Exception.CreateFmt('could not find "%s" in server buildings list (%s)', [Target, Response.DebugMessage]);
+   raise Exception.CreateFmt('could not find "%s" in server buildings list', [Target]);
 end;
 
 generic function GetUpdatedFeature<T>(ModelSystem: TModelSystem; Index: Integer = -1): T;

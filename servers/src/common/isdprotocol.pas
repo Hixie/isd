@@ -86,6 +86,9 @@ const
    fcAssetPile = $1F;
    fcHighestKnownFeatureCode = fcAssetPile;
 
+type
+   TAssetClassID = LongInt; // signed because negative values are built-in, and positive values are in tech tree
+
 const
    // built-in asset classes
    idSpace = -1;

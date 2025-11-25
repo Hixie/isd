@@ -519,6 +519,7 @@ class hack-builders {
   icon: "rally-point";
   build: land;
   feature: TBuilderFeatureClass capacity 1, build 100 hp/h;
+  feature: TSizeFeatureClass 10m;
 }
 
 class silicon-table {

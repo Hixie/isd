@@ -22,9 +22,9 @@ type
    TStaffingFeatureNode = class(TFeatureNode, IEmployer)
    strict private
       FFeatureClass: TStaffingFeatureClass;
-      FBus: TPeopleBusFeatureNode;
+      FPeopleBus: TPeopleBusFeatureNode;
       FPriority: TPriority; // TODO: if equal to NoPriority, should reset to zero when ancestor chain changes
-      FWorkers: Cardinal;
+      FWorkers: Cardinal; // call MarkAsDirty dkAffectsVisibility anytime it changes to/from zero
    protected
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
@@ -37,6 +37,7 @@ type
       procedure HandleChanges(); override;
       procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader); override;
+      procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); override;
    public // IEmployer
       procedure PeopleBusConnected(Bus: TPeopleBusFeatureNode);
       procedure PeopleBusAssignWorkers(Count: Cardinal);
@@ -92,14 +93,14 @@ end;
 
 destructor TStaffingFeatureNode.Destroy();
 begin
-   if (Assigned(FBus)) then
-      FBus.RemoveEmployer(Self);
+   if (Assigned(FPeopleBus)) then
+      FPeopleBus.RemoveEmployer(Self);
    inherited;
 end;
 
 procedure TStaffingFeatureNode.Attaching();
 begin
-   Assert(not Assigned(FBus));
+   Assert(not Assigned(FPeopleBus));
    Assert(FWorkers = 0);
    // FPriority could be non-zero if coming from journal
    MarkAsDirty([dkNeedsHandleChanges]);
@@ -107,14 +108,14 @@ end;
 
 procedure TStaffingFeatureNode.Detaching();
 begin
-   if (Assigned(FBus)) then
+   if (Assigned(FPeopleBus)) then
    begin
-      FBus.RemoveEmployer(Self);
+      FPeopleBus.RemoveEmployer(Self);
       FWorkers := 0;
       Assert(FPriority <> 0);
       FPriority := 0;
-      FBus := nil;
-      MarkAsDirty([dkUpdateJournal]);
+      FPeopleBus := nil;
+      MarkAsDirty([dkUpdateJournal, dkAffectsVisibility]);
    end;
 end;
 
@@ -132,17 +133,17 @@ begin
          FPriority := 0;
          MarkAsDirty([dkUpdateJournal]);
       end;
-      if (Assigned(FBus)) then
+      if (Assigned(FPeopleBus)) then
       begin
-         FBus.RemoveEmployer(Self);
-         FBus := nil;
+         FPeopleBus.RemoveEmployer(Self);
+         FPeopleBus := nil;
          FWorkers := 0;
-         MarkAsDirty([dkUpdateClients, dkNeedsHandleChanges]);
+         MarkAsDirty([dkUpdateClients, dkNeedsHandleChanges, dkAffectsVisibility]);
       end;
    end
    else
    begin
-      if ((not Assigned(FBus)) and (FPriority <> NoPriority)) then
+      if ((not Assigned(FPeopleBus)) and (FPriority <> NoPriority)) then
       begin
          Message := TRegisterEmployerMessage.Create(Self);
          if (InjectBusMessage(Message) <> mrHandled) then
@@ -152,7 +153,7 @@ begin
          end
          else
          begin
-            Assert(Assigned(FBus));
+            Assert(Assigned(FPeopleBus));
          end;
          FreeAndNil(Message);
       end;
@@ -209,11 +210,16 @@ begin
    FPriority := TPriority(Journal.ReadCardinal());
 end;
 
+procedure TStaffingFeatureNode.DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean);
+begin
+   IsDefinitelyReal := FWorkers > 0;
+end;
+
 procedure TStaffingFeatureNode.PeopleBusConnected(Bus: TPeopleBusFeatureNode);
 begin
-   Assert(not Assigned(FBus));
+   Assert(not Assigned(FPeopleBus));
    Assert(FWorkers = 0);
-   FBus := Bus;
+   FPeopleBus := Bus;
 end;
 
 procedure TStaffingFeatureNode.PeopleBusAssignWorkers(Count: Cardinal);
@@ -221,21 +227,21 @@ begin
    if (FWorkers <> Count) then
    begin
       FWorkers := Count;
-      MarkAsDirty([dkUpdateClients, dkNeedsHandleChanges]);
+      MarkAsDirty([dkUpdateClients, dkNeedsHandleChanges, dkAffectsVisibility]);
    end;
 end;
 
 procedure TStaffingFeatureNode.PeopleBusDisconnected();
 begin
-   Assert(Assigned(FBus));
-   FBus := nil;
+   Assert(Assigned(FPeopleBus));
+   FPeopleBus := nil;
    Assert(FPriority <> 0);
    FPriority := 0;
    MarkAsDirty([dkUpdateJournal]);
    if (FWorkers > 0) then
    begin
       FWorkers := 0;
-      MarkAsDirty([dkUpdateClients, dkNeedsHandleChanges]);
+      MarkAsDirty([dkUpdateClients, dkNeedsHandleChanges, dkAffectsVisibility]);
    end;
 end;
 

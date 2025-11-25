@@ -139,6 +139,7 @@ class hack-builders {
   build: land;
   feature: TBuilderFeatureClass capacity 1, build 100 hp/h;
   feature: TOnOffFeatureClass;
+  feature: TSizeFeatureClass 10m;
 }
 
 class silicon-table {

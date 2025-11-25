@@ -39,7 +39,8 @@ var
    Index: QWord;
    LoginServer, DynastyServer, SystemsServer: TServerWebSocket;
    Grid: TModelGridFeature;
-   ColonyShip, HomeRegion: TModelAsset;
+   ColonyShip: TModelAsset;
+   HomeRegion: TModelGridFeature;
    AssetClass1, AssetClass2, AssetClass3, AssetClass4: Integer;
 begin
    LoginServer := FLoginServer.ConnectWebSocket();
@@ -84,7 +85,7 @@ begin
 
    ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 18); // crash
    Grid := specialize GetUpdatedFeature<TModelGridFeature>(ModelSystem);
-   HomeRegion := Grid.Parent;
+   HomeRegion := Grid;
    ColonyShip := FindColonyShip(ModelSystem);
    Verify(Grid.Children.Length = 1);
    Verify(Grid.Children[0].X = 0);
@@ -92,15 +93,11 @@ begin
    Verify(ModelSystem.Assets[(ModelSystem.Assets[Grid.Children[0].AssetID].Features[TModelProxyFeature] as TModelProxyFeature).Child] = ColonyShip);
 
    // some digging and building tests
-   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.ID) + #00'get-buildings'#00'0'#00'0'#00);
-   Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
-   VerifyPositiveResponse(Response);
-   AssetClass1 := GetAssetClassFromBuildingsList(Response, 'Iron team table');
-   AssetClass2 := GetAssetClassFromBuildingsList(Response, 'Drilling Hole');
-   AssetClass3 := GetAssetClassFromBuildingsList(Response, 'Silicon Table');
-   AssetClass4 := GetAssetClassFromBuildingsList(Response, 'Builder rally point');
-   FreeAndNil(Response);
-   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.ID) + #00'build'#00'0'#00'0'#00 + IntToStr(AssetClass1) + #00);
+   AssetClass1 := GetAssetClassFromBuildingsList(HomeRegion, 'Iron team table');
+   AssetClass2 := GetAssetClassFromBuildingsList(HomeRegion, 'Drilling Hole');
+   AssetClass3 := GetAssetClassFromBuildingsList(HomeRegion, 'Silicon Table');
+   AssetClass4 := GetAssetClassFromBuildingsList(HomeRegion, 'Builder rally point');
+   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.Parent.ID) + #00'build'#00'0'#00'0'#00 + IntToStr(AssetClass1) + #00);
    Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
    VerifyPositiveResponse(Response);
    FreeAndNil(Response);
@@ -116,7 +113,7 @@ begin
    end;
 
    TimePinned := True;
-   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.ID) + #00'build'#00'0'#00'1'#00 + IntToStr(AssetClass2) + #00);
+   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.Parent.ID) + #00'build'#00'0'#00'1'#00 + IntToStr(AssetClass2) + #00);
    Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
    VerifyPositiveResponse(Response);
    FreeAndNil(Response);
@@ -141,7 +138,7 @@ begin
    end;
 
    TimePinned := True;
-   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.ID) + #00'build'#00'0'#00'2'#00 + IntToStr(AssetClass3) + #00);
+   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.Parent.ID) + #00'build'#00'0'#00'2'#00 + IntToStr(AssetClass3) + #00);
    Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
    VerifyPositiveResponse(Response);
    FreeAndNil(Response);
@@ -162,7 +159,7 @@ begin
    end;
 
    TimePinned := True;
-   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.ID) + #00'build'#00'1'#00'0'#00 + IntToStr(AssetClass4) + #00);
+   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.Parent.ID) + #00'build'#00'1'#00'0'#00 + IntToStr(AssetClass4) + #00);
    Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
    VerifyPositiveResponse(Response);
    FreeAndNil(Response);

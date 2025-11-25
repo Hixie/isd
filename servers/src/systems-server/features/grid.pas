@@ -25,6 +25,7 @@ type
       FDimension: Cardinal;
    strict protected
       function GetFeatureNodeClass(): FeatureNodeReference; override;
+      function GetDefaultSize(): Double; override;
    public
       constructor Create(ABuildEnvironment: TBuildEnvironment; ACellSize: Double; ADimension: Cardinal);
       constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
@@ -32,11 +33,33 @@ type
    end;
 
    TGridFeatureNode = class(TFeatureNode)
+   strict protected
+      type
+         TAssetClassKnowledge = record
+         strict private
+            const
+               DirectMarker = $01;
+            type
+               TDirectArray = TAssetClass.TArray;
+               TIndirectArray = array of TDirectArray;
+            var
+               FData: Pointer;
+            function IsDirect(): Boolean; inline;
+            class operator Initialize(var Rec: TAssetClassKnowledge);
+            class operator Finalize(var Rec: TAssetClassKnowledge);
+            function GetAssetClasses(DynastyIndex: Cardinal): TAssetClass.TArray;
+            procedure SetAssetClasses(DynastyIndex: Cardinal; Value: TAssetClass.TArray);
+         public
+            procedure Init(Count: Cardinal); inline;
+            procedure Reset(); inline;
+            property AssetClasses[DynastyIndex: Cardinal]: TAssetClass.TArray read GetAssetClasses write SetAssetClasses; default;
+         end;
    strict private
       FBuildEnvironment: TBuildEnvironment;
       FCellSize: Double;
       FDimension: Cardinal;
       FChildren: TAssetNode.TArray; // TODO: plastic array? sorted array with binary search? map?
+      FKnownClasses: TAssetClassKnowledge;
       function GetChild(X, Y: Cardinal; GhostOwner: TDynasty): TAssetNode; // to only get non-ghosts, set GhostOwner to nil
       procedure AdoptGridChild(Child: TAssetNode; X, Y: Cardinal);
    protected
@@ -44,6 +67,8 @@ type
       function GetMassFlowRate(): TRate; override;
       function GetSize(): Double; override;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
+      procedure ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynasty.TArray); override;
+      procedure ResetVisibility(); override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
@@ -53,6 +78,7 @@ type
       procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader); override;
       function HandleCommand(Command: UTF8String; var Message: TMessage): Boolean; override;
+      procedure HandleKnowledge(const DynastyIndex: Cardinal; const Sensors: ISensorsProvider); override;
       property Dimension: Cardinal read FDimension;
       property CellSize: Double read FCellSize;
    end;
@@ -60,7 +86,7 @@ type
 implementation
 
 uses
-   sysutils, isdprotocol, orbit, exceptions, knowledge, systemnetwork;
+   sysutils, isdprotocol, orbit, exceptions, knowledge, systemnetwork, math;
 
 type
    PGridData = ^TGridData;
@@ -114,6 +140,11 @@ begin
    FBuildEnvironment := ReadBuildEnvironment(Reader.Tokens);
 end;
 
+function TParameterizedGridFeatureClass.GetDefaultSize(): Double;
+begin
+   Result := FCellSize * FDimension;
+end;
+
 function TParameterizedGridFeatureClass.GetFeatureNodeClass(): FeatureNodeReference;
 begin
    Result := TGridFeatureNode;
@@ -122,6 +153,147 @@ end;
 function TParameterizedGridFeatureClass.InitFeatureNode(ASystem: TSystem): TFeatureNode;
 begin
    Result := TGridFeatureNode.Create(ASystem, FBuildEnvironment, FCellSize, FDimension);
+end;
+
+
+function TGridFeatureNode.TAssetClassKnowledge.IsDirect(): Boolean;
+begin
+   Result := (PtrUInt(FData) and DirectMarker) > 0;
+end;
+
+class operator TGridFeatureNode.TAssetClassKnowledge.Initialize(var Rec: TAssetClassKnowledge);
+begin
+   Assert(not Assigned(Rec.FData));
+end;
+
+class operator TGridFeatureNode.TAssetClassKnowledge.Finalize(var Rec: TAssetClassKnowledge);
+begin
+   if (Assigned(Rec.FData)) then
+   begin
+      if (Rec.IsDirect()) then
+      begin
+         Finalize(TDirectArray(PtrUInt(Rec.FData) and not DirectMarker));
+      end
+      else
+      begin
+         Finalize(TIndirectArray(Rec.FData));
+      end;
+   end;
+end;
+
+procedure TGridFeatureNode.TAssetClassKnowledge.Init(Count: Cardinal); inline;
+var
+   Address: PtrUInt;
+begin
+   if (Assigned(FData)) then
+   begin
+      if (IsDirect()) then
+      begin
+         if (Count = 1) then
+         begin
+            Address := PtrUInt(FData) and not DirectMarker;
+            TDirectArray(Address) := nil;
+            PtrUInt(FData) := Address or DirectMarker;
+         end
+         else
+         begin
+            Finalize(TDirectArray(PtrUInt(FData) and not DirectMarker));
+            FData := nil;
+            if (Count > 0) then
+            begin
+               Assert(Count > 1);
+               Initialize(TIndirectArray(FData));
+               SetLength(TIndirectArray(FData), Count);
+            end;
+         end;
+      end
+      else
+      begin
+         if (Count > 1) then
+         begin
+            SetLength(TIndirectArray(FData), Count);
+         end
+         else
+         begin
+            Finalize(TIndirectArray(FData));
+            FData := nil;
+            if (Count > 0) then
+            begin
+               Assert(Count = 1);
+               Address := PtrUInt(FData) and not DirectMarker;
+               Initialize(TDirectArray(Address));
+               PtrUInt(FData) := Address or DirectMarker;
+            end;
+         end;
+      end;
+   end
+   else
+   if (Count = 1) then
+   begin
+      Address := PtrUInt(FData) and not DirectMarker;
+      Initialize(TDirectArray(Address));
+      PtrUInt(FData) := Address or DirectMarker;
+   end
+   else
+   if (Count > 1) then
+   begin
+      Initialize(TIndirectArray(FData));
+      SetLength(TIndirectArray(FData), Count);
+   end;
+end;
+      
+procedure TGridFeatureNode.TAssetClassKnowledge.Reset(); inline;
+var
+   Address: PtrUInt;
+   Index: Cardinal;
+begin
+   Assert(Assigned(FData));
+   if (IsDirect()) then
+   begin
+      Address := PtrUInt(FData) and not DirectMarker;
+      TDirectArray(Address) := nil;
+      PtrUInt(FData) := Address or DirectMarker;
+   end
+   else
+   begin
+      Assert(Length(TIndirectArray(FData)) > 0);
+      for Index := Low(TIndirectArray(FData)) to High(TIndirectArray(FData)) do // $R-
+      begin
+         TIndirectArray(FData)[Index] := nil;
+      end;
+   end;
+end;      
+
+function TGridFeatureNode.TAssetClassKnowledge.GetAssetClasses(DynastyIndex: Cardinal): TAssetClass.TArray;
+begin
+   Assert(Assigned(FData));
+   if (IsDirect()) then
+   begin
+      Assert(DynastyIndex = 0);
+      Result := TDirectArray(PtrUInt(FData) and not DirectMarker);
+   end
+   else
+   begin
+      Result := TIndirectArray(FData)[DynastyIndex];
+   end;
+end;
+
+procedure TGridFeatureNode.TAssetClassKnowledge.SetAssetClasses(DynastyIndex: Cardinal; Value: TAssetClass.TArray);
+var
+   Address: PtrUInt;
+begin
+   Assert(Assigned(FData));
+   if (IsDirect()) then
+   begin
+      Assert(DynastyIndex = 0);
+      Address := PtrUInt(FData) and not DirectMarker;
+      TDirectArray(Address) := Value;
+      PtrUInt(FData) := Address or DirectMarker;
+   end
+   else
+   begin
+      TIndirectArray(FData)[DynastyIndex] := Value;
+   end;
 end;
 
 
@@ -246,7 +418,6 @@ var
 begin
    if (Message is TReceiveCrashingAssetMessage) then
    begin
-      Writeln(ClassName, ' handling ', Message.ClassName, ' which has ', Length(TReceiveCrashingAssetMessage(Message).Assets), ' crashing assets');
       for Child in TReceiveCrashingAssetMessage(Message).Assets do
       begin
          X := System.RandomNumberGenerator.GetCardinal(0, Dimension);
@@ -254,7 +425,6 @@ begin
          OldChild := GetChild(X, Y, nil);
          Assert(CellSize >= Child.Size);
          Crater := System.Encyclopedia.Craterize(CellSize, OldChild, Child);
-         Writeln('  Placed crater ', Crater.DebugName, ' (', Crater.Size, 'm diameter) for child ', Child.DebugName, ' (', Child.Size, 'm diameter) at ', X, ',', Y, ' (cell with ', CellSize, 'm diameter)');
          AdoptGridChild(Crater, X, Y);
       end;
       Result := True;
@@ -273,6 +443,8 @@ procedure TGridFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStre
 var
    Visibility: TVisibility;
    Child: TAssetNode;
+   AssetClass: TAssetClass;
+   Cells: Double;
 begin
    // You always know the size of a grid because if anything is inferred inside it, we need the size to place it.
    Visibility := Parent.ReadVisibilityFor(DynastyIndex);
@@ -281,7 +453,6 @@ begin
       Writer.WriteCardinal(fcGrid);
       Writer.WriteDouble(FCellSize);
       Writer.WriteCardinal(FDimension);
-      Writer.WriteCardinal(FDimension);
       for Child in FChildren do
       begin
          if (Child.IsVisibleFor(DynastyIndex)) then
@@ -289,6 +460,16 @@ begin
             Writer.WriteCardinal(Child.ID(DynastyIndex));
             Writer.WriteCardinal(PGridData(Child.ParentData)^.X);
             Writer.WriteCardinal(PGridData(Child.ParentData)^.Y);
+         end;
+      end;
+      Writer.WriteCardinal(0);
+      for AssetClass in FKnownClasses[DynastyIndex] do
+      begin
+         Cells := Double(AssetClass.DefaultSize) / Double(FCellSize);
+         if ((Cells > 0.0) and (Cells <= 255.0)) then
+         begin
+            AssetClass.Serialize(Writer);
+            Writer.WriteByte(Ceil(Cells)); // $R-
          end;
       end;
       Writer.WriteCardinal(0);
@@ -384,45 +565,6 @@ var
    Asset: TAssetNode;
    PlayerDynasty: TDynasty;
 begin
-   // what can i build at coordinates x,y?
-   // build something at coordinates x,y
-   if (Command = 'get-buildings') then
-   begin
-      Result := True;
-      X := Message.Input.ReadCardinal();
-      Y := Message.Input.ReadCardinal();
-      if ((X >= FDimension) or (Y >= FDimension)) then
-      begin
-         Writeln('Client requested buildings for a cell out of range: ', X, ',', Y);
-         Message.Error(ieInvalidMessage);
-         exit;
-      end;
-      PlayerDynasty := (Message.Connection as TConnection).PlayerDynasty;
-      // TODO: check if PlayerDynasty can see this grid
-      if (Assigned(GetChild(X, Y, PlayerDynasty))) then
-      begin
-         Writeln('Client requested buildings for that already has a child: ', X, ',', Y);
-         Message.Error(ieInvalidMessage);
-         exit;
-      end;
-      if (Message.CloseInput()) then
-      begin
-         Message.Reply();
-         // TODO: limit this to knowledge bases that we can see
-         KnownAssetClasses := TGetKnownAssetClassesMessage.Create(PlayerDynasty);
-         InjectBusMessage(KnownAssetClasses); // we ignore the result - it doesn't matter if it wasn't handled
-         for AssetClass in KnownAssetClasses do
-         begin
-            if (AssetClass.CanBuild(FBuildEnvironment)) then
-            begin
-               AssetClass.Serialize(Message.Output);
-            end;
-         end;
-         KnownAssetClasses.Free();
-         Message.CloseOutput();
-      end;
-   end
-   else
    if (Command = ccBuild) then
    begin
       Result := True;
@@ -480,6 +622,31 @@ begin
    end
    else
       Result := False;
+end;
+
+procedure TGridFeatureNode.ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynasty.TArray);
+begin
+   FKnownClasses.Init(Length(NewDynasties)); // $R-
+end;
+
+procedure TGridFeatureNode.ResetVisibility();
+begin
+   FKnownClasses.Reset();
+end;
+
+procedure TGridFeatureNode.HandleKnowledge(const DynastyIndex: Cardinal; const Sensors: ISensorsProvider);
+
+   function Filter(AssetClass: TAssetClass): Boolean;
+   var
+      BuildableSize: Double;
+   begin
+      BuildableSize := AssetClass.DefaultSize;
+      Result := AssetClass.CanBuild(FBuildEnvironment) and (BuildableSize > 0.0) and (BuildableSize <= GetSize());
+   end;
+
+begin
+   FKnownClasses[DynastyIndex] := Sensors.CollectMatchingAssetClasses(@Filter);
+   MarkAsDirty([dkUpdateClients]);
 end;
 
 initialization

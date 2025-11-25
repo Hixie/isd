@@ -29,6 +29,7 @@ type
       FMassCache: Double;
    strict protected
       function GetFeatureNodeClass(): FeatureNodeReference; override;
+      function GetDefaultSize(): Double; override;
    protected
       function GetMaterialLineItem(Index: Cardinal): TMaterialLineItem;
       function GetMaterialLineItemCount(): Cardinal;
@@ -201,6 +202,11 @@ begin
    FBillOfMaterials := MaterialsList.Distill();
    FTotalQuantityCache := ComputeTotalQuantity();
    FMassCache := ComputeMass();
+end;
+
+function TStructureFeatureClass.GetDefaultSize(): Double;
+begin
+   Result := FDefaultSize;
 end;
 
 function TStructureFeatureClass.GetFeatureNodeClass(): FeatureNodeReference;

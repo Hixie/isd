@@ -42,8 +42,7 @@ begin
    if (not DirectoryExists(BaseDirectory + 'defaults')) then
       raise Exception.Create('Specified directory is not fully configured for tests.');
    CreateDir(BaseDirectory + 'runtime');
-   //   for Index := Tests.Length - 1 downto 0 do // $R-
-   Index := 3;
+   for Index := Tests.Length - 1 downto 0 do // $R-
    begin
       Test := Tests[Index];
       TestDirectory := GetTempFileName(BaseDirectory + 'runtime', 'isd' + '-' + Test.UnitName + '-') + '/';

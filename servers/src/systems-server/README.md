@@ -88,15 +88,19 @@ There are currently no notifications defined.
 
 <assetclassid>      ::= <int32> ; zero indicates absence
 
+<assetclass>        ::= <assetclassid> ; id, may be zero when used in <properties>
+                        [ ; see below for details on when this section is included
+                          <string>  ; icon
+                          <string>  ; class name
+                          <string>  ; description
+                        ]
+
 <properties>        ::= <dynasty> ; owner
                         <double>  ; mass
                         <double>  ; mass flow rate
                         <double>  ; size (diameter)
                         <string>  ; name
-                        <assetclassid> ; zero if class is not known
-                        <string>  ; icon
-                        <string>  ; class name
-                        <string>  ; description
+                        <assetclass> ; may have id zero
 
 <materialid>        ::= <int32> ; non-zero material id
 
@@ -202,13 +206,23 @@ object type." when the dynasty does not have knowledge of the object
 type, or "Not currently visible or otherwise detectable." when the
 player cannot see the object (but can infer its presence).
 
+#### Deduplication for strings and asset classes
+
 Strings (`<string>`) in this format are deduplicated as follows. The
 first time a particular string is encountered, it is serialized as a
 32 bit integer identifier, then the string's length, then that many
 bytes giving the string data. The second time, only the identifier is
 specified. String identifiers are scoped to the connection.
 
-> TODO: deduplicate asset classes and materials in a similar way.
+Asset classes (<`assetclass`>) are handled similarly. When the asset
+class ID is zero (this is only possible as part of a `<properties>`
+list; other uses of `<assetclass>` never allow a zero ID), all the
+fields are included. When the asset class ID is not zero, the fields
+are included the first time the asset class ID is mentioned on a
+connection; the second and subsequent occurrences only give the asset
+class ID. (Asset class details never change during a connection.)
+
+> TODO: deduplicate materials in a similar way.
 
 
 ### Icons
@@ -572,13 +586,14 @@ The assets in regions of a planetary surface are expected to have the
 #### `fcGrid` (0x0A)
 
 ```bnf
-<featuredata>       ::= <cellsize> <width> <height> <cell>* <zero32>
+<featuredata>       ::= <cellsize> <dimension> <cell>* <zero32> <buildables>
 <cellsize>          ::= <double> ; meters
-<width>             ::= <uint32> ; greater than zero
-<height>            ::= <uint32> ; greater than zero
+<dimension>         ::= <uint32> ; greater than zero
 <cell>              ::= <assetid> <x> <y>
 <x>                 ::= <uint32> ; 0..width-1
 <y>                 ::= <uint32> ; 0..height-1
+<buildables>        ::= [ <assetclass> <size> ]* <zero32> ; asset classes do not have id zero
+<size>              ::= <byte>
 ```
 
 Grids consist of square cells.
@@ -586,30 +601,23 @@ Grids consist of square cells.
 The `<cellsize>` represents the width and height of each cell of the
 grid, in meters.
 
-There are `<width>` cells horizontally and `<height>` cells vertically.
+There are `<dimension>` cells horizontally and `<dimension>` cells
+vertically (grids are always square).
 
 The children (the grid contents) are provided in no particular order.
 Each cell is at the specified `<x>`/`<y>` coordinate in the grid.
 
 > TODO: provide geology within each cell.
 
-> TODO: support rectangular grids. Current width and height are always equal.
+The `<buildables>` lists the asset classes that can be built on this
+grid. Each is followed by a size, which is the number of cells in each
+dimension that the asset would take if built. (This is a number in the
+range 1..255 or 1..`<dimension>`, whichever is smaller.)
 
-This feature supports the following commands:
-
- * `get-buildings`: two numeric fields, x and y, indicating an empty
-   cell. Returns a list of asset classes that could be built on the
-   grid at that location; each entry consisting of the numeric asset
-   class ID, a string giving an icon name, a string giving a class
-   name, and a string giving a description. The order of the list is
-   arbitrary and can change from call to call. It should not be used
-   as the default order in a UI.
-
-   > TODO: get-buildings shouldn't bother sending the asset class
-   > details, since the client can cache those details from fcKnowledge features
+This feature supports the following command:
 
  * `build`: two numeric fields, x and y, indicating an empty cell,
-   followed by the asset class ID (from the `get-buildings` command).
+   followed by the asset class ID (from the `<buildables>`).
    No data is returned.
 
 
@@ -743,14 +751,8 @@ proxy feature.
 #### `fcKnowledge` (0x10)
 
 ```bnf
-<featuredata>       ::= [ <assetclass> | <material> ]* <zero8>
-<assetclass>        ::= <byte> ; always 0x01
-                        <assetclassid> ; id, non-zero
-                        <string>  ; icon
-                        <string>  ; class name
-                        <string>  ; description
-<material>          ::= <byte> ; always 0x02
-                        <materialid> ; id, non-zero
+<featuredata>       ::= [ 0x01 <assetclass> | 0x02 <material> ]* <zero8>
+<material>          ::= <materialid> ; id, non-zero
                         <string>  ; icon
                         <string>  ; material name
                         <string>  ; description

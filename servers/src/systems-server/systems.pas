@@ -129,8 +129,6 @@ type
    TFeatureNode = class;
    TSystem = class;
 
-   TAssetClassID = LongInt; // signed because negative values are built-in, and positive values are in tech tree
-
    TDynastyIndexHashTable = class(specialize THashTable<TDynasty, Cardinal, TObjectUtils>)
       constructor Create();
    end;
@@ -459,10 +457,12 @@ type
          TArray = array of TFeatureClass;
    strict protected
       function GetFeatureNodeClass(): FeatureNodeReference; virtual; abstract;
+      function GetDefaultSize(): Double; virtual;
    public
       constructor CreateFromTechnologyTree(Reader: TTechTreeReader); virtual; abstract;
       function InitFeatureNode(ASystem: TSystem): TFeatureNode; virtual; abstract;
       property FeatureNodeClass: FeatureNodeReference read GetFeatureNodeClass;
+      property DefaultSize: Double read GetDefaultSize;
    end;
 
    TDirtyKind = (
@@ -507,6 +507,9 @@ const
    ];
 
 type
+   TKnowledgeFilter = function(AssetClass: TAssetClass): Boolean is nested;
+   TAssetClassArray = array of TAssetClass;
+   
    ISensorsProvider = interface ['ISensorsProvider']
       // Returns whether the material or asset class is known by the
       // target's owner according to the knowledge bus at the target.
@@ -515,6 +518,7 @@ type
       // in which the object was provided.
       function Knows(AssetClass: TAssetClass): Boolean;
       function Knows(Material: TMaterial): Boolean;
+      function CollectMatchingAssetClasses(Filter: TKnowledgeFilter): TAssetClassArray;
       function GetOreKnowledge(): TOreFilter;
       function GetDebugName(): UTF8String; // TODO: make this debug-only
       property OreKnowledge: TOreFilter read GetOreKnowledge;
@@ -588,6 +592,7 @@ type
    public
       type
          TArray = array of TAssetClass;
+         TPlasticArray = specialize PlasticArray<TAssetClass, TObjectUtils>;
    private
       FID: TAssetClassID;
       FFeatures: TFeatureClass.TArray;
@@ -596,6 +601,7 @@ type
       FBuildEnvironments: TBuildEnvironments;
       function GetFeature(Index: Cardinal): TFeatureClass;
       function GetFeatureCount(): Cardinal;
+      function GetDefaultSize(): Double;
    public
       constructor Create(AID: TAssetClassID; AName, AAmbiguousName, ADescription: UTF8String; AFeatures: TFeatureClass.TArray; AIcon: TIcon; ABuildEnvironments: TBuildEnvironments);
       destructor Destroy(); override;
@@ -614,6 +620,7 @@ type
       property Name: UTF8String read FName;
       property Description: UTF8String read FDescription;
       property Icon: TIcon read FIcon;
+      property DefaultSize: Double read GetDefaultSize;
    public
       property ID: TAssetClassID read FID;
       property AmbiguousName: UTF8String read FAmbiguousName;
@@ -1399,6 +1406,12 @@ begin
 end;
 
 
+function TFeatureClass.GetDefaultSize(): Double;
+begin
+   Result := 0.0;
+end;
+
+      
 constructor TFeatureNode.CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem);
 begin
    inherited Create();
@@ -1679,6 +1692,20 @@ begin
    Result := Length(FFeatures); // $R-
 end;
 
+function TAssetClass.GetDefaultSize(): Double;
+var
+   Feature: TFeatureClass;
+   Size: Double;
+begin
+   Result := 0.0;
+   for Feature in FFeatures do
+   begin
+      Size := Feature.DefaultSize;
+      if (Size > Result) then
+         Result := Size;
+   end;
+end;
+
 function TAssetClass.SpawnFeatureNodes(ASystem: TSystem): TFeatureNode.TArray;
 var
    FeatureNodes: TFeatureNode.TArray;
@@ -1786,16 +1813,17 @@ end;
 
 procedure TAssetClass.Serialize(Writer: TServerStreamWriter);
 begin
-   Writer.WriteInt32(FID);
-   Writer.WriteStringReference(FIcon);
-   Writer.WriteStringReference(FName);
-   Writer.WriteStringReference(FDescription);
+   if (Writer.WriteAssetClassID(FID)) then
+   begin
+      Writer.WriteStringReference(FIcon);
+      Writer.WriteStringReference(FName);
+      Writer.WriteStringReference(FDescription);
+   end;
 end;
 
 procedure TAssetClass.SerializeFor(AssetNode: TAssetNode; DynastyIndex: Cardinal; Writer: TServerStreamWriter);
 var
    Visibility: TVisibility;
-   ReportedClassID: TAssetClassID;
    Detectable, Recognizable: Boolean;
    ReportedIcon, ReportedName, ReportedDescription: UTF8String;
 begin
@@ -1806,14 +1834,10 @@ begin
    // TODO: e.g. planets and planetary regions should self-describe rather than using the region class description
    if (Detectable and Recognizable) then
    begin
-      ReportedClassID := FID;
-      ReportedIcon := FIcon;
-      ReportedName := FName;
-      ReportedDescription := FDescription;
+      Serialize(Writer);
    end
    else
    begin
-      ReportedClassID := 0;
       if (Detectable) then
       begin
          Assert(not Recognizable);
@@ -1828,12 +1852,12 @@ begin
          ReportedName := 'Unknown';
          ReportedDescription := 'We can infer that something must be here, but cannot detect it.';
       end;
+      Writer.WriteInt32(0);
+      Writer.WriteStringReference(ReportedIcon);
+      Writer.WriteStringReference(ReportedName);
+      Assert(ReportedDescription <> '');
+      Writer.WriteStringReference(ReportedDescription);
    end;
-   Writer.WriteInt32(ReportedClassID);
-   Writer.WriteStringReference(ReportedIcon);
-   Writer.WriteStringReference(ReportedName);
-   Assert(ReportedDescription <> '');
-   Writer.WriteStringReference(ReportedDescription);
 end;
 
 function TAssetClass.CanBuild(BuildEnvironment: TBuildEnvironment): Boolean;

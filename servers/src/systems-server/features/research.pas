@@ -9,7 +9,7 @@ interface
 uses
    hashtable, genericutils, basenetwork, systemnetwork, systems,
    serverstream, systemdynasty, materials, techtree, time,
-   commonbuses;
+   commonbuses, knowledge;
 
 type
    TResearchTimeHashTable = class(specialize THashTable<TResearch, TMillisecondsDuration, TObjectUtils>)
@@ -38,9 +38,11 @@ type
       FCurrentResearch: TResearch;
       FResearchStartTime: TTimeInMilliseconds;
       FResearchEvent: TSystemEvent;
+      FSubscription: TKnowledgeSubscription;
       procedure BankResearch();
       procedure UpdateResearch();
       procedure TriggerResearch(var Data);
+      procedure HandleKnowledgeChanged();
       procedure ScheduleUpdateResearch();
    protected
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
@@ -54,10 +56,12 @@ type
       function HandleCommand(Command: UTF8String; var Message: TMessage): Boolean; override;
    end;
 
+   // TODO: unsubscribe when the ancestor chain changes
+   
 implementation
 
 uses
-   exceptions, sysutils, arrayutils, isdprotocol, knowledge, messages;
+   exceptions, sysutils, arrayutils, isdprotocol, messages;
 
 constructor TResearchTimeHashTable.Create();
 begin
@@ -109,6 +113,8 @@ end;
 
 destructor TResearchFeatureNode.Destroy();
 begin
+   if (FSubscription.Subscribed) then
+      FSubscription.Unsubscribe();
    FBankedResearch.Free();
    if (Assigned(FResearchEvent)) then
       CancelEvent(FResearchEvent);
@@ -133,6 +139,12 @@ begin
          Writer.WriteStringReference('');
       end;
    end;
+end;
+
+procedure TResearchFeatureNode.HandleKnowledgeChanged();
+begin
+   FSubscription.Reset();
+   ScheduleUpdateResearch();
 end;
 
 procedure TResearchFeatureNode.ScheduleUpdateResearch();
@@ -451,7 +463,8 @@ begin
    try
       Injected := InjectBusMessage(KnowledgeBase);
       Assert(Injected = mrHandled);
-      KnowledgeBase.Subscribe(@ScheduleUpdateResearch); // TODO: how do we know this isn't leaking memory by adding infinite callbacks
+      if (not FSubscription.Subscribed) then
+         FSubscription := KnowledgeBase.Subscribe(@HandleKnowledgeChanged);
       for Research in KnowledgeBase do
       begin
          {$IFDEF VERBOSE} Writeln(' - ', Research.ID, ' is known'); {$ENDIF}

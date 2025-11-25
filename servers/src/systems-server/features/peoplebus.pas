@@ -77,6 +77,7 @@ type
             FNextPriority: TAutoPriority;
             FWorkersAssignedToEmployers: Boolean;
             class operator Initialize(var Rec: TPeopleBusRecords);
+            class operator Finalize(var Rec: TPeopleBusRecords);
          public
             function AssignNextPriority(): TAutoPriority;
             procedure ResetNextPriority(Value: TAutoPriority);
@@ -117,7 +118,6 @@ type
             function GetIsNotMultidynastic(): Boolean; inline;
             function GetInternalEmployers(): PEmployerList; inline;
             function GetInternalHousing(): PHousingList; inline;
-            class operator Finalize(var Rec: TPeopleBusRecords);
             property FEmployers: PEmployerList read GetInternalEmployers;
             property FHousing: PHousingList read GetInternalHousing;
             property IsMultidynastic: Boolean read GetIsMultidynastic;
@@ -270,6 +270,25 @@ begin
    Rec.FNextPriority := Low(Rec.FNextPriority);
 end;
 
+class operator TPeopleBusFeatureNode.TPeopleBusRecords.Finalize(var Rec: TPeopleBusRecords);
+begin
+   if (Assigned(Rec.FDynasty)) then
+   begin
+      if (Rec.IsNotMultidynastic) then
+      begin
+         Finalize(Rec.FEmployers^);
+         Finalize(Rec.FHousing^);
+      end
+      else
+      begin
+         Assert(Rec.IsMultidynastic);
+         FreeAndNil(Rec.FEmployersPerDynasty);
+         FreeAndNil(Rec.FHousingPerDynasty);
+      end;
+      {$IFOPT C+} Rec.FDynasty := nil; {$ENDIF}
+   end;
+end;
+
 function TPeopleBusFeatureNode.TPeopleBusRecords.AssignNextPriority(): TAutoPriority;
 begin
    Result := FNextPriority;
@@ -297,7 +316,12 @@ begin
    else
    if (IsNotMultidynastic) then
    begin
-      if (FDynasty <> Value) then
+      if (FDynasty = Value) then
+      begin
+         DynastyEmployers := FEmployers;
+         DynastyHousing := FHousing;
+      end
+      else
       begin
          // employers
          NewEmployersPerDynasty := TPerDynastyEmployers.Create(@DynastyHash32);
@@ -317,11 +341,6 @@ begin
          DynastyHousing := FHousingPerDynasty.ItemsPtr[Value];
          // mark as multi-dynastic
          PtrUInt(FDynasty) := MultiDynasticMarker;
-      end
-      else
-      begin
-         DynastyEmployers := FEmployers;
-         DynastyHousing := FHousing;
       end;
    end
    else
@@ -376,25 +395,6 @@ function TPeopleBusFeatureNode.TPeopleBusRecords.GetInternalHousing(): PHousingL
 begin
    Assert(Assigned(FDynasty) and (IsNotMultidynastic));
    Result := PHousingList(@FHousingMem);
-end;
-
-class operator TPeopleBusFeatureNode.TPeopleBusRecords.Finalize(var Rec: TPeopleBusRecords);
-begin
-   if (Assigned(Rec.FDynasty)) then
-   begin
-      if (Rec.IsNotMultidynastic) then
-      begin
-         Finalize(Rec.FEmployers^);
-         Finalize(Rec.FHousing^);
-      end
-      else
-      begin
-         Assert(Rec.IsMultidynastic);
-         FreeAndNil(Rec.FEmployersPerDynasty);
-         FreeAndNil(Rec.FHousingPerDynasty);
-      end;
-      {$IFOPT C+} Rec.FDynasty := nil; {$ENDIF}
-   end;
 end;
 
 procedure TPeopleBusFeatureNode.TPeopleBusRecords.AddEmployer(Dynasty: TDynasty; Employer: IEmployer);

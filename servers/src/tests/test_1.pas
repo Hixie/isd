@@ -39,7 +39,8 @@ var
    SystemsServerCount: QWord;
    Index: QWord;
    LoginServer, DynastyServer, SystemsServer: TServerWebSocket;
-   ColonyShip, HomeRegion, Miner: TModelAsset;
+   ColonyShip, Miner: TModelAsset;
+   HomeRegion: TModelGridFeature;
    DrillBit: TModelMiningFeature;
    Grid: TModelGridFeature;
    AssetClass, AssetClass2: Int32;
@@ -48,7 +49,7 @@ begin
    // Check high scores with no players.
    LoginServer := FLoginServer.ConnectWebSocket();
    LoginServer.SendWebSocketStringMessage('0'#00'get-high-scores'#00);
-   Scores := LoginServer.GetStreamReader(LoginServer.ReadWebSocketBinaryMessage());
+   Scores := TBinaryStreamReader.Create(LoginServer.ReadWebSocketBinaryMessage());
    Verify(Scores.ReadCardinal() = 0); // high score marker
    Scores.ReadEnd();
    FreeAndNil(Scores);
@@ -95,7 +96,7 @@ begin
 
    // Check high scores.
    LoginServer.SendWebSocketStringMessage('0'#00'get-high-scores'#00);
-   Scores := LoginServer.GetStreamReader(LoginServer.ReadWebSocketBinaryMessage());
+   Scores := TBinaryStreamReader.Create(LoginServer.ReadWebSocketBinaryMessage());
    Verify(Scores.ReadCardinal() = 0); // high score marker
    Verify(Scores.ReadCardinal() = 1); // dynasty
    Verify(Scores.ReadCardinal() = 1); // last data point
@@ -132,9 +133,8 @@ begin
    Verify(FindColonyShip(ModelSystem) = ColonyShip);
    Verify(ColonyShip.Parent.HasFeature(TModelRubblePileFeature));
    Grid := specialize GetUpdatedFeature<TModelGridFeature>(ModelSystem);
-   HomeRegion := Grid.Parent;
-   Verify(Grid.Width = 3);
-   Verify(Grid.Height = 3);
+   HomeRegion := Grid;
+   Verify(Grid.Dimension = 3);
    Verify(Grid.Children.Length = 1);
    Verify(ModelSystem.Assets[Grid.Children[0].AssetID] = ColonyShip.Parent);
 
@@ -146,7 +146,7 @@ begin
 
    // Check high scores.
    LoginServer.SendWebSocketStringMessage('0'#00'get-high-scores'#00);
-   Scores := LoginServer.GetStreamReader(LoginServer.ReadWebSocketBinaryMessage());
+   Scores := TBinaryStreamReader.Create(LoginServer.ReadWebSocketBinaryMessage());
    Verify(Scores.ReadCardinal() = 0); // high score marker
    Verify(Scores.ReadCardinal() = 1); // dynasty
    Verify(Scores.ReadCardinal() = 2); // last data point
@@ -162,13 +162,8 @@ begin
    VerifyEndOfResponse(Response);
 
    // Build a mine
-   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.ID) + #00'get-buildings'#00'0'#00'0'#00);
-   Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
-   VerifyPositiveResponse(Response);
-   TimePinned := True;
-   AssetClass := GetAssetClassFromBuildingsList(Response, 'Mining hole');
-   FreeAndNil(Response);
-   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.ID) + #00'build'#00'0'#00'0'#00 + IntToStr(AssetClass) + #00);
+   AssetClass := GetAssetClassFromBuildingsList(HomeRegion, 'Mining hole');
+   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.Parent.ID) + #00'build'#00'0'#00'0'#00 + IntToStr(AssetClass) + #00);
    Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
    VerifyPositiveResponse(Response);
    TimePinned := True;
@@ -214,13 +209,8 @@ begin
    ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 'Communicating with our creator'#10);
 
    // Build a pile
-   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.ID) + #00'get-buildings'#00'1'#00'0'#00);
-   Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
-   VerifyPositiveResponse(Response);
-   TimePinned := True;
-   AssetClass := GetAssetClassFromBuildingsList(Response, 'Big ore pile');
-   FreeAndNil(Response);
-   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.ID) + #00'build'#00'1'#00'0'#00 + IntToStr(AssetClass) + #00);
+   AssetClass := GetAssetClassFromBuildingsList(HomeRegion, 'Big ore pile');
+   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.Parent.ID) + #00'build'#00'1'#00'0'#00 + IntToStr(AssetClass) + #00);
    Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
    VerifyPositiveResponse(Response);
    TimePinned := True;
@@ -295,13 +285,8 @@ begin
    end;
 
    // Build an iron table
-   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.ID) + #00'get-buildings'#00'0'#00'1'#00);
-   Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
-   VerifyPositiveResponse(Response);
-   TimePinned := True;
-   AssetClass := GetAssetClassFromBuildingsList(Response, 'Iron team table');
-   FreeAndNil(Response);
-   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.ID) + #00'build'#00'0'#00'1'#00 + IntToStr(AssetClass) + #00);
+   AssetClass := GetAssetClassFromBuildingsList(HomeRegion, 'Iron team table');
+   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.Parent.ID) + #00'build'#00'0'#00'1'#00 + IntToStr(AssetClass) + #00);
    Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
    VerifyPositiveResponse(Response);
    TimePinned := True;
@@ -355,8 +340,8 @@ begin
       Verify(Mass = Double((3000000.0 + 30000.0 - 1000.0) / (3000000.0 + 30000.0) * 30000.0));
       Verify(MassFlowRate = 0);
       Verify(Size = 50);
-      Verify(AssetClassID = 5000);
-      Verify(AssetClassName = 'Mining hole');
+      Verify(AssetClass^.ID = 5000);
+      Verify(AssetClass^.Name = 'Mining hole');
    end;
    with (specialize GetUpdatedFeature<TModelMiningFeature>(ModelSystem)) do
    begin
@@ -379,8 +364,8 @@ begin
       Verify(Mass = Double(3000000.0 * (3000000.0 + 30000.0 - 1000.0) / (3000000.0 + 30000.0)));
       Verify(MassFlowRate = 0);
       Verify(Size = 100);
-      Verify(AssetClassID = 4);
-      Verify(AssetClassName = 'Big ore pile');
+      Verify(AssetClass^.ID = 4);
+      Verify(AssetClass^.Name = 'Big ore pile');
    end;
    with (specialize GetUpdatedFeature<TModelOrePileFeature>(ModelSystem, 1)) do
    begin
@@ -396,8 +381,8 @@ begin
       Verify(Mass = 1000);
       Verify(MassFlowRate = 0);
       Verify(Size = 10);
-      Verify(AssetClassID = 6);
-      Verify(AssetClassName = 'Iron team table');
+      Verify(AssetClass^.ID = 6);
+      Verify(AssetClass^.Name = 'Iron team table');
    end;
    with (specialize GetUpdatedFeature<TModelRefiningFeature>(ModelSystem)) do
    begin
@@ -418,13 +403,8 @@ begin
    end;
 
    // Build a drill
-   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.ID) + #00'get-buildings'#00'1'#00'1'#00);
-   Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
-   VerifyPositiveResponse(Response);
-   TimePinned := True;
-   AssetClass := GetAssetClassFromBuildingsList(Response, 'Drilling Hole');
-   FreeAndNil(Response);
-   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.ID) + #00'build'#00'1'#00'1'#00 + IntToStr(AssetClass) + #00);
+   AssetClass := GetAssetClassFromBuildingsList(HomeRegion, 'Drilling Hole');
+   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.Parent.ID) + #00'build'#00'1'#00'1'#00 + IntToStr(AssetClass) + #00);
    Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
    VerifyPositiveResponse(Response);
    TimePinned := True;
@@ -440,14 +420,9 @@ begin
    end;
 
    // Build a silicon table
-   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.ID) + #00'get-buildings'#00'2'#00'1'#00);
-   Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
-   VerifyPositiveResponse(Response);
-   TimePinned := True;
-   AssetClass := GetAssetClassFromBuildingsList(Response, 'Silicon Table');
-   AssetClass2 := GetAssetClassFromBuildingsList(Response, 'Builder rally point');
-   FreeAndNil(Response);
-   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.ID) + #00'build'#00'2'#00'1'#00 + IntToStr(AssetClass) + #00);
+   AssetClass := GetAssetClassFromBuildingsList(HomeRegion, 'Silicon Table');
+   AssetClass2 := GetAssetClassFromBuildingsList(HomeRegion, 'Builder rally point');
+   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.Parent.ID) + #00'build'#00'2'#00'1'#00 + IntToStr(AssetClass) + #00);
    Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
    VerifyPositiveResponse(Response);
    FreeAndNil(Response);
@@ -481,7 +456,7 @@ begin
       Verify(DisabledReasons = %00000010); // not built yet
    end;
 
-   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.ID) + #00'build'#00'0'#00'2'#00 + IntToStr(AssetClass2) + #00);
+   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.Parent.ID) + #00'build'#00'0'#00'2'#00 + IntToStr(AssetClass2) + #00);
    Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
    VerifyPositiveResponse(Response);
    FreeAndNil(Response);

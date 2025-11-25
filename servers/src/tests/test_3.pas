@@ -148,7 +148,7 @@ begin
    FreeAndNil(Response);
 
    TimePinned := True;
-   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 3);
+   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 4);
    with (specialize GetUpdatedFeature<TModelStaffingFeature>(ModelSystem, 0)) do
    begin
       Verify(Jobs = 1000);
@@ -172,7 +172,7 @@ begin
    FreeAndNil(Response);
 
    TimePinned := True;
-   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 3);
+   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 4);
    with (specialize GetUpdatedFeature<TModelPopulationFeature>(ModelSystem)) do
    begin
       Verify(Total = 2000);

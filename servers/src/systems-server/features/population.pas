@@ -29,7 +29,7 @@ type
    TPopulationFeatureNode = class(TFeatureNode, IFoodConsumer, IHousing)
    private
       // source of truth
-      FPopulation: Cardinal; // if this changes, call FPeopleBus.ClientChanged
+      FPopulation: Cardinal; // if this changes, call FPeopleBus.ClientChanged and MarkAsDirty dkAffectsVisibility
       FPriority: TPriority; // TODO: if ancestor chain changes, and priority is NoPriority, reset it to zero and mark as dirty
       FDisabledReasons: TDisabledReasons;
       FMeanHappiness: Double;
@@ -245,6 +245,8 @@ begin
          Capacity := FFeatureClass.MaxPopulation - FPopulation; // $R-
          if (Rehome.RemainingPopulation < Capacity) then
          begin
+            if (FPopulation = 0) then
+                MarkAsDirty([dkAffectsVisibility]);
             Inc(FPopulation, Rehome.RemainingPopulation);
             Rehome.Rehome(Rehome.RemainingPopulation);
             Assert(Rehome.RemainingPopulation = 0);
@@ -257,6 +259,8 @@ begin
             Result := False;
          end;
          MarkAsDirty([dkNeedsHandleChanges, dkUpdateClients, dkUpdateJournal]);
+         if (Assigned(FPeopleBus)) then
+            FPeopleBus.ClientChanged();
       end
       else
          Result := False;
@@ -286,7 +290,9 @@ begin
             else
                Writeln('  pops rehomed');
             FreeAndNil(Rehome);
-            MarkAsDirty([dkNeedsHandleChanges, dkUpdateClients, dkUpdateJournal]);
+            MarkAsDirty([dkNeedsHandleChanges, dkUpdateClients, dkUpdateJournal, dkAffectsVisibility]);
+            if (Assigned(FPeopleBus)) then
+               FPeopleBus.ClientChanged();
          end;
       end;
       Result := False;
@@ -377,11 +383,14 @@ end;
 
 procedure TPopulationFeatureNode.DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean);
 begin
-   IsDefinitelyReal := FPopulation > 0; // TODO: if FPopulation ever changes whether it's 0 or not, MarkAsDirty([dkAffectsVisibility])
+   IsDefinitelyReal := FPopulation > 0; // if FPopulation ever changes whether it's 0 or not, MarkAsDirty([dkAffectsVisibility])
 end;
 
 procedure TPopulationFeatureNode.AbsorbPopulation(Count: Cardinal);
 begin
+   Assert(Count > 0);
+   if (FPopulation = 0) then
+      MarkAsDirty([dkAffectsVisibility]); // because of DescribeExistentiality
    Inc(FPopulation, Count);
    if (Assigned(FPeopleBus)) then
       FPeopleBus.ClientChanged();

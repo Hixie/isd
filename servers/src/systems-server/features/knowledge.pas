@@ -54,11 +54,25 @@ type
 
    TCallback = procedure of object;
 
+   TKnowledgeSubscription = record
+   private
+      FBus: TKnowledgeBusFeatureNode;
+      FIndex: Cardinal;
+      class operator Initialize(var Rec: TKnowledgeSubscription);
+      function GetSubscribed(): Boolean; inline;
+   public
+      procedure Unsubscribe();
+      procedure Reset();
+      property Subscribed: Boolean read GetSubscribed;
+      property Bus: TKnowledgeBusFeatureNode read FBus;
+   end;
+   
    TSubscribableKnowledgeBusMessage = class abstract (TTargetedKnowledgeBusMessage)
    strict protected
       FBus: TKnowledgeBusFeatureNode;
    public
-      procedure Subscribe(Callback: TCallback); inline;
+      function Subscribe(Callback: TCallback): TKnowledgeSubscription; inline;
+      property Bus: TKnowledgeBusFeatureNode read FBus;
    end;
 
    TGetKnownMaterialsMessage = class(TSubscribableKnowledgeBusMessage)
@@ -117,6 +131,7 @@ type
       FSubscriptions: specialize PlasticArray<TCallback, specialize DefaultUnorderedUtils<TCallback>>;
       procedure FreeCaches();
    protected
+      procedure NotifySubscribers();
       procedure ParentMarkedAsDirty(ParentDirtyKinds, NewDirtyKinds: TDirtyKinds); override;
       function ManageBusMessage(Message: TBusMessage): TBusMessageResult; override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
@@ -200,9 +215,33 @@ begin
 end;
 
 
-procedure TSubscribableKnowledgeBusMessage.Subscribe(Callback: TCallback);
+function TKnowledgeSubscription.GetSubscribed(): Boolean;
+begin
+   Result := Assigned(FBus);
+end;
+
+procedure TKnowledgeSubscription.Unsubscribe();
+begin
+   Assert(Subscribed);
+   FBus.FSubscriptions[FIndex] := nil;
+end;
+
+procedure TKnowledgeSubscription.Reset();
+begin
+   FBus := nil;
+end;
+
+class operator TKnowledgeSubscription.Initialize(var Rec: TKnowledgeSubscription);
+begin
+   Rec.Reset();
+end;
+
+
+function TSubscribableKnowledgeBusMessage.Subscribe(Callback: TCallback): TKnowledgeSubscription;
 begin
    Assert(Assigned(FBus), 'Never set the bus on ' + ClassName);
+   Result.FBus := FBus;
+   Result.FIndex := FBus.FSubscriptions.Length;
    FBus.FSubscriptions.Push(Callback);
 end;
 
@@ -342,22 +381,30 @@ end;
 destructor TKnowledgeBusFeatureNode.Destroy();
 begin
    FreeCaches();
+   NotifySubscribers();
    inherited;
 end;
 
-procedure TKnowledgeBusFeatureNode.ParentMarkedAsDirty(ParentDirtyKinds, NewDirtyKinds: TDirtyKinds);
+procedure TKnowledgeBusFeatureNode.NotifySubscribers();
 var
    Callback: TCallback;
    Subscriptions: array of TCallback;
 begin
+   Subscriptions := FSubscriptions.Distill();
+   if (Length(Subscriptions) > 0) then
+      FSubscriptions.Prepare(Length(Subscriptions)); // $R-
+   for Callback in Subscriptions do
+      if (Assigned(Callback)) then
+         Callback();
+   Assert(FSubscriptions.IsEmpty, 'someone tried to subscribe from a notification');
+end;
+
+procedure TKnowledgeBusFeatureNode.ParentMarkedAsDirty(ParentDirtyKinds, NewDirtyKinds: TDirtyKinds);
+begin
    if (dkAffectsKnowledge in NewDirtyKinds) then
    begin
       FreeCaches();
-      Subscriptions := FSubscriptions.Distill();
-      if (Length(Subscriptions) > 0) then
-         FSubscriptions.Prepare(Length(Subscriptions)); // $R-
-      for Callback in Subscriptions do
-         Callback();
+      NotifySubscribers();
    end;
    inherited;
 end;

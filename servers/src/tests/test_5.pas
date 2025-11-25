@@ -111,6 +111,7 @@ begin
    CloseServers(Success);
    if (not Success) then
       raise Exception.Create('failed to shut down servers');
+   FreeAndNil(ModelSystem);
 
    StartServers(FTestDirectory);
 
