@@ -5,7 +5,7 @@ unit rubble;
 interface
 
 uses
-   systems, serverstream, materials, techtree, tttokenizer;
+   systems, serverstream, materials, techtree, tttokenizer, basenetwork;
 
 type
    TRubbleCollectionMessage = class(TBusMessage)
@@ -42,6 +42,7 @@ type
       procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader); override;
       procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); override;
+      function HandleCommand(Command: UTF8String; var Message: TMessage): Boolean; override;
       procedure Resize(NewSize: Double);
       procedure AbsorbRubble(Composition: TMaterialQuantityArray);
    end;
@@ -268,6 +269,17 @@ begin
       Assert(Assigned(CompositionEntry.Material));
    end;
    {$ENDIF}
+end;
+
+function TRubblePileFeatureNode.HandleCommand(Command: UTF8String; var Message: TMessage): Boolean;
+begin
+   if (Command = ccDismantle) then
+   begin
+      System.Encyclopedia.Dismantle(Parent, Message);
+      Result := True;
+   end
+   else
+      Result := False;
 end;
 
 initialization

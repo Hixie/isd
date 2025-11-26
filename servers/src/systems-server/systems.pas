@@ -573,7 +573,7 @@ type
       procedure DropChild(Child: TAssetNode); virtual;
       procedure UpdateJournal(Journal: TJournalWriter); virtual;
       procedure ApplyJournal(Journal: TJournalReader); virtual;
-      function HandleCommand(Command: UTF8String; var Message: TMessage): Boolean; virtual;
+      function HandleCommand(Command: UTF8String; var Message: TMessage): Boolean; virtual; // return true if command is handled (prevents further handling)
       procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); virtual;
       property Mass: Double read GetMass; // kg
       property MassFlowRate: TRate read GetMassFlowRate; // kg/s
@@ -635,6 +635,7 @@ type
    public
       function Craterize(Diameter: Double; OldAsset, NewAsset: TAssetNode): TAssetNode; virtual; abstract;
       function HandleBusMessage(Asset: TAssetNode; Message: TBusMessage): Boolean; virtual; abstract; // return true to skip this asset
+      procedure Dismantle(Asset: TAssetNode; Message: TMessage); virtual; abstract;
       property AssetClasses[ID: TAssetClassID]: TAssetClass read GetAssetClass;
       property Researches[ID: TResearchID]: TResearch read GetResearch;
       property Topics[Name: UTF8String]: TTopic read GetTopic;

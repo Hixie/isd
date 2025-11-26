@@ -5,7 +5,8 @@ unit encyclopedia;
 interface
 
 uses
-   techtree, systems, configuration, astronomy, materials, random, systemdynasty, space;
+   techtree, systems, configuration, astronomy, materials,
+   random, systemdynasty, space, basenetwork;
 
 type
    TEncyclopedia = class(TEncyclopediaView)
@@ -48,6 +49,7 @@ type
       procedure SpawnColonyShip(Dynasty: TDynasty; System: TSystem);
       function Craterize(Diameter: Double; OldAsset, NewAsset: TAssetNode): TAssetNode; override;
       function HandleBusMessage(Asset: TAssetNode; Message: TBusMessage): Boolean; override;
+      procedure Dismantle(Asset: TAssetNode; Message: TMessage); override;
       property MinMassPerOreUnit: Double read FMinMassPerOreUnit;
    public // built-in asset classes
       property SpaceClass: TAssetClass read FSpace;
@@ -57,12 +59,12 @@ type
       property RubblePile: TAssetClass read FRubblePile;
       property StarClass[Category: TStarCategory]: TAssetClass read GetStarClass;
    end;
-   
+
 implementation
 
 uses
    sysutils, math, floatutils, exceptions, isdnumbers, protoplanetary,
-   time, isdprotocol, commonbuses,
+   time, isdprotocol, commonbuses, systemnetwork,
    // this must import every feature, so they get registered:
    assetpile, builders, food, grid, gridsensor, internalsensor,
    knowledge, materialpile, messages, mining, name, onoff, orbit,
@@ -771,6 +773,109 @@ begin
       end;
    end;
    Result := False;
+end;
+
+procedure TEncyclopedia.Dismantle(Asset: TAssetNode; Message: TMessage);
+var
+   FindDestructors: TFindDestructorsMessage;
+   DismantleMessage: TDismantleMessage;
+   ExcessAssets: TAssetNode.TArray;
+   ExcessMaterials: TMaterialQuantityHashTable;
+   RubbleComposition: TMaterialQuantityArray;
+   Child: TAssetNode;
+   Material: TMaterial;
+   Index: Cardinal;
+   Handled: Boolean;
+   PlayerDynasty: TDynasty;
+   OldSize: Double;
+begin
+   if (Message.CloseInput()) then
+   begin
+      Message.Reply();
+      PlayerDynasty := (Message.Connection as TConnection).PlayerDynasty;
+      if (Assigned(Asset.Owner) and (PlayerDynasty <> Asset.Owner)) then
+      begin
+         Message.Error(ieInvalidMessage);
+      end
+      else
+      begin
+         Writeln('DISMANTLE LOGIC CALLED');
+         Writeln('TARGET: ', Asset.DebugName);
+         if (Asset.Mass <> 0.0) then
+         begin
+            Writeln('SEARCHING FOR DESTRUCTORS');
+            FindDestructors := TFindDestructorsMessage.Create(PlayerDynasty);
+            try
+               if (Asset.InjectBusMessage(FindDestructors) <> mrHandled) then
+               begin
+                  Writeln('NO DESTRUCTOR DETECTED');
+                  Message.Error(ieNoDestructors);
+                  exit;
+               end;
+            finally
+               FreeAndNil(FindDestructors);
+            end;
+         end;
+         OldSize := Asset.Size;
+         Writeln('DESTRUCTOR DETECTED');
+         DismantleMessage := TDismantleMessage.Create(PlayerDynasty, Asset);
+         Writeln('SENDING DISMANTLE MESSAGE');
+         Handled := Asset.HandleBusMessage(DismantleMessage);
+         Assert(not Handled, 'TDismantleMessage must not be marked as handled');
+         if (DismantleMessage.HasExcess) then
+         begin
+            Writeln('EXCESS DETECTED');
+            ExcessAssets := DismantleMessage.ExtractExcessAssets();
+            for Child in ExcessAssets do
+               Child.Parent.DropChild(Child);
+            Asset.Become(RubblePile);
+            if (not Assigned(Asset.Owner)) then
+            begin
+               Asset.MarkAsDirty([dkAffectsDynastyCount]);
+               Asset.Owner := PlayerDynasty;
+            end;
+            Assert(Asset.Owner = PlayerDynasty);
+            if (DismantleMessage.ExcessPopulation > 0) then
+            begin
+               Writeln('POPULATION PLACED ON RUBBLE ', DismantleMessage.ExcessPopulation);
+               (Asset.Features[0] as TPopulationFeatureNode).AbsorbPopulation(DismantleMessage.ExcessPopulation);
+            end;
+            (Asset.Features[1] as TRubblePileFeatureNode).Resize(OldSize);
+            if (DismantleMessage.HasExcessMaterials) then
+            begin
+               ExcessMaterials := DismantleMessage.ExtractExcessMaterials();
+               SetLength(RubbleComposition, ExcessMaterials.Count);
+               Index := 0;
+               for Material in ExcessMaterials do
+               begin
+                  Writeln('RUBBLE CONTENTS: ', Material.Name, ' ', ExcessMaterials[Material] * Material.MassPerUnit, 'kg');
+                  RubbleComposition[Index].Init(Material, ExcessMaterials[Material]);
+                  Inc(Index);
+               end;
+               FreeAndNil(ExcessMaterials);
+               (Asset.Features[1] as TRubblePileFeatureNode).AbsorbRubble(RubbleComposition);
+            end;
+            for Child in ExcessAssets do
+            begin
+               (Asset.Features[2] as TAssetPileFeatureNode).AdoptChild(Child);
+               Writeln('RUBBLE CONTENTS: ', Child.DebugName);
+            end;
+            // TODO: send dkMassChanged if the mass changed
+         end
+         else
+         begin
+            Writeln('ASSET DESTRUCTION AUTHORIZED');
+            // MarkAsDirty([dkAffectsDynastyCount]); // TODO: add this in if it's possible for this to be relevant (currently it shouldn't be possible)
+            Asset.ReportPermanentlyGone();
+            Asset.Parent.DropChild(Asset);
+            Asset.System.Server.ScheduleDemolition(Asset);
+            // TODO: handle the case of removing an orbit's primary child
+         end;
+         FreeAndNil(DismantleMessage);
+         Writeln('DISMANTLE LOGIC COMPLETED');
+         Message.CloseOutput();
+      end;
+   end;
 end;
 
 end.

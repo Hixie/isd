@@ -740,6 +740,20 @@ multiple times.
 
 > TODO: have some command to move materials to material piles
 
+Structures support the following command:
+
+ * `dismantle`: No fields. Can only be sent to unowned assets or
+   assets owned by the player. If there are destructors nearly (e.g. a
+   population center), removes the asset, transferring any resources
+   to other assets as necessary. If anything cannot be removed, the
+   asset will instead be replaced by a rubble pile with those
+   materials. If there's no nearby destructors, responsds with a "`no
+   destructors`" error.
+
+Clients are encouraged to implement `dismantle` in a way that
+indicates cleaning up the rubble, rather than literally "dismantling"
+as with `fcStructure`, despite this being the exact same feature.
+
 
 #### `fcProxy` (0x0F)
 

@@ -122,8 +122,7 @@ implementation
 
 uses
    sysutils, isdprotocol, exceptions, rubble, plasticarrays,
-   genericutils, math, systemnetwork, encyclopedia, population,
-   assetpile;
+   genericutils, math, assetpile;
 
 constructor TMaterialLineItem.Create(AComponentName: UTF8String; AMaterial: TMaterial; AQuantity: Cardinal);
 begin
@@ -1231,108 +1230,11 @@ begin
 end;
 
 function TStructureFeatureNode.HandleCommand(Command: UTF8String; var Message: TMessage): Boolean;
-var
-   FindDestructors: TFindDestructorsMessage;
-   DismantleMessage: TDismantleMessage;
-   ExcessAssets: TAssetNode.TArray;
-   ExcessMaterials: TMaterialQuantityHashTable;
-   RubbleComposition: TMaterialQuantityArray;
-   Child: TAssetNode;
-   Material: TMaterial;
-   Index: Cardinal;
-   Handled: Boolean;
-   PlayerDynasty: TDynasty;
-   OldSize: Double;
 begin
    if (Command = ccDismantle) then
    begin
-      if (Message.CloseInput()) then
-      begin
-         Message.Reply();
-         PlayerDynasty := (Message.Connection as TConnection).PlayerDynasty;
-         if (Assigned(Parent.Owner) and (PlayerDynasty <> Parent.Owner)) then
-         begin
-            Message.Error(ieInvalidMessage);
-         end
-         else
-         begin
-            Writeln('DISMANTLE LOGIC CALLED');
-            Writeln('TARGET: ', DebugName);
-            if (Parent.Mass <> 0.0) then
-            begin
-               Writeln('SEARCHING FOR DESTRUCTORS');
-               FindDestructors := TFindDestructorsMessage.Create(PlayerDynasty);
-               try
-                  if (InjectBusMessage(FindDestructors) <> mrHandled) then
-                  begin
-                     Writeln('NO DESTRUCTOR DETECTED');
-                     Message.Error(ieNoDestructors);
-                     exit;
-                  end;
-               finally
-                  FreeAndNil(FindDestructors);
-               end;
-            end;
-            OldSize := Parent.Size;
-            Writeln('DESTRUCTOR DETECTED');
-            DismantleMessage := TDismantleMessage.Create(PlayerDynasty, Parent);
-            Writeln('SENDING DISMANTLE MESSAGE');
-            Handled := Parent.HandleBusMessage(DismantleMessage);
-            Assert(not Handled, 'TDismantleMessage must not be marked as handled');
-            if (DismantleMessage.HasExcess) then
-            begin
-               Writeln('EXCESS DETECTED');
-               ExcessAssets := DismantleMessage.ExtractExcessAssets();
-               for Child in ExcessAssets do
-                  Child.Parent.DropChild(Child);
-               Parent.Become((System.Encyclopedia as TEncyclopedia).RubblePile);
-               if (not Assigned(Parent.Owner)) then
-               begin
-                  MarkAsDirty([dkAffectsDynastyCount]);
-                  Parent.Owner := PlayerDynasty;
-               end;
-               Assert(Parent.Owner = PlayerDynasty);
-               if (DismantleMessage.ExcessPopulation > 0) then
-               begin
-                  Writeln('POPULATION PLACED ON RUBBLE ', DismantleMessage.ExcessPopulation);
-                  (Parent.Features[0] as TPopulationFeatureNode).AbsorbPopulation(DismantleMessage.ExcessPopulation);
-               end;
-               (Parent.Features[1] as TRubblePileFeatureNode).Resize(OldSize);
-               if (DismantleMessage.HasExcessMaterials) then
-               begin
-                  ExcessMaterials := DismantleMessage.ExtractExcessMaterials();
-                  SetLength(RubbleComposition, ExcessMaterials.Count);
-                  Index := 0;
-                  for Material in ExcessMaterials do
-                  begin
-                     Writeln('RUBBLE CONTENTS: ', Material.Name, ' ', ExcessMaterials[Material] * Material.MassPerUnit, 'kg');
-                     RubbleComposition[Index].Init(Material, ExcessMaterials[Material]);
-                     Inc(Index);
-                  end;
-                  FreeAndNil(ExcessMaterials);
-                  (Parent.Features[1] as TRubblePileFeatureNode).AbsorbRubble(RubbleComposition);
-               end;
-               for Child in ExcessAssets do
-               begin
-                  (Parent.Features[2] as TAssetPileFeatureNode).AdoptChild(Child);
-                  Writeln('RUBBLE CONTENTS: ', Child.DebugName);
-               end;
-               // TODO: send dkMassChanged if the mass changed
-            end
-            else
-            begin
-               Writeln('ASSET DESTRUCTION AUTHORIZED');
-               // MarkAsDirty([dkAffectsDynastyCount]); // TODO: add this in if it's possible for this to be relevant (currently it shouldn't be possible)
-               Parent.ReportPermanentlyGone();
-               Parent.Parent.DropChild(Parent);
-               System.Server.ScheduleDemolition(Parent);
-               // TODO: handle the case of removing an orbit's primary child
-            end;
-            FreeAndNil(DismantleMessage);
-            Writeln('DISMANTLE LOGIC COMPLETED');
-            Message.CloseOutput();
-         end;
-      end;
+      System.Encyclopedia.Dismantle(Parent, Message);
+      Result := True;
    end
    else
       Result := False;
