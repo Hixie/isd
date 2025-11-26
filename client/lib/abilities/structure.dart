@@ -38,6 +38,7 @@ class StructureFeature extends AbilityFeature {
     required this.structuralIntegrityRate,
     required this.minIntegrity,
     required this.max,
+    required this.builder,
   });
 
   final List<StructuralComponent> structuralComponents;
@@ -49,6 +50,7 @@ class StructureFeature extends AbilityFeature {
   final double structuralIntegrityRate;
   final int? minIntegrity;
   final int? max;
+  final AssetNode? builder;
 
   @override
   RendererType get rendererType => RendererType.overlay;
@@ -179,10 +181,20 @@ class StructureFeature extends AbilityFeature {
 
     return ListBody(
       children: <Widget>[
-        if (max != null)
-          Text('Total: $structuralIntegrity / $max hp')
-        else
-          Text('Total: $structuralIntegrity hp'),
+        Text.rich(
+          TextSpan(
+            text: 'Total: $structuralIntegrity ',
+            children: <InlineSpan>[
+              if (max != null)
+                TextSpan(text: '/ $max '),
+              const TextSpan(text: 'hp'),
+              if (builder != null)
+                const TextSpan(text: '. Builder: '),
+              if (builder != null)
+                builder!.describe(context, icons, iconSize: fontSize),
+            ],
+          ),
+        ),
         SizedBox(
           height: height,
           child: Stack(
@@ -249,6 +261,13 @@ class StructureFeature extends AbilityFeature {
                             structuralIntegrity / total,
                             1.0,
                           ],
+                        ),
+                      ),
+                      child: Align(
+                        alignment: Alignment.bottomCenter,
+                        child: Padding(
+                          padding: EdgeInsets.only(bottom: fontSize / 4.0),
+                          child: const Text('hp', style: TextStyle(fontStyle: FontStyle.italic)),
                         ),
                       ),
                     ),

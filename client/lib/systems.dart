@@ -222,6 +222,7 @@ class SystemServer {
                   materialName: materialName,
                 ));
               }
+              final AssetNode? builder = _readAsset(reader);
               final int materialsCurrent = reader.readUInt32();
               final double materialsRate = reader.readDouble();
               final int structuralIntegrityCurrent = reader.readUInt32();
@@ -237,6 +238,7 @@ class SystemServer {
                 structuralIntegrityRate: structuralIntegrityRate,
                 minIntegrity: structuralIntegrityMin == 0 ? null : structuralIntegrityMin,
                 max: structuralIntegrityMax == 0 ? null : structuralIntegrityMax,
+                builder: builder,
               ));
             case fcSpaceSensor:
               final DisabledReason disabledReason = DisabledReason(reader.readUInt32());
