@@ -2,6 +2,9 @@ import 'package:flutter/material.dart' hide Material;
 
 import '../analysis.dart';
 import '../assets.dart';
+import '../connection.dart' show NetworkError;
+import '../dialogs.dart';
+import '../game.dart';
 import '../materials.dart';
 import '../nodes/system.dart';
 import '../widgets.dart';
@@ -33,22 +36,36 @@ class RubblePileFeature extends AbilityFeature {
     return ListBody(
       children: <Widget>[
         const Text('Rubble', style: bold),
-        const Padding(
-          padding: featurePadding,
-          child: Text('Known contents:'),
-        ),
         Padding(
           padding: featurePadding,
-          child: KnowledgeDish(
-            materials: manifest.keys.where((int id) => id != 0).map(system.material).toList(),
-          ),
-        ),
-        Padding(
-          padding: featurePadding,
-          child: PieChart(
-            analysis: analysis,
-            materials: materials,
-            total: total,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              const Text('Known contents:'),
+              KnowledgeDish(
+                materials: manifest.keys.where((int id) => id != 0).map(system.material).toList(),
+              ),
+              PieChart(
+                analysis: analysis,
+                materials: materials,
+                total: total,
+              ),
+              OutlinedButton(
+                onPressed: () async {
+                  final Game game = GameProvider.of(context);
+                  try {
+                    await system.play(<Object>[parent.id, 'dismantle']);
+                  } on NetworkError catch (e) {
+                    if (e.message == 'no destructors') {
+                      game.reportError('Could not clean up ${parent.nameOrClassName}; no available cleanup teams');
+                    } else {
+                      rethrow;
+                    }
+                  }
+                },
+                child: Text('Clean up ${parent.nameOrClassName}'),
+              ),
+            ],
           ),
         ),
       ],
