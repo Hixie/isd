@@ -608,6 +608,10 @@ begin
       Writer.WriteCardinal(0); // material terminator marker
       if (Assigned(FBuildingState)) then
       begin
+         if (Assigned(FBuildingState^.Builder)) then
+            Writer.WriteCardinal(FBuildingState^.Builder.Parent.ID(DynastyIndex))
+         else
+            Writer.WriteCardinal(0);
          Writer.WriteCardinal(TotalQuantityAlreadyBuilt);
          Writer.WriteDouble(FBuildingState^.MaterialsQuantityRate.AsDouble);
          StructuralIntegrity := FBuildingState^.StructuralIntegrity;
@@ -623,6 +627,7 @@ begin
       end
       else
       begin
+         Writer.WriteCardinal(0);
          Writer.WriteCardinal(FFeatureClass.TotalQuantity);
          Writer.WriteDouble(0.0);
          Writer.WriteCardinal(FFeatureClass.TotalQuantity);
@@ -1320,7 +1325,7 @@ begin
                // MarkAsDirty([dkAffectsDynastyCount]); // TODO: add this in if it's possible for this to be relevant (currently it shouldn't be possible)
                Parent.ReportPermanentlyGone();
                Parent.Parent.DropChild(Parent);
-               System.Server.ScheduleDemolition(Self);
+               System.Server.ScheduleDemolition(Parent);
                // TODO: handle the case of removing an orbit's primary child
             end;
             FreeAndNil(DismantleMessage);

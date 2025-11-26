@@ -410,11 +410,12 @@ approximation, and in practice will use different features (e.g. an
 #### `fcStructure` (0x04)
 
 ```bnf
-<featuredata>       ::= <material-lineitem>* <zero32> <quantity> <rate> <hp> <rate> <minhp>
+<featuredata>       ::= <material-lineitem>* <zero32> <builder> <quantity> <rate> <hp> <rate> <minhp>
 <material-lineitem> ::= <max> <componentname> <materialname> [<materialid> | <zero32>]
 <max>               ::= <uint32>
 <componentname>     ::= <string>
 <materialname>      ::= <string>
+<builder>           ::= <assetid> | <zero32>
 <quantity>          ::= <uint32>
 <hp>                ::= <uint32>
 <rate>              ::= <double> ; units per millisecond
@@ -449,15 +450,19 @@ ignored if the material is known, as the material data (found in an
 
 The list of material line items is terminated by a zero.
 
-After the material line items, the following values describing the
-asset's structural integrity are given:
+After the material line items, if the structure is actively being
+built, then the asset ID of the builder doing the building will be
+specified as `<builder>`. Otherwise, this will be a zero.
+
+Following this, values describing the asset's structural integrity are
+given:
 
  * a number indicating how much material is in the asset. This is
    between zero and the sum of the `<max>` values, and fills
    components in the order given.
  * the rate at which that number is increasing.
  * a number indicating the structural integrity of the asset.
- * the rate at which that number is increasing.
+ * the rate at which _that_ number is increasing.
  * the minimum required structural integrity for the object to
    function (0 if the asset class is not known).
 

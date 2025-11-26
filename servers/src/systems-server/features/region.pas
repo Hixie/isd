@@ -96,6 +96,7 @@ type
       procedure DeliverMaterialConsumer(Delivery: UInt64); // 0 <= Delivery <= GetMaterialConsumerMaxDelivery; will always be called when syncing if StartMaterialConsumer was called
       procedure DisconnectMaterialConsumer(); // region is going away
       function GetDynasty(): TDynasty;
+      {$IFOPT C+} function GetAsset(): TAssetNode; {$ENDIF}
    end;
    TRegisterMaterialConsumerBusMessage = specialize TRegisterProviderBusMessage<TPhysicalConnectionBusMessage, IMaterialConsumer>;
    TMaterialConsumerList = specialize PlasticArray<IMaterialConsumer, PointerUtils>;
@@ -1597,6 +1598,7 @@ begin
    {$IFOPT C+} Assert(not Busy); Busy := True; {$ENDIF}
    if (not FActive) then
    begin
+      Writeln(DebugName, ' recomputing ore and material flow dynamics');
       Assert(not Assigned(FNextEvent));
       Assert(not FDynamic); // so all the "get current mass" etc getters won't be affected by mass flow
       CurrentGroundMass := Mass;
@@ -1605,6 +1607,7 @@ begin
       for Dynasty in FData.Dynasties do
       begin
          DynastyData := FData[Dynasty];
+         Writeln('  dynasty ', Dynasty.DynastyID);
 
          DynastyData^.FMiners.RemoveAll(nil);
          DynastyData^.FOrePiles.RemoveAll(nil);
@@ -1616,15 +1619,18 @@ begin
          MaterialFactoryRates := nil;
          MaterialConsumerCounts := nil;
 
+         Writeln('  total ore pile mass: ', TotalOrePileMass:0:3, 'kg');
+         
          // COMPUTE MAX RATES AND CAPACITIES
          // Total mining rate
          TotalMinerMaxRate := TRate.Zero;
-         if (DynastyData^.FMiners).IsNotEmpty then
+         if (DynastyData^.FMiners.IsNotEmpty) then
          begin
-            for Miner in DynastyData^.FMiners.Without(nil) do
+            for Miner in DynastyData^.FMiners do
                TotalMinerMaxRate := TotalMinerMaxRate + Miner.GetMinerMaxRate();
             Assert(DynastyData^.FMiners.IsEmpty or TotalMinerMaxRate.IsPositive);
          end;
+         Writeln('  max mining rate: ', TotalMinerMaxRate.ToString('kg'));
          // Per-ore mining rates
          for Ore in TOres do
          begin
@@ -1642,12 +1648,13 @@ begin
          OrePileCapacity := 0.0;
          if (DynastyData^.FOrePiles.IsNotEmpty) then
          begin
-            for OrePile in DynastyData^.FOrePiles.Without(nil) do
+            for OrePile in DynastyData^.FOrePiles do
             begin
                OrePileCapacity := OrePileCapacity + OrePile.GetOrePileCapacity();
                OrePile.RegionAdjustedOrePiles(); // TODO: only notify if the actual rate of flow for that pile changed
             end;
          end;
+         Writeln('  total ore pile capacity: ', OrePileCapacity:0:3, 'kg');
          {$IFOPT C+}
          for Ore in TOres do
          begin
@@ -1657,7 +1664,7 @@ begin
          // Refinery rates
          if (DynastyData^.FRefineries.IsNotEmpty) then
          begin
-            for Refinery in DynastyData^.FRefineries.Without(nil) do
+            for Refinery in DynastyData^.FRefineries do
             begin
                Ore := Refinery.GetRefineryOre();
                Rate := Refinery.GetRefineryMaxRate();
@@ -1666,24 +1673,23 @@ begin
          end;
          for Ore in TOres do
          begin
-            if (Assigned(DynastyData^.FMaterialPileComposition)) then
-            begin
-               Composition := DynastyData^.FMaterialPileComposition[System.Encyclopedia.Materials[Ore]];
-            end
-            else
-            begin
-               Composition := 0;
-            end;
+            if (OreRefiningRates[Ore].IsNotZero) then
+               Writeln('  max refining rate for ', System.Encyclopedia.Materials[Ore].Name, ': ', OreRefiningRates[Ore].ToString('kg'));
          end;
          // Material pile capacity
          if (DynastyData^.FMaterialPiles.IsNotEmpty) then
          begin
             MaterialCapacities := TMaterialQuantityHashTable.Create(DynastyData^.FMaterialPiles.Length);
-            for Pile in DynastyData^.FMaterialPiles.Without(nil) do
+            for Pile in DynastyData^.FMaterialPiles do
             begin
                MaterialCapacities.Inc(Pile.GetMaterialPileMaterial(), Pile.GetMaterialPileCapacity());
                Pile.RegionAdjustedMaterialPiles(); // TODO: only notify if the actual rate of flow for that pile changed
             end;
+         end;
+         if (Assigned(MaterialCapacities)) then
+         begin
+            for Material in MaterialCapacities do
+               Writeln('  total ', Material.Name, ' pile capacity: ', MaterialCapacities[Material] * Material.MassPerUnit:0:3, 'kg');
          end;
 
          // Factories
@@ -1698,7 +1704,7 @@ begin
          if (DynastyData^.FMaterialConsumers.IsNotEmpty) then
          begin
             MaterialConsumerCounts := TMaterialQuantityHashTable.Create(DynastyData^.FMaterialConsumers.Length);
-            for MaterialConsumer in DynastyData^.FMaterialConsumers.Without(nil) do
+            for MaterialConsumer in DynastyData^.FMaterialConsumers do
             begin
                Material := MaterialConsumer.GetMaterialConsumerMaterial();
                if (Assigned(Material)) then
@@ -1707,6 +1713,11 @@ begin
                   Assert((not Assigned(DynastyData^.FMaterialPileComposition)) or (not DynastyData^.FMaterialPileComposition.Has(Material)) or (DynastyData^.FMaterialPileComposition[Material] = 0));
                end;
             end;
+         end;
+         if (Assigned(MaterialConsumerCounts)) then
+         begin
+            for Material in MaterialConsumerCounts do
+               Writeln('  ', Material.Name, ' consumer count: ', MaterialConsumerCounts[Material]);
          end;
 
          // COMPUTE ACTUAL RATES
@@ -1728,7 +1739,7 @@ begin
                // TODO: handle factories when relevant material pile is not empty
                if (DynastyData^.FMaterialConsumers.IsNotEmpty) then
                begin
-                  for MaterialConsumer in DynastyData^.FMaterialConsumers.Without(nil) do
+                  for MaterialConsumer in DynastyData^.FMaterialConsumers do
                   begin
                      if (MaterialConsumer.GetMaterialConsumerMaterial() = Material) then
                      begin
@@ -1736,6 +1747,7 @@ begin
                         // our piles (because they would have taken that first before calling us).
                         Assert((not Assigned(DynastyData^.FMaterialPileComposition)) or (not DynastyData^.FMaterialPileComposition.Has(Material)) or (DynastyData^.FMaterialPileComposition[Material] = 0));
                         MaterialConsumer.StartMaterialConsumer(TRate.Zero);
+                        Writeln('  cannot provide ', Material.Name, ' to ', MaterialConsumer.GetAsset().DebugName);
                      end;
                   end;
                end;
@@ -1769,6 +1781,8 @@ begin
             begin
                MaterialPileFull := True;
             end;
+            Writeln('  ore pile for ', Material.Name, ' is empty: ', OrePileEmpty);
+            Writeln('  material pile for ', Material.Name, ' is full: ', MaterialPileFull);
             SourceLimiting := False;
             TargetLimiting := False;
             if (OrePileEmpty) then
@@ -1832,7 +1846,11 @@ begin
                else
                   TimeUntilThisOrePileEmpty := TMillisecondsDuration.Infinity;
             end;
-            for Refinery in DynastyData^.FRefineries.Without(nil) do
+            if (Ratio > 0) then
+               Writeln('  refining ', Material.Name, ' at 1:', 1/Ratio:0:2, ' ratio')
+            else
+               Writeln('  cannot refine ', Material.Name);
+            for Refinery in DynastyData^.FRefineries do
             begin
                if (Refinery.GetRefineryOre() = Ore) then
                begin
@@ -1851,8 +1869,9 @@ begin
                else
                   MaterialConsumptionRate := TRate.Zero;
                MaterialConsumptionRate := ((RefiningRate / Material.MassPerUnit) * Ratio - MaterialConsumptionRate) / MaterialConsumerCounts[Material];
+               Writeln('  consuming ', Material.Name, ' at rate ', (MaterialConsumptionRate * Material.MassPerUnit).ToString('kg'), ' spread over ', MaterialConsumerCounts[Material], ' consumers');
                Assert(MaterialConsumptionRate.IsZero or MaterialConsumptionRate.IsPositive);
-               for MaterialConsumer in DynastyData^.FMaterialConsumers.Without(nil) do
+               for MaterialConsumer in DynastyData^.FMaterialConsumers do
                begin
                   if (MaterialConsumer.GetMaterialConsumerMaterial() = Material) then
                   begin
@@ -1891,9 +1910,10 @@ begin
                   Assert(TimeUntilOrePilesFull.IsPositive);
                end;
                // ready to go, start the miners!
+               Writeln('  starting miners at max rate');
                if (DynastyData^.FMiners.IsNotEmpty) then
                begin
-                  for Miner in DynastyData^.FMiners.Without(nil) do
+                  for Miner in DynastyData^.FMiners do
                      Miner.StartMiner(Miner.GetMinerMaxRate(), False, False);
                end;
                FDynamic := True;
@@ -1902,10 +1922,11 @@ begin
             if ((TotalMinerMaxRate.IsPositive) and (TotalMiningToRefineryRate.IsPositive)) then
             begin
                // piles are full, but we are refining, so there is room being made
+               Writeln('  starting miners at refining rate');
                Assert(TotalMiningToRefineryRate < TotalMinerMaxRate);
                if (DynastyData^.FMiners.IsNotEmpty) then
                begin
-                  for Miner in DynastyData^.FMiners.Without(nil) do
+                  for Miner in DynastyData^.FMiners do
                      Miner.StartMiner(TotalMiningToRefineryRate * (Miner.GetMinerMaxRate() / TotalMinerMaxRate), False, True);
                end;
                TotalMinerMaxRate := TotalMiningToRefineryRate;
@@ -1914,9 +1935,10 @@ begin
             else
             begin
                // piles are full, stop the miners
+               Writeln('  stopped miners, piles full and no refining');
                if (DynastyData^.FMiners.IsNotEmpty) then
                begin
-                  for Miner in DynastyData^.FMiners.Without(nil) do
+                  for Miner in DynastyData^.FMiners do
                      Miner.StartMiner(TRate.Zero, False, True);
                end;
                TotalMinerMaxRate := TRate.Zero;
@@ -1924,14 +1946,17 @@ begin
          end
          else
          begin
+            Writeln('  stopped miners, ground empty');
             // ground is empty, stop the miners
             if (DynastyData^.FMiners.IsNotEmpty) then
             begin
-               for Miner in DynastyData^.FMiners.Without(nil) do
+               for Miner in DynastyData^.FMiners do
                   Miner.StartMiner(TRate.Zero, True, False);
             end;
             TotalMinerMaxRate := TRate.Zero;
          end;
+
+         // Determine the earliest event
          if (TimeUntilNextEvent > TimeUntilOrePilesFull) then
             TimeUntilNextEvent := TimeUntilOrePilesFull;
          if (TimeUntilNextEvent > TimeUntilAnyOrePileEmpty) then

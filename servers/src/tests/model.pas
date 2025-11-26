@@ -216,12 +216,14 @@ type
    public
       LineItems: specialize PlasticArray <TMaterialLineItem, specialize IncomparableUtils<TMaterialLineItem>>;
    strict private
+      FBuilderID: UInt32;
       FQuantity: UInt32;
       FQuantityRate: Double;
       FHp: UInt32;
       FHpRate: Double;
       FMinHp: UInt32;
    published
+      property BuilderID: UInt32 read FBuilderID write FBuilderID;
       property Quantity: UInt32 read FQuantity write FQuantity;
       property QuantityRate: Double read FQuantityRate write FQuantityRate;
       property Hp: UInt32 read FHp write FHp;
@@ -1256,6 +1258,7 @@ begin
       MaterialLineItem.MaterialID := Stream.ReadInt32();
       LineItems.Push(MaterialLineItem);
    end;
+   BuilderID := Stream.ReadCardinal();
    Quantity := Stream.ReadCardinal();
    QuantityRate := Stream.ReadDouble();
    Hp := Stream.ReadCardinal();

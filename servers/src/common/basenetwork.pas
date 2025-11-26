@@ -173,7 +173,7 @@ implementation
 uses
    sysutils, utf8, unicode, exceptions, hashfunctions,
    {$IFDEF TESTSUITE} time, {$ENDIF}
-   sigint, errors, dateutils, isdprotocol, stringutils;
+   unixutils, errors, dateutils, isdprotocol, stringutils;
 
 function PEventHash32(const Key: PEvent): DWord;
 begin
@@ -896,5 +896,5 @@ begin
 end;
 
 initialization
-   InstallAbortHandler();
+   HookSignalHandlers();
 end.

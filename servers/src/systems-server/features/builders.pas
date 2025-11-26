@@ -882,7 +882,7 @@ var
    Builders: TBuilderFeatureNodeArray;
    BuilderIndex: Integer;
    Structure: IStructure;
-   Remaining: Cardinal;
+   RemainingWorkers: Cardinal;
    Dynasty: TDynasty;
 begin
    if (not FRecords.AssignedBuilders) then
@@ -893,21 +893,21 @@ begin
          begin
             Builders := FRecords.GetSortedBuildersFor(Dynasty);
             BuilderIndex := -1;
-            Remaining := 0;
+            RemainingWorkers := 0;
             for Structure in FRecords.GetSortedStructuresFor(Dynasty) do
             begin
-               if (Remaining = 0) then
+               if (RemainingWorkers = 0) then
                begin
                   Inc(BuilderIndex);
                   if (BuilderIndex < Length(Builders)) then
                   begin
-                     Remaining := Builders[BuilderIndex].Capacity;
+                     RemainingWorkers := Builders[BuilderIndex].Capacity;
                   end;
                end;
-               if (Remaining > 0) then
+               if (RemainingWorkers > 0) then
                begin
                   Builders[BuilderIndex].BuilderBusStartBuilding(Structure);
-                  Dec(Remaining);
+                  Dec(RemainingWorkers);
                end;
             end;
          end;
@@ -1101,6 +1101,7 @@ procedure TBuilderFeatureNode.BuilderBusStartBuilding(Structure: IStructure); //
 begin
    FStructures.Add(Structure);
    Structure.StartBuilding(Self, FFeatureClass.BuildRate);
+   MarkAsDirty([dkUpdateClients]);
 end;
 
 procedure TBuilderFeatureNode.BuilderBusSync(); // must come from builder bus
@@ -1112,11 +1113,14 @@ begin
    for Structure in FStructures do
       Structure.StopBuilding();
    FStructures.Reset();
+   MarkAsDirty([dkUpdateClients]);
 end;
 
 procedure TBuilderFeatureNode.StopBuilding(Structure: IStructure); // must come from structure!
 begin
    FStructures.Remove(Structure);
+   // structure is responsible for notifying the bus as well
+   MarkAsDirty([dkUpdateClients]);
 end;
 
 procedure TBuilderFeatureNode.BuilderBusReset(); // must come from builder bus
@@ -1129,7 +1133,7 @@ begin
    for Structure in FStructures do
       Structure.StopBuilding();
    FreeAndNil(FStructures);
-   MarkAsDirty([dkNeedsHandleChanges]);
+   MarkAsDirty([dkUpdateClients, dkNeedsHandleChanges]);
 end;
 
 function TBuilderFeatureNode.GetPriority(): TPriority;

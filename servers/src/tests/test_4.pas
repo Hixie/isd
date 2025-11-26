@@ -272,7 +272,7 @@ begin
    end;
 
    AdvanceTime(10 * Days);
-   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 3);
+   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 4);
    with (specialize GetUpdatedFeature<TModelMiningFeature>(ModelSystem)) do
    begin
       Verify(DisabledReasons = %00000000);
@@ -319,10 +319,17 @@ begin
    end;
    with (specialize GetUpdatedFeature<TModelBuilderFeature>(ModelSystem, 0)) do
    begin
+      Verify(Parent = SiliconTable);
       Verify(DisabledReasons = %00000000);
       Verify(Capacity = 1);
       Verify(Structures.Length = 0);
-      Verify(Parent = SiliconTable);
+   end;
+   with (specialize GetUpdatedFeature<TModelBuilderFeature>(ModelSystem, 1)) do
+   begin
+      Verify(Parent = Rally);
+      Verify(DisabledReasons = %00000000);
+      Verify(Capacity = 1);
+      Verify(Structures.Length = 1);
    end;
 
    ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 2);

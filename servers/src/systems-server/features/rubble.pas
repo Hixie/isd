@@ -159,6 +159,7 @@ begin
       end;
       SetLength(FComposition, 0);
       MarkAsDirty([dkUpdateClients, dkUpdateJournal]);
+      Result := False;
    end
    else
       Result := False;

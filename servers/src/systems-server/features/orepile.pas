@@ -332,7 +332,7 @@ begin
       begin
          // TODO: when we add the ability to have an ore pile hold ore separate from the region, we should
          // handle this case by moving the ore to region on behalf of the Message.Owner dynasty.
-         ASsert(not FRegion.Assigned);
+         Assert(not FRegion.Assigned);
       end
       else
       begin

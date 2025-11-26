@@ -558,66 +558,68 @@ end;
 
 function TGridFeatureNode.HandleCommand(Command: UTF8String; var Message: TMessage): Boolean;
 var
-   KnownAssetClasses: TGetKnownAssetClassesMessage;
-   X, Y: Cardinal;
+   X, Y, Index: Cardinal;
+   PlayerDynasty: TDynasty;
    AssetClassID: TAssetClassID;
+   AssetClasses: TAssetClassArray;
    AssetClass: TAssetClass;
    Asset: TAssetNode;
-   PlayerDynasty: TDynasty;
 begin
    if (Command = ccBuild) then
    begin
       Result := True;
       X := Message.Input.ReadCardinal();
       Y := Message.Input.ReadCardinal();
+      PlayerDynasty := (Message.Connection as TConnection).PlayerDynasty;
+      AssetClassID := Message.Input.ReadLongint();
+      AssetClasses := FKnownClasses[System.DynastyIndex[PlayerDynasty]];
+      if (Length(AssetClasses) = 0) then
+      begin
+         Writeln('Client requested a build for a grid where they have no knowledge.');
+         Message.Error(ieInvalidMessage);
+         exit;
+      end;
       if ((X >= FDimension) or (Y >= FDimension)) then
       begin
          Writeln('Client requested a build for a cell out of range: ', X, ',', Y);
          Message.Error(ieInvalidMessage);
          exit;
       end;
-      PlayerDynasty := (Message.Connection as TConnection).PlayerDynasty;
-      // TODO: check if PlayerDynasty can see this grid
       if (Assigned(GetChild(X, Y, PlayerDynasty))) then
       begin
          Writeln('Client requested a build for that already has a child: ', X, ',', Y);
          Message.Error(ieInvalidMessage);
          exit;
       end;
-      AssetClassID := Message.Input.ReadLongint();
-      AssetClass := System.Encyclopedia.AssetClasses[AssetClassID];
+      AssetClass := nil;
+      for Index := Low(AssetClasses) to High(AssetClasses) do // $R-
+      begin
+         if (AssetClasses[Index].ID = AssetClassID) then
+         begin
+            AssetClass := AssetClasses[Index];
+            break;
+         end;
+      end;
       if (not Assigned(AssetClass)) then
       begin
-         Writeln('Client requested a build for an unknown asset class ID: ', AssetClassID);
+         Writeln('Client requested a build for an asset class ID they do not know: ', AssetClassID);
          Message.Error(ieInvalidMessage);
          exit;
       end;
-      KnownAssetClasses := TGetKnownAssetClassesMessage.Create((Message.Connection as TConnection).PlayerDynasty);
-      try
-         InjectBusMessage(KnownAssetClasses); // we ignore the result - it doesn't matter if it wasn't handled
-         if (not KnownAssetClasses.Knows(AssetClass)) then
-         begin
-            Writeln('Client requested a build for an asset class ID they do not know: ', AssetClassID);
-            Message.Error(ieInvalidMessage);
-            exit;
-         end;
-         if (not AssetClass.CanBuild(FBuildEnvironment)) then
-         begin
-            Writeln('Client requested a build with a non-matching build environment.');
-            Message.Error(ieInvalidMessage);
-            exit;
-         end;
-         if (Message.CloseInput()) then
-         begin
-            Message.Reply();
-            Asset := AssetClass.Spawn(PlayerDynasty, System);
-            AdoptGridChild(Asset, X, Y);
-            Assert(Asset.Mass = 0); // if you put something down, it shouldn't immediately have mass
-            Assert(Asset.Size <= FCellSize, 'Tried to put ' + Asset.DebugName + ' of size ' + FloatToStr(Asset.Size) + 'm in cell size ' + FloatToStr(FCellSize) + 'm');
-            Message.CloseOutput();
-         end;
-      finally
-         KnownAssetClasses.Free();
+      if (not AssetClass.CanBuild(FBuildEnvironment)) then
+      begin
+         Writeln('Client requested a build with a non-matching build environment.');
+         Message.Error(ieInvalidMessage);
+         exit;
+      end;
+      if (Message.CloseInput()) then
+      begin
+         Message.Reply();
+         Asset := AssetClass.Spawn(PlayerDynasty, System);
+         AdoptGridChild(Asset, X, Y);
+         Assert(Asset.Mass = 0); // if you put something down, it shouldn't immediately have mass
+         Assert(Asset.Size <= FCellSize, 'Tried to put ' + Asset.DebugName + ' of size ' + FloatToStr(Asset.Size) + 'm in cell size ' + FloatToStr(FCellSize) + 'm');
+         Message.CloseOutput();
       end;
    end
    else

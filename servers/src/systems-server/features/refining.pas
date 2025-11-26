@@ -98,6 +98,7 @@ end;
 
 destructor TRefiningFeatureNode.Destroy();
 begin
+   Writeln(DebugName, ' going away (FStatus.Connected=', FStatus.Connected, ')');
    if (FStatus.Connected) then
       FStatus.Region.RemoveRefinery(Self);
    inherited;

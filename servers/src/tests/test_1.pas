@@ -501,7 +501,7 @@ begin
    // One day later.
    AdvanceTime(1 * Days div TimeFactor);
    // This is when the table turns on.
-   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 4); // the piles and the structure
+   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 5); // the piles, the structure, the builder
    Verify(DrillBit <> specialize GetUpdatedFeature<TModelMiningFeature>(ModelSystem));
    with (specialize GetUpdatedFeature<TModelMiningFeature>(ModelSystem)) do
    begin
@@ -541,7 +541,7 @@ begin
         + specialize GetUpdatedFeature<TModelStructureFeature>(ModelSystem, 0).Parent.MassFlowRate
         - DrillBit.CurrentRate = 0.0);
 
-   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 4); // structure completes building
+   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 5); // structure completes building
    with (specialize GetUpdatedFeature<TModelStructureFeature>(ModelSystem)) do
    begin
       Verify(Hp = 3);
