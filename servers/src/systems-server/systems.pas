@@ -497,7 +497,7 @@ const
       // dkAffectsDynastyCount is set conditionally
    ];
    dkIdentityChanged = [
-      dkUpdateClients, dkUpdateJournal,
+      dkUpdateClients, dkUpdateJournal, dkNeedsHandleChanges,
       dkAffectsNames, dkVisibilityDidChange, dkAffectsVisibility, dkAffectsKnowledge
    ];
    dkAffectsTreeStructure = [ // set on old/new parents when child's parent changes
@@ -2653,6 +2653,7 @@ end;
 
 constructor TSystem.CreateFromDisk(AConfigurationDirectory: UTF8String; ASystemID: Cardinal; ARootClass: TAssetClass; AServer: TBaseServer; ADynastyDatabase: TDynastyDatabase; AEncyclopedia: TEncyclopediaView; AOnScoreDirty: TScoreDirtyCallback);
 begin
+   Writeln('Recreating system ', ASystemID, ' from journal...');
    Init(AConfigurationDirectory, ASystemID, ARootClass, AServer, ADynastyDatabase, AEncyclopedia, AOnScoreDirty);
    ApplyJournal(FConfigurationDirectory + JournalDatabaseFileName);
    OpenJournal(FConfigurationDirectory + JournalDatabaseFileName); // This walks the entire tree, updates everything, writes it all to the journal, and cleans the dirty flags.

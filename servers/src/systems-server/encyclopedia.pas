@@ -828,13 +828,13 @@ begin
             ExcessAssets := DismantleMessage.ExtractExcessAssets();
             for Child in ExcessAssets do
                Child.Parent.DropChild(Child);
-            Asset.Become(RubblePile);
             if (not Assigned(Asset.Owner)) then
             begin
                Asset.MarkAsDirty([dkAffectsDynastyCount]);
                Asset.Owner := PlayerDynasty;
             end;
             Assert(Asset.Owner = PlayerDynasty);
+            Asset.Become(RubblePile);
             if (DismantleMessage.ExcessPopulation > 0) then
             begin
                Writeln('POPULATION PLACED ON RUBBLE ', DismantleMessage.ExcessPopulation);

@@ -676,15 +676,25 @@ begin
    Assert(Body <> '');
    RewardMessage := TNotificationMessage.Create(Parent, Body, FCurrentResearch);
    Injected := InjectBusMessage(RewardMessage);
-   if (Injected <> mrHandled) then
-      Writeln(Parent.DebugName, ': Discarding message from research feature ("', RewardMessage.Body, '")');
    FreeAndNil(RewardMessage);
-   SetLength(FSpecialties, Length(FSpecialties) + 1);
-   FSpecialties[High(FSpecialties)] := FCurrentResearch;
-   FCurrentResearch := nil;
-   FResearchStartTime := TTimeInMilliseconds.FromMilliseconds(0);
-   FSeed := -1;
-   ScheduleUpdateResearch();
+   if (Injected <> mrHandled) then
+   begin
+      Writeln(Parent.DebugName, ': Discarding message from research feature ("', RewardMessage.Body, '")');
+      // TODO: now what? can we be notified when we would be able to send a message? can notification centers notify when they come online?
+      FResearchEvent := System.ScheduleEvent(TMillisecondsDuration.FromMilliseconds(1000 * 60 * 60 * 24), @TriggerResearch, Self); // wait a day and try again
+   end
+   else
+   begin
+      // TODO: check that we don't already have this in our speciaties (e.g. if someone keeps deleting the same research result)
+      // TODO: set a max limit to the number of things in our specialties
+      SetLength(FSpecialties, Length(FSpecialties) + 1);
+      FSpecialties[High(FSpecialties)] := FCurrentResearch;
+      FCurrentResearch := nil;
+      FResearchStartTime := TTimeInMilliseconds.FromMilliseconds(0);
+      FSeed := -1;
+      MarkAsDirty([dkUpdateJournal]);
+      ScheduleUpdateResearch();
+   end;
 end;
 
 initialization
