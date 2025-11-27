@@ -594,7 +594,7 @@ The assets in regions of a planetary surface are expected to have the
 <featuredata>       ::= <cellsize> <dimension> <cell>* <zero32> <buildables>
 <cellsize>          ::= <double> ; meters
 <dimension>         ::= <uint32> ; greater than zero
-<cell>              ::= <assetid> <x> <y>
+<cell>              ::= <assetid> <x> <y> <size>
 <x>                 ::= <uint32> ; 0..width-1
 <y>                 ::= <uint32> ; 0..height-1
 <buildables>        ::= [ <assetclass> <size> ]* <zero32> ; asset classes do not have id zero
@@ -610,7 +610,11 @@ There are `<dimension>` cells horizontally and `<dimension>` cells
 vertically (grids are always square).
 
 The children (the grid contents) are provided in no particular order.
-Each cell is at the specified `<x>`/`<y>` coordinate in the grid.
+Each cell is at the specified `<x>`/`<y>` coordinate in the grid, and
+has a `<size>`. The given coordinate is the cell at the top left of
+the asset, and the asset takes a square of `<size>` cells to a side,
+growing down and to the right. (Thus, an asset of `<size>` 1 uses just
+the cell at `<x>`,`<y>`.)
 
 > TODO: provide geology within each cell.
 
@@ -621,9 +625,11 @@ range 1..255 or 1..`<dimension>`, whichever is smaller.)
 
 This feature supports the following command:
 
- * `build`: two numeric fields, x and y, indicating an empty cell,
-   followed by the asset class ID (from the `<buildables>`).
-   No data is returned.
+ * `build`: two numeric fields, x and y, indicating a cell, followed
+   by the asset class ID (from the `<buildables>`). There must be
+   sufficient room to fit the asset with its top-left at the
+   designated cell. Assets take as much room as specified in the
+   `<buildables>` list. No data is returned.
 
 
 #### `fcPopulation` (0x0B)

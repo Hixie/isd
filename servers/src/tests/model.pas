@@ -298,10 +298,11 @@ type
          TChild = record
             AssetID: UInt32;
             X, Y: UInt32;
+            Size: UInt8;
          end;
          TBuildable = record
             AssetClass: PAssetClass;
-            Size: Cardinal;
+            Size: UInt8;
          end;
    protected
       procedure ResetChildren(); override;
@@ -1348,6 +1349,7 @@ begin
          break;
       Child.X := Stream.ReadCardinal();
       Child.Y := Stream.ReadCardinal();
+      Child.Size := Stream.ReadByte();
       ModelSystem.Assets[Child.AssetID].FParent := Self;
       Children.Push(Child);
    end;

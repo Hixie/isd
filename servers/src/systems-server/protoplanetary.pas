@@ -430,7 +430,7 @@ begin
             else
             begin
                // MOONS
-               Assert(Length(Planet.Composition) > 0);
+               Assert(Length(Planet.Composition) = Length(Materials));
                Distance := Planet.Distance;
                PlanetHillRadius := Distance * (1 - Planet.Eccentricity) * Power((PlanetMass / (3 * (PlanetMass + StarMass))), 1/3); // $R-
                MoonSize := Randomizer.Perturb(Planet.Radius * MaxMoonSizeRatio, MoonSizePerturbationParameters);

@@ -508,6 +508,7 @@ const
 
 type
    TKnowledgeFilter = function(AssetClass: TAssetClass): Boolean is nested;
+   TAssetNodeArray = array of TAssetNode;
    TAssetClassArray = array of TAssetClass;
    
    ISensorsProvider = interface ['ISensorsProvider']
@@ -633,7 +634,7 @@ type
       function GetTopic(Name: UTF8String): TTopic; virtual; abstract;
       function GetMinMassPerOreUnit(): Double; virtual; abstract;
    public
-      function Craterize(Diameter: Double; OldAsset, NewAsset: TAssetNode): TAssetNode; virtual; abstract;
+      function Craterize(Diameter: Double; OldAssets: TAssetNodeArray; NewAsset: TAssetNode): TAssetNode; virtual; abstract;
       function HandleBusMessage(Asset: TAssetNode; Message: TBusMessage): Boolean; virtual; abstract; // return true to skip this asset
       procedure Dismantle(Asset: TAssetNode; Message: TMessage); virtual; abstract;
       property AssetClasses[ID: TAssetClassID]: TAssetClass read GetAssetClass;

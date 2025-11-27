@@ -61,7 +61,7 @@ type
       FChildren: TAssetNode.TArray; // TODO: plastic array? sorted array with binary search? map?
       FKnownClasses: TAssetClassKnowledge;
       function GetChild(X, Y: Cardinal; GhostOwner: TDynasty): TAssetNode; // to only get non-ghosts, set GhostOwner to nil
-      procedure AdoptGridChild(Child: TAssetNode; X, Y: Cardinal);
+      procedure AdoptGridChild(Child: TAssetNode; X, Y, ChildSize: Cardinal);
    protected
       function GetMass(): Double; override;
       function GetMassFlowRate(): TRate; override;
@@ -92,7 +92,7 @@ type
    PGridData = ^TGridData;
    TGridData = bitpacked record
       // TODO: geology
-      X, Y, Index: Cardinal;
+      X, Y, ChildSize, Index: Cardinal;
       IsNew: Boolean;
       IsChanged: Boolean;
    end;
@@ -314,18 +314,39 @@ begin
    inherited;
 end;
 
-procedure TGridFeatureNode.AdoptGridChild(Child: TAssetNode; X, Y: Cardinal);
+procedure TGridFeatureNode.AdoptGridChild(Child: TAssetNode; X, Y, ChildSize: Cardinal);
 var
    OldChild: TAssetNode;
+   {$IFOPT C+} DX, DY: Cardinal; {$ENDIF}
+   Position: PGridData;
+
+   {$IFOPT C+}
+   function Min(A, B: Cardinal): Cardinal; inline;
+   begin
+      if (A < B) then
+         Result := A;
+      Result := B;
+   end;
+   {$ENDIF}
+               
 begin
    Assert(Assigned(Child));
-   Assert(not Assigned(GetChild(X, Y, nil)));
+   Assert(ChildSize > 0);
+   {$IFOPT C+}
+   for DX := X to Min(X + ChildSize, Dimension) - 1 do // $R-
+      for DY := Y to Min(Y + ChildSize, Dimension) - 1 do // $R-
+      begin
+         OldChild := GetChild(DX, DY, nil); // $R-
+         Assert((not Assigned(OldChild)) or not OldChild.IsReal());
+      end;
+   {$ENDIF}
    AdoptChild(Child);
    Child.ParentData := New(PGridData);
    PGridData(Child.ParentData)^.IsNew := True;
    PGridData(Child.ParentData)^.IsChanged := True;
    PGridData(Child.ParentData)^.X := X;
    PGridData(Child.ParentData)^.Y := Y;
+   PGridData(Child.ParentData)^.ChildSize := ChildSize;
    SetLength(FChildren, Length(FChildren) + 1);
    FChildren[High(FChildren)] := Child;
    PGridData(Child.ParentData)^.Index := High(FChildren); // $R-
@@ -333,13 +354,17 @@ begin
    begin
       for OldChild in FChildren do
       begin
-         if ((PGridData(OldChild.ParentData)^.X = X) and
-             (PGridData(OldChild.ParentData)^.Y = Y)) then
+         Position := PGridData(OldChild.ParentData);
+         if ((OldChild <> Child) and
+             (X < Position^.X + Position^.ChildSize) and
+             (X + ChildSize > Position^.X) and
+             (Y < Position^.Y + Position^.ChildSize) and
+             (Y + ChildSize > Position^.Y)) then
          begin
-            if (not OldChild.IsReal()) then
-            begin
-               DropChild(OldChild);
-            end;
+            Assert(not OldChild.IsReal());
+            OldChild.ReportPermanentlyGone();
+            DropChild(OldChild);
+            System.Server.ScheduleDemolition(OldChild);
          end;
       end;
    end;
@@ -362,13 +387,17 @@ end;
 function TGridFeatureNode.GetChild(X, Y: Cardinal; GhostOwner: TDynasty): TAssetNode;
 var
    Child: TAssetNode;
+   Position: PGridData;
 begin
    Assert(X < FDimension);
    Assert(Y < FDimension);
    for Child in FChildren do
    begin
-      if ((PGridData(Child.ParentData)^.X = X) and
-          (PGridData(Child.ParentData)^.Y = Y)) then
+      Position := PGridData(Child.ParentData);
+      if ((X >= Position^.X) and
+          (Y >= Position^.Y) and
+          (X < Position^.X + Position^.ChildSize) and
+          (Y < Position^.Y + Position^.ChildSize)) then
       begin
          if (Child.IsReal() or (Child.Owner = GhostOwner)) then
          begin
@@ -414,7 +443,9 @@ end;
 function TGridFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
 var
    Child, Crater, OldChild: TAssetNode;
-   X, Y: Cardinal;
+   X, Y, ChildSize: Cardinal;
+   OldChildren: TAssetNode.TPlasticArray;
+   Position: PGridData;
 begin
    if (Message is TReceiveCrashingAssetMessage) then
    begin
@@ -422,10 +453,20 @@ begin
       begin
          X := System.RandomNumberGenerator.GetCardinal(0, Dimension);
          Y := System.RandomNumberGenerator.GetCardinal(0, Dimension);
-         OldChild := GetChild(X, Y, nil);
-         Assert(CellSize >= Child.Size);
-         Crater := System.Encyclopedia.Craterize(CellSize, OldChild, Child);
-         AdoptGridChild(Crater, X, Y);
+         ChildSize := Ceil(Child.Size / CellSize); // $R-
+         for OldChild in FChildren do
+         begin
+            Position := PGridData(OldChild.ParentData);
+            if ((X < Position^.X + Position^.ChildSize) and
+                (X + ChildSize > Position^.X) and
+                (Y < Position^.Y + Position^.ChildSize) and
+                (Y + ChildSize > Position^.Y)) then
+            begin
+               OldChildren.Push(OldChild);
+            end;
+         end;
+         Crater := System.Encyclopedia.Craterize(ChildSize * CellSize, OldChildren.Distill(), Child); // this removes the old children
+         AdoptGridChild(Crater, X, Y, ChildSize);
       end;
       Result := True;
       exit;
@@ -460,6 +501,8 @@ begin
             Writer.WriteCardinal(Child.ID(DynastyIndex));
             Writer.WriteCardinal(PGridData(Child.ParentData)^.X);
             Writer.WriteCardinal(PGridData(Child.ParentData)^.Y);
+            Assert(PGridData(Child.ParentData)^.ChildSize < High(Byte));
+            Writer.WriteByte(PGridData(Child.ParentData)^.ChildSize); // $R-
          end;
       end;
       Writer.WriteCardinal(0);
@@ -488,6 +531,7 @@ procedure TGridFeatureNode.UpdateJournal(Journal: TJournalWriter);
             Journal.WriteAssetNodeReference(Child);
             Journal.WriteCardinal(PGridData(Child.ParentData)^.X);
             Journal.WriteCardinal(PGridData(Child.ParentData)^.Y);
+            Journal.WriteCardinal(PGridData(Child.ParentData)^.ChildSize);
             PGridData(Child.ParentData)^.IsNew := False;
          end
          else
@@ -516,14 +560,15 @@ procedure TGridFeatureNode.ApplyJournal(Journal: TJournalReader);
    procedure AddChild();
    var
       Child: TAssetNode;
-      X, Y: Cardinal;
+      X, Y, ChildSize: Cardinal;
    begin
       Child := Journal.ReadAssetNodeReference();
       X := Journal.ReadCardinal();
       Y := Journal.ReadCardinal();
+      ChildSize := Journal.ReadCardinal();
       Assert(X < FDimension);
       Assert(Y < FDimension);
-      AdoptGridChild(Child, X, Y);
+      AdoptGridChild(Child, X, Y, ChildSize);
       Assert(Child.Parent = Self);
    end;
 
@@ -558,7 +603,7 @@ end;
 
 function TGridFeatureNode.HandleCommand(Command: UTF8String; var Message: TMessage): Boolean;
 var
-   X, Y, Index: Cardinal;
+   X, Y, ChildSize, Index: Cardinal;
    PlayerDynasty: TDynasty;
    AssetClassID: TAssetClassID;
    AssetClasses: TAssetClassArray;
@@ -615,10 +660,12 @@ begin
       if (Message.CloseInput()) then
       begin
          Message.Reply();
+         Writeln(DebugName, ' building ', AssetClass.Name, ' at ', X, ',', Y, ' for dynasty ', PlayerDynasty.DynastyID);
          Asset := AssetClass.Spawn(PlayerDynasty, System);
-         AdoptGridChild(Asset, X, Y);
+         ChildSize := Ceil(Double(AssetClass.DefaultSize) / Double(FCellSize)); // $R-
+         AdoptGridChild(Asset, X, Y, ChildSize);
          Assert(Asset.Mass = 0); // if you put something down, it shouldn't immediately have mass
-         Assert(Asset.Size <= FCellSize, 'Tried to put ' + Asset.DebugName + ' of size ' + FloatToStr(Asset.Size) + 'm in cell size ' + FloatToStr(FCellSize) + 'm');
+         Assert(Asset.Size <= ChildSize * FCellSize, 'Unexpectedly put ' + Asset.DebugName + ' of size ' + FloatToStr(Asset.Size) + 'm in cell size ' + FloatToStr(ChildSize * FCellSize) + 'm');
          Message.CloseOutput();
       end;
    end

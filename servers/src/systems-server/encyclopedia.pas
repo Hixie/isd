@@ -47,7 +47,7 @@ type
       procedure CondenseProtoplanetaryDisks(Space: TSolarSystemFeatureNode; System: TSystem);
       procedure FindTemperatureEquilibria(System: TSystem);
       procedure SpawnColonyShip(Dynasty: TDynasty; System: TSystem);
-      function Craterize(Diameter: Double; OldAsset, NewAsset: TAssetNode): TAssetNode; override;
+      function Craterize(Diameter: Double; OldAssets: TAssetNode.TArray; NewAsset: TAssetNode): TAssetNode; override;
       function HandleBusMessage(Asset: TAssetNode; Message: TBusMessage): Boolean; override;
       procedure Dismantle(Asset: TAssetNode; Message: TMessage); override;
       property MinMassPerOreUnit: Double read FMinMassPerOreUnit;
@@ -724,26 +724,52 @@ begin
    );
 end;
 
-function TEncyclopedia.Craterize(Diameter: Double; OldAsset, NewAsset: TAssetNode): TAssetNode;
+function TEncyclopedia.Craterize(Diameter: Double; OldAssets: TAssetNode.TArray; NewAsset: TAssetNode): TAssetNode;
 var
+   OldAsset: TAssetNode;
+   CompositionTable: TMaterialQuantityHashTable;
    Composition: TMaterialQuantityArray;
    RubbleCollectionMessage: TRubbleCollectionMessage;
+   Index: Cardinal;
+   Material: TMaterial;
 begin
    Assert(Assigned(NewAsset));
    Assert(Diameter >= NewAsset.Size);
-   if (Assigned(OldAsset)) then
-   begin
-      Assert(Diameter >= OldAsset.Size);
-      RubbleCollectionMessage := TRubbleCollectionMessage.Create();
-      try
-         OldAsset.HandleBusMessage(RubbleCollectionMessage);
-         Composition := RubbleCollectionMessage.Composition;
-      finally
-         FreeAndNil(RubbleCollectionMessage);
+   // TODO: skip this if OldAssets is empty
+   CompositionTable := TMaterialQuantityHashTable.Create();
+   try
+      for OldAsset in OldAssets do
+      begin
+         Assert(Diameter >= OldAsset.Size);
+         RubbleCollectionMessage := TRubbleCollectionMessage.Create();
+         try
+            OldAsset.HandleBusMessage(RubbleCollectionMessage);
+            if (Length(RubbleCollectionMessage.Composition) > 0) then
+            begin
+               for Index := Low(RubbleCollectionMessage.Composition) to High(RubbleCollectionMessage.Composition) do // $R-
+                  CompositionTable.Inc(RubbleCollectionMessage.Composition[Index].Material, RubbleCollectionMessage.Composition[Index].Quantity);
+            end;
+         finally
+            FreeAndNil(RubbleCollectionMessage);
+         end;
       end;
-   end
-   else
-      SetLength(Composition, 0);
+      SetLength(Composition, CompositionTable.Count);
+      Index := 0;
+      for Material in CompositionTable do
+      begin
+         Composition[Index].Material := Material;
+         Composition[Index].Quantity := CompositionTable[Material];
+         Inc(Index);
+      end;
+   finally
+      FreeAndNil(CompositionTable);
+   end;
+   for OldAsset in OldASsets do
+   begin
+      OldAsset.ReportPermanentlyGone();
+      OldAsset.Parent.DropChild(OldAsset);
+      OldAsset.System.Server.ScheduleDemolition(OldAsset);
+   end;
    Result := FCrater.Spawn(nil { no owner }, NewAsset.System, [
       TProxyFeatureNode.Create(NewAsset.System, NewAsset),
       TRubblePileFeatureNode.Create(NewAsset.System, Diameter, Composition)
