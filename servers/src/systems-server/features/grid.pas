@@ -60,7 +60,6 @@ type
       FDimension: Cardinal;
       FChildren: TAssetNode.TArray; // TODO: plastic array? sorted array with binary search? map?
       FKnownClasses: TAssetClassKnowledge;
-      function GetChild(X, Y: Cardinal; GhostOwner: TDynasty): TAssetNode; // to only get non-ghosts, set GhostOwner to nil
       procedure AdoptGridChild(Child: TAssetNode; X, Y, ChildSize: Cardinal);
    protected
       function GetMass(): Double; override;
@@ -317,7 +316,6 @@ end;
 procedure TGridFeatureNode.AdoptGridChild(Child: TAssetNode; X, Y, ChildSize: Cardinal);
 var
    OldChild: TAssetNode;
-   {$IFOPT C+} DX, DY: Cardinal; {$ENDIF}
    Position: PGridData;
 
    {$IFOPT C+}
@@ -332,14 +330,6 @@ var
 begin
    Assert(Assigned(Child));
    Assert(ChildSize > 0);
-   {$IFOPT C+}
-   for DX := X to Min(X + ChildSize, Dimension) - 1 do // $R-
-      for DY := Y to Min(Y + ChildSize, Dimension) - 1 do // $R-
-      begin
-         OldChild := GetChild(DX, DY, nil); // $R-
-         Assert((not Assigned(OldChild)) or not OldChild.IsReal());
-      end;
-   {$ENDIF}
    AdoptChild(Child);
    Child.ParentData := New(PGridData);
    PGridData(Child.ParentData)^.IsNew := True;
@@ -382,31 +372,6 @@ begin
    Dispose(PGridData(Child.ParentData));
    Child.ParentData := nil;
    inherited;
-end;
-
-function TGridFeatureNode.GetChild(X, Y: Cardinal; GhostOwner: TDynasty): TAssetNode;
-var
-   Child: TAssetNode;
-   Position: PGridData;
-begin
-   Assert(X < FDimension);
-   Assert(Y < FDimension);
-   for Child in FChildren do
-   begin
-      Position := PGridData(Child.ParentData);
-      if ((X >= Position^.X) and
-          (Y >= Position^.Y) and
-          (X < Position^.X + Position^.ChildSize) and
-          (Y < Position^.Y + Position^.ChildSize)) then
-      begin
-         if (Child.IsReal() or (Child.Owner = GhostOwner)) then
-         begin
-            Result := Child;
-            exit;
-         end;
-      end;
-   end;
-   Result := nil;
 end;
 
 function TGridFeatureNode.GetMass(): Double;
@@ -608,7 +573,8 @@ var
    AssetClassID: TAssetClassID;
    AssetClasses: TAssetClassArray;
    AssetClass: TAssetClass;
-   Asset: TAssetNode;
+   Asset, OldChild: TAssetNode;
+   Position: PGridData;
 begin
    if (Command = ccBuild) then
    begin
@@ -624,18 +590,6 @@ begin
          Message.Error(ieInvalidMessage);
          exit;
       end;
-      if ((X >= FDimension) or (Y >= FDimension)) then
-      begin
-         Writeln('Client requested a build for a cell out of range: ', X, ',', Y);
-         Message.Error(ieInvalidMessage);
-         exit;
-      end;
-      if (Assigned(GetChild(X, Y, PlayerDynasty))) then
-      begin
-         Writeln('Client requested a build for that already has a child: ', X, ',', Y);
-         Message.Error(ieInvalidMessage);
-         exit;
-      end;
       AssetClass := nil;
       for Index := Low(AssetClasses) to High(AssetClasses) do // $R-
       begin
@@ -643,6 +597,29 @@ begin
          begin
             AssetClass := AssetClasses[Index];
             break;
+         end;
+      end;
+      ChildSize := Ceil(Double(AssetClass.DefaultSize) / Double(FCellSize)); // $R-
+      if ((X + ChildSize > FDimension) or (Y + ChildSize > FDimension)) then
+      begin
+         Writeln('Client requested a build for a cell out of range: ', X, ',', Y, ' (child size ', ChildSize, '; grid dimension ', FDimension, ')');
+         Message.Error(ieInvalidMessage);
+         exit;
+      end;
+      for OldChild in FChildren do
+      begin
+         Position := PGridData(OldChild.ParentData);
+         if ((X < Position^.X + Position^.ChildSize) and
+             (X + ChildSize > Position^.X) and
+             (Y < Position^.Y + Position^.ChildSize) and
+             (Y + ChildSize > Position^.Y)) then
+         begin
+            if (OldChild.IsReal() or (OldChild.Owner = PlayerDynasty)) then
+            begin
+               Writeln('Client requested a build for a cell with an existing child: ', X, ',', Y, ' (child size ', ChildSize, '; grid dimension ', FDimension, ') overlaps ', OldChild.DebugName, ' at ', Position^.X, ',', Position^.Y, ' (child size ', Position^.ChildSize, ')');
+               Message.Error(ieInvalidMessage);
+               exit;
+            end;
          end;
       end;
       if (not Assigned(AssetClass)) then
@@ -662,7 +639,6 @@ begin
          Message.Reply();
          Writeln(DebugName, ' building ', AssetClass.Name, ' at ', X, ',', Y, ' for dynasty ', PlayerDynasty.DynastyID);
          Asset := AssetClass.Spawn(PlayerDynasty, System);
-         ChildSize := Ceil(Double(AssetClass.DefaultSize) / Double(FCellSize)); // $R-
          AdoptGridChild(Asset, X, Y, ChildSize);
          Assert(Asset.Mass = 0); // if you put something down, it shouldn't immediately have mass
          Assert(Asset.Size <= ChildSize * FCellSize, 'Unexpectedly put ' + Asset.DebugName + ' of size ' + FloatToStr(Asset.Size) + 'm in cell size ' + FloatToStr(ChildSize * FCellSize) + 'm');
