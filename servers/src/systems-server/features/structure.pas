@@ -122,7 +122,7 @@ implementation
 
 uses
    sysutils, isdprotocol, exceptions, rubble, plasticarrays,
-   genericutils, math, assetpile;
+   genericutils, assetpile;
 
 constructor TMaterialLineItem.Create(AComponentName: UTF8String; AMaterial: TMaterial; AQuantity: Cardinal);
 begin
@@ -991,12 +991,10 @@ begin
    Assert(Delivery <= FBuildingState^.PendingQuantity);
    Assert((Delivery = 0) or (not FBuildingState^.AnchorTime.IsInfinite)); // nextevent might be nil already but even then we must not have reset the anchor time yet
    Assert((Delivery = 0) or (FBuildingState^.MaterialsQuantityRate.IsNotZero));
-   if (FBuildingState^.MaterialsQuantityRate.IsNotZero or
-       (FBuildingState^.StructuralIntegrityRate.IsNotZero and (FBuildingState^.StructuralIntegrity < FBuildingState^.MaterialsQuantity))) then
-      Duration := System.Now - FBuildingState^.AnchorTime;
+   if (FBuildingState^.StructuralIntegrityRate.IsNotZero and Assigned(FBuildingState^.NextEvent)) then
+      Duration := System.Now - FBuildingState^.AnchorTime; // compute this before checking if we need to reset to static regime below
    if (Delivery > 0) then
    begin
-      Assert(Delivery <= Ceil(Duration * FBuildingState^.MaterialsQuantityRate));
       Inc(FBuildingState^.MaterialsQuantity, Delivery);
       Dec(FBuildingState^.PendingQuantity, Delivery);
       if (FBuildingState^.PendingQuantity = 0) then
@@ -1016,9 +1014,12 @@ begin
    end;
    if (FBuildingState^.StructuralIntegrityRate.IsNotZero and (FBuildingState^.StructuralIntegrity < FBuildingState^.MaterialsQuantity)) then
    begin
-      FBuildingState^.IncStructuralIntegrity(Duration * FBuildingState^.StructuralIntegrityRate, FFeatureClass.MinimumFunctionalQuantity); // result ignored, we always do dkNeedsHandleChanges
-      Assert((FBuildingState^.PendingQuantity > 0) = (Assigned(FBuildingState^.PendingMaterial)));
-      MarkAsDirty([dkUpdateClients, dkUpdateJournal, dkNeedsHandleChanges]);
+      if (Duration.IsNotZero) then
+      begin
+         FBuildingState^.IncStructuralIntegrity(Duration * FBuildingState^.StructuralIntegrityRate, FFeatureClass.MinimumFunctionalQuantity); // result ignored, we always do dkNeedsHandleChanges
+         Assert((FBuildingState^.PendingQuantity > 0) = (Assigned(FBuildingState^.PendingMaterial)));
+         MarkAsDirty([dkUpdateClients, dkUpdateJournal, dkNeedsHandleChanges]);
+      end;
    end;
 end;
 

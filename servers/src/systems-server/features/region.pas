@@ -1049,6 +1049,7 @@ var
    DeliverySize, Capacity, Usage: UInt64;
    MaterialPile: IMaterialPile;
    DynastyData: PPerDynastyData;
+   Consumer: IMaterialConsumer;
 begin
    {$IFOPT C+} Assert(not Busy); {$ENDIF}
    if (Message is TRegisterMinerBusMessage) then
@@ -1141,39 +1142,65 @@ begin
       Writeln(DebugName, ' received ', Store.ClassName, ' message for ', Store.RemainingQuantity, ' units of ', Store.Material.Name);
       if (FData.HasDynasty(Store.Dynasty)) then
       begin
-         Capacity := GetTotalMaterialPileCapacity(Store.Dynasty, Store.Material);
-         Writeln('  we have ', Capacity, ' units of total capacity for ', Store.Material.Name);
-         if (Capacity > 0) then
+         DynastyData := FData[Store.Dynasty];
+         Assert(Store.RemainingQuantity > 0);
+         SyncAndReconsider();
+         if (DynastyData^.FMaterialConsumers.IsNotEmpty) then
          begin
-            DynastyData := FData[Store.Dynasty];
-            Assert(Store.RemainingQuantity > 0);
-            SyncAndReconsider();
-            if (Assigned(DynastyData^.FMaterialPileComposition) and DynastyData^.FMaterialPileComposition.Has(Store.Material)) then
+            for Consumer in DynastyData^.FMaterialConsumers do
             begin
-               Usage := DynastyData^.FMaterialPileComposition[Store.Material];
-               if (Usage < Capacity) then
+               if (Consumer.GetMaterialConsumerMaterial() = Store.Material) then
                begin
-                  Dec(Capacity, Usage);
-               end
-               else
-               begin
-                  Writeln('  (meaning we are completely full)');
-                  Capacity := 0;
+                  Capacity := Consumer.GetMaterialConsumerMaxDelivery();
+                  if (Capacity > Store.RemainingQuantity) then
+                  begin
+                     Capacity := Store.RemainingQuantity;
+                  end;
+                  if (Capacity > 0) then
+                  begin
+                     Writeln('  feeding ', Consumer.GetAsset().DebugName, ' a total of ', Capacity, ' units of ', Store.Material.Name);
+                     Consumer.DeliverMaterialConsumer(Capacity);
+                     Store.Store(Capacity);
+                     if (Store.Fulfilled) then
+                        break;
+                  end;
                end;
             end;
+            Writeln('  after feeding consumers, we have ', Store.RemainingQuantity, ' units of ', Store.Material.Name, ' left to deal with');
+         end;
+         if (Store.RemainingQuantity > 0) then
+         begin
+            Capacity := GetTotalMaterialPileCapacity(Store.Dynasty, Store.Material);
+            Writeln('  we have ', Capacity, ' units of total capacity for ', Store.Material.Name);
             if (Capacity > 0) then
             begin
-               Writeln('  we have ', Capacity, ' units of remaining capacity for ', Store.Material.Name);
-               if (Capacity > Store.RemainingQuantity) then
-                  Capacity := Store.RemainingQuantity;
-               Writeln('  taking ', Capacity, ' units');
-               Store.Store(Capacity);
-               DynastyData^.IncMaterialPile(Store.Material, Capacity);
-               if (DynastyData^.FMaterialPiles.IsNotEmpty) then
-                  for MaterialPile in DynastyData^.FMaterialPiles.Without(nil) do
-                     if (MaterialPile.GetMaterialPileMaterial() = Store.Material) then
-                        MaterialPile.RegionAdjustedMaterialPiles();
-               MarkAsDirty([dkUpdateJournal]);
+               if (Assigned(DynastyData^.FMaterialPileComposition) and DynastyData^.FMaterialPileComposition.Has(Store.Material)) then
+               begin
+                  Usage := DynastyData^.FMaterialPileComposition[Store.Material];
+                  if (Usage < Capacity) then
+                  begin
+                     Dec(Capacity, Usage);
+                  end
+                  else
+                  begin
+                     Writeln('  (meaning we are completely full)');
+                     Capacity := 0;
+                  end;
+               end;
+               if (Capacity > 0) then
+               begin
+                  Writeln('  we have ', Capacity, ' units of remaining capacity for ', Store.Material.Name);
+                  if (Capacity > Store.RemainingQuantity) then
+                     Capacity := Store.RemainingQuantity;
+                  Writeln('  taking ', Capacity, ' units');
+                  Store.Store(Capacity);
+                  DynastyData^.IncMaterialPile(Store.Material, Capacity);
+                  if (DynastyData^.FMaterialPiles.IsNotEmpty) then
+                     for MaterialPile in DynastyData^.FMaterialPiles.Without(nil) do
+                        if (MaterialPile.GetMaterialPileMaterial() = Store.Material) then
+                           MaterialPile.RegionAdjustedMaterialPiles();
+                  MarkAsDirty([dkUpdateJournal]);
+               end;
             end;
          end;
       end;
