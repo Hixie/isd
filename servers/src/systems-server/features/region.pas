@@ -1647,7 +1647,7 @@ begin
          MaterialConsumerCounts := nil;
 
          Writeln('  total ore pile mass: ', TotalOrePileMass:0:3, 'kg');
-         
+
          // COMPUTE MAX RATES AND CAPACITIES
          // Total mining rate
          TotalMinerMaxRate := TRate.Zero;

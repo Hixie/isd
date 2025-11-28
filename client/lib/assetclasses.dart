@@ -25,7 +25,6 @@ class AssetClass {
   }
 
   Widget asKnowledgeIcon(BuildContext context) {
-    // TODO: make this clickable (show a HUD with more information)
     return IconsManager.knowledgeIcon(context, icon, tooltip);
   }
 

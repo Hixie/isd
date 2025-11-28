@@ -149,6 +149,7 @@ class IconsManager {
   }
 
   static const double knowledgeIconSize = 64.0;
+  static const double buildIconSize = IconsManager.knowledgeIconSize;
 
   // This renders the icon in the form used to represent knowledge.
   static Widget knowledgeIcon(BuildContext context, String icon, String tooltip) {

@@ -84,7 +84,7 @@ type
       property RemainingPopulation: Cardinal read FPopulation;
       procedure Rehome(Amount: Cardinal);
    end;
-   
+
 implementation
 
 uses
@@ -130,7 +130,7 @@ begin
    FOwner := AOwner;
    FTarget := ATarget;
 end;
-      
+
 destructor TDismantleMessage.Destroy();
 begin
    FreeAndNil(FMaterials);

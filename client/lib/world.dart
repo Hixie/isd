@@ -36,7 +36,7 @@ abstract class WorldNode extends Node with ChangeNotifier {
 
   // This is used by the layout logic to track when the center node changes.
   ValueSetter<WorldNode>? onDispose;
-  
+
   @override
   void dispose() {
     if (onDispose != null) {

@@ -76,7 +76,7 @@ begin
    MinTime := 0;
    MaxTime := 0;
    TimePinned := True;
-   
+
    ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 127);
 
    AdvanceTime(1000 * Days);
@@ -84,7 +84,7 @@ begin
    ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 18); // crash
 
    HomeRegion := specialize GetUpdatedFeature<TModelGridFeature>(ModelSystem);
-   
+
    AssetClass1 := GetAssetClassFromBuildingsList(HomeRegion, 'Drilling Hole');
    AssetClass2 := GetAssetClassFromBuildingsList(HomeRegion, 'Iron team table');
    AssetClass3 := GetAssetClassFromBuildingsList(HomeRegion, 'Silicon Table');
@@ -488,7 +488,7 @@ begin
       Verify(KnownContents[0].MaterialID = 9); // Iron
       Verify(KnownContents[0].Quantity = 1);
    end;
-   
+
    AdvanceTime(10 * Days);
 
    FreeAndNil(ModelSystem);

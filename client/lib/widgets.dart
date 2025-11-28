@@ -1,8 +1,8 @@
 import 'dart:math' show sqrt;
 
 import 'package:flutter/gestures.dart';
+import 'package:flutter/material.dart' hide Material;
 import 'package:flutter/rendering.dart';
-import 'package:flutter/widgets.dart';
 
 import 'assetclasses.dart';
 import 'icons.dart';
@@ -565,7 +565,6 @@ class KnowledgeDish extends StatelessWidget {
             borderRadius: BorderRadius.circular(padding),
             side: const BorderSide(),
           ),
-
         ),
         child: DecoratedBox(
           decoration: ShapeDecoration(
@@ -603,6 +602,173 @@ class KnowledgeDish extends StatelessWidget {
                   ),
                 const SizedBox(width: padding),
               ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class BuildableDish extends StatefulWidget {
+  const BuildableDish({
+    super.key,
+    required this.assetClasses,
+    required this.onSelect,
+    required this.selection,
+  });
+
+  final List<AssetClass> assetClasses;
+  final ValueSetter<AssetClass?> onSelect;
+  final AssetClass? selection;
+
+  @override
+  State<BuildableDish> createState() => _BuildableDishState();
+}
+
+class _BuildableDishState extends State<BuildableDish> {
+  @override
+  void dispose() {
+    widget.onSelect(null);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const double padding = 12.0;
+    return Stack(
+      children: <Widget>[
+        Container(
+          margin: const EdgeInsets.only(top: padding * 1.25),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(padding),
+            border: Border.all(
+              width: 2.0,
+            ),
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomCenter,
+              colors: <Color>[
+                Color(0xEEFFFFFF),
+                Color(0x99FFFFFF),
+              ],
+              stops: <double>[0.0, 1.0],
+            ),
+            boxShadow: const <BoxShadow>[
+              BoxShadow(
+                blurStyle: BlurStyle.outer,
+                color: Color(0x66000000),
+                spreadRadius: -2.0,
+                blurRadius: 5.0,
+                offset: Offset(2.0, 2.0),
+              ),
+            ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.only(left: padding, top: padding * 1.5, right: padding, bottom: padding),
+            child: Wrap(
+              spacing: padding,
+              runSpacing: padding,
+              children: <Widget>[
+                for (AssetClass assetClass in widget.assetClasses)
+                  BuildIcon(
+                    assetClass: assetClass,
+                    onSelect: widget.onSelect,
+                    selection: widget.selection,
+                  ),
+              ],
+            ),
+          ),
+        ),
+        const Positioned(
+          left: padding * 2.0,
+          top: 0.0,
+          child: DecoratedBox(
+            decoration: ShapeDecoration(
+              shape: StadiumBorder(
+                side: BorderSide(),
+              ),
+              color: Color(0xFFFFFFFF),
+              shadows: <BoxShadow>[
+                BoxShadow(
+                  blurRadius: 2.0,
+                  offset: Offset(0.0, 1.0),
+                ),
+              ],
+            ),
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: padding, vertical: padding / 3.0),
+              child: Text('Build Palette'),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class BuildIcon extends StatefulWidget {
+  const BuildIcon({
+    super.key,
+    required this.assetClass,
+    this.iconSize = IconsManager.buildIconSize,
+    this.iconPadding = 8.0,
+    required this.onSelect,
+    required this.selection,
+  });
+
+  final AssetClass assetClass;
+  final double iconSize;
+  final double iconPadding;
+  final ValueSetter<AssetClass?> onSelect;
+  final AssetClass? selection;
+
+  @override
+  State<BuildIcon> createState() => _BuildIconState();
+}
+
+class _BuildIconState extends State<BuildIcon> {
+  bool _down = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final IconsManager icons = IconsManagerProvider.of(context);
+    final bool selected = widget.selection == widget.assetClass;
+    return Tooltip(
+      message: widget.assetClass.tooltip,
+      child: GestureDetector(
+        onTapDown: (TapDownDetails details) {
+          setState(() {
+            _down = true;
+          });
+        },
+        onTapCancel: () {
+          setState(() {
+            _down = false;
+          });
+        },
+        onTap: () {
+          setState(() {
+            _down = false;
+          });
+          if (selected) {
+            widget.onSelect(null);
+          } else {
+            widget.onSelect(widget.assetClass);
+          }
+        },
+        child: MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: DecoratedBox(
+            decoration: ShapeDecoration(
+              shape: CircleBorder(
+                side: selected ? const BorderSide() : BorderSide.none,
+              ),
+              color: _down ? const Color(0x11000000) : const Color(0x22000000),
+            ),
+            child: Padding(
+              padding: EdgeInsets.all(widget.iconPadding),
+              child: IconsManager.icon(context, widget.assetClass.icon, size: widget.iconSize - widget.iconPadding * 2.0, icons: icons),
             ),
           ),
         ),

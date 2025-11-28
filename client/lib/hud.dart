@@ -166,16 +166,17 @@ class HudHandle {
     assert(_box.height.round() >= minHeight.round(), 'invalid box: $_box (minHeight=$minHeight)');
     assert(_box.left.round() >= minX.round(), 'invalid box: $_box (minX=$minX)');
     assert(_box.top.round() >= minY.round(), 'invalid box: $_box (minY=$minY)');
+    final Widget child = _HudRoot(
+      handle: this,
+      child: _widget,
+    );
     return Positioned(
       key: ObjectKey(this),
       top: _box.top.clamp(minY, max(hudSize.height - minY - minOverlap, minY + minHeight)),
       left: _box.left.clamp(minX, max(hudSize.width - minX - _box.width, minX + minWidth)),
       width: min(_box.width, max(hudSize.width, minWidth)),
       height: _box.height,
-      child: _HudRoot(
-        handle: this,
-        child: _widget,
-      ),
+      child: child,
     );
   }
 

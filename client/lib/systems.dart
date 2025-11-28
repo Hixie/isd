@@ -97,7 +97,7 @@ class SystemServer {
   static const int expectedVersion = fcAssetPile;
 
   final SystemSingletons _singletons = SystemSingletons();
-  
+
   Future<void> _handleLogin() async {
     _singletons.reset();
     final StreamReader reader = await _connection.send(<String>['login', token], queue: false);
@@ -291,7 +291,8 @@ class SystemServer {
               while ((child = _readAsset(reader)) != null) {
                 final int x = reader.readUInt32();
                 final int y = reader.readUInt32();
-                children[child!] = (x: x, y: y);
+                final int size = reader.readUInt8();
+                children[child!] = (x: x, y: y, size: size);
               }
               final List<Buildable> buildables = <Buildable>[];
               AssetClass? assetClass;

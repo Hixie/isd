@@ -57,7 +57,7 @@ type
    end;
 
    // TODO: unsubscribe when the ancestor chain changes
-   
+
 implementation
 
 uses

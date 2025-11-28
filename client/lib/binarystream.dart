@@ -86,7 +86,7 @@ class BinaryStreamReader {
       description: readString(),
     );
   }
-  
+
   AssetClass? readAssetClass({ bool allowUnknowns = false }) {
     assert(!checkpointed);
     final int code = readInt32();

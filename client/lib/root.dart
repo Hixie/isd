@@ -145,7 +145,7 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
   void _centerNodeChainUpdate(WorldNode node) {
     _changeCenterNode(node.worldParent!);
   }
-  
+
   void _changeCenterNode(WorldNode node) {
     if (node == _centerNode)
       return;
@@ -154,7 +154,7 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
       chain.onDispose = null;
     }
     _centerNodeChain.clear();
-      
+
     Offset oldPos = Offset.zero;
     WorldNode currentNode;
     currentNode = _centerNode;
@@ -186,7 +186,7 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
       chain.onDispose = _centerNodeChainUpdate;
       chain = chain.worldParent;
     }
-    
+
     _panTween.begin = _panTween.begin! - delta;
     _panTween.end = _panTween.end! - delta;
     _handlePositionChange();

@@ -66,7 +66,7 @@ type
       property Subscribed: Boolean read GetSubscribed;
       property Bus: TKnowledgeBusFeatureNode read FBus;
    end;
-   
+
    TSubscribableKnowledgeBusMessage = class abstract (TTargetedKnowledgeBusMessage)
    strict protected
       FBus: TKnowledgeBusFeatureNode;

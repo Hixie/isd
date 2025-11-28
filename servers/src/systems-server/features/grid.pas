@@ -240,7 +240,7 @@ begin
       SetLength(TIndirectArray(FData), Count);
    end;
 end;
-      
+
 procedure TGridFeatureNode.TAssetClassKnowledge.Reset(); inline;
 var
    Address: PtrUInt;
@@ -261,7 +261,7 @@ begin
          TIndirectArray(FData)[Index] := nil;
       end;
    end;
-end;      
+end;
 
 function TGridFeatureNode.TAssetClassKnowledge.GetAssetClasses(DynastyIndex: Cardinal): TAssetClass.TArray;
 begin

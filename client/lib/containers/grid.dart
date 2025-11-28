@@ -1,14 +1,11 @@
 import 'dart:async';
-import 'dart:math' show max;
 import 'dart:ui';
 
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart' hide Gradient;
 import 'package:flutter/rendering.dart' hide Gradient;
 
 import '../assetclasses.dart';
 import '../assets.dart';
-import '../hud.dart';
 import '../icons.dart';
 import '../layout.dart';
 import '../nodes/system.dart';
@@ -18,7 +15,16 @@ import '../widgets.dart';
 import '../world.dart';
 
 typedef Buildable = ({AssetClass assetClass, int size});
-typedef GridParameters = ({int x, int y}); // could also just store this as an index, and use half the memory
+typedef GridParameters = ({int x, int y, int size});
+
+class _GridState extends ChangeNotifier {
+  AssetClass? get selection => _selection;
+  AssetClass? _selection;
+  set selection(AssetClass? value) {
+    _selection = value;
+    scheduleMicrotask(notifyListeners);
+  }
+}
 
 class GridFeature extends ContainerFeature {
   GridFeature(this.cellSize, this.dimension, this.buildables, this.children);
@@ -27,16 +33,28 @@ class GridFeature extends ContainerFeature {
   final int dimension;
 
   final List<Buildable> buildables;
-  
+
   // consider this read-only; the entire GridFeature gets replaced when the child list changes
   final Map<AssetNode, GridParameters> children;
+
+  _GridState? _state;
+
+  @override
+  void init(Feature? oldFeature) {
+    super.init(oldFeature);
+    if (oldFeature is GridFeature) {
+      _state = oldFeature._state;
+    } else {
+      _state = _GridState();
+    }
+  }
 
   @override
   Offset findLocationForChild(AssetNode child, List<VoidCallback> callbacks) {
     final GridParameters childData = children[child]!;
     return Offset(
-      (childData.x - dimension / 2 + 0.5) * cellSize,
-      (childData.y - dimension / 2 + 0.5) * cellSize,
+      (childData.x + childData.size / 2.0 - dimension / 2.0) * cellSize,
+      (childData.y + childData.size / 2.0 - dimension / 2.0) * cellSize,
     );
   }
 
@@ -67,28 +85,24 @@ class GridFeature extends ContainerFeature {
   @override
   RendererType get rendererType => RendererType.square;
 
+  void _build(int x, int y) {
+    final SystemNode system = SystemNode.of(this);
+    system.play(<Object>[parent.id, 'build', x, y, _state!.selection!.id]);
+  }
+
   @override
   Widget buildRenderer(BuildContext context) {
-    final List<Widget> childList = List<Widget>.generate(dimension * dimension, (int index) => DefaultGridCell(
-      key: ValueKey<int>(index),
-      diameter: cellSize,
-      maxDiameter: parent.diameter,
-      node: parent,
-      buildables: buildables,
-      x: index % dimension,
-      y: index ~/ dimension,
-    ));
-    for (AssetNode child in children.keys) {
-      final GridParameters parameters = children[child]!;
-      childList[parameters.y * dimension + parameters.x] = child.build(context);
-    }
-    return GridWidget(
-      spaceTime: SystemNode.of(parent).spaceTime,
-      node: parent,
-      cellSize: cellSize,
-      width: dimension,
-      height: dimension,
-      children: childList,
+    return ListenableBuilder(
+      listenable: _state!,
+      builder: (BuildContext context, Widget? child) => GridWidget(
+        spaceTime: SystemNode.of(parent).spaceTime,
+        selection: _state!.selection,
+        node: parent,
+        cellSize: cellSize,
+        dimension: dimension,
+        children: children.keys.map((AssetNode node) => node.build(context)).toList(),
+        onBuild: _state!.selection == null ? null : _build,
+      ),
     );
   }
 
@@ -104,8 +118,21 @@ class GridFeature extends ContainerFeature {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
+              if (buildables.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8.0),
+                  child: ListenableBuilder(
+                    listenable: _state!,
+                    builder: (BuildContext context, Widget? child) => BuildableDish(
+                      // TODO: let the user drag the palette out and close the inspector
+                      assetClasses: buildables.map((Buildable buildable) => buildable.assetClass).toList(),
+                      onSelect: (AssetClass? assetClass) => _state!.selection = assetClass,
+                      selection: _state!.selection,
+                    ),
+                  ),
+                ),
               if (children.isEmpty)
-                const Text('None', style: italic),
+                Text('No structures present in ${parent.nameOrClassName}.', style: italic),
               for (AssetNode child in children.keys)
                 Text.rich(
                   child.describe(context, icons, iconSize: fontSize),
@@ -114,189 +141,6 @@ class GridFeature extends ContainerFeature {
           ),
         ),
       ],
-    );
-  }
-}
-
-class DefaultGridCell extends StatelessWidget {
-  const DefaultGridCell({
-    super.key,
-    required this.node,
-    required this.buildables,
-    required this.diameter,
-    required this.maxDiameter,
-    required this.x,
-    required this.y,
-  });
-
-  final AssetNode node;
-  final List<Buildable> buildables;
-  final double diameter;
-  final double maxDiameter;
-  final int x;
-  final int y;
-
-  @override
-  Widget build(BuildContext context) {
-    return WorldToBoxAdapter(
-      node: node,
-      diameter: diameter,
-      maxDiameter: maxDiameter,
-      child: CellBuildButton(node: node, buildables: buildables, x: x, y: y),
-    );
-  }
-}
-
-class CellBuildButton extends StatefulWidget {
-  const CellBuildButton({
-    super.key,
-    required this.node,
-    required this.buildables,
-    required this.x,
-    required this.y,
-  });
-
-  final AssetNode node;
-  final List<Buildable> buildables;
-  final int x;
-  final int y;
-
-  @override
-  State<CellBuildButton> createState() => _CellBuildButtonState();
-}
-
-class _CellBuildButtonState extends State<CellBuildButton> {
-  static const Duration _duration = Duration(milliseconds: 160);
-
-  bool _hover = false;
-  bool _tap = false;
-
-  Timer? _tapTimer;
-
-  void _resetTap() {
-    setState(() {
-        _tap = false;
-    });
-    _tapTimer?.cancel();
-    _tapTimer = null;
-  }
-
-  void _startTap() {
-    if (!_tap) {
-      setState(() {
-        _tap = true;
-      });
-    }
-    _tapTimer?.cancel();
-    _tapTimer = null;
-  }
-
-  void _endTap() {
-    _tapTimer?.cancel();
-    _tapTimer = Timer(_duration, _resetTap);
-  }
-
-  HudHandle? _build;
-
-  void _triggerBuild() {
-    _build = HudProvider.add(context, const Size(480.0, 512.0), HudDialog(
-       heading: const Text('Build'),
-       child: BuildUi(
-         system: SystemNode.of(widget.node),
-         node: widget.node,
-         buildables: widget.buildables,
-         x: widget.x,
-         y: widget.y,
-       ),
-    ));
-  }
-
-  @override
-  void dispose() {
-    _build?.cancel();
-    _tapTimer?.cancel();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return MouseRegion(
-      hitTestBehavior: HitTestBehavior.deferToChild,
-      onEnter: (PointerEnterEvent event) { setState(() { _hover = true; }); },
-      onExit: (PointerExitEvent event) { setState(() { _hover = false; }); },
-      cursor: SystemMouseCursors.contextMenu, // TODO: use an image
-      child: GestureDetector(
-        onTapDown: (TapDownDetails details) { _startTap(); },
-        onTapCancel: _resetTap,
-        onTapUp: (TapUpDetails details) { _endTap(); },
-        onTap: _triggerBuild,
-        child: FittedBox(
-          child: SizedBox(
-            width: 100.0,
-            height: 100.0,
-            child: Padding(
-              padding: const EdgeInsets.all(10.0),
-              child: AnimatedContainer(
-                duration: _duration,
-                curve: Curves.easeOutCubic,
-                decoration: ShapeDecoration(
-                  color: _hover || _tap ? const Color(0xFFEEEEEE) : const Color(0x2FEEEEEE),
-                  shape: _tap ? const StarBorder(points: 4) : const CircleBorder(),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class BuildUi extends StatefulWidget {
-  const BuildUi({
-    super.key,
-    required this.system,
-    required this.node,
-    required this.buildables,
-    required this.x,
-    required this.y,
-  }); // TODO: hard-code the key to be on all the arguments
-
-  final SystemNode system;
-  final AssetNode node;
-  final List<Buildable> buildables;
-  final int x;
-  final int y;
-
-  @override
-  State<BuildUi> createState() => _BuildUiState();
-}
-
-class _BuildUiState extends State<BuildUi> {
-  @override
-  Widget build(BuildContext context) {
-    final List<Buildable> options = widget.buildables
-      .toList()
-      ..sort((Buildable a, Buildable b) => a.assetClass.name.compareTo(b.assetClass.name));
-    final IconsManager icons = IconsManagerProvider.of(context);
-    final TextTheme textTheme = Theme.of(context).textTheme;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(0.0, 0.0, 4.0, 0.0),
-      child: ListView.builder(
-        padding: const EdgeInsets.fromLTRB(22.0, 4.0, 20.0, 24.0),
-        itemCount: options.length,
-        itemBuilder: (BuildContext context, int index) {
-          return BuildTile(
-            assetClass: options[index].assetClass,
-            icons: icons,
-            textTheme: textTheme,
-            onBuild: () {
-              widget.system.play(<Object>[widget.node.id, 'build', widget.x, widget.y, options[index].assetClass.id]);
-              HudHandle.of(context).cancel();
-            },
-          );
-        },
-      ),
     );
   }
 }
@@ -347,22 +191,26 @@ class BuildTile extends StatelessWidget {
   }
 }
 
+typedef BuildCallback = void Function(int x, int y);
+
 class GridWidget extends MultiChildRenderObjectWidget {
   const GridWidget({
     super.key,
     required this.spaceTime,
     required this.node,
     required this.cellSize,
-    required this.width,
-    required this.height,
+    required this.dimension,
+    required this.selection,
+    required this.onBuild,
     super.children,
   });
 
   final SpaceTime spaceTime;
   final WorldNode node;
   final double cellSize;
-  final int width;
-  final int height;
+  final int dimension;
+  final BuildCallback? onBuild;
+  final AssetClass? selection;
 
   @override
   RenderGrid createRenderObject(BuildContext context) {
@@ -371,8 +219,8 @@ class GridWidget extends MultiChildRenderObjectWidget {
       shaders: ShaderProvider.of(context),
       node: node,
       cellSize: cellSize,
-      width: width,
-      height: height,
+      dimension: dimension,
+      onBuild: onBuild,
     );
   }
 
@@ -383,12 +231,14 @@ class GridWidget extends MultiChildRenderObjectWidget {
       ..shaders = ShaderProvider.of(context)
       ..node = node
       ..cellSize = cellSize
-      ..width = width
-      ..height = height;
+      ..dimension = dimension
+      ..onBuild = onBuild;
   }
 }
 
-class GridParentData extends ParentData with ContainerParentDataMixin<RenderWorld> { }
+class GridParentData extends ParentData with ContainerParentDataMixin<RenderWorld> {
+  Offset? _computedPosition;
+}
 
 class RenderGrid extends RenderWorldWithChildren<GridParentData> {
   RenderGrid({
@@ -396,13 +246,12 @@ class RenderGrid extends RenderWorldWithChildren<GridParentData> {
     required ShaderLibrary shaders,
     required super.node,
     required double cellSize,
-    required int width,
-    required int height,
+    required int dimension,
+    required this.onBuild,
   }) : _spaceTime = spaceTime,
        _shaders = shaders,
        _cellSize = cellSize,
-       _width = width,
-       _height = height;
+       _dimension = dimension;
 
   SpaceTime get spaceTime => _spaceTime;
   SpaceTime _spaceTime;
@@ -433,27 +282,19 @@ class RenderGrid extends RenderWorldWithChildren<GridParentData> {
     }
   }
 
-  int get width => _width;
-  int _width;
-  set width (int value) {
-    if (value != _width) {
-      _width = value;
+  int get dimension => _dimension;
+  int _dimension;
+  set dimension (int value) {
+    if (value != _dimension) {
+      _dimension = value;
       _gridShader = null;
       markNeedsPaint();
     }
   }
 
-  int get height => _height;
-  int _height;
-  set height (int value) {
-    if (value != _height) {
-      _height = value;
-      _gridShader = null;
-      markNeedsPaint();
-    }
-  }
+  BuildCallback? onBuild;
 
-  double get diameter => max(width, height) * cellSize;
+  double get diameter => dimension * cellSize;
 
   @override
   void setupParentData(RenderObject child) {
@@ -477,7 +318,7 @@ class RenderGrid extends RenderWorldWithChildren<GridParentData> {
 
   @override
   double computePaint(PaintingContext context, Offset offset) {
-    _gridShader ??= shaders.grid(width: width, height: height);
+    _gridShader ??= shaders.grid(height: dimension, width: dimension);
     final double time = spaceTime.computeTime(<VoidCallback>[markNeedsPaint]);
     final double diameter = this.diameter; // cache computation
     _gridShader!.setFloat(uT, time);
@@ -488,21 +329,11 @@ class RenderGrid extends RenderWorldWithChildren<GridParentData> {
     _gridPaint.shader = _gridShader;
     final Rect rect = Rect.fromCircle(center: offset, radius: diameter * constraints.scale / 2.0);
     context.canvas.drawRect(rect, _gridPaint);
-    final Offset topLeftOffset = rect.topLeft;
-    final double actualCellSize = cellSize * constraints.scale;
-    int x = 0;
-    int y = 0;
     RenderWorld? child = firstChild;
     while (child != null) {
-      // TODO: this should probably use paintPositionFor
       final GridParentData childParentData = child.parentData! as GridParentData;
-      final Offset childOffset = topLeftOffset + Offset((0.5 + x) * actualCellSize, (0.5 + y) * actualCellSize);
-      context.paintChild(child, childOffset);
-      x += 1;
-      if (x >= width) {
-        x = 0;
-        y += 1;
-      }
+      childParentData._computedPosition = constraints.paintPositionFor(child.node, offset, <VoidCallback>[markNeedsPaint]);
+      context.paintChild(child, childParentData._computedPosition!);
       child = childParentData.nextSibling;
     }
     return diameter * constraints.scale;
@@ -520,6 +351,31 @@ class RenderGrid extends RenderWorldWithChildren<GridParentData> {
         return result;
       child = childParentData.previousSibling;
     }
+    if (onBuild != null) {
+      final double radius = paintDiameter / 2.0;
+      final Offset topLeft = paintCenter.translate(-radius, -radius);
+      return _GridTapTarget((offset - topLeft) / (paintDiameter / dimension), onBuild!);
+    }
     return null;
+  }
+}
+
+class _GridTapTarget implements WorldTapTarget {
+  _GridTapTarget(this.offset, this.onBuild);
+
+  final Offset offset;
+  final BuildCallback onBuild;
+
+  @override
+  void handleTapDown() {
+    onBuild(offset.dx.truncate(), offset.dy.truncate());
+  }
+
+  @override
+  void handleTapCancel() {
+  }
+
+  @override
+  void handleTapUp() {
   }
 }

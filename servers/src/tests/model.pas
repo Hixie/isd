@@ -43,7 +43,7 @@ type
       Name: UTF8String;
       Description: UTF8String;
    end;
-   
+
    TServerStreamReader = class(TBinaryStreamReader)
    private
       FModel: TModelSystem;
@@ -813,7 +813,7 @@ begin
    inherited;
    FArena := TArena.AllocateArena(Self);
    FStrings := TStringHashTable.Create(@Integer32Hash32);
-   FAssetClasses := TAssetClassHashTable.Create(@LongintHash32);      
+   FAssetClasses := TAssetClassHashTable.Create(@LongintHash32);
    FAssets := TModelAssetHashTable.Create(@Integer32Hash32, 8);
 end;
 

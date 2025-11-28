@@ -501,7 +501,7 @@ const
       dkAffectsNames, dkVisibilityDidChange, dkAffectsVisibility, dkAffectsKnowledge
    ];
    dkAffectsTreeStructure = [ // set on old/new parents when child's parent changes
-      dkUpdateClients, dkUpdateJournal, 
+      dkUpdateClients, dkUpdateJournal,
       dkAffectsVisibility, dkAffectsKnowledge,
       dkChildren, dkChildAffectsNames
    ];
@@ -510,7 +510,7 @@ type
    TKnowledgeFilter = function(AssetClass: TAssetClass): Boolean is nested;
    TAssetNodeArray = array of TAssetNode;
    TAssetClassArray = array of TAssetClass;
-   
+
    ISensorsProvider = interface ['ISensorsProvider']
       // Returns whether the material or asset class is known by the
       // target's owner according to the knowledge bus at the target.
@@ -1413,7 +1413,7 @@ begin
    Result := 0.0;
 end;
 
-      
+
 constructor TFeatureNode.CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem);
 begin
    inherited Create();
@@ -1928,7 +1928,7 @@ end;
 procedure TAssetNode.Become(AAssetClass: TAssetClass);
 var
    Children: TAssetNode.TPlasticArray;
-   
+
    function CollectChildren(Child: TAssetNode): Boolean;
    begin
       if (Child <> Self) then
@@ -1939,7 +1939,7 @@ var
       else
          Result := True;
    end;
-   
+
 var
    Child: TAssetNode;
    Feature: TFeatureNode;
@@ -1972,7 +1972,7 @@ procedure TAssetNode.ReportPermanentlyGone();
       else
          Result := True;
    end;
-   
+
 var
    Message: TAssetGoingAway;
    Injected: TBusMessageResult;

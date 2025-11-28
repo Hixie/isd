@@ -36,7 +36,7 @@ const
    ccAnalyze = 'analyze';
    ccGetTopics = 'get-topics';
    ccSetTopic = 'set-topic';
-   
+
 const
    ieInvalidMessage = 'invalid message';
    ieUnrecognizedCredentials = 'unrecognized credentials';
@@ -48,7 +48,7 @@ const
    ieInvalidCommand = 'invalid command';
    ieUnknownDynasty = 'unknown dynasty';
    ieNoDestructors = 'no destructors';
-   
+
 const
    // These must increment monotonically and their values must never change
    // during the history of the project.
