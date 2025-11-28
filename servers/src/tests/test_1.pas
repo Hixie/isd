@@ -134,7 +134,7 @@ begin
    Verify(ColonyShip.Parent.HasFeature(TModelRubblePileFeature));
    Grid := specialize GetUpdatedFeature<TModelGridFeature>(ModelSystem);
    HomeRegion := Grid;
-   Verify(Grid.Dimension = 3);
+   Verify(Grid.Dimension = 27);
    Verify(Grid.Children.Length = 1);
    Verify(ModelSystem.Assets[Grid.Children[0].AssetID] = ColonyShip.Parent);
 
@@ -203,14 +203,14 @@ begin
    ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 'Breakthrough in City Planning'#10);
    ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 'Congratulations'#10);
    ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 'Mining'#10);
+   ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 'Storage for mining'#10);
    ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 'Stuff in holes'#10);
    ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 'Where we come from'#10);
-   ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 'Storage for mining'#10);
    ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 'Communicating with our creator'#10);
 
    // Build a pile
    AssetClass := GetAssetClassFromBuildingsList(HomeRegion, 'Big ore pile');
-   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.Parent.ID) + #00'build'#00'1'#00'0'#00 + IntToStr(AssetClass) + #00);
+   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.Parent.ID) + #00'build'#00'9'#00'0'#00 + IntToStr(AssetClass) + #00);
    Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
    VerifyPositiveResponse(Response);
    TimePinned := True;
@@ -237,6 +237,9 @@ begin
 
    // Two hundred days later.
    AdvanceTime(200 * Days div TimeFactor);
+   ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, '"Powerful Being" nonsense'#10);
+   ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 'The Impact of Religion on Society'#10);
+
    ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 2);
    with (specialize GetUpdatedFeature<TModelMiningFeature>(ModelSystem)) do
    begin
@@ -286,7 +289,7 @@ begin
 
    // Build an iron table
    AssetClass := GetAssetClassFromBuildingsList(HomeRegion, 'Iron team table');
-   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.Parent.ID) + #00'build'#00'0'#00'1'#00 + IntToStr(AssetClass) + #00);
+   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.Parent.ID) + #00'build'#00'0'#00'9'#00 + IntToStr(AssetClass) + #00);
    Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
    VerifyPositiveResponse(Response);
    TimePinned := True;
@@ -404,7 +407,7 @@ begin
 
    // Build a drill
    AssetClass := GetAssetClassFromBuildingsList(HomeRegion, 'Drilling Hole');
-   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.Parent.ID) + #00'build'#00'1'#00'1'#00 + IntToStr(AssetClass) + #00);
+   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.Parent.ID) + #00'build'#00'9'#00'9'#00 + IntToStr(AssetClass) + #00);
    Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
    VerifyPositiveResponse(Response);
    TimePinned := True;
@@ -422,7 +425,7 @@ begin
    // Build a silicon table
    AssetClass := GetAssetClassFromBuildingsList(HomeRegion, 'Silicon Table');
    AssetClass2 := GetAssetClassFromBuildingsList(HomeRegion, 'Builder rally point');
-   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.Parent.ID) + #00'build'#00'2'#00'1'#00 + IntToStr(AssetClass) + #00);
+   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.Parent.ID) + #00'build'#00'18'#00'0'#00 + IntToStr(AssetClass) + #00);
    Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
    VerifyPositiveResponse(Response);
    FreeAndNil(Response);
@@ -456,7 +459,7 @@ begin
       Verify(DisabledReasons = %00000010); // not built yet
    end;
 
-   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.Parent.ID) + #00'build'#00'0'#00'2'#00 + IntToStr(AssetClass2) + #00);
+   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.Parent.ID) + #00'build'#00'0'#00'18'#00 + IntToStr(AssetClass2) + #00);
    Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
    VerifyPositiveResponse(Response);
    FreeAndNil(Response);

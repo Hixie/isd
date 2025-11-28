@@ -21,7 +21,7 @@ class church {
   description: "This tall building is intended for communicating with the purported creator being.";
   icon: "church";
   build: land;
-  feature: TStructureFeatureClass size 100m, materials (
+  feature: TStructureFeatureClass size 10m, materials (
     "Frame": "Iron" * 100,
     "Facing": "Silicon" * 50,
     "Decorations": "Iron" * 10,
@@ -46,7 +46,7 @@ class mining-big-hole {
   description: "This is a hole used for mining dirt from the ground.";
   icon: "mining-big-hole";
   build: land;
-  feature: TSizeFeatureClass 100m;
+  feature: TSizeFeatureClass 10m;
   feature: TMiningFeatureClass max throughput 10kg/s;
   feature: TOrePileFeatureClass max mass 30000kg;
   feature: TOnOffFeatureClass;
@@ -58,7 +58,7 @@ class pile {
   description: "This is where we put resources we have mined from the ground.";
   icon: "empty-land";
   build: land;
-  feature: TSizeFeatureClass 100m;
+  feature: TSizeFeatureClass 10m;
   feature: TOrePileFeatureClass max mass 3000000kg;
 }
 
@@ -68,7 +68,7 @@ class mining-hole {
   description: "This is a hole used to dig in the ground and get dirt and rocks and stuff.";
   icon: "mining-hole";
   build: land;
-  feature: TSizeFeatureClass 50m;
+  feature: TSizeFeatureClass 10m;
   feature: TMiningFeatureClass max throughput 1kg/s;
   feature: TOrePileFeatureClass max mass 30000kg;
   feature: TOnOffFeatureClass;
@@ -80,7 +80,7 @@ class giant-mining-hole {
   description: "This is a hole used to dig in the ground and get dirt and rocks and stuff, with lots of people helping.";
   icon: "mining-hole";
   build: land;
-  feature: TSizeFeatureClass 100m;
+  feature: TSizeFeatureClass 10m;
   feature: TMiningFeatureClass max throughput 10kg/s;
   feature: TOrePileFeatureClass max mass 300000kg;
   feature: TOnOffFeatureClass;
@@ -92,7 +92,7 @@ class research-hole {
   description: "This is a hole used to dig in the ground for artifacts.";
   icon: "mining-hole";
   build: land;
-  feature: TSizeFeatureClass 100m;
+  feature: TSizeFeatureClass 10m;
   feature: TMiningFeatureClass max throughput 1kg/s;
   feature: TResearchFeatureClass;
   feature: TOnOffFeatureClass;
@@ -126,7 +126,7 @@ class drill {
   description: "This is a drilling hole used for obtaining large quantities of ore.";
   icon: "drill";
   build: land;
-  feature: TSizeFeatureClass 500m;
+  feature: TSizeFeatureClass 10m;
   feature: TMiningFeatureClass max throughput 1000kg/h;
   feature: TOnOffFeatureClass;
 }
@@ -164,7 +164,7 @@ class silicon-pile {
   description: "This is a pile used for storing silicon.";
   icon: "empty-land";
   build: land;
-  feature: TSizeFeatureClass 500m;
+  feature: TSizeFeatureClass 10m;
   feature: TMaterialPileFeatureClass for "Silicon", capacity 100000kg;
 }
 

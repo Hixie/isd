@@ -989,8 +989,6 @@ begin
    Assert(Assigned(FBuildingState^.Region));
    Assert(FBuildingState^.PendingQuantity > 0);
    Assert(Delivery <= FBuildingState^.PendingQuantity);
-   Assert((Delivery = 0) or (not FBuildingState^.AnchorTime.IsInfinite)); // nextevent might be nil already but even then we must not have reset the anchor time yet
-   Assert((Delivery = 0) or (FBuildingState^.MaterialsQuantityRate.IsNotZero));
    if (FBuildingState^.StructuralIntegrityRate.IsNotZero and Assigned(FBuildingState^.NextEvent)) then
       Duration := System.Now - FBuildingState^.AnchorTime; // compute this before checking if we need to reset to static regime below
    if (Delivery > 0) then

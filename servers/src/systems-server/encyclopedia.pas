@@ -210,7 +210,7 @@ begin
       'A cold gravitionally-bound astronomical object. (Cold when compared to a star, at least.)',
       [
          TPlanetaryBodyFeatureClass.Create(),
-         TSurfaceFeatureClass.Create(1000.0 { cell size }, 3, 9, @CreateRegion)
+         TSurfaceFeatureClass.Create(100.0 { cell size (m) }, 5 { min dim }, 99 { max dim }, @CreateRegion)
       ],
       PlanetIcon,
       []

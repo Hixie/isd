@@ -88,8 +88,8 @@ begin
    HomeRegion := Grid;
    ColonyShip := FindColonyShip(ModelSystem);
    Verify(Grid.Children.Length = 1);
-   Verify(Grid.Children[0].X = 0);
-   Verify(Grid.Children[0].Y = 3);
+   Verify(Grid.Children[0].X = 8);
+   Verify(Grid.Children[0].Y = 2);
    Verify(ModelSystem.Assets[(ModelSystem.Assets[Grid.Children[0].AssetID].Features[TModelProxyFeature] as TModelProxyFeature).Child] = ColonyShip);
 
    // some digging and building tests
@@ -138,7 +138,7 @@ begin
    end;
 
    TimePinned := True;
-   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.Parent.ID) + #00'build'#00'0'#00'2'#00 + IntToStr(AssetClass3) + #00);
+   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.Parent.ID) + #00'build'#00'6'#00'6'#00 + IntToStr(AssetClass3) + #00);
    Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
    VerifyPositiveResponse(Response);
    FreeAndNil(Response);
@@ -159,7 +159,7 @@ begin
    end;
 
    TimePinned := True;
-   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.Parent.ID) + #00'build'#00'1'#00'0'#00 + IntToStr(AssetClass4) + #00);
+   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.Parent.ID) + #00'build'#00'6'#00'12'#00 + IntToStr(AssetClass4) + #00);
    Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
    VerifyPositiveResponse(Response);
    FreeAndNil(Response);

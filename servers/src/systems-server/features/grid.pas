@@ -416,9 +416,10 @@ begin
    begin
       for Child in TReceiveCrashingAssetMessage(Message).Assets do
       begin
-         X := System.RandomNumberGenerator.GetCardinal(0, Dimension);
-         Y := System.RandomNumberGenerator.GetCardinal(0, Dimension);
-         ChildSize := Ceil(Child.Size / CellSize); // $R-
+         ChildSize := Ceil(Child.Size * 1.5 / CellSize); // $R-
+         Assert(ChildSize < Dimension, 'ChildSize = ' + IntToStr(ChildSize) + '; Dimension = ' + IntToStr(Dimension)); // TODO: what if it isn't?
+         X := System.RandomNumberGenerator.GetCardinal(0, Dimension - ChildSize); // $R-
+         Y := System.RandomNumberGenerator.GetCardinal(0, Dimension - ChildSize); // $R-
          for OldChild in FChildren do
          begin
             Position := PGridData(OldChild.ParentData);
@@ -598,6 +599,12 @@ begin
             AssetClass := AssetClasses[Index];
             break;
          end;
+      end;
+      if (not Assigned(AssetClass)) then
+      begin
+         Writeln('Client requested a build with an asset class ID that they do not have knowldge of (', AssetClassID, ').');
+         Message.Error(ieInvalidMessage);
+         exit;
       end;
       ChildSize := Ceil(Double(AssetClass.DefaultSize) / Double(FCellSize)); // $R-
       if ((X + ChildSize > FDimension) or (Y + ChildSize > FDimension)) then

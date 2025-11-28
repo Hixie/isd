@@ -24,6 +24,7 @@ type
    private
       FDynasty: TDynasty; // TODO: what if this dynasty disappears from the system?
    protected
+      function HandleBusMessage(Message: TBusMessage): Boolean; override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
       constructor Create(ASystem: TSystem; ADynasty: TDynasty);
@@ -35,8 +36,7 @@ type
 implementation
 
 uses
-   sysutils, isdprotocol;
-
+   sysutils, isdprotocol, orbit;
 
 constructor TDynastyOriginalColonyShipFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
 begin
@@ -59,6 +59,18 @@ constructor TDynastyOriginalColonyShipFeatureNode.Create(ASystem: TSystem; ADyna
 begin
    inherited Create(ASystem);
    FDynasty := ADynasty;
+end;
+
+function TDynastyOriginalColonyShipFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
+begin
+   if (Message is TCrashReportMessage) then
+   begin
+      TCrashReportMessage(Message).RequestRegionDimension(27);
+      Result := False;
+      exit;
+   end
+   else
+      Result := False;
 end;
 
 procedure TDynastyOriginalColonyShipFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);

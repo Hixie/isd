@@ -1702,6 +1702,7 @@ begin
    Result := 0.0;
    for Feature in FFeatures do
    begin
+      Assert(Assigned(Feature), Name + ' has bad features');
       Size := Feature.DefaultSize;
       if (Size > Result) then
          Result := Size;
@@ -2606,7 +2607,7 @@ begin
       if (IsDefinitelyGhost) then
       begin
          Assert((not HaveAnswer) or not Result, 'This asset is having an existential crisis: ' + DebugName); {BOGUS Warning: Function result variable does not seem to be initialized}
-         Assert(Mass = 0, 'Why did this ghost take on weight?? ' + DebugName);
+         Assert(Mass = 0, DebugName + ' has mass but is definitely real according to ' + Feature.ClassName);
          Result := False;
          HaveAnswer := True;
       end;

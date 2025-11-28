@@ -12,7 +12,11 @@ type
 
    PCrashReport = ^TCrashReport;
    TCrashReport = record
+   strict private
+      class operator Initialize(var Rec: TCrashReport);
+   public
       Victims: TAssetNode.TArray; // TODO: make populating this more efficient
+      RegionDimension: Cardinal; // 0 means random
    end;
 
    // reporting this as handled implies that AddVictim has been called appropriately
@@ -23,14 +27,17 @@ type
    public
       constructor Create(ACrashReport: PCrashReport);
       procedure AddVictim(Node: TAssetNode);
+      procedure RequestRegionDimension(Dimension: Cardinal);
    end;
 
    TReceiveCrashingAssetMessage = class(TOrbitBusMessage)
    private
       FAssets: TAssetNode.TArray;
+      FRegionDimension: Cardinal;
    public
       constructor Create(ACrashReport: PCrashReport);
       property Assets: TAssetNode.TArray read FAssets;
+      property RegionDimension: Cardinal read FRegionDimension;
    end;
 
 type
@@ -164,6 +171,12 @@ begin
 end;
 
 
+class operator TCrashReport.Initialize(var Rec: TCrashReport);
+begin
+   Rec.RegionDimension := 0;
+end;
+
+      
 constructor TCrashReportMessage.Create(ACrashReport: PCrashReport);
 begin
    inherited Create();
@@ -176,10 +189,17 @@ begin
    FCrashReport^.Victims[High(FCrashReport^.Victims)] := Node;
 end;
 
+procedure TCrashReportMessage.RequestRegionDimension(Dimension: Cardinal);
+begin
+   FCrashReport^.RegionDimension := Dimension;
+end;
+
+      
 constructor TReceiveCrashingAssetMessage.Create(ACrashReport: PCrashReport);
 begin
    inherited Create();
    FAssets := ACrashReport^.Victims;
+   FRegionDimension := ACrashReport^.RegionDimension;
 end;
 
 
@@ -371,7 +391,7 @@ begin
    CrashReportMessage := TCrashReportMessage.Create(CrashReport);
    try
       Handled := Child.HandleBusMessage(CrashReportMessage);
-      Writeln('Crash report handled=', Handled, '; found ', Length(CrashReport^.Victims), ' victims');
+      Writeln('Crash report handled=', Handled, '; found ', Length(CrashReport^.Victims), ' victims, requested dimension is ', CrashReport^.RegionDimension);
    finally
       FreeAndNil(CrashReportMessage);
    end;

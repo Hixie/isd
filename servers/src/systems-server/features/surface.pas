@@ -32,7 +32,7 @@ type
       // X,Y must be within circle with radius FSize/2-Sqrt(2)*FCellSize*FMaxRegionSize/2
       procedure AdoptRegionChild(Child: TAssetNode; X, Y: Integer; Dimension: Cardinal);
       function GetRegionAt(X, Y: Integer): TAssetNode;
-      function GetOrCreateRegionAt(X, Y: Integer): TAssetNode; // X,Y constrained as above
+      function GetOrCreateRegionAt(X, Y: Integer; Dimension: Cardinal = 0): TAssetNode; // X,Y constrained as above
    protected
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
       function GetMass(): Double; override;
@@ -148,9 +148,9 @@ begin
    Result := nil;
 end;
 
-function TSurfaceFeatureNode.GetOrCreateRegionAt(X, Y: Integer): TAssetNode;
+function TSurfaceFeatureNode.GetOrCreateRegionAt(X, Y: Integer; Dimension: Cardinal = 0): TAssetNode;
 var
-   Index, Dimension: Cardinal;
+   Index: Cardinal;
    XA, YA: Integer;
 begin
    Assert(FSize > 0.0);
@@ -159,7 +159,8 @@ begin
    Result := GetRegionAt(X, Y);
    if (not Assigned(Result)) then
    begin
-      Dimension := System.RandomNumberGenerator.GetCardinal(FFeatureClass.FMinRegionSize div 2, FFeatureClass.FMaxRegionSize div 2) * 2 + 1; // $R-
+      if (Dimension = 0) then
+         Dimension := System.RandomNumberGenerator.GetCardinal(FFeatureClass.FMinRegionSize div 2, FFeatureClass.FMaxRegionSize div 2) * 2 + 1; // $R-
       Assert(Dimension mod 2 = 1);
       Assert(Dimension >= 3);
       // If we get here, we know for certain that at least a 1x1 region at X,Y will be empty.
@@ -266,7 +267,7 @@ begin
       Radius := SqRt(RandomNumberGenerator.GetDouble(0.0, 1.0)) * (FSize / 2.0 - RootTwo * FFeatureClass.FCellSize * FFeatureClass.FMaxRegionSize / 2.0); // $R-
       X := (Radius * Cos(Theta)) / FFeatureClass.FCellSize; // $R-
       Y := (Radius * Sin(Theta)) / FFeatureClass.FCellSize; // $R-
-      Child := GetOrCreateRegionAt(Trunc(X), Trunc(Y)); // $R-
+      Child := GetOrCreateRegionAt(Trunc(X), Trunc(Y), TReceiveCrashingAssetMessage(Message).RegionDimension); // $R-
       Result := Child.HandleBusMessage(Message);
    end
    else
