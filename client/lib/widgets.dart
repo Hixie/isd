@@ -8,6 +8,7 @@ import 'assetclasses.dart';
 import 'icons.dart';
 import 'layout.dart';
 import 'materials.dart';
+import 'root.dart';
 import 'world.dart';
 
 final CurveTween hudTween = CurveTween(curve: Curves.ease);
@@ -535,14 +536,25 @@ class NoZoom extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Listener(
-      behavior: HitTestBehavior.opaque,
-      onPointerSignal: (PointerSignalEvent event) {
-        GestureBinding.instance.pointerSignalResolver.register(event, (PointerSignalEvent event) {
-          // eat the signal so it doesn't zoom something behind us
-        });
+    return ValueListenableBuilder<double>(
+      valueListenable: ZoomProvider.zoomOf(context),
+      builder: (BuildContext context, double value, Widget? child) {
+        final bool bigEnough = value > 42;
+        return Listener(
+          behavior: HitTestBehavior.opaque,
+          onPointerSignal: (PointerSignalEvent event) {
+            if (bigEnough) {
+              GestureBinding.instance.pointerSignalResolver.register(event, (PointerSignalEvent event) {
+                // eat the signal so it doesn't zoom something behind us
+              });
+            }
+          },
+          child: IgnorePointer(
+            ignoring: !bigEnough,
+            child: this.child,
+          ),
+        );
       },
-      child: child,
     );
   }
 }

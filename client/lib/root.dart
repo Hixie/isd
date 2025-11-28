@@ -143,13 +143,15 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
   final List<WorldNode> _centerNodeChain = <WorldNode>[];
 
   void _centerNodeChainUpdate(WorldNode node) {
-    _changeCenterNode(node.worldParent!);
+    assert(_centerNode == _centerNodeChain.first);
+    if ((node != _centerNode) && (node.parent != null)) {
+      _changeCenterNode(_centerNode);
+    } else {
+      _changeCenterNode(node.worldParent!);
+    }
   }
 
   void _changeCenterNode(WorldNode node) {
-    if (node == _centerNode)
-      return;
-
     for (WorldNode chain in _centerNodeChain) {
       chain.onDispose = null;
     }
@@ -184,6 +186,7 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
     WorldNode? chain = node;
     while (chain != null) {
       chain.onDispose = _centerNodeChainUpdate;
+      _centerNodeChain.add(chain);
       chain = chain.worldParent;
     }
 
@@ -350,24 +353,30 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
 }
 
 class ZoomProvider extends InheritedWidget {
-  const ZoomProvider({ super.key, required this.state, required super.child });
+  const ZoomProvider({ super.key, required _WorldRootState state, required super.child }) : _state = state;
 
-  final _WorldRootState state;
+  final _WorldRootState _state;
 
   static void centerOn(BuildContext context, WorldNode target) {
     final ZoomProvider? provider = context.dependOnInheritedWidgetOfExactType<ZoomProvider>();
     assert(provider != null, 'No ZoomProvider found in context');
-    provider!.state._centerOn(target);
+    provider!._state._centerOn(target);
   }
 
   static void centerNear(BuildContext context, WorldNode target, Offset offset, double diameter) {
     final ZoomProvider? provider = context.dependOnInheritedWidgetOfExactType<ZoomProvider>();
     assert(provider != null, 'No ZoomProvider found in context');
-    provider!.state._centerNear(target, offset, diameter);
+    provider!._state._centerNear(target, offset, diameter);
   }
 
+  static Animation<double> zoomOf(BuildContext context) {
+    final ZoomProvider? provider = context.dependOnInheritedWidgetOfExactType<ZoomProvider>();
+    assert(provider != null, 'No ZoomProvider found in context');
+    return provider!._state._zoom;
+  }
+  
   @override
-  bool updateShouldNotify(ZoomProvider oldWidget) => state != oldWidget.state;
+  bool updateShouldNotify(ZoomProvider oldWidget) => _state != oldWidget._state;
 }
 
 class BoxToWorldAdapter extends SingleChildRenderObjectWidget {
