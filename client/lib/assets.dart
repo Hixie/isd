@@ -614,7 +614,6 @@ class _AssetInspectorState extends State<AssetInspector> {
       final Widget? section = feature.buildDialog(context);
       if (section != null) {
         details.add(Padding(
-          key: ObjectKey(feature),
           padding: sectionPadding,
           child: section,
         ));

@@ -85,13 +85,10 @@ class GridFeature extends ContainerFeature {
   @override
   RendererType get rendererType => RendererType.square;
 
-  void _build(int x, int y) {
-    final SystemNode system = SystemNode.of(this);
-    system.play(<Object>[parent.id, 'build', x, y, _state!.selection!.id]);
-  }
-
   @override
   Widget buildRenderer(BuildContext context) {
+    final SystemNode system = SystemNode.of(this);
+    final int assetID = parent.id;
     return ListenableBuilder(
       listenable: _state!,
       builder: (BuildContext context, Widget? child) => GridWidget(
@@ -101,7 +98,9 @@ class GridFeature extends ContainerFeature {
         cellSize: cellSize,
         dimension: dimension,
         children: children.keys.map((AssetNode node) => node.build(context)).toList(),
-        onBuild: _state!.selection == null ? null : _build,
+        onBuild: _state!.selection == null ? null : (int x, int y) {
+          system.play(<Object>[assetID, 'build', x, y, _state!.selection!.id]);
+        },
       ),
     );
   }

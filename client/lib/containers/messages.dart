@@ -49,6 +49,7 @@ class MessageBoardFeature extends ContainerFeature {
   @override
   Widget buildRenderer(BuildContext context) {
     return NoZoom(
+      threshold: 42.0,
       child: StateManagerBuilder<MessagesState>(
         creator: () => MessagesState(children.length),
         disposer: (MessagesState state) => state.dispose(),

@@ -36,6 +36,7 @@ class KnowledgeFeature extends AbilityFeature {
         );
         if (mode == null) {
           result = NoZoom(
+            threshold: 42.0,
             child: Card(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(12.0),

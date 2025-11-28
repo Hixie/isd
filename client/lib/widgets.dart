@@ -530,16 +530,18 @@ class NoZoom extends StatelessWidget {
   const NoZoom({
     super.key,
     required this.child,
+    this.threshold = 0.0,
   });
 
   final Widget child;
+  final double threshold;
 
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<double>(
       valueListenable: ZoomProvider.zoomOf(context),
       builder: (BuildContext context, double value, Widget? child) {
-        final bool bigEnough = value > 42;
+        final bool bigEnough = value > threshold;
         return Listener(
           behavior: HitTestBehavior.opaque,
           onPointerSignal: (PointerSignalEvent event) {
