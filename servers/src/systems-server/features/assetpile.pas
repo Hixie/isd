@@ -171,7 +171,7 @@ procedure TAssetPileFeatureNode.ApplyJournal(Journal: TJournalReader);
    var
       AssetNode: TAssetNode;
    begin
-      AssetNode := Journal.ReadAssetNodeReference();
+      AssetNode := Journal.ReadAssetNodeReference(System);
       AdoptChild(AssetNode);
       Assert(AssetNode.Parent = Self);
    end;
@@ -180,7 +180,7 @@ procedure TAssetPileFeatureNode.ApplyJournal(Journal: TJournalReader);
    var
       Child: TAssetNode;
    begin
-      Child := Journal.ReadAssetNodeReference();
+      Child := Journal.ReadAssetNodeReference(System);
       // nothing to do
       Assert(Child.Parent = Self);
    end;

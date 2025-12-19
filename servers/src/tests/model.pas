@@ -327,13 +327,11 @@ type
       FDisabledReasons: Cardinal;
       FTotal, FMax: Cardinal;
       FJobs: Cardinal;
-      FHappiness: Double;
    published
       property DisabledReasons: Cardinal read FDisabledReasons write FDisabledReasons;
       property Total: Cardinal read FTotal write FTotal;
       property Max: Cardinal read FMax write FMax;
       property Jobs: Cardinal read FJobs write FJobs;
-      property Happiness: Double read FHappiness write FHappiness;
    end;
 
    TModelMessageBoardFeature = class (TModelFeature)
@@ -1392,7 +1390,7 @@ begin
    Total := Stream.ReadCardinal();
    Max := Stream.ReadCardinal();
    Jobs := Stream.ReadCardinal();
-   Happiness := Stream.ReadDouble();
+   Stream.ReadCardinal(); // must be a zero, but ignored currently
 end;
 
 

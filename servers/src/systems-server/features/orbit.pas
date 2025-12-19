@@ -675,7 +675,7 @@ procedure TOrbitFeatureNode.ApplyJournal(Journal: TJournalReader);
       TimeOrigin: TTimeInMilliseconds;
       Clockwise: Boolean;
    begin
-      Child := Journal.ReadAssetNodeReference();
+      Child := Journal.ReadAssetNodeReference(System);
       SemiMajorAxis := Journal.ReadDouble();
       Eccentricity := Journal.ReadDouble();
       Omega := Journal.ReadDouble();
@@ -693,7 +693,7 @@ procedure TOrbitFeatureNode.ApplyJournal(Journal: TJournalReader);
       Clockwise: Boolean;
       Index: Cardinal;
    begin
-      Child := Journal.ReadAssetNodeReference();
+      Child := Journal.ReadAssetNodeReference(System);
       SemiMajorAxis := Journal.ReadDouble();
       Eccentricity := Journal.ReadDouble();
       Omega := Journal.ReadDouble();
@@ -708,7 +708,7 @@ var
    Child: TAssetNode;
    AssetChangeKind: TAssetChangeKind;
 begin
-   Child := Journal.ReadAssetNodeReference();
+   Child := Journal.ReadAssetNodeReference(System);
    Assert((not Assigned(FPrimaryChild)) or (Child = FPrimaryChild));
    if (not Assigned(FPrimaryChild)) then
    begin

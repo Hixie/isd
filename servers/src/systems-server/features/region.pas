@@ -1737,7 +1737,9 @@ begin
                if (Assigned(Material)) then
                begin
                   MaterialConsumerCounts.Inc(Material, 1);
-                  Assert((not Assigned(DynastyData^.FMaterialPileComposition)) or (not DynastyData^.FMaterialPileComposition.Has(Material)) or (DynastyData^.FMaterialPileComposition[Material] = 0));
+                  Assert((not Assigned(DynastyData^.FMaterialPileComposition)) or
+                         (not DynastyData^.FMaterialPileComposition.Has(Material)) or
+                         (DynastyData^.FMaterialPileComposition[Material] = 0));
                end;
             end;
          end;
@@ -1887,6 +1889,8 @@ begin
             // TODO: Turn on factories that can operate without running out
             // of source materials or storage for output, and turn off those
             // that cannot; adjust MaterialFactoryRates accordingly.
+            // Factories always operate at top speed and shut down if
+            // that is not possible.
             if (Assigned(MaterialConsumerCounts) and MaterialConsumerCounts.Has(Material)) then
             begin
                Assert(MaterialConsumerCounts[Material] > 0);

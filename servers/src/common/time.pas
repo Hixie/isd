@@ -101,13 +101,27 @@ type
       class property Zero: TRate read GetZero;
       class property Infinity: TRate read GetInfinity;
    end;
-   function Min(A: TRate; B: TRate): TRate; overload;
+
+   TGrowthRate = record // used for exponential growth with **
+   private
+      Value: Double;
+   public
+      constructor FromEachMillisecond(A: Double);
+      function ToString(): UTF8String;
+      property AsDouble: Double read Value; // for storage, restore with FromEachMilliseconds(Double)
+   end;
+
+   TFactor = record // TGrowthRate ** TMillisecondsDuration => TFactor; Double * TFactor => Double
+   private
+      Value: Double;
+   end;
 
 operator + (A: TMillisecondsDuration; B: TMillisecondsDuration): TMillisecondsDuration; inline;
 operator - (A: TMillisecondsDuration; B: TMillisecondsDuration): TMillisecondsDuration; inline;
 operator - (A: TMillisecondsDuration): TMillisecondsDuration; inline;
 operator mod (A: TMillisecondsDuration; B: TMillisecondsDuration): TMillisecondsDuration; inline;
 operator * (A: TMillisecondsDuration; B: TRate): Double; inline;
+operator / (A: TMillisecondsDuration; B: TMillisecondsDuration): Double; inline;
 operator = (A: TMillisecondsDuration; B: TMillisecondsDuration): Boolean; inline;
 operator < (A: TMillisecondsDuration; B: TMillisecondsDuration): Boolean; inline;
 operator <= (A: TMillisecondsDuration; B: TMillisecondsDuration): Boolean; inline;
@@ -140,6 +154,12 @@ operator < (A: TRate; B: TRate): Boolean; inline;
 operator <= (A: TRate; B: TRate): Boolean; inline;
 operator > (A: TRate; B: TRate): Boolean; inline;
 operator >= (A: TRate; B: TRate): Boolean; inline;
+function Min(A: TRate; B: TRate): TRate; overload;
+
+operator ** (A: TGrowthRate; B: TMillisecondsDuration): TFactor; inline;
+operator * (A: Double; B: TFactor): Double; inline;
+operator * (A: Int64; B: TFactor): Int64; inline;
+operator * (A: Cardinal; B: TFactor): Cardinal; inline;
 
 type
    TMockClock = class(TRootClock)
@@ -456,6 +476,13 @@ begin
    end
    else
       Result := A.Value * B.Value;
+end;
+
+operator / (A: TMillisecondsDuration; B: TMillisecondsDuration): Double;
+begin
+   Assert(A.IsFinite);
+   Assert(B.IsFinite);
+   Result := A.Value / B.Value;
 end;
 
 operator = (A: TMillisecondsDuration; B: TMillisecondsDuration): Boolean;
@@ -797,6 +824,38 @@ begin
    begin
       Result := B;
    end;
+end;
+
+
+constructor TGrowthRate.FromEachMillisecond(A: Double);
+begin
+   Value := A;
+end;
+
+function TGrowthRate.ToString(): UTF8String;
+begin
+   Result := 'x' + FloatToStrF(Value * 60.0 * 60.0 * 1000.0, ffFixed, 0, 5, FloatFormat) + ' each hour';
+end;
+
+operator ** (A: TGrowthRate; B: TMillisecondsDuration): TFactor;
+begin
+   Result.Value := Power(A.Value, Double(B.Value)); // $R-
+end;
+
+operator * (A: Double; B: TFactor): Double;
+begin
+   Result := A * B.Value;
+end;
+
+operator * (A: Int64; B: TFactor): Int64;
+begin
+   Result := A * Round(B.Value);
+end;
+
+operator * (A: Cardinal; B: TFactor): Cardinal;
+begin
+   Assert(B.Value >= 0);
+   Result := A * Round(B.Value); // $R-
 end;
 
 

@@ -231,6 +231,7 @@ type
       constructor Create(ASystem: TSystem);
       destructor Destroy(); override;
       function ReadBoolean(): Boolean;
+      function ReadByte(): Byte;
       function ReadCardinal(): Cardinal;
       function ReadInt32(): Int32;
       function ReadInt64(): Int64;
@@ -239,7 +240,7 @@ type
       function ReadDouble(): Double;
       function ReadString(): UTF8String;
       function ReadAssetChangeKind(): TAssetChangeKind;
-      function ReadAssetNodeReference(): TAssetNode;
+      function ReadAssetNodeReference(ASystem: TSystem): TAssetNode;
       function ReadAssetClassReference(): TAssetClass;
       function ReadDynastyReference(): TDynasty;
       function ReadMaterialReference(): TMaterial;
@@ -251,6 +252,7 @@ type
    public
       constructor Create(ASystem: TSystem);
       procedure WriteBoolean(Value: Boolean); // {BOGUS Hint: Value parameter "Value" is assigned but never used}
+      procedure WriteByte(Value: Byte); // {BOGUS Hint: Value parameter "Value" is assigned but never used}
       procedure WriteCardinal(Value: Cardinal); // {BOGUS Hint: Value parameter "Value" is assigned but never used}
       procedure WriteInt32(Value: Int32); // {BOGUS Hint: Value parameter "Value" is assigned but never used}
       procedure WriteInt64(Value: Int64); // {BOGUS Hint: Value parameter "Value" is assigned but never used}
@@ -679,9 +681,10 @@ type
       function GetSystem(): TSystem; virtual;
    public
       ParentData: Pointer;
-      constructor Create(); unimplemented;
       constructor Create(ASystem: TSystem; AAssetClass: TAssetClass; AOwner: TDynasty; AFeatures: TFeatureNode.TArray);
-      constructor CreateFromJournal(ASystem: TSystem; Journal: TJournalReader);
+      constructor CreateFromJournal(ASystem: TSystem);
+      procedure InitFromJournal(Journal: TJournalReader);
+      constructor Create(); unimplemented;
       destructor Destroy(); override;
       procedure Become(AAssetClass: TAssetClass);
       procedure ReportPermanentlyGone();
@@ -1177,6 +1180,12 @@ begin
    {$IFDEF VERBOSE_JOURNAL} Writeln('ReadBoolean: ', Result); {$ENDIF}
 end;
 
+function TJournalReader.ReadByte(): Byte;
+begin
+   BlockRead(FSystem.FJournalFile, Result, SizeOf(Result)); {BOGUS Hint: Function result variable does not seem to be initialized}
+   {$IFDEF VERBOSE_JOURNAL} Writeln('ReadByte: ', Result); {$ENDIF}
+end;
+
 function TJournalReader.ReadCardinal(): Cardinal;
 begin
    BlockRead(FSystem.FJournalFile, Result, SizeOf(Result)); {BOGUS Hint: Function result variable does not seem to be initialized}
@@ -1230,21 +1239,20 @@ begin
    {$IFDEF VERBOSE_JOURNAL} Writeln('ReadAssetChangeKind: ', specialize EnumToString<TAssetChangeKind>(Result)); {$ENDIF}
 end;
 
-function TJournalReader.ReadAssetNodeReference(): TAssetNode;
+function TJournalReader.ReadAssetNodeReference(ASystem: TSystem): TAssetNode;
 var
    ID: PtrUInt;
 begin
    ID := ReadPtrUInt();
    if (ID > 0) then
    begin
-      Assert(FAssetMap.Has(ID), 'Asset was never declared: ');
       Result := FAssetMap[ID];
-      {$IFDEF VERBOSE_JOURNAL}
-      if (Assigned(Result)) then
-         Writeln('ReadAssetNodeReference: ', Result.DebugName)
-      else
-         Writeln('ReadAssetNodeReference: nil UNEXPECTED');
-      {$ENDIF};
+      if (not Assigned(Result)) then
+      begin
+         {$IFDEF VERBOSE_JOURNAL} Writeln('ReadAssetNodeReference: creating new asset'); {$ENDIF}
+         Result := TAssetNode.CreateFromJournal(ASystem);
+         FAssetMap[ID] := Result;
+      end;
    end
    else
    begin
@@ -1311,6 +1319,11 @@ begin
 end;
 
 procedure TJournalWriter.WriteBoolean(Value: Boolean);
+begin
+   BlockWrite(FSystem.FJournalFile, Value, SizeOf(Value));
+end;
+
+procedure TJournalWriter.WriteByte(Value: Byte);
 begin
    BlockWrite(FSystem.FJournalFile, Value, SizeOf(Value));
 end;
@@ -1890,20 +1903,23 @@ begin
       ReportCurrentException();
       raise;
    end;
+   Assert(Assigned(FAssetClass));
 end;
 
-constructor TAssetNode.CreateFromJournal(ASystem: TSystem; Journal: TJournalReader);
+constructor TAssetNode.CreateFromJournal(ASystem: TSystem);
 begin
    inherited Create();
    Assert(Assigned(ASystem));
-   try
-      FSystem := ASystem;
-      ApplyJournal(Journal);
-      FDirty := dkNewNode;
-   except
-      ReportCurrentException();
-      raise;
-   end;
+   FSystem := ASystem;
+   Assert(not Assigned(FAssetClass));
+end;
+
+procedure TAssetNode.InitFromJournal(Journal: TJournalReader);
+begin
+   Assert(not Assigned(FAssetClass));
+   ApplyJournal(Journal);
+   FDirty := dkNewNode;
+   Assert(Assigned(FAssetClass));
 end;
 
 constructor TAssetNode.Create();
@@ -2743,7 +2759,7 @@ begin
                      raise EJournalError.CreateFmt('Dynasty count inconsistent (journal=%d, measured=%d)', [Index, FDynastyIndices.Count]);
                   while True do
                   begin
-                     Asset := JournalReader.ReadAssetNodeReference();
+                     Asset := JournalReader.ReadAssetNodeReference(Self);
                      if (not Assigned(Asset)) then
                         break;
                      if (FDynastyIndices.Count > 0) then
@@ -2762,10 +2778,8 @@ begin
             end;
             jcNewAsset: begin
                try
-                  ID := JournalReader.ReadPtrUInt();
-                  Asset := TAssetNode.CreateFromJournal(Self, JournalReader);
-                  Assert(not JournalReader.FAssetMap.Has(ID));
-                  JournalReader.FAssetMap[ID] := Asset;
+                  Asset := JournalReader.ReadAssetNodeReference(Self);
+                  Asset.InitFromJournal(JournalReader);
                except
                   ReportCurrentException();
                   raise;
@@ -2773,7 +2787,7 @@ begin
             end;
             jcAssetChange: begin
                try
-                  Asset := JournalReader.ReadAssetNodeReference();
+                  Asset := JournalReader.ReadAssetNodeReference(Self);
                   Assert(Assigned(Asset));
                   Asset.ApplyJournal(JournalReader);
                except

@@ -156,7 +156,7 @@ procedure TProxyFeatureNode.ApplyJournal(Journal: TJournalReader);
 var
    NewChild: TAssetNode;
 begin
-   NewChild := Journal.ReadAssetNodeReference();
+   NewChild := Journal.ReadAssetNodeReference(System);
    if (NewChild <> FChild) then
    begin
       if (Assigned(NewChild)) then

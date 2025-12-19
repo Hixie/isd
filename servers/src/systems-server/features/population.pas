@@ -11,6 +11,7 @@ uses
 // TODO: people try to move to the "best" houses
 // TODO: people in houses beyond the max are unhappy
 // TODO: disabled houses count as max=0
+// TODO: gossip
 
 type
    TPopulationFeatureClass = class(TFeatureClass)
@@ -70,7 +71,7 @@ type
 implementation
 
 uses
-   exceptions, isdprotocol, messages, orbit, sysutils, math, rubble;
+   exceptions, isdprotocol, messages, orbit, sysutils, rubble;
 
 const
    MeanIndividualMass = 70; // kg // TODO: allow species to diverge and such, with different demographics, etc
@@ -316,10 +317,7 @@ begin
       Writer.WriteCardinal(FFeatureClass.MaxPopulation);
       Writer.WriteCardinal(FWorkers);
       // TODO: if we send the priority, we have to update the clients any time FPriority changes
-      if (dmInternals in Visibility) then
-         Writer.WriteDouble(FMeanHappiness)
-      else
-         Writer.WriteDouble(NaN);
+      Writer.WriteCardinal(0); // no gossip
    end;
 end;
 

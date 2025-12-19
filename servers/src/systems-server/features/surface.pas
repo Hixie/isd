@@ -357,7 +357,7 @@ procedure TSurfaceFeatureNode.ApplyJournal(Journal: TJournalReader);
       X, Y: Integer;
       Dimension: Cardinal;
    begin
-      Child := Journal.ReadAssetNodeReference();
+      Child := Journal.ReadAssetNodeReference(System);
       X := Journal.ReadInt32();
       Y := Journal.ReadInt32();
       Dimension := Journal.ReadCardinal(); // TODO: is this redundant with Child.Size?
@@ -370,7 +370,7 @@ procedure TSurfaceFeatureNode.ApplyJournal(Journal: TJournalReader);
       Child: TAssetNode;
       SurfaceData: PSurfaceData;
    begin
-      Child := Journal.ReadAssetNodeReference();
+      Child := Journal.ReadAssetNodeReference(System);
       Assert(Child.Parent = Self);
       SurfaceData := Child.ParentData;
       SurfaceData^.X := Journal.ReadInt32();

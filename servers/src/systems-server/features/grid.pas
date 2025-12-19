@@ -528,7 +528,7 @@ procedure TGridFeatureNode.ApplyJournal(Journal: TJournalReader);
       Child: TAssetNode;
       X, Y, ChildSize: Cardinal;
    begin
-      Child := Journal.ReadAssetNodeReference();
+      Child := Journal.ReadAssetNodeReference(System);
       X := Journal.ReadCardinal();
       Y := Journal.ReadCardinal();
       ChildSize := Journal.ReadCardinal();
@@ -542,7 +542,7 @@ procedure TGridFeatureNode.ApplyJournal(Journal: TJournalReader);
    var
       Child: TAssetNode;
    begin
-      Child := Journal.ReadAssetNodeReference();
+      Child := Journal.ReadAssetNodeReference(System);
       Assert(Assigned(Child));
       Assert(False); // nothing to update currently
       PGridData(Child.ParentData)^.IsChanged := True;

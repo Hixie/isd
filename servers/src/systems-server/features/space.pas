@@ -370,7 +370,7 @@ procedure TSolarSystemFeatureNode.ApplyJournal(Journal: TJournalReader);
       AssetNode: TAssetNode;
       Distance, Theta, HillDiameter: Double;
    begin
-      AssetNode := Journal.ReadAssetNodeReference();
+      AssetNode := Journal.ReadAssetNodeReference(System);
       Distance := Journal.ReadDouble();
       Theta := Journal.ReadDouble();
       HillDiameter := Journal.ReadDouble();
@@ -382,7 +382,7 @@ procedure TSolarSystemFeatureNode.ApplyJournal(Journal: TJournalReader);
       Child: TAssetNode;
       Distance, Theta, HillDiameter: Double;
    begin
-      Child := Journal.ReadAssetNodeReference();
+      Child := Journal.ReadAssetNodeReference(System);
       Distance := Journal.ReadDouble();
       Theta := Journal.ReadDouble();
       HillDiameter := Journal.ReadDouble();

@@ -41,27 +41,12 @@ otherwise stated, features do not support any commands.
 
 When the client connects, and whenever the system subsequently
 changes, the system server sends a binary frame to each affected
-client containing the updated information, in the form of an <update>
-sequence:
+client containing the updated information, in the form of a
+<systemupdate> sequence.
 
-```bnf
-<update>            ::= (<notifications> | <systemupdate>)+
-```
-
-### Notifications
-
-```bnf
-<move>              ::= <notificationid> <payload>
-<notificationid>    ::= 0x10000000 .. 0xFFFFFFFF
-<payload>           ::= depends on the notification
-```
-
-This can be distinguished from a `<systemupdate>` because no
-`<systemid>` above 0x0FFFFFFF exists, so notification IDs
-(0x10000000-0xFFFFFFFF) don't overlap with the range of valid
-`<systemid>` values.
-
-There are currently no notifications defined.
+Binary frames that start with a `uint32` in the range 0x10000000 ..
+0xFFFFFFFF are reserved for use in future extensions to the protocol
+but are currently never sent by the server.
 
 
 ### System updates
@@ -73,6 +58,9 @@ There are currently no notifications defined.
                         <assetupdate>+ <zero64> ; assets
 
 <systemid>          ::= <uint32> ; the star ID of the canonical star, if any
+                        ; always in the range 0x00200000 to 0x0FFFFFFF
+                        ; star IDs are in the range 0x00200000 to 0x00AFFFFF
+                        ; starless systems are in the range 0x00B00000 to 0x0FFFFFFF
 
 <currenttime>       ::= <time> ; current time relative to system's t₀
 
@@ -161,8 +149,17 @@ visible (e.g. its old parent is included in the update and does not
 include it in its list of children, and no other asset includes it in
 its list of children), then the ID is considered "released" and may be
 reused for another asset. When this happens, other assets that
-referenced this ID will not send an update, but should be assumed to
-have changed to sending the asset ID zero instead of the previous ID.
+referenced this ID should be assumed to have changed to sending the
+asset ID zero instead of the previous ID, even if they do not send an
+update.
+
+An asset ID is guaranteed to not be reused until an update has been
+sent that indicates its absence.
+
+Asset IDs may be mentioned before their first `<assetupdate>`, though
+if an asset ID is referenced before its first `<assetupdate>`, that
+`<assetupdate>` is guaranteed to be included in the same overall
+`<systemupdate>`.
 
 Asset ID zero is reserved for indicating the absence of an asset
 (either because no such asset exists, or because the player cannot see
@@ -635,11 +632,19 @@ This feature supports the following command:
 #### `fcPopulation` (0x0B)
 
 ```bnf
-<featuredata>       ::= <disabled> <count> <max> <jobs> <happiness>
+<featuredata>       ::= <disabled> <count> <max> <jobs> <gossip>* <zero32>
 <count>             ::= <uint32>
 <max>               ::= <uint32>
 <jobs>              ::= <uint32>
-<happiness>         ::= <double>
+<gossip>            ::= <message> <source> <timestamp> <impact> <duration> <anchor> <people> <spreadrate>
+<source>            ::= <assetid> | <zero32> ; event that generated the gossip
+<timestamp>         ::= <time> ; time of relevant event
+<impact>            ::= <double> ; per-person happiness delta
+<duration>          ::= <uint64> ; number of in-system milliseconds that impact will last
+<people>            ::= <uint32> ; number of people affected
+<anchor>            ::= <time> ; time that <people> was last updated
+<spreadrate>        ::= <double> ; spread factor per millisecond
+<message>           ::= <string> ; description of event (cannot be empty)
 ```
 
 For the `<disabled>` field, see below.
@@ -649,11 +654,32 @@ The `<count>` is the number of people at this population center. The
 at this population center (On occasion, `<count>` may exceed it,
 especially if it is zero; this indicates overpopulation and is likely
 to have a negative impact on happiness.) The `<jobs>` is the number of
-people who are working at some `fcStaffing` feature. The `<happiness>`
-is their mean happiness; it might be a NaN, if the happiness cannot be
-determined.
+people who are working at some `fcStaffing` feature.
 
-> TODO: overpopulation should affect happiness
+The happiness contribution of each gossip is computed as follows:
+ 
+    age = now - timestamp
+    actual impact = impact * decay(age / duration)
+    spreadtime = now - anchor
+    actual people = min(people * pow(spreadrate, spreadtime), count)
+    happiness contribution = actual impact * actual people
+
+...where `pow` is a function that raises the first argument to the
+power of the second argument, `min` is a function that returns the
+lower of its two arguments, and `decay` is a function that computes
+its result as follows:
+
+    decay(x) = 1 - x * x * (3 - 2 * x)  ; 0 <= x <= 1
+
+Gossips whose `age` exceeds their `<duration>` have expired and should
+no longer be considered present (and would not be sent by the server
+in the server's next update).
+
+The total happiness contribution of an `fcPopulation` feature is the
+sum of the happiness contributions of all its `<gossip>`s.
+
+The `<source>` is an asset, but will be zero if the asset is not
+visible in the current system.
 
 
 #### `fcMessageBoard` (0x0C)
@@ -938,6 +964,8 @@ that can detect the pile):
    of each there is. (The difference between the sum of these
    quantities and the given total quantity is the number of unknown
    ores.) These numbers are quantities, not masses.
+
+> TODO: change this to use a binary response
 
 
 #### `fcRegion` (0x14)
