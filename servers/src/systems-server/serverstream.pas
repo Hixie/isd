@@ -95,9 +95,16 @@ procedure TServerStreamWriter.WriteStringReference(const Value: UTF8String);
 var
    NewlyAdded: Boolean;
 begin
-   WriteCardinal(FStringTable.Encode(Value, NewlyAdded));
-   if (NewlyAdded) then
-      WriteStringByPointer(Value); // safe because by definition the pointer is now in the string table
+   if (Value = '') then
+   begin
+      WriteCardinal(0);
+   end
+   else
+   begin
+      WriteCardinal(FStringTable.Encode(Value, NewlyAdded));
+      if (NewlyAdded) then
+         WriteStringByPointer(Value); // safe because by definition the pointer is now in the string table
+   end;
 end;
 
 function TServerStreamWriter.WriteAssetClassID(const ID: TAssetClassID): Boolean;

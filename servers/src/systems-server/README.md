@@ -205,11 +205,18 @@ player cannot see the object (but can infer its presence).
 
 #### Deduplication for strings and asset classes
 
-Strings (`<string>`) in this format are deduplicated as follows. The
-first time a particular string is encountered, it is serialized as a
-32 bit integer identifier, then the string's length, then that many
-bytes giving the string data. The second time, only the identifier is
-specified. String identifiers are scoped to the connection.
+To avoid duplication, strings (`<string>`) are identified by a
+connection-specific unique identifier.
+
+The empty string is always represented by the identifier zero.
+
+Other strings are identified by 32 bit integers above zero. The first
+time a particular identifier other than zero is sent, it is followed
+by a 32 bit integer giving its (non-zero) length, then that many bytes
+giving the string data in UTF-8.
+
+Subsequently, only the identifier is given. String identifiers are
+scoped to the connection.
 
 Asset classes (<`assetclass`>) are handled similarly. When the asset
 class ID is zero (this is only possible as part of a `<properties>`
@@ -636,15 +643,15 @@ This feature supports the following command:
 <count>             ::= <uint32>
 <max>               ::= <uint32>
 <jobs>              ::= <uint32>
-<gossip>            ::= <message> <source> <timestamp> <impact> <duration> <anchor> <people> <spreadrate>
-<source>            ::= <assetid> | <zero32> ; event that generated the gossip
-<timestamp>         ::= <time> ; time of relevant event
-<impact>            ::= <double> ; per-person happiness delta
-<duration>          ::= <uint64> ; number of in-system milliseconds that impact will last
-<people>            ::= <uint32> ; number of people affected
-<anchor>            ::= <time> ; time that <people> was last updated
-<spreadrate>        ::= <double> ; spread factor per millisecond
+<gossip>            ::= <message> <source> <impactanchor> <impact> <duration> <peopleanchor> <people> <spreadrate>
 <message>           ::= <string> ; description of event (cannot be empty)
+<source>            ::= <assetid> | <zero32> ; asset that generated the gossip
+<impactanchor>      ::= <time> ; time that <impact> was last updated
+<impact>            ::= <double> ; per-person happiness delta
+<duration>          ::= <uint64> ; number of in-system milliseconds that impact will last, relative to <impactanchor>
+<peopleanchor>      ::= <time> ; time that <people> was last updated
+<people>            ::= <uint32> ; number of people affected
+<spreadrate>        ::= <double> ; spread factor per millisecond
 ```
 
 For the `<disabled>` field, see below.
@@ -656,11 +663,15 @@ especially if it is zero; this indicates overpopulation and is likely
 to have a negative impact on happiness.) The `<jobs>` is the number of
 people who are working at some `fcStaffing` feature.
 
+Gossip is how the game represents happiness. Each gossip item
+represents some impact on happiness. The message is a generic
+description of the situation (and does not end with punctuation).
+
 The happiness contribution of each gossip is computed as follows:
  
-    age = now - timestamp
+    age = now - impactanchor
     actual impact = impact * decay(age / duration)
-    spreadtime = now - anchor
+    spreadtime = now - peopleanchor
     actual people = min(people * pow(spreadrate, spreadtime), count)
     happiness contribution = actual impact * actual people
 
@@ -679,7 +690,12 @@ The total happiness contribution of an `fcPopulation` feature is the
 sum of the happiness contributions of all its `<gossip>`s.
 
 The `<source>` is an asset, but will be zero if the asset is not
-visible in the current system.
+visible in the current system (e.g. if it was destroyed, or the assets
+moved so as to be in different systems). When a gossip item's source
+is set to zero, it may be merged with other similar gossip items.
+
+The `<impactanchor>` and `<peopleanchor>` values may be different and
+may not necessarily be when the gossip item was created.
 
 
 #### `fcMessageBoard` (0x0C)

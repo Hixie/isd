@@ -23,6 +23,7 @@ type
    public
       constructor FromMilliseconds(A: Double); overload;
       constructor FromMilliseconds(A: Int64); overload;
+      constructor FromWeeks(A: Int64);
       function ToString(): UTF8String;
       function ToSIUnits(): Double; // returns the value in seconds
       function Scale(Factor: Double): TMillisecondsDuration;
@@ -107,7 +108,7 @@ type
       Value: Double;
    public
       constructor FromEachMillisecond(A: Double);
-      function ToString(): UTF8String;
+      constructor FromEachWeek(A: Double);
       property AsDouble: Double read Value; // for storage, restore with FromEachMilliseconds(Double)
    end;
 
@@ -136,6 +137,8 @@ operator > (A: TTimeInMilliseconds; B: TTimeInMilliseconds): Boolean; inline;
 operator >= (A: TTimeInMilliseconds; B: TTimeInMilliseconds): Boolean; inline;
 operator + (A: TTimeInMilliseconds; B: TMillisecondsDuration): TTimeInMilliseconds; inline;
 operator - (A: TTimeInMilliseconds; B: TMillisecondsDuration): TTimeInMilliseconds; inline;
+function Min(A: TTimeInMilliseconds; B: TTimeInMilliseconds): TTimeInMilliseconds; overload;
+function Max(A: TTimeInMilliseconds; B: TTimeInMilliseconds): TTimeInMilliseconds; overload;
 
 operator div (A: TMillisecondsDuration; B: TTimeFactor): TWallMillisecondsDuration; inline;
 
@@ -160,6 +163,8 @@ operator ** (A: TGrowthRate; B: TMillisecondsDuration): TFactor; inline;
 operator * (A: Double; B: TFactor): Double; inline;
 operator * (A: Int64; B: TFactor): Int64; inline;
 operator * (A: Cardinal; B: TFactor): Cardinal; inline;
+function Min(A: TGrowthRate; B: TGrowthRate): TGrowthRate; overload;
+function Max(A: TGrowthRate; B: TGrowthRate): TGrowthRate; overload;
 
 type
    TMockClock = class(TRootClock)
@@ -203,6 +208,11 @@ begin
       Value := Low(Value)
    else
       Value := A;
+end;
+
+constructor TMillisecondsDuration.FromWeeks(A: Int64);
+begin
+   Value := A * 7 * 24 * 60 * 60 * 1000; // $R-
 end;
 
 function TMillisecondsDuration.GetIsZero(): Boolean;
@@ -626,6 +636,30 @@ begin
    Result.Value := A.Value - B.Value;
 end;
 
+function Min(A: TTimeInMilliseconds; B: TTimeInMilliseconds): TTimeInMilliseconds;
+begin
+   if (A < B) then
+   begin
+      Result := A;
+   end
+   else
+   begin
+      Result := B;
+   end;
+end;
+
+function Max(A: TTimeInMilliseconds; B: TTimeInMilliseconds): TTimeInMilliseconds;
+begin
+   if (A > B) then
+   begin
+      Result := A;
+   end
+   else
+   begin
+      Result := B;
+   end;
+end;
+
 
 constructor TWallMillisecondsDuration.FromMilliseconds(A: Double);
 begin
@@ -832,9 +866,9 @@ begin
    Value := A;
 end;
 
-function TGrowthRate.ToString(): UTF8String;
+constructor TGrowthRate.FromEachWeek(A: Double);
 begin
-   Result := 'x' + FloatToStrF(Value * 60.0 * 60.0 * 1000.0, ffFixed, 0, 5, FloatFormat) + ' each hour';
+   Value := Power(A, 1.0 / (7 * 24 * 60 * 60 * 1000)); // $R-
 end;
 
 operator ** (A: TGrowthRate; B: TMillisecondsDuration): TFactor;
@@ -856,6 +890,30 @@ operator * (A: Cardinal; B: TFactor): Cardinal;
 begin
    Assert(B.Value >= 0);
    Result := A * Round(B.Value); // $R-
+end;
+
+function Min(A: TGrowthRate; B: TGrowthRate): TGrowthRate;
+begin
+   if (A.Value < B.Value) then
+   begin
+      Result.Value := A.Value;
+   end
+   else
+   begin
+      Result.Value := B.Value;
+   end;
+end;
+
+function Max(A: TGrowthRate; B: TGrowthRate): TGrowthRate;
+begin
+   if (A.Value > B.Value) then
+   begin
+      Result.Value := A.Value;
+   end
+   else
+   begin
+      Result.Value := B.Value;
+   end;
 end;
 
 

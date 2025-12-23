@@ -5,7 +5,7 @@ unit commonbuses;
 interface
 
 uses
-   systems, systemdynasty, materials, time, hashtable, serverstream;
+   systems, systemdynasty, materials, gossip, time;
 
 type
    TPriority = 0..2147483647;
@@ -48,22 +48,28 @@ type
    private
       FOwner: TDynasty;
       FTarget: TAssetNode;
+      FNow: TTimeInMilliseconds;
       FPopulation: Cardinal;
+      FGossip: TGossipHashTable;
       FMaterials: TMaterialQuantityHashTable;
       FAssets: TAssetNode.TPlasticArray;
       function GetHasExcess(): Boolean;
       function GetHasExcessMaterials(): Boolean;
    public
-      constructor Create(AOwner: TDynasty; ATarget: TAssetNode);
+      constructor Create(AOwner: TDynasty; ATarget: TAssetNode; ANow: TTimeInMilliseconds);
       destructor Destroy(); override;
-      procedure AddExcessPopulation(Quantity: Cardinal);
+      procedure AddExcessPopulation(Quantity: Cardinal; Gossip: TGossipHashTable);
       procedure AddExcessMaterial(Material: TMaterial; Quantity: UInt64);
       procedure AddExcessAsset(Asset: TAssetNode);
       property Owner: TDynasty read FOwner;
       property Target: TAssetNode read FTarget;
       property ExcessPopulation: Cardinal read FPopulation;
+   public
+      procedure HandleAssetGoingAway(Asset: TAssetNode);
       function ExtractExcessMaterials(): TMaterialQuantityHashTable;
       function ExtractExcessAssets(): TAssetNode.TArray;
+      function ExtractGossip(): TGossipHashTable;
+      function ExtractPopulation(): Cardinal;
       property HasExcess: Boolean read GetHasExcess;
       property HasExcessMaterials: Boolean read GetHasExcessMaterials;
    end;
@@ -78,80 +84,18 @@ type
 
    TRehomePopulation = class(TPhysicalConnectionWithExclusionBusMessage)
    private
-      FPopulation: Cardinal;
+      FMovingPopulation, FStayingPopulation: Cardinal;
+      FSourceGossip: TGossipHashTable;
    public
-      constructor Create(AAsset: TAssetNode; APopulation: Cardinal);
-      property RemainingPopulation: Cardinal read FPopulation;
-      procedure Rehome(Amount: Cardinal);
-   end;
-
-type
-   TGossipFlag = (gfUpdateJournal);
-   TGossipFlags = set of TGossipFlag;
-   {$IF SIZEOF(TGossipFlags) <> SIZEOF(Cardinal)} {$FATAL} {$ENDIF}
-
-   PGossip = ^TGossip;
-   TGossip = record
-      Message: UTF8String;
-      Timestamp: TTimeInMilliseconds;
-      Duration: TMillisecondsDuration;
-      HappinessImpact: Double; // per person
-      PopulationAnchorTime: TTimeInMilliseconds; // time that AffectedPeople was last updated
-      SpreadRate: TGrowthRate;
-      AffectedPeople: Cardinal;
-      Flags: TGossipFlags;
-      function ComputeHappinessContribution(TotalPopulation: Cardinal; Now: TTimeInMilliseconds): Double;
-      function GetTimeUntilNextEvent(Now: TTimeInMilliseconds): TMillisecondsDuration; inline;
-   end;
-
-   TGossipIdentifier = record
-   private
-      class function Hash32(const Value: TGossipIdentifier): DWord; static; inline;
-   public
-      Source: TAssetNode; // could be nil, if the asset is out-system
-      Kind: Cardinal; // value scoped to the asset class
-      // when moving gossip out of a system, gossips with the same Kind but different Sources get merged in some way that minimizes abuse potential
-   end;
-
-   TSpreadGossipBusMessage = class(TPhysicalConnectionBusMessage)
-   private
-      FGossip: TGossip;
-      FIdentifier: TGossipIdentifier;
-   public
-      constructor Create(AGossip: TGossip; AIdentifier: TGossipIdentifier);
-      property Gossip: TGossip read FGossip;
-      property Identifier: TGossipIdentifier read FIdentifier;
-   end;
-
-   TGossipIdentifierUtils = record
-      class function Equals(const A, B: TGossipIdentifier): Boolean; static; inline;
-      class function LessThan(const A, B: TGossipIdentifier): Boolean; static; inline;
-      class function GreaterThan(const A, B: TGossipIdentifier): Boolean; static; inline;
-      class function Compare(const A, B: TGossipIdentifier): Int64; static; inline;
-   end;
-
-   TGossipHashTable = record
-   strict private
-      type
-         TInternalHashTable = specialize THashTable<TGossipIdentifier, TGossip, TGossipIdentifierUtils>;
-      var
-         FHashTable: TInternalHashTable;
-      function GetItems(const Index: TGossipIdentifier): PGossip; inline;
-   public
-      procedure Create();
-      procedure Free();
-      procedure AddGossip(const Source: TGossipIdentifier; const Gossip: TGossip); // Gossip.Timestamp must be Now
-      function ComputeHappinessContribution(TotalPopulation: Cardinal; Now: TTimeInMilliseconds): Double;
-      function GetTimeUntilNextEvent(Now: TTimeInMilliseconds): TMillisecondsDuration;
-      procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; Now: TTimeInMilliseconds);
-      procedure UpdateJournal(Journal: TJournalWriter; Now: TTimeInMilliseconds);
-      procedure ApplyJournal(Journal: TJournalReader; ASystem: TSystem);
+      constructor Create(AAsset: TAssetNode; AMovingPopulation, AStayingPopulation: Cardinal; ASourceGossip: TGossipHashTable);
+      property RemainingPopulation: Cardinal read FMovingPopulation; // population left to move
+      procedure Rehome(Amount: Cardinal; TargetGossip: TGossipHashTable; Now: TTimeInMilliseconds);
    end;
    
 implementation
 
 uses
-   sysutils, hashfunctions, math;
+   sysutils;
 
 procedure TCheckDisabledBusMessage.AddReason(Reason: TDisabledReason);
 begin
@@ -187,16 +131,24 @@ begin
 end;
 
 
-constructor TDismantleMessage.Create(AOwner: TDynasty; ATarget: TAssetNode);
+constructor TDismantleMessage.Create(AOwner: TDynasty; ATarget: TAssetNode; ANow: TTimeInMilliseconds);
 begin
    inherited Create();
    FOwner := AOwner;
    FTarget := ATarget;
+   FNow := ANow;
 end;
 
 destructor TDismantleMessage.Destroy();
 begin
+   // everything should be extracted
+   Assert(FAssets.IsEmpty);
+   Assert(not Assigned(FMaterials));
+   Assert(FPopulation = 0);
+   Assert(not FGossip.Allocated);
+   // but free things just in case
    FreeAndNil(FMaterials);
+   FGossip.Free();
    inherited;
 end;
 
@@ -207,14 +159,26 @@ begin
    FMaterials.Inc(Material, Quantity);
 end;
 
-procedure TDismantleMessage.AddExcessPopulation(Quantity: Cardinal);
+procedure TDismantleMessage.AddExcessPopulation(Quantity: Cardinal; Gossip: TGossipHashTable);
 begin
    Inc(FPopulation, Quantity);
+   if (Gossip.Allocated) then
+   begin
+      if (not FGossip.Allocated) then
+         FGossip.Allocate();
+      FGossip.MoveGossip(Gossip, FGossip, Quantity, Quantity, FNow);
+   end;
 end;
 
 procedure TDismantleMessage.AddExcessAsset(Asset: TAssetNode);
 begin
    FAssets.Push(Asset);
+end;
+
+procedure TDismantleMessage.HandleAssetGoingAway(Asset: TAssetNode);
+begin
+   if (FGossip.Allocated) then
+      FGossip.HandleAssetGoingAway(Asset, FPopulation, FNow);
 end;
 
 function TDismantleMessage.ExtractExcessMaterials(): TMaterialQuantityHashTable;
@@ -226,6 +190,17 @@ end;
 function TDismantleMessage.ExtractExcessAssets(): TAssetNode.TArray;
 begin
    Result := FAssets.Distill();
+end;
+
+function TDismantleMessage.ExtractGossip(): TGossipHashTable;
+begin
+   Result := FGossip.Extract();
+end;
+
+function TDismantleMessage.ExtractPopulation(): Cardinal;
+begin
+   Result := FPopulation;
+   FPopulation := 0;
 end;
 
 function TDismantleMessage.GetHasExcess(): Boolean;
@@ -246,243 +221,20 @@ begin
 end;
 
 
-constructor TRehomePopulation.Create(AAsset: TAssetNode; APopulation: Cardinal);
+constructor TRehomePopulation.Create(AAsset: TAssetNode; AMovingPopulation, AStayingPopulation: Cardinal; ASourceGossip: TGossipHashTable);
 begin
    inherited Create(AAsset);
-   FPopulation := APopulation;
+   FMovingPopulation := AMovingPopulation;
+   FStayingPopulation := AStayingPopulation;
+   FSourceGossip := ASourceGossip;
 end;
 
-procedure TRehomePopulation.Rehome(Amount: Cardinal);
+procedure TRehomePopulation.Rehome(Amount: Cardinal; TargetGossip: TGossipHashTable; Now: TTimeInMilliseconds);
 begin
-   Assert(Amount <= FPopulation);
-   Dec(FPopulation, Amount);
-end;
-
-function Decay(T: Double): Double;
-begin // inverse smoothstep with edges 0 and 1
-   Result := 1 - T * T * (3.0 - 2.0 * T);
-end;
-
-function TGossip.ComputeHappinessContribution(TotalPopulation: Cardinal; Now: TTimeInMilliseconds): Double;
-var
-   Age: TMillisecondsDuration;
-   ActualImpact: Double;
-   SpreadTime: TMillisecondsDuration;
-   ActualPeople: Cardinal;
-begin
-   Age := Now - Timestamp;
-   ActualImpact := HappinessImpact * Decay(Age / Duration);
-   SpreadTime := Now - PopulationAnchorTime;
-   ActualPeople := Min(AffectedPeople * SpreadRate ** SpreadTime, TotalPopulation); // $R-
-   Result := ActualImpact * ActualPeople;
-end;
-
-function TGossip.GetTimeUntilNextEvent(Now: TTimeInMilliseconds): TMillisecondsDuration;
-begin
-   Result := Now - Timestamp + Duration;
-end;
-
-
-class function TGossipIdentifier.Hash32(const Value: TGossipIdentifier): DWord;
-begin
-   Result := PointerHash32(Value.Source) xor Integer32Hash32(Value.Kind);
-end;
-
-      
-constructor TSpreadGossipBusMessage.Create(AGossip: TGossip; AIdentifier: TGossipIdentifier);
-begin
-   inherited Create();
-   FGossip := AGossip;
-   FIdentifier := AIdentifier;
-end;
-
-
-class function TGossipIdentifierUtils.Equals(const A, B: TGossipIdentifier): Boolean;
-begin
-   Result := (A.Source = B.Source) and (A.Kind = B.Kind);
-end;
-
-class function TGossipIdentifierUtils.LessThan(const A, B: TGossipIdentifier): Boolean;
-begin
-   raise Exception.Create('Gossip identifiers cannot be compared relatively.');
-   Result := False;
-end;
-
-class function TGossipIdentifierUtils.GreaterThan(const A, B: TGossipIdentifier): Boolean;
-begin
-   raise Exception.Create('Gossip identifiers cannot be compared relatively.');
-   Result := False;
-end;
-
-class function TGossipIdentifierUtils.Compare(const A, B: TGossipIdentifier): Int64;
-begin
-   raise Exception.Create('Gossip identifiers cannot be compared relatively.');
-   Result := 0;
-end;
-
-
-procedure TGossipHashTable.Create();
-begin
-   FHashTable := specialize THashTable<TGossipIdentifier, TGossip, TGossipIdentifierUtils>.Create(@TGossipIdentifier.Hash32);
-end;
-
-procedure TGossipHashTable.Free();
-begin
-   FreeAndNil(FHashTable);
-end;
-
-function TGossipHashTable.GetItems(const Index: TGossipIdentifier): PGossip;
-begin
-   Result := FHashTable.ItemsPtr[Index];
-end;
-
-procedure TGossipHashTable.AddGossip(const Source: TGossipIdentifier; const Gossip: TGossip);
-var
-   NewGossip: PGossip;
-begin
-   NewGossip := FHashTable.AddDefault(Source);
-   NewGossip^.Message := Gossip.Message;
-   NewGossip^.Timestamp := Gossip.Timestamp;
-   NewGossip^.Duration := Gossip.Duration;
-   NewGossip^.HappinessImpact := Gossip.HappinessImpact;
-   NewGossip^.PopulationAnchorTime := Gossip.PopulationAnchorTime;
-   NewGossip^.SpreadRate := Gossip.SpreadRate;
-   NewGossip^.AffectedPeople := Gossip.AffectedPeople;
-   NewGossip^.Flags := Gossip.Flags + [gfUpdateJournal];
-end;
-
-function TGossipHashTable.ComputeHappinessContribution(TotalPopulation: Cardinal; Now: TTimeInMilliseconds): Double;
-var
-   Gossip: PGossip;
-begin
-   Result := 0.0;
-   for Gossip in FHashTable.ValuePtrs do
-      Result := Result + Gossip^.ComputeHappinessContribution(TotalPopulation, Now);
-end;
-
-function TGossipHashTable.GetTimeUntilNextEvent(Now: TTimeInMilliseconds): TMillisecondsDuration;
-var
-   Gossip: PGossip;
-   Candidate: TMillisecondsDuration;
-begin
-   Result := TMillisecondsDuration.Infinity;
-   for Gossip in FHashTable.ValuePtrs do
-   begin
-      Candidate := Gossip^.GetTimeUntilNextEvent(Now);
-      if (Candidate < Result) then
-         Result := Candidate;
-   end;
-end;
-
-procedure TGossipHashTable.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter; Now: TTimeInMilliseconds);
-var
-   Gossip: PGossip;
-   Identifier: TGossipIdentifier;
-begin
-   for Identifier in FHashTable do
-   begin
-      Gossip := FHashTable.ItemsPtr[Identifier];
-      Assert(Gossip^.Timestamp <= Now);
-      if (Now - Gossip^.Timestamp < Gossip^.Duration) then
-      begin
-         if (Assigned(Identifier.Source) and Identifier.Source.IsVisibleFor(DynastyIndex)) then
-         begin
-            Writer.WriteCardinal(Identifier.Source.ID(DynastyIndex));
-         end
-         else
-         begin
-            Writer.WriteCardinal(0);
-         end;
-         Writer.WriteInt64(Gossip^.Timestamp.AsInt64);
-         Writer.WriteDouble(Gossip^.HappinessImpact);
-         Writer.WriteInt64(Gossip^.Duration.AsInt64);
-         Writer.WriteInt64(Gossip^.PopulationAnchorTime.AsInt64);
-         Writer.WriteCardinal(Gossip^.AffectedPeople);
-         Writer.WriteDouble(Gossip^.SpreadRate.AsDouble);
-         Writer.WriteStringReference(Gossip^.Message);
-      end;
-   end;
-end;
-
-const
-   EndGossip = $00;
-   ActiveGossip = $01;
-   ObsoleteGossip = $02;
-
-procedure TGossipHashTable.UpdateJournal(Journal: TJournalWriter; Now: TTimeInMilliseconds);
-var
-   Gossip: PGossip;
-   Identifier: TGossipIdentifier;
-   Enumerator: TInternalHashTable.TValuePtrEnumerator;
-begin
-   try
-      Enumerator := FHashTable.ValuePtrs;
-      while (Enumerator.MoveNext()) do
-      begin
-         Gossip := Enumerator.Current;
-         if (Now - Gossip^.Timestamp >= Gossip^.Duration) then
-         begin
-            // mark that we're dropping it
-            Journal.WriteByte(ObsoleteGossip);
-            Identifier := Enumerator.CurrentKey;
-            Journal.WriteAssetNodeReference(Identifier.Source);
-            Journal.WriteCardinal(Identifier.Kind);
-            Enumerator.RemoveCurrent();
-         end
-         else
-         if (gfUpdateJournal in Gossip^.Flags) then
-         begin
-            Exclude(Gossip^.Flags, gfUpdateJournal);
-            Journal.WriteByte(ActiveGossip);
-            Journal.WriteAssetNodeReference(Identifier.Source);
-            Journal.WriteCardinal(Identifier.Kind);
-            Journal.WriteString(Gossip^.Message);
-            Journal.WriteInt64(Gossip^.Timestamp.AsInt64);
-            Journal.WriteInt64(Gossip^.Duration.AsInt64);
-            Journal.WriteDouble(Gossip^.HappinessImpact);
-            Journal.WriteInt64(Gossip^.PopulationAnchorTime.AsInt64);
-            Journal.WriteDouble(Gossip^.SpreadRate.AsDouble);
-            Journal.WriteCardinal(Gossip^.AffectedPeople);
-            Assert(SizeOf(Gossip^.Flags) = SizeOf(Cardinal));
-            Journal.WriteCardinal(Cardinal(Gossip^.Flags));
-         end;
-      end;
-   finally
-      FreeAndNil(Enumerator);
-   end;
-   Journal.WriteByte(EndGossip);
-end;
-
-procedure TGossipHashTable.ApplyJournal(Journal: TJournalReader; ASystem: TSystem);
-var
-   Kind: Byte;
-   Gossip: PGossip;
-   Identifier: TGossipIdentifier;
-begin
-   repeat
-      Kind := Journal.ReadByte();
-      case (Kind) of
-         ActiveGossip: begin
-            Identifier.Source := Journal.ReadAssetNodeReference(ASystem);
-            Identifier.Kind := Journal.ReadCardinal();
-            Gossip := FHashTable.GetOrAddPtr(Identifier);
-            Gossip^.Message := Journal.ReadString();
-            Gossip^.Timestamp := TTimeInMilliseconds.FromMilliseconds(Journal.ReadInt64());
-            Gossip^.Duration := TMillisecondsDuration.FromMilliseconds(Journal.ReadInt64());
-            Gossip^.HappinessImpact := Journal.ReadDouble();
-            Gossip^.PopulationAnchorTime := TTimeInMilliseconds.FromMilliseconds(Journal.ReadInt64());
-            Gossip^.SpreadRate := TGrowthRate.FromEachMillisecond(Journal.ReadDouble());
-            Gossip^.AffectedPeople := Journal.ReadCardinal();
-            Assert(SizeOf(Gossip^.Flags) = SizeOf(Cardinal));
-            Gossip^.Flags := TGossipFlags(Journal.ReadCardinal());
-         end;
-         ObsoleteGossip: begin
-            Identifier.Source := Journal.ReadAssetNodeReference(ASystem);
-            Identifier.Kind := Journal.ReadCardinal();
-            FHashTable.Remove(Identifier);
-         end;
-      end;
-   until Kind = EndGossip;
+   Assert(Amount <= FMovingPopulation);
+   if (FSourceGossip.Allocated and TargetGossip.Allocated) then
+      TGossipHashTable.MoveGossip(FSourceGossip, TargetGossip, FMovingPopulation + FStayingPopulation, Amount, Now); // $R-
+   Dec(FMovingPopulation, Amount);
 end;
 
 end.

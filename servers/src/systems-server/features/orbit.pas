@@ -15,6 +15,7 @@ type
    strict private
       class operator Initialize(var Rec: TCrashReport);
    public
+      // Victims are the asset that crashed, and any assets that were orbitting that asset at the time of the crash
       Victims: TAssetNode.TArray; // TODO: make populating this more efficient
       RegionDimension: Cardinal; // 0 means random
    end;
@@ -38,6 +39,15 @@ type
       constructor Create(ACrashReport: PCrashReport);
       property Assets: TAssetNode.TArray read FAssets;
       property RegionDimension: Cardinal read FRegionDimension;
+   end;
+
+   TGetNearestOrbitMessage = class(TOrbitBusMessage) // inject, orbit will report itself
+   private
+      FOrbit: TAssetNode;
+   public
+      constructor Create();
+      property Orbit: TAssetNode read FOrbit;
+      function GetSpaceShip(FromAsset: TAssetNode): TAssetNode; // returns the child of Orbit that contains FromAsset (or nil)
    end;
 
 type
@@ -202,6 +212,19 @@ begin
    FRegionDimension := ACrashReport^.RegionDimension;
 end;
 
+constructor TGetNearestOrbitMessage.Create();
+begin
+   inherited;
+end;
+
+function TGetNearestOrbitMessage.GetSpaceShip(FromAsset: TAssetNode): TAssetNode; // returns the child of Orbit that contains FromAsset (or nil)
+begin
+   Assert(Assigned(FromAsset));
+   Result := FromAsset;
+   while (Assigned(Result.Parent) and Assigned(Result.Parent.Parent) and (Result.Parent.Parent <> Orbit)) do
+      Result := Result.Parent.Parent;
+end;
+
 
 constructor TOrbitFeatureNode.Create(ASystem: TSystem);
 begin
@@ -250,9 +273,8 @@ begin
       FPrimaryChild := nil;
       if (Length(FChildren) > 0) then
       begin
-         XXX;
-         // TODO: reparent the children
-         // the heaviest child should become the new primary child
+         XXX; // TODO: reparent satellites of an orbit's primary child when the primary goes away
+         // the heaviest child should probably become the new primary child? or they should start orbiting the parent?
       end;
    end;
    inherited;
@@ -506,6 +528,12 @@ begin
    if (Message is TPhysicalConnectionBusMessage) then
    begin
       Result := mrRejected;
+   end
+   else
+   if (Message is TGetNearestOrbitMessage) then
+   begin
+      (Message as TGetNearestOrbitMessage).FOrbit := Parent;
+      Result := mrHandled;
    end
    else
       Result := inherited;

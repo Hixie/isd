@@ -676,7 +676,6 @@ begin
    Assert(Body <> '');
    RewardMessage := TNotificationMessage.Create(Parent, Body, FCurrentResearch);
    Injected := InjectBusMessage(RewardMessage);
-   FreeAndNil(RewardMessage);
    if (Injected <> mrHandled) then
    begin
       Writeln(Parent.DebugName, ': Discarding message from research feature ("', RewardMessage.Body, '")');
@@ -695,6 +694,7 @@ begin
       MarkAsDirty([dkUpdateJournal]);
       ScheduleUpdateResearch();
    end;
+   FreeAndNil(RewardMessage);
 end;
 
 initialization

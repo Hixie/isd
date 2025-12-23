@@ -64,7 +64,7 @@ implementation
 
 uses
    sysutils, math, floatutils, exceptions, isdnumbers, protoplanetary,
-   time, isdprotocol, commonbuses, systemnetwork,
+   time, isdprotocol, gossip, commonbuses, systemnetwork,
    // this must import every feature, so they get registered:
    assetpile, builders, food, grid, gridsensor, internalsensor,
    knowledge, materialpile, messages, mining, name, onoff, orbit,
@@ -704,7 +704,7 @@ begin
             TGridSensorFeatureNode.Create(System, PlaceholderShip.Features[1] as TGridSensorFeatureClass),
             TStructureFeatureNode.Create(System, PlaceholderShip.Features[2] as TStructureFeatureClass, 10000 { materials quantity }, 10000 { hp }),
             TDynastyOriginalColonyShipFeatureNode.Create(System, Dynasty),
-            TPopulationFeatureNode.CreatePopulated(System, PlaceholderShip.Features[4] as TPopulationFeatureClass, 2000, 1.0),
+            TPopulationFeatureNode.CreatePopulated(System, PlaceholderShip.Features[4] as TPopulationFeatureClass, 2000),
             TMessageBoardFeatureNode.Create(System, PlaceholderShip.Features[5] as TMessageBoardFeatureClass),
             TKnowledgeBusFeatureNode.Create(System),
             TFoodBusFeatureNode.Create(System),
@@ -803,8 +803,16 @@ end;
 
 procedure TEncyclopedia.Dismantle(Asset: TAssetNode; Message: TMessage);
 var
-   FindDestructors: TFindDestructorsMessage;
    DismantleMessage: TDismantleMessage;
+
+   function CleanGossip(Child: TAssetNode): Boolean;
+   begin
+      DismantleMessage.HandleAssetGoingAway(Child);
+      Result := True;
+   end;
+
+var
+   FindDestructors: TFindDestructorsMessage;
    ExcessAssets: TAssetNode.TArray;
    ExcessMaterials: TMaterialQuantityHashTable;
    RubbleComposition: TMaterialQuantityArray;
@@ -814,6 +822,7 @@ var
    Handled: Boolean;
    PlayerDynasty: TDynasty;
    OldSize: Double;
+   Gossip: TGossipHashTable;
 begin
    if (Message.CloseInput()) then
    begin
@@ -844,7 +853,7 @@ begin
          end;
          OldSize := Asset.Size;
          Writeln('DESTRUCTOR DETECTED');
-         DismantleMessage := TDismantleMessage.Create(PlayerDynasty, Asset);
+         DismantleMessage := TDismantleMessage.Create(PlayerDynasty, Asset, Asset.System.Now);
          Writeln('SENDING DISMANTLE MESSAGE');
          Handled := Asset.HandleBusMessage(DismantleMessage);
          Assert(not Handled, 'TDismantleMessage must not be marked as handled');
@@ -860,11 +869,16 @@ begin
                Asset.Owner := PlayerDynasty;
             end;
             Assert(Asset.Owner = PlayerDynasty);
+            Asset.Walk(@CleanGossip, nil);
             Asset.Become(RubblePile);
             if (DismantleMessage.ExcessPopulation > 0) then
             begin
                Writeln('POPULATION PLACED ON RUBBLE ', DismantleMessage.ExcessPopulation);
-               (Asset.Features[0] as TPopulationFeatureNode).AbsorbPopulation(DismantleMessage.ExcessPopulation);
+               Gossip := DismantleMessage.ExtractGossip();
+               if (Gossip.Allocated) then
+                  Writeln('GOSSIP DETECTED');
+               (Asset.Features[0] as TPopulationFeatureNode).AbsorbPopulation(DismantleMessage.ExtractPopulation(), Gossip);
+               Gossip.Free();
             end;
             (Asset.Features[1] as TRubblePileFeatureNode).Resize(OldSize);
             if (DismantleMessage.HasExcessMaterials) then

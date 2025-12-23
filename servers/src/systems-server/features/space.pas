@@ -23,15 +23,15 @@ type
    TSolarSystemFeatureNode = class(TFeatureNode, IAssetNameProvider, IHillDiameterProvider)
    private
       FFeatureClass: TSolarSystemFeatureClass;
-      FChildren: TAssetNode.TArray;
+      FChildren: TAssetNode.TArray; // must all be orbits
       function GetChild(Index: Cardinal): TAssetNode;
       function GetChildCount(): Cardinal;
       function GetFurthestDistanceFromCenter(): Double;
    protected
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
-      procedure AdoptSolarSystemChild(Child: TAssetNode; DistanceFromCenter, Theta, HillDiameter: Double);
+      procedure AdoptSolarSystemChild(Child: TAssetNode; DistanceFromCenter, Theta, HillDiameter: Double); // lengths are in meters // child must be orbit
       procedure ParentMarkedAsDirty(ParentDirtyKinds, NewDirtyKinds: TDirtyKinds); override;
-      procedure AddPolarChildFromJournal(Child: TAssetNode; Distance, Theta, HillDiameter: Double); // meters
+      procedure AddPolarChildFromJournal(Child: TAssetNode; Distance, Theta, HillDiameter: Double); // lengths are in meters // child must be orbit
       function GetMass(): Double; override;
       function GetMassFlowRate(): TRate; override;
       function GetSize(): Double; override;
@@ -50,7 +50,7 @@ type
       function GetAssetName(): UTF8String;
       function GetHillDiameter(Child: TAssetNode; ChildPrimaryMass: Double): Double;
       procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); override;
-      property Children[Index: Cardinal]: TAssetNode read GetChild; // child might be nil
+      property Children[Index: Cardinal]: TAssetNode read GetChild; // child might be nil; non-nil children must all be orbits
       property ChildCount: Cardinal read GetChildCount; // some of the children might be nil
    end;
 

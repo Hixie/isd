@@ -322,11 +322,27 @@ type
 
    TModelPopulationFeature = class (TModelFeature)
    public
+      type
+         TGossip = record
+            Message: UTF8String;
+            Source: UInt32;
+            Timestamp: Int64;
+            Duration: UInt64;
+            HappinessImpact: Double;
+            PopulationAnchorTime: Int64;
+            SpreadRate: Double;
+            AffectedPeople: Cardinal;
+         end;
+         TGossipArray = array of TGossip;
+   public
       procedure UpdateFrom(Stream: TServerStreamReader); override;
    strict private
       FDisabledReasons: Cardinal;
       FTotal, FMax: Cardinal;
       FJobs: Cardinal;
+      FGossip: TGossipArray;
+   public
+      property Gossip: TGossipArray read FGossip;
    published
       property DisabledReasons: Cardinal read FDisabledReasons write FDisabledReasons;
       property Total: Cardinal read FTotal write FTotal;
@@ -759,6 +775,11 @@ var
    Value: UTF8String;
 begin
    Code := ReadCardinal();
+   if (Code = 0) then
+   begin
+      Result := '';
+      exit;
+   end;
    if (not FModel.FStrings.Has(Code)) then
    begin
       Value := ReadString();
@@ -1385,12 +1406,29 @@ end;
 
 
 procedure TModelPopulationFeature.UpdateFrom(Stream: TServerStreamReader);
+var
+   Message: UTF8String;
 begin
    DisabledReasons := Stream.ReadCardinal();
    Total := Stream.ReadCardinal();
    Max := Stream.ReadCardinal();
    Jobs := Stream.ReadCardinal();
-   Stream.ReadCardinal(); // must be a zero, but ignored currently
+   SetLength(FGossip, 0);
+   while (True) do
+   begin
+      Message := Stream.ReadStringReference();
+      if (Message = '') then
+         break;
+      SetLength(FGossip, Length(FGossip) + 1);
+      FGossip[High(FGossip)].Message := Message;
+      FGossip[High(FGossip)].Source := Stream.ReadCardinal();
+      FGossip[High(FGossip)].Timestamp := Stream.ReadInt64();
+      FGossip[High(FGossip)].HappinessImpact := Stream.ReadDouble();
+      FGossip[High(FGossip)].Duration := Stream.ReadUInt64();
+      FGossip[High(FGossip)].PopulationAnchorTime := Stream.ReadInt64();
+      FGossip[High(FGossip)].AffectedPeople := Stream.ReadCardinal();
+      FGossip[High(FGossip)].SpreadRate := Stream.ReadDouble();
+   end;
 end;
 
 

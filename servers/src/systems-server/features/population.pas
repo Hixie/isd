@@ -6,12 +6,12 @@ interface
 
 uses
    systems, serverstream, materials, food, systemdynasty, techtree,
-   peoplebus, commonbuses;
+   peoplebus, commonbuses, gossip;
 
 // TODO: people try to move to the "best" houses
 // TODO: people in houses beyond the max are unhappy
 // TODO: disabled houses count as max=0
-// TODO: gossip
+// TODO: gossip should spread between population centers
 
 type
    TPopulationFeatureClass = class(TFeatureClass)
@@ -33,7 +33,7 @@ type
       FPopulation: Cardinal; // if this changes, call FPeopleBus.ClientChanged and MarkAsDirty dkAffectsVisibility
       FPriority: TPriority; // TODO: if ancestor chain changes, and priority is NoPriority, reset it to zero and mark as dirty
       FDisabledReasons: TDisabledReasons;
-      FMeanHappiness: Double;
+      FGossip: TGossipHashTable;
       // cached status
       FFeatureClass: TPopulationFeatureClass;
       FFoodAvailable: Cardinal;
@@ -50,14 +50,14 @@ type
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
       constructor Create(ASystem: TSystem; AFeatureClass: TPopulationFeatureClass);
-      constructor CreatePopulated(ASystem: TSystem; AFeatureClass: TPopulationFeatureClass; APopulation: Cardinal; AMeanHappiness: Double); // only for use in plot-generated population centers
+      constructor CreatePopulated(ASystem: TSystem; AFeatureClass: TPopulationFeatureClass; APopulation: Cardinal); // only for use in plot-generated population centers
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
       destructor Destroy(); override;
       procedure HandleChanges(); override;
       procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader); override;
       procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); override;
-      procedure AbsorbPopulation(Count: Cardinal);
+      procedure AbsorbPopulation(Count: Cardinal; Gossip: TGossipHashTable);
    public // IHousing
       procedure PeopleBusConnected(Bus: TPeopleBusFeatureNode);
       procedure PeopleBusAssignJobs(Count: Cardinal);
@@ -71,7 +71,7 @@ type
 implementation
 
 uses
-   exceptions, isdprotocol, messages, orbit, sysutils, rubble;
+   exceptions, isdprotocol, messages, orbit, sysutils, rubble, time;
 
 const
    MeanIndividualMass = 70; // kg // TODO: allow species to diverge and such, with different demographics, etc
@@ -140,13 +140,12 @@ begin
    FFeatureClass := AFeatureClass;
 end;
 
-constructor TPopulationFeatureNode.CreatePopulated(ASystem: TSystem; AFeatureClass: TPopulationFeatureClass; APopulation: Cardinal; AMeanHappiness: Double);
+constructor TPopulationFeatureNode.CreatePopulated(ASystem: TSystem; AFeatureClass: TPopulationFeatureClass; APopulation: Cardinal);
 begin
    inherited Create(ASystem);
    Assert(Assigned(AFeatureClass));
    FFeatureClass := AFeatureClass;
    FPopulation := APopulation;
-   FMeanHappiness := AMeanHappiness;
 end;
 
 constructor TPopulationFeatureNode.CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem);
@@ -160,6 +159,7 @@ destructor TPopulationFeatureNode.Destroy();
 begin
    if (Assigned(FPeopleBus)) then
       FPeopleBus.RemoveHousing(Self);
+   FGossip.Free();
    inherited;
 end;
 
@@ -168,13 +168,11 @@ begin
    Assert(not Assigned(FPeopleBus));
    Assert(FWorkers = 0);
    // FPriority can be non-zero here if we were just brought in from the journal
-   System.ReportScoreChanged(Parent.Owner);
-   MarkAsDirty([dkNeedsHandleChanges]);
+   MarkAsDirty([dkNeedsHandleChanges, dkHappinessChanged]);
 end;
 
 procedure TPopulationFeatureNode.Detaching();
 begin
-   System.ReportScoreChanged(Parent.Owner);
    if (Assigned(FPeopleBus)) then
    begin
       FPeopleBus.RemoveHousing(Self);
@@ -191,22 +189,46 @@ end;
 
 function TPopulationFeatureNode.GetHappiness(): Double;
 begin
-   Result := FPopulation * FMeanHappiness;
+   Result := FGossip.ComputeHappinessContribution(FPopulation, System.Now);
 end;
 
 function TPopulationFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
 var
+   GossipMessage: TSpreadGossipBusMessage;
    HelpMessage: TNotificationMessage;
    DismantleMessage: TDismantleMessage;
    Injected: TBusMessageResult;
    Rehome: TRehomePopulation;
    Capacity: Cardinal;
+   OrbitMessage: TGetNearestOrbitMessage;
+   Ship: TAssetNode;
+   Gossip: PGossip;
+   GossipIdentifier: TGossipIdentifier;
+   CrashGossip: TGossip;
 begin
+   if (Message is TSpreadGossipBusMessage) then
+   begin
+      GossipMessage := Message as TSpreadGossipBusMessage;
+      Gossip := GossipMessage.Gossip;
+      GossipIdentifier := GossipMessage.Identifier;
+      if (not FGossip.Allocated) then
+         FGossip.Allocate();
+      FGossip.AddNewGossip(GossipIdentifier, Gossip^, FPopulation);
+      MarkAsDirty([dkHappinessChanged, dkUpdateClients, dkUpdateJournal]);
+      Result := GossipMessage.Spread;
+   end
+   else
    if (Message is TCrashReportMessage) then
    begin
+      OrbitMessage := TGetNearestOrbitMessage.Create();
+      InjectBusMessage(OrbitMessage);
+      Assert(Assigned(OrbitMessage.Orbit));
+      Ship := OrbitMessage.GetSpaceShip(Parent);
+      FreeAndNil(OrbitMessage);
+      Assert(Assigned(Ship));
       HelpMessage := TNotificationMessage.Create(
          Parent,
-         'URGENT QUERY REGARDING RECENT EVENTS ABOARD COLONY SHIP'#$0A +
+         'Urgent Query Regarding Recent Events Aboard ' + Ship.AssetOrClassName + #$0A +
          'From: Passengers'#$0A +
          'WHAT THE HECK WHY DID WE JUST CRASH WHAT IS HAPPENING',
          nil
@@ -215,14 +237,25 @@ begin
       if (Injected <> mrHandled) then
          Writeln('Discarding message from population center ("', HelpMessage.Body, '")');
       FreeAndNil(HelpMessage);
-      FMeanHappiness := FMeanHappiness - 0.1; // $R-
-      System.ReportScoreChanged(Parent.Owner);
+      CrashGossip.Timestamp := System.Now;
+      CrashGossip.Duration := TMillisecondsDuration.FromWeeks(52);
+      CrashGossip.HappinessImpact := -1000.0;
+      CrashGossip.PopulationAnchorTime := System.Now;
+      CrashGossip.SpreadRate := TGrowthRate.FromEachWeek(8.0);
+      CrashGossip.AffectedPeople := FPopulation;
+      CrashGossip.Flags := [];
+      GossipIdentifier.Source := Ship;
+      GossipIdentifier.Kind := gkCrash;
+      if (not FGossip.Allocated) then
+         FGossip.Allocate();
+      FGossip.AddNewGossip(GossipIdentifier, CrashGossip, FPopulation);
+      MarkAsDirty([dkHappinessChanged, dkUpdateClients, dkUpdateJournal]);
       Result := False; // TCrashReportMessage is handled when you explode yourself due to the crash (notifying someone isn't handling it!)
    end
    else
    if (Message is TRubbleCollectionMessage) then
    begin
-      XXX; // TODO: we should account for the mass of dead bodies
+      XXX; // TODO: we should account for the mass of dead bodies when turning population into rubble
       Result := False;
    end
    else
@@ -248,18 +281,18 @@ begin
          begin
             if (FPopulation = 0) then
                 MarkAsDirty([dkAffectsVisibility]);
-            Inc(FPopulation, Rehome.RemainingPopulation);
-            Rehome.Rehome(Rehome.RemainingPopulation);
+            Inc(FPopulation, Rehome.RemainingPopulation); // TODO: should clamp gossip growth before changing population
+            Rehome.Rehome(Rehome.RemainingPopulation, FGossip, System.Now);
             Assert(Rehome.RemainingPopulation = 0);
             Result := True;
          end
          else
          begin
-            FPopulation := FFeatureClass.MaxPopulation;
-            Rehome.Rehome(Capacity);
+            FPopulation := FFeatureClass.MaxPopulation; // TODO: should clamp gossip growth before changing population
+            Rehome.Rehome(Capacity, FGossip, System.Now);
             Result := False;
          end;
-         MarkAsDirty([dkNeedsHandleChanges, dkUpdateClients, dkUpdateJournal]);
+         MarkAsDirty([dkHappinessChanged, dkNeedsHandleChanges, dkUpdateClients, dkUpdateJournal]);
          if (Assigned(FPeopleBus)) then
             FPeopleBus.ClientChanged();
       end
@@ -280,20 +313,32 @@ begin
          Assert(DismantleMessage.Owner = Parent.Owner);
          if (FPopulation > 0) then
          begin
-            Rehome := TRehomePopulation.Create(DismantleMessage.Target, FPopulation);
+            Rehome := TRehomePopulation.Create(DismantleMessage.Target, FPopulation, 0, FGossip);
             DismantleMessage.Target.Parent.Parent.InjectBusMessage(Rehome);
             FPopulation := 0;
             if (Rehome.RemainingPopulation > 0) then
             begin
-               DismantleMessage.AddExcessPopulation(Rehome.RemainingPopulation);
+               DismantleMessage.AddExcessPopulation(Rehome.RemainingPopulation, FGossip);
                Writeln('  some pops remained! ', Rehome.RemainingPopulation);
             end
             else
                Writeln('  pops rehomed');
             FreeAndNil(Rehome);
-            MarkAsDirty([dkNeedsHandleChanges, dkUpdateClients, dkUpdateJournal, dkAffectsVisibility]);
+            MarkAsDirty([dkHappinessChanged, dkNeedsHandleChanges, dkUpdateClients, dkUpdateJournal, dkAffectsVisibility]);
             if (Assigned(FPeopleBus)) then
                FPeopleBus.ClientChanged();
+         end;
+      end;
+      Result := False;
+   end
+   else
+   if (Message is TAssetGoingAway) then
+   begin
+      if (FGossip.Allocated) then
+      begin
+         if (FGossip.HandleAssetGoingAway((Message as TAssetGoingAway).Asset, FPopulation, System.Now)) then
+         begin
+            MarkAsDirty([dkHappinessChanged, dkUpdateClients, dkUpdateJournal]);
          end;
       end;
       Result := False;
@@ -317,7 +362,7 @@ begin
       Writer.WriteCardinal(FFeatureClass.MaxPopulation);
       Writer.WriteCardinal(FWorkers);
       // TODO: if we send the priority, we have to update the clients any time FPriority changes
-      Writer.WriteCardinal(0); // no gossip
+      FGossip.Serialize(DynastyIndex, Writer, System.Now);
    end;
 end;
 
@@ -354,14 +399,14 @@ procedure TPopulationFeatureNode.UpdateJournal(Journal: TJournalWriter);
 begin
    Journal.WriteCardinal(FPopulation);
    Journal.WriteCardinal(FPriority);
-   Journal.WriteDouble(FMeanHappiness);
+   FGossip.UpdateJournal(Journal, System.Now);
 end;
 
 procedure TPopulationFeatureNode.ApplyJournal(Journal: TJournalReader);
 begin
    FPopulation := Journal.ReadCardinal();
    FPriority := TPriority(Journal.ReadCardinal());
-   FMeanHappiness := Journal.ReadDouble();
+   FGossip.ApplyJournal(Journal, System);
 end;
 
 function TPopulationFeatureNode.GetOwner(): TDynasty;
@@ -374,8 +419,7 @@ begin
    if (Quantity <> FFoodAvailable) then
    begin
       FFoodAvailable := Quantity;
-      FMeanHappiness := FFoodAvailable / FPopulation; // TODO: expose why the happiness is as it is
-      System.ReportScoreChanged(Parent.Owner);
+      // TODO: add gossip
    end;
 end;
 
@@ -384,12 +428,18 @@ begin
    IsDefinitelyReal := FPopulation > 0; // if FPopulation ever changes whether it's 0 or not, MarkAsDirty([dkAffectsVisibility])
 end;
 
-procedure TPopulationFeatureNode.AbsorbPopulation(Count: Cardinal);
+procedure TPopulationFeatureNode.AbsorbPopulation(Count: Cardinal; Gossip: TGossipHashTable);
 begin
    Assert(Count > 0);
    if (FPopulation = 0) then
       MarkAsDirty([dkAffectsVisibility]); // because of DescribeExistentiality
    Inc(FPopulation, Count);
+   if (Gossip.Allocated) then
+   begin
+      if (not FGossip.Allocated) then
+         FGossip.Allocate();
+      TGossipHashTable.MoveGossip(Gossip, FGossip, Count, Count, System.Now);
+   end;
    if (Assigned(FPeopleBus)) then
       FPeopleBus.ClientChanged();
 end;
