@@ -107,12 +107,16 @@ type
    private
       Value: Double;
    public
-      constructor FromEachMillisecond(A: Double);
-      constructor FromEachWeek(A: Double);
+      constructor FromEachMillisecond(A: Double); // must be positive
+      constructor FromEachWeek(A: Double); // must be positive
       property AsDouble: Double read Value; // for storage, restore with FromEachMilliseconds(Double)
    end;
 
-   TFactor = record // TGrowthRate ** TMillisecondsDuration => TFactor; Double * TFactor => Double
+   TFactor = record
+      // all values must be positive
+      // TGrowthRate ** TMillisecondsDuration => TFactor;
+      // Double * TFactor => Double
+      // Cardinal * TFactor => Cardinal (saturating)
    private
       Value: Double;
    end;
@@ -161,7 +165,6 @@ function Min(A: TRate; B: TRate): TRate; overload;
 
 operator ** (A: TGrowthRate; B: TMillisecondsDuration): TFactor; inline;
 operator * (A: Double; B: TFactor): Double; inline;
-operator * (A: Int64; B: TFactor): Int64; inline;
 operator * (A: Cardinal; B: TFactor): Cardinal; inline;
 function Min(A: TGrowthRate; B: TGrowthRate): TGrowthRate; overload;
 function Max(A: TGrowthRate; B: TGrowthRate): TGrowthRate; overload;
@@ -198,6 +201,7 @@ begin
    else
    begin
       Value := Round(A);
+      // we want all values to be negatable, so one value on the negative side has to be considered taboo
       Assert(Value <> Low(Value) + 1); // won't happen, because Double can't represent this value
    end;
 end;
@@ -863,17 +867,20 @@ end;
 
 constructor TGrowthRate.FromEachMillisecond(A: Double);
 begin
+   Assert(A >= 0.0);
    Value := A;
 end;
 
 constructor TGrowthRate.FromEachWeek(A: Double);
 begin
+   Assert(A >= 0.0);
    Value := Power(A, 1.0 / (7 * 24 * 60 * 60 * 1000)); // $R-
 end;
 
 operator ** (A: TGrowthRate; B: TMillisecondsDuration): TFactor;
 begin
    Result.Value := Power(A.Value, Double(B.Value)); // $R-
+   Assert(Result.Value >= 0.0);
 end;
 
 operator * (A: Double; B: TFactor): Double;
@@ -881,15 +888,19 @@ begin
    Result := A * B.Value;
 end;
 
-operator * (A: Int64; B: TFactor): Int64;
-begin
-   Result := A * Round(B.Value);
-end;
-
 operator * (A: Cardinal; B: TFactor): Cardinal;
+var
+   Temp: Double;
 begin
-   Assert(B.Value >= 0);
-   Result := A * Round(B.Value); // $R-
+   Temp := Double(A) * B.Value;
+   if (Temp > High(Result)) then
+   begin
+      Result := High(Result);
+   end
+   else
+   begin
+      Temp := Round(Result);
+   end;
 end;
 
 function Min(A: TGrowthRate; B: TGrowthRate): TGrowthRate;
