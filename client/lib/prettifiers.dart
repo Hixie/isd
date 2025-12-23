@@ -30,12 +30,12 @@ String prettyQuantity(int quantity, { String zero = '0', String singular = '', S
     return '$quantity$plural';
   }
   if (quantity < 1e9) {
-    return (quantity / 1e6).toStringAsFixed(2) + ' million';
+    return (quantity / 1e6).toStringAsFixed(2) + ' million$plural';
   }
   if (quantity < 1e12) {
-    return (quantity / 1e9).toStringAsFixed(2) + ' billion';
+    return (quantity / 1e9).toStringAsFixed(2) + ' billion$plural';
   }
-  return prettyNumberWithExponent(quantity.toDouble());
+  return '${prettyNumberWithExponent(quantity.toDouble())}$plural';
 }
 
 String prettyHp(double hp) {
@@ -136,7 +136,7 @@ String prettyVolume(double cubicMeters) {
   return '${prettyNumberWithExponent(cubicMeters)} m³';
 }
 
-String prettyLength(double m) {
+String prettyLength(double m, { int sigfig = 3 }) {
   final double ly = m / lightYearInM;
   double value;
   String units;
@@ -235,7 +235,6 @@ String prettyLength(double m) {
       }
     }
   }
-  const int sigfig = 1;
   final double scale = pow(10, sigfig - (log(value) / ln10).ceil()).toDouble();
   final double roundValue = (value * scale).round() / scale;
   return '${roundValue.toStringAsFixed(1)} $units';

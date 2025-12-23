@@ -75,6 +75,8 @@ class BinaryStreamReader {
   String readString() {
     assert(!checkpointed);
     final int code = readInt32();
+    if (code == 0)
+      return '';
     return _singletons._strings.putIfAbsent(code, readRawString);
   }
 

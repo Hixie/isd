@@ -306,13 +306,34 @@ class SystemServer {
               final int count = reader.readUInt32();
               final int max = reader.readUInt32();
               final int jobs = reader.readUInt32();
-              final double happiness = reader.readDouble();
+              final List<Gossip> gossips = <Gossip>[];
+              String text;
+              while ((text = reader.readString()).isNotEmpty) {
+                final AssetNode? source = _readAsset(reader);
+                final int timestamp = reader.readInt64();
+                final double impact = reader.readDouble();
+                final int duration = reader.readInt64();
+                final int anchor = reader.readInt64();
+                final int people = reader.readUInt32();
+                final double spreadRate = reader.readDouble();
+                gossips.add(Gossip(
+                  message: text,
+                  source: source,
+                  timestamp: timestamp,
+                  impact: impact,
+                  duration: duration,
+                  anchor: anchor,
+                  people: people,
+                  spreadRate: spreadRate,
+                ));
+              }
               features.add(PopulationFeature(
+                spaceTime: spaceTime,
                 disabledReason: disabledReason,
                 count: count,
                 max: max,
                 jobs: jobs,
-                happiness: happiness,
+                gossips: gossips,
               ));
             case fcMessageBoard:
               final List<AssetNode> children = <AssetNode>[];
