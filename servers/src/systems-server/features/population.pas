@@ -241,7 +241,7 @@ begin
       CrashGossip.Duration := TMillisecondsDuration.FromWeeks(52);
       CrashGossip.HappinessImpact := -1000.0;
       CrashGossip.PopulationAnchorTime := System.Now;
-      CrashGossip.SpreadRate := TGrowthRate.FromEachWeek(8.0);
+      CrashGossip.SpreadRate := TGrowthRate.FromDoublingTimeInWeeks(8.0);
       CrashGossip.AffectedPeople := FPopulation;
       CrashGossip.Flags := [];
       GossipIdentifier.Source := Ship;

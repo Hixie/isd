@@ -109,6 +109,8 @@ type
    public
       constructor FromEachMillisecond(A: Double); // must be positive
       constructor FromEachWeek(A: Double); // must be positive
+      constructor FromDoublingTimeInMilliseconds(A: Double); // must be positive
+      constructor FromDoublingTimeInWeeks(A: Double); // must be positive
       property AsDouble: Double read Value; // for storage, restore with FromEachMilliseconds(Double)
    end;
 
@@ -877,6 +879,18 @@ begin
    Value := Power(A, 1.0 / (7 * 24 * 60 * 60 * 1000)); // $R-
 end;
 
+constructor TGrowthRate.FromDoublingTimeInMilliseconds(A: Double);
+begin
+   Assert(A >= 0.0);
+   Value := Power(2, -A) - 1; // $R-
+end;
+   
+constructor TGrowthRate.FromDoublingTimeInWeeks(A: Double);
+begin
+   Assert(A >= 0.0);
+   Value := Power(2, -A * 7 * 24 * 60 * 60 * 1000) - 1; // $R-
+end;
+   
 operator ** (A: TGrowthRate; B: TMillisecondsDuration): TFactor;
 begin
    Result.Value := Power(A.Value, Double(B.Value)); // $R-
