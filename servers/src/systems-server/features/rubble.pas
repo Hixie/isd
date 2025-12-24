@@ -35,7 +35,7 @@ type
    protected
       function GetMass(): Double; override; // kg
       function GetSize(): Double; override; // m
-      function HandleBusMessage(Message: TBusMessage): Boolean; override;
+      function HandleBusMessage(Message: TBusMessage): THandleBusMessageResult; override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
       constructor Create(ASystem: TSystem; ADiameter: Double; AComposition: TMaterialQuantityArray);
@@ -122,7 +122,7 @@ begin
    Result := FDiameter;
 end;
 
-function TRubblePileFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
+function TRubblePileFeatureNode.HandleBusMessage(Message: TBusMessage): THandleBusMessageResult;
 var
    RubbleMessage: TRubbleCollectionMessage;
    DismantleMessage: TDismantleMessage;
@@ -132,7 +132,6 @@ begin
    if (Message is TCheckDisabledBusMessage) then
    begin
       (Message as TCheckDisabledBusMessage).AddReason(drStructuralIntegrity);
-      Result := False;
    end
    else
    if (Message is TRubbleCollectionMessage) then
@@ -143,7 +142,6 @@ begin
          RubbleMessage.AddMaterial(Entry.Material, Entry.Quantity);
       SetLength(FComposition, 0);
       MarkAsDirty([dkUpdateClients, dkUpdateJournal]);
-      Result := False;
    end
    else
    if (Message is TDismantleMessage) then
@@ -160,10 +158,8 @@ begin
       end;
       SetLength(FComposition, 0);
       MarkAsDirty([dkUpdateClients, dkUpdateJournal]);
-      Result := False;
-   end
-   else
-      Result := False;
+   end;
+   Result := inherited;
 end;
 
 procedure TRubblePileFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);

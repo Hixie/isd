@@ -143,7 +143,7 @@ type
       var
          FRecords: TPeopleBusRecords;
       function ManageBusMessage(Message: TBusMessage): TInjectBusMessageResult; override;
-      function HandleBusMessage(Message: TBusMessage): Boolean; override;
+      function HandleBusMessage(Message: TBusMessage): THandleBusMessageResult; override;
       procedure HandleChanges(); override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
@@ -534,7 +534,7 @@ begin
       Result := inherited;
 end;
 
-function TPeopleBusFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
+function TPeopleBusFeatureNode.HandleBusMessage(Message: TBusMessage): THandleBusMessageResult;
 var
    RegisterEmployer: TRegisterEmployerMessage;
    RegisterHousing: TRegisterHousingMessage;
@@ -548,7 +548,7 @@ begin
          RegisterEmployer.Employer.SetAutoPriority(FRecords.AssignNextPriority());
       FRecords.WorkersAssignedToEmployers := False;
       MarkAsDirty([dkNeedsHandleChanges]);
-      Result := True;
+      Result := hrHandled;
    end
    else
    if (Message is TRegisterHousingMessage) then
@@ -560,10 +560,10 @@ begin
          RegisterHousing.Housing.SetAutoPriority(FRecords.AssignNextPriority());
       FRecords.WorkersAssignedToEmployers := False;
       MarkAsDirty([dkNeedsHandleChanges]);
-      Result := True;
+      Result := hrHandled;
    end
    else
-      Result := False;
+      Result := inherited;
 end;
 
 procedure TPeopleBusFeatureNode.HandleChanges();

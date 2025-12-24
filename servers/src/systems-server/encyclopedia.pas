@@ -48,7 +48,7 @@ type
       procedure FindTemperatureEquilibria(System: TSystem);
       procedure SpawnColonyShip(Dynasty: TDynasty; System: TSystem);
       function Craterize(Diameter: Double; OldAssets: TAssetNode.TArray; NewAsset: TAssetNode): TAssetNode; override;
-      function HandleBusMessage(Asset: TAssetNode; Message: TBusMessage): Boolean; override;
+      function HandleBusMessage(Asset: TAssetNode; Message: TBusMessage): THandleBusMessageResult; override;
       procedure Dismantle(Asset: TAssetNode; Message: TMessage); override;
       property MinMassPerOreUnit: Double read FMinMassPerOreUnit;
    public // built-in asset classes
@@ -776,29 +776,34 @@ begin
    ]);
 end;
 
-function TEncyclopedia.HandleBusMessage(Asset: TAssetNode; Message: TBusMessage): Boolean;
+function TEncyclopedia.HandleBusMessage(Asset: TAssetNode; Message: TBusMessage): THandleBusMessageResult;
 var
    DismantleMessage: TDismantleMessage;
 begin
+   // be careful when adding new branches -- TPhysicalConnectionWithExclusionBusMessage is a superclass of other message types
    if (Message is TPhysicalConnectionWithExclusionBusMessage) then
    begin
+      // This is used for TStoreMaterialBusMessage when dismantling
+      // (TDismantleMessage) to prevent us from trying to store things
+      // in the asset being dismantled.
       if ((Message as TPhysicalConnectionWithExclusionBusMessage).Asset = Asset) then
       begin
-         Result := True;
+         Result := hrShortcut;
          exit;
       end;
-   end;
+   end
+   else
    if (Message is TDismantleMessage) then
    begin
       DismantleMessage := Message as TDismantleMessage;
       if (Assigned(Asset.Owner) and (DismantleMessage.Owner <> Asset.Owner)) then
       begin
          DismantleMessage.AddExcessAsset(Asset);
-         Result := True;
+         Result := hrShortcut;
          exit;
       end;
    end;
-   Result := False;
+   Result := hrActive;
 end;
 
 procedure TEncyclopedia.Dismantle(Asset: TAssetNode; Message: TMessage);
@@ -819,7 +824,7 @@ var
    Child: TAssetNode;
    Material: TMaterial;
    Index: Cardinal;
-   Handled: Boolean;
+   Handled: THandleBusMessageResult;
    PlayerDynasty: TDynasty;
    OldSize: Double;
    Gossip: TGossipHashTable;
@@ -856,7 +861,7 @@ begin
          DismantleMessage := TDismantleMessage.Create(PlayerDynasty, Asset, Asset.System.Now);
          Writeln('SENDING DISMANTLE MESSAGE');
          Handled := Asset.HandleBusMessage(DismantleMessage);
-         Assert(not Handled, 'TDismantleMessage must not be marked as handled');
+         Assert(Handled <> hrHandled, 'TDismantleMessage must not be marked as handled');
          if (DismantleMessage.HasExcess) then
          begin
             Writeln('EXCESS DETECTED');

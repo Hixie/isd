@@ -72,7 +72,7 @@ type
       function GetSize(): Double; override;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
       function ManageBusMessage(Message: TBusMessage): TInjectBusMessageResult; override;
-      function HandleBusMessage(Message: TBusMessage): Boolean; override;
+      function HandleBusMessage(Message: TBusMessage): THandleBusMessageResult; override;
       procedure HandleVisibility(const DynastyIndex: Cardinal; var Visibility: TVisibility); override;
       procedure CheckVisibilityChanged(); override;
       procedure HandleKnowledge(const DynastyIndex: Cardinal; const Sensors: ISensorsProvider); override;
@@ -398,7 +398,6 @@ var
    ReceiveMessage: TReceiveCrashingAssetMessage;
    CrashReportMessage: TCrashReportMessage;
    CrashReport: PCrashReport;
-   Handled: Boolean;
 begin
    Assert(Assigned(FPrimaryChild));
    Child := TAssetNode(Data);
@@ -411,20 +410,12 @@ begin
    CrashReport := New(PCrashReport);
 
    CrashReportMessage := TCrashReportMessage.Create(CrashReport);
-   try
-      Handled := Child.HandleBusMessage(CrashReportMessage);
-      Writeln('Crash report handled=', Handled, '; found ', Length(CrashReport^.Victims), ' victims, requested dimension is ', CrashReport^.RegionDimension);
-   finally
-      FreeAndNil(CrashReportMessage);
-   end;
+   Child.HandleBusMessage(CrashReportMessage);
+   FreeAndNil(CrashReportMessage);
 
    ReceiveMessage := TReceiveCrashingAssetMessage.Create(CrashReport);
-   try
-      Handled := FPrimaryChild.HandleBusMessage(ReceiveMessage);
-      Writeln('Receive crash handled=', Handled);
-   finally
-      FreeAndNil(ReceiveMessage);
-   end;
+   FPrimaryChild.HandleBusMessage(ReceiveMessage);
+   FreeAndNil(ReceiveMessage);
 
    Dispose(CrashReport);
 
@@ -539,16 +530,16 @@ begin
       Result := inherited;
 end;
 
-function TOrbitFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
+function TOrbitFeatureNode.HandleBusMessage(Message: TBusMessage): THandleBusMessageResult;
 var
    Child: TAssetNode;
-   ChildHandled: Boolean;
+   ChildHandled: THandleBusMessageResult;
 begin
    if (Message is TCrashReportMessage) then
    begin
       Assert(Assigned(FPrimaryChild));
       ChildHandled := FPrimaryChild.HandleBusMessage(Message);
-      if (not ChildHandled) then
+      if (ChildHandled <> hrHandled) then
       begin
          TCrashReportMessage(Message).AddVictim(FPrimaryChild);
       end;
@@ -556,29 +547,13 @@ begin
       begin
          Assert(Assigned(Child));
          ChildHandled := Child.HandleBusMessage(Message);
-         if (not ChildHandled) then
+         if (ChildHandled <> hrHandled) then
             TCrashReportMessage(Message).AddVictim(Child);
       end;
-      Result := True;
+      Result := hrHandled;
       exit;
    end;
-   if (Assigned(FPrimaryChild)) then
-   begin
-      // it's possible for us to be here with no primary child, e.g.
-      // when the message is specifically about the primary child
-      // going away.
-      Result := FPrimaryChild.HandleBusMessage(Message);
-      if (Result) then
-         exit;
-   end;
-   for Child in FChildren do
-   begin
-      Assert(Assigned(Child));
-      Result := Child.HandleBusMessage(Message);
-      if (Result) then
-         exit;
-   end;
-   Result := False;
+   Result := inherited;
 end;
 
 procedure TOrbitFeatureNode.HandleVisibility(const DynastyIndex: Cardinal; var Visibility: TVisibility);

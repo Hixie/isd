@@ -24,7 +24,7 @@ type
    protected
       function GetMass(): Double; override;
       function GetSize(): Double; override;
-      function HandleBusMessage(Message: TBusMessage): Boolean; override;
+      function HandleBusMessage(Message: TBusMessage): THandleBusMessageResult; override;
       procedure ApplyVisibility(); override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
       function GetAssetName(): UTF8String;
@@ -135,15 +135,10 @@ begin
    // Result := Result * Modifier(0.9, 1.1, StarID, TemperatureSalt);
 end;
 
-function TStarFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
+function TStarFeatureNode.HandleBusMessage(Message: TBusMessage): THandleBusMessageResult;
 begin
-   if ((Message is TRubbleCollectionMessage) or (Message is TDismantleMessage)) then
-   begin
-      Assert(False, ClassName + ' should never see ' + Message.ClassName);
-      Result := False;
-   end
-   else
-      Result := False;
+   Assert(not ((Message is TRubbleCollectionMessage) or (Message is TDismantleMessage)), ClassName + ' should never see ' + Message.ClassName);
+   Result := inherited;
 end;
 
 procedure TStarFeatureNode.ApplyVisibility();

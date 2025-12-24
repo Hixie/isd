@@ -274,6 +274,12 @@ type
       irHandled // the message got injected and handled
    );
 
+   THandleBusMessageResult = (
+      hrActive, // we're still walking down the tree
+      hrShortcut, // we are skipping the remainder of the current asset
+      hrHandled // we are done, the message was handled
+   );
+
    TBusMessage = class abstract(TDebugObject) end;
    TPhysicalConnectionBusMessage = class abstract(TBusMessage) end; // orbits don't propagate these up
    // TODO: should we have some kind of bus message that is the kind of message that regions automatically manage and don't propagate
@@ -556,10 +562,10 @@ type
       function GetFeatureName(): UTF8String; virtual;
       function GetHappiness(): Double; virtual;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); virtual;
-      function InjectBusMessage(Message: TBusMessage): TInjectBusMessageResult; // (send message up the tree) returns true if message found a bus
-      function ManageBusMessage(Message: TBusMessage): TInjectBusMessageResult; virtual; // (consider sending message down the tree) returns true if feature was a bus for this message or should stop propagation
+      function InjectBusMessage(Message: TBusMessage): TInjectBusMessageResult; // send message up the tree
+      function ManageBusMessage(Message: TBusMessage): TInjectBusMessageResult; virtual; // consider sending message down the tree; irDeferred means to continue, other results stop propagation
       function DeferOrHandleBusMessage(Message: TBusMessage): TInjectBusMessageResult; // convenience function for ManageBusMessage that tries to inject it higher, and if that rejects, has the asset handle it (typically used for management buses)
-      function HandleBusMessage(Message: TBusMessage): Boolean; virtual; // (send message down the tree) returns true if feature handled the message or should stop propagation
+      function HandleBusMessage(Message: TBusMessage): THandleBusMessageResult; virtual; // send message down the tree
       procedure ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynasty.TArray); virtual; // OldDynasties is nil the first time this is called
       procedure ResetVisibility(); virtual;
       procedure ApplyVisibility(); virtual;
@@ -639,7 +645,7 @@ type
       function GetMinMassPerOreUnit(): Double; virtual; abstract;
    public
       function Craterize(Diameter: Double; OldAssets: TAssetNodeArray; NewAsset: TAssetNode): TAssetNode; virtual; abstract;
-      function HandleBusMessage(Asset: TAssetNode; Message: TBusMessage): Boolean; virtual; abstract; // return true to skip this asset
+      function HandleBusMessage(Asset: TAssetNode; Message: TBusMessage): THandleBusMessageResult; virtual; abstract;
       procedure Dismantle(Asset: TAssetNode; Message: TMessage); virtual; abstract;
       property AssetClasses[ID: TAssetClassID]: TAssetClass read GetAssetClass;
       property Researches[ID: TResearchID]: TResearch read GetResearch;
@@ -693,8 +699,8 @@ type
       procedure ReportPermanentlyGone();
       function GetFeatureByClass(FeatureClass: FeatureClassReference): TFeatureNode; // returns nil if feature is absent
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback);
-      function InjectBusMessage(Message: TBusMessage): TInjectBusMessageResult; // called by a node to send a message up the tree to a bus (ManageBusMessage); returns true if bus was found
-      function HandleBusMessage(Message: TBusMessage): Boolean; // called by a bus (ManageBusMessage) to send a message down the tree; returs true if message was handled
+      function InjectBusMessage(Message: TBusMessage): TInjectBusMessageResult; // called by a node to send a message up the tree to a bus (ManageBusMessage)
+      function HandleBusMessage(Message: TBusMessage): THandleBusMessageResult; // called by a bus (ManageBusMessage) to send a message down the tree
       procedure MarkAsDirty(DirtyKinds: TDirtyKinds); virtual;
       procedure ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynasty.TArray); // OldDynasties is nil the first time this is called
       procedure ResetVisibility();
@@ -1560,14 +1566,23 @@ procedure TFeatureNode.Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWa
 begin
 end;
 
-function TFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
+function TFeatureNode.HandleBusMessage(Message: TBusMessage): THandleBusMessageResult;
+var
+   OverallResult: THandleBusMessageResult absolute Result;
+
+   function PropagateBusMessage(Child: TAssetNode): Boolean;
+   var
+      ChildResult: THandleBusMessageResult;
+   begin
+      ChildResult := Child.HandleBusMessage(Message);
+      Result := ChildResult <> hrActive;
+      if (ChildResult = hrHandled) then
+         OverallResult := hrHandled;
+   end;
+   
 begin
-   Assert(
-      TMethod(@Self.HandleBusMessage).Code = Pointer(@TFeatureNode.HandleBusMessage),
-      'If you override HandleBusMessage, there''s no need to call the inherited method. Just default to false.'
-   );
-   // TODO: should this use Walk and subclasses call this, instead of subclasses having to duplicate walk logic?
-   Result := False;
+   OverallResult := hrActive;
+   Walk(@PropagateBusMessage, nil);
 end;
 
 function TFeatureNode.InjectBusMessage(Message: TBusMessage): TInjectBusMessageResult;
@@ -1584,7 +1599,7 @@ end;
 
 function TFeatureNode.DeferOrHandleBusMessage(Message: TBusMessage): TInjectBusMessageResult;
 var
-   Handled: Boolean;
+   Handled: THandleBusMessageResult;
 begin
    Result := irRejected;
    if (Assigned(Parent.Parent)) then
@@ -1593,7 +1608,8 @@ begin
    if (Result = irRejected) then
    begin
       Handled := Parent.HandleBusMessage(Message);
-      if (Handled) then
+      Assert(Handled <> hrShortcut);
+      if (Handled = hrHandled) then
          Result := irHandled
       else
          Result := irInjected;
@@ -2169,7 +2185,7 @@ end;
 function TAssetNode.InjectBusMessage(Message: TBusMessage): TInjectBusMessageResult;
 var
    Feature: TFeatureNode;
-   Handled: Boolean;
+   Handled: THandleBusMessageResult;
 begin
    for Feature in FFeatures do
    begin
@@ -2188,7 +2204,7 @@ begin
       if (Message is TAssetManagementBusMessage) then
       begin
          Handled := HandleBusMessage(Message);
-         Assert(not Handled, 'TAssetManagementBusMessages should not be marked as handled');
+         Assert(Handled = hrActive, 'TAssetManagementBusMessages should not be marked as handled');
          Result := irInjected;
       end
       else
@@ -2198,22 +2214,18 @@ begin
    end;
 end;
 
-function TAssetNode.HandleBusMessage(Message: TBusMessage): Boolean;
+function TAssetNode.HandleBusMessage(Message: TBusMessage): THandleBusMessageResult;
 var
    Feature: TFeatureNode;
 begin
-   if (System.Encyclopedia.HandleBusMessage(Self, Message)) then
-   begin
-      Result := False;
-      exit;
-   end;
-   for Feature in FFeatures do
-   begin
-      Result := Feature.HandleBusMessage(Message); // propagates message down the tree
-      if (Result) then
-         exit;
-   end;
-   Result := False;
+   Result := System.Encyclopedia.HandleBusMessage(Self, Message);
+   if (Result = hrActive) then
+      for Feature in FFeatures do
+      begin
+         Result := Feature.HandleBusMessage(Message); // propagates message down the tree
+         if (Result <> hrActive) then
+            exit;
+      end;
 end;
 
 procedure TAssetNode.ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynasty.TArray);

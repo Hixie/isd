@@ -43,7 +43,7 @@ type
       function GetMass(): Double; override; // kg
       function GetSize(): Double; override; // m
       function ManageBusMessage(Message: TBusMessage): TInjectBusMessageResult; override;
-      function HandleBusMessage(Message: TBusMessage): Boolean; override;
+      function HandleBusMessage(Message: TBusMessage): THandleBusMessageResult; override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
       constructor Create(ASystem: TSystem; ASeed: Cardinal; ADiameter, ATemperature: Double; AComposition: TOreFractions; AMass: Double; AConsiderForDynastyStart: Boolean);
@@ -263,15 +263,10 @@ begin
       Result := inherited;
 end;
 
-function TPlanetaryBodyFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
+function TPlanetaryBodyFeatureNode.HandleBusMessage(Message: TBusMessage): THandleBusMessageResult;
 begin
-   if ((Message is TRubbleCollectionMessage) or (Message is TDismantleMessage)) then
-   begin
-      Assert(False, ClassName + ' should never see ' + Message.ClassName);
-      Result := False;
-   end
-   else
-      Result := False;
+   Assert(not ((Message is TRubbleCollectionMessage) or (Message is TDismantleMessage)), ClassName + ' should never see ' + Message.ClassName);
+   Result := inherited;
 end;
 
 procedure TPlanetaryBodyFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);

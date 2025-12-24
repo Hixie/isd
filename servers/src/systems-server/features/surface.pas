@@ -39,7 +39,7 @@ type
       function GetMassFlowRate(): TRate; override;
       function GetSize(): Double; override;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
-      function HandleBusMessage(Message: TBusMessage): Boolean; override;
+      function HandleBusMessage(Message: TBusMessage): THandleBusMessageResult; override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
       constructor Create(ASystem: TSystem; AFeatureClass: TSurfaceFeatureClass; ASize: Double);
@@ -250,7 +250,7 @@ begin
       Child.Walk(PreCallback, PostCallback);
 end;
 
-function TSurfaceFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
+function TSurfaceFeatureNode.HandleBusMessage(Message: TBusMessage): THandleBusMessageResult;
 var
    Child: TAssetNode;
    Theta, Radius, X, Y: Double;
@@ -271,15 +271,7 @@ begin
       Result := Child.HandleBusMessage(Message);
    end
    else
-   begin
-      for Child in FChildren do
-      begin
-         Result := Child.HandleBusMessage(Message);
-         if (Result) then
-            exit;
-      end;
-      Result := False;
-   end;
+      Result := inherited;
 end;
 
 procedure TSurfaceFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);

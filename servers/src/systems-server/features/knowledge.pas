@@ -134,7 +134,7 @@ type
       procedure NotifySubscribers();
       procedure ParentMarkedAsDirty(ParentDirtyKinds, NewDirtyKinds: TDirtyKinds); override;
       function ManageBusMessage(Message: TBusMessage): TInjectBusMessageResult; override;
-      function HandleBusMessage(Message: TBusMessage): Boolean; override;
+      function HandleBusMessage(Message: TBusMessage): THandleBusMessageResult; override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
       destructor Destroy(); override;
@@ -154,7 +154,7 @@ type
    private
       FResearch: TResearch;
    protected
-      function HandleBusMessage(Message: TBusMessage): Boolean; override;
+      function HandleBusMessage(Message: TBusMessage): THandleBusMessageResult; override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
       constructor Create(ASystem: TSystem; AResearch: TResearch);
@@ -421,7 +421,7 @@ begin
       Result := inherited;
 end;
 
-function TKnowledgeBusFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
+function TKnowledgeBusFeatureNode.HandleBusMessage(Message: TBusMessage): THandleBusMessageResult;
 var
    KnownMaterialsForDynasty: TMaterialHashSet;
    KnownAssetClassesForDynasty: TAssetClassHashSet;
@@ -449,7 +449,7 @@ begin
          FreeAndNil(CollectMaterialsMessage);
       end;
       (Message as TGetKnownMaterialsMessage).SetKnownMaterials(Self, FKnownMaterials[Dynasty]);
-      Result := True;
+      Result := hrHandled;
    end
    else
    if (Message is TGetKnownAssetClassesMessage) then
@@ -469,7 +469,7 @@ begin
          FreeAndNil(CollectAssetClassesMessage);
       end;
       (Message as TGetKnownAssetClassesMessage).SetKnownAssetClasses(Self, FKnownAssetClasses[Dynasty]);
-      Result := True;
+      Result := hrHandled;
    end
    else
    if (Message is TGetKnownResearchesMessage) then
@@ -489,10 +489,10 @@ begin
          FreeAndNil(CollectResearchesMessage);
       end;
       (Message as TGetKnownResearchesMessage).SetKnownResearches(Self, FKnownResearches[Dynasty]);
-      Result := True;
+      Result := hrHandled;
    end
    else
-      Result := False;
+      Result := inherited;
 end;
 
 procedure TKnowledgeBusFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);
@@ -536,7 +536,7 @@ begin
    MarkAsDirty([dkUpdateClients, dkUpdateJournal, dkAffectsKnowledge]);
 end;
 
-function TKnowledgeFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
+function TKnowledgeFeatureNode.HandleBusMessage(Message: TBusMessage): THandleBusMessageResult;
 
    function CanSeeKnowledge(Target: TDynasty): Boolean;
    var
@@ -585,7 +585,7 @@ begin
          (Message as TCollectKnownResearchesMessage).AddKnownResearch(FResearch);
       end;
    end;
-   Result := False;
+   Result := inherited;
 end;
 
 procedure TKnowledgeFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);

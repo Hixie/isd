@@ -59,7 +59,7 @@ type
       procedure Detaching(); override;
       function GetMass(): Double; override;
       function GetMassFlowRate(): TRate; override;
-      function HandleBusMessage(Message: TBusMessage): Boolean; override;
+      function HandleBusMessage(Message: TBusMessage): THandleBusMessageResult; override;
       procedure HandleChanges(); override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
       procedure ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynasty.TArray); override;
@@ -313,7 +313,7 @@ begin
    Result := Parent.Owner;
 end;
 
-function TOrePileFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
+function TOrePileFeatureNode.HandleBusMessage(Message: TBusMessage): THandleBusMessageResult;
 begin
    if (Message is TRubbleCollectionMessage) then
    begin
@@ -323,7 +323,6 @@ begin
          FRegion.Clear();
          MarkAsDirty([dkUpdateClients, dkNeedsHandleChanges]);
       end;
-      Result := False;
    end
    else
    if (Message is TDismantleMessage) then
@@ -349,10 +348,8 @@ begin
          end;
       end;
       Assert(not FRegion.Assigned);
-      Result := False;
-   end
-   else
-      Result := False;
+   end;
+   Result := inherited;
 end;
 
 procedure TOrePileFeatureNode.HandleChanges();

@@ -36,7 +36,7 @@ type
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
       function GetMass(): Double; override;
       function GetMassFlowRate(): TRate; override;
-      function HandleBusMessage(Message: TBusMessage): Boolean; override;
+      function HandleBusMessage(Message: TBusMessage): THandleBusMessageResult; override;
       procedure HandleChanges(); override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
       procedure ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynasty.TArray); override;
@@ -133,7 +133,7 @@ begin
    Result := Parent.Owner;
 end;
 
-function TMaterialPileFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
+function TMaterialPileFeatureNode.HandleBusMessage(Message: TBusMessage): THandleBusMessageResult;
 var
    Quantity: UInt64;
 begin
@@ -146,7 +146,6 @@ begin
          (Message as TRubbleCollectionMessage).AddMaterial(FFeatureClass.FMaterial, Quantity);
          MarkAsDirty([dkUpdateClients, dkNeedsHandleChanges]);
       end;
-      Result := False;
    end
    else
    if (Message is TDismantleMessage) then
@@ -170,10 +169,8 @@ begin
             MarkAsDirty([dkUpdateClients, dkNeedsHandleChanges]);
          end;
       end;
-      Result := False;
-   end
-   else
-      Result := False;
+   end;
+   Result := inherited;
 end;
 
 procedure TMaterialPileFeatureNode.HandleChanges();

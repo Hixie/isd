@@ -68,7 +68,7 @@ type
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
       procedure ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynasty.TArray); override;
       procedure ResetVisibility(); override;
-      function HandleBusMessage(Message: TBusMessage): Boolean; override;
+      function HandleBusMessage(Message: TBusMessage): THandleBusMessageResult; override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
       constructor Create(ASystem: TSystem; ABuildEnvironment: TBuildEnvironment; ACellSize: Double; ADimension: Cardinal);
@@ -405,7 +405,7 @@ begin
       Child.Walk(PreCallback, PostCallback);
 end;
 
-function TGridFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
+function TGridFeatureNode.HandleBusMessage(Message: TBusMessage): THandleBusMessageResult;
 var
    Child, Crater, OldChild: TAssetNode;
    X, Y, ChildSize: Cardinal;
@@ -434,16 +434,10 @@ begin
          Crater := System.Encyclopedia.Craterize(ChildSize * CellSize, OldChildren.Distill(), Child); // this removes the old children
          AdoptGridChild(Crater, X, Y, ChildSize);
       end;
-      Result := True;
+      Result := hrHandled;
       exit;
    end;
-   for Child in FChildren do
-   begin
-      Result := Child.HandleBusMessage(Message);
-      if (Result) then
-         exit;
-   end;
-   Result := False;
+   Result := inherited;
 end;
 
 procedure TGridFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);

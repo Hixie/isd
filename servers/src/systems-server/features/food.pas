@@ -97,7 +97,7 @@ type
    protected
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
       procedure HandleChanges(); override;
-      function HandleBusMessage(Message: TBusMessage): Boolean; override;
+      function HandleBusMessage(Message: TBusMessage): THandleBusMessageResult; override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
       constructor Create(ASystem: TSystem; AFeatureClass: TFoodGenerationFeatureClass);
@@ -362,14 +362,14 @@ begin
    end;
 end;
 
-function TFoodGenerationFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
+function TFoodGenerationFeatureNode.HandleBusMessage(Message: TBusMessage): THandleBusMessageResult;
 begin
    if (Message is TInitFoodMessage) then
    begin
       Assert(Assigned(FFeatureClass));
       (Message as TInitFoodMessage).ReportFoodGenerationCapacity(Self, FFeatureClass.Size);
    end;
-   Result := False;
+   Result := inherited;
 end;
 
 procedure TFoodGenerationFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);

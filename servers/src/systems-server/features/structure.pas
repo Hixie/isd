@@ -83,7 +83,7 @@ type
       function GetMassFlowRate(): TRate; override;
       function GetSize(): Double; override; // m
       procedure HandleChanges(); override;
-      function HandleBusMessage(Message: TBusMessage): Boolean; override;
+      function HandleBusMessage(Message: TBusMessage): THandleBusMessageResult; override;
       procedure ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynasty.TArray); override;
       procedure ResetVisibility(); override;
       procedure HandleKnowledge(const DynastyIndex: Cardinal; const Sensors: ISensorsProvider); override;
@@ -418,7 +418,7 @@ begin
    Result := FFeatureClass.DefaultSize;
 end;
 
-function TStructureFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
+function TStructureFeatureNode.HandleBusMessage(Message: TBusMessage): THandleBusMessageResult;
 var
    RubbleMessage: TRubbleCollectionMessage;
    DismantleMessage: TDismantleMessage;
@@ -429,14 +429,12 @@ var
 begin
    if (Message is TCheckDisabledBusMessage) then
    begin
-      Result := False;
       if (Assigned(FBuildingState) and (FBuildingState^.StructuralIntegrity < FFeatureClass.MinimumFunctionalQuantity)) then
          (Message as TCheckDisabledBusMessage).AddReason(drStructuralIntegrity);
    end
    else
    if (Message is TRubbleCollectionMessage) then
    begin
-      Result := False;
       RubbleMessage := Message as TRubbleCollectionMessage;
       RubbleMessage.Grow(FFeatureClass.BillOfMaterialsLength);
       Assert(FFeatureClass.BillOfMaterialsLength > 0);
@@ -506,10 +504,8 @@ begin
          end;
       end;
       MarkAsDirty([dkUpdateClients, dkUpdateJournal, dkNeedsHandleChanges]);
-      Result := False;
-   end
-   else
-      Result := False;
+   end;
+   Result := inherited;
 end;
 
 procedure TStructureFeatureNode.ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynasty.TArray);

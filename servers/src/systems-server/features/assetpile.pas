@@ -21,7 +21,6 @@ type
       FChildren: TAssetNode.TArray;
    protected
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
-      function HandleBusMessage(Message: TBusMessage): Boolean; override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
       destructor Destroy(); override;
@@ -99,19 +98,6 @@ var
 begin
    for Child in FChildren do
       Child.Walk(PreCallback, PostCallback);
-end;
-
-function TAssetPileFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
-var
-   Child: TAssetNode;
-begin
-   for Child in FChildren do
-   begin
-      Result := Child.HandleBusMessage(Message);
-      if (Result) then
-         exit;
-   end;
-   Result := False;
 end;
 
 procedure TAssetPileFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);

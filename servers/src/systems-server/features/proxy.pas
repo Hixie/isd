@@ -24,7 +24,6 @@ type
       function GetMassFlowRate(): TRate; override;
       function GetSize(): Double; override;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
-      function HandleBusMessage(Message: TBusMessage): Boolean; override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
       constructor Create(ASystem: TSystem; AChild: TAssetNode);
@@ -122,18 +121,6 @@ end;
 procedure TProxyFeatureNode.Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback);
 begin
    FChild.Walk(PreCallback, PostCallback);
-end;
-
-function TProxyFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
-begin
-   if (Assigned(FChild)) then
-   begin
-      Result := Child.HandleBusMessage(Message);
-   end
-   else
-   begin
-      Result := False;
-   end;
 end;
 
 procedure TProxyFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);

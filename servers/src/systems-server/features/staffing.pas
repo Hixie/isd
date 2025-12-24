@@ -27,7 +27,7 @@ type
       FWorkers: Cardinal; // call MarkAsDirty dkAffectsVisibility anytime it changes to/from zero
    protected
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
-      function HandleBusMessage(Message: TBusMessage): Boolean; override;
+      function HandleBusMessage(Message: TBusMessage): THandleBusMessageResult; override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
       constructor Create(ASystem: TSystem; AFeatureClass: TStaffingFeatureClass);
@@ -161,16 +161,14 @@ begin
    inherited;
 end;
 
-function TStaffingFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
+function TStaffingFeatureNode.HandleBusMessage(Message: TBusMessage): THandleBusMessageResult;
 begin
    if (Message is TCheckDisabledBusMessage) then
    begin
-      Result := False;
       if (FWorkers < FFeatureClass.Jobs) then
          (Message as TCheckDisabledBusMessage).AddReason(drUnderstaffed);
-   end
-   else
-      Result := False;
+   end;
+   Result := inherited;
 end;
 
 procedure TStaffingFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);

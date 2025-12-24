@@ -46,7 +46,7 @@ type
       procedure Detaching(); override;
       function GetMass(): Double; override;
       function GetHappiness(): Double; override;
-      function HandleBusMessage(Message: TBusMessage): Boolean; override;
+      function HandleBusMessage(Message: TBusMessage): THandleBusMessageResult; override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
       constructor Create(ASystem: TSystem; AFeatureClass: TPopulationFeatureClass);
@@ -192,7 +192,7 @@ begin
    Result := FGossip.ComputeHappinessContribution(FPopulation, System.Now);
 end;
 
-function TPopulationFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
+function TPopulationFeatureNode.HandleBusMessage(Message: TBusMessage): THandleBusMessageResult;
 var
    GossipMessage: TSpreadGossipBusMessage;
    HelpMessage: TNotificationMessage;
@@ -215,7 +215,11 @@ begin
          FGossip.Allocate();
       FGossip.AddNewGossip(GossipIdentifier, Gossip^, FPopulation);
       MarkAsDirty([dkHappinessChanged, dkUpdateClients, dkUpdateJournal]);
-      Result := GossipMessage.Spread;
+      if (GossipMessage.Spread) then
+      begin
+         Result := hrHandled;
+         exit;
+      end;
    end
    else
    if (Message is TCrashReportMessage) then
@@ -250,24 +254,26 @@ begin
          FGossip.Allocate();
       FGossip.AddNewGossip(GossipIdentifier, CrashGossip, FPopulation);
       MarkAsDirty([dkHappinessChanged, dkUpdateClients, dkUpdateJournal]);
-      Result := False; // TCrashReportMessage is handled when you explode yourself due to the crash (notifying someone isn't handling it!)
+      // we don't set Result to hrHandled -- TCrashReportMessage is handled when you explode yourself due to the crash (notifying someone isn't handling it!)
    end
    else
    if (Message is TRubbleCollectionMessage) then
    begin
       XXX; // TODO: we should account for the mass of dead bodies when turning population into rubble
-      Result := False;
    end
    else
    if (Message is TInitFoodMessage) then
    begin
       (Message as TInitFoodMessage).RequestFoodToEat(Self, FPopulation);
-      Result := False;
    end
    else
    if (Message is TFindDestructorsMessage) then
    begin
-      Result := (Message as TFindDestructorsMessage).Owner = Parent.Owner;
+      if ((Message as TFindDestructorsMessage).Owner = Parent.Owner) then
+      begin
+         Result := hrHandled;
+         exit;
+      end;
    end
    else
    if (Message is TRehomePopulation) then
@@ -284,20 +290,22 @@ begin
             Inc(FPopulation, Rehome.RemainingPopulation); // TODO: should clamp gossip growth before changing population
             Rehome.Rehome(Rehome.RemainingPopulation, FGossip, System.Now);
             Assert(Rehome.RemainingPopulation = 0);
-            Result := True;
          end
          else
          begin
             FPopulation := FFeatureClass.MaxPopulation; // TODO: should clamp gossip growth before changing population
             Rehome.Rehome(Capacity, FGossip, System.Now);
-            Result := False;
+            Assert(Rehome.RemainingPopulation > 0);
          end;
          MarkAsDirty([dkHappinessChanged, dkNeedsHandleChanges, dkUpdateClients, dkUpdateJournal]);
          if (Assigned(FPeopleBus)) then
             FPeopleBus.ClientChanged();
-      end
-      else
-         Result := False;
+         if (Rehome.RemainingPopulation = 0) then
+         begin
+            Result := hrHandled;
+            exit;
+         end;
+      end;
    end
    else
    if (Message is TDismantleMessage) then
@@ -329,7 +337,6 @@ begin
                FPeopleBus.ClientChanged();
          end;
       end;
-      Result := False;
    end
    else
    if (Message is TAssetGoingAway) then
@@ -341,10 +348,8 @@ begin
             MarkAsDirty([dkHappinessChanged, dkUpdateClients, dkUpdateJournal]);
          end;
       end;
-      Result := False;
-   end
-   else
-      Result := False;
+   end;
+   Result := inherited;
 end;
 
 procedure TPopulationFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);

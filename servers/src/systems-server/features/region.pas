@@ -243,7 +243,7 @@ type
       function GetMass(): Double; override;
       function GetMassFlowRate(): TRate; override;
       function ManageBusMessage(Message: TBusMessage): TInjectBusMessageResult; override;
-      function HandleBusMessage(Message: TBusMessage): Boolean; override;
+      function HandleBusMessage(Message: TBusMessage): THandleBusMessageResult; override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
       procedure Sync(); // move the ores around
       procedure SyncAndReconsider(); // sync, cancel the current scheduled event, schedule HandleChanges
@@ -1037,7 +1037,7 @@ begin
       Result := irDeferred;
 end;
 
-function TRegionFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
+function TRegionFeatureNode.HandleBusMessage(Message: TBusMessage): THandleBusMessageResult;
 var
    MinerMessage: TRegisterMinerBusMessage;
    OrePileMessage: TRegisterOrePileBusMessage;
@@ -1052,6 +1052,7 @@ var
    Consumer: IMaterialConsumer;
 begin
    {$IFOPT C+} Assert(not Busy); {$ENDIF}
+   Assert(not ((Message is TRubbleCollectionMessage) or (Message is TDismantleMessage)), ClassName + ' should never see ' + Message.ClassName);
    if (Message is TRegisterMinerBusMessage) then
    begin
       SyncAndReconsider();
@@ -1060,7 +1061,7 @@ begin
       Assert(not DynastyData^.FMiners.Contains(MinerMessage.Provider));
       DynastyData^.FMiners.Push(MinerMessage.Provider);
       MinerMessage.Provider.SetMinerRegion(Self);
-      Result := True;
+      Result := hrHandled;
    end
    else
    if (Message is TRegisterOrePileBusMessage) then
@@ -1071,7 +1072,7 @@ begin
       Assert(not DynastyData^.FOrePiles.Contains(OrePileMessage.Provider));
       DynastyData^.FOrePiles.Push(OrePileMessage.Provider);
       OrePileMessage.Provider.SetOrePileRegion(Self);
-      Result := True;
+      Result := hrHandled;
    end
    else
    if (Message is TRegisterRefineryBusMessage) then
@@ -1082,7 +1083,7 @@ begin
       Assert(not DynastyData^.FRefineries.Contains(RefineryMessage.Provider));
       DynastyData^.FRefineries.Push(RefineryMessage.Provider);
       RefineryMessage.Provider.SetRefineryRegion(Self);
-      Result := True;
+      Result := hrHandled;
    end
    else
    if (Message is TRegisterMaterialPileBusMessage) then
@@ -1093,7 +1094,7 @@ begin
       Assert(not DynastyData^.FMaterialPiles.Contains(MaterialPileMessage.Provider));
       DynastyData^.FMaterialPiles.Push(MaterialPileMessage.Provider);
       MaterialPileMessage.Provider.SetMaterialPileRegion(Self);
-      Result := True;
+      Result := hrHandled;
    end
    // TODO: factories
    else
@@ -1105,7 +1106,7 @@ begin
       Assert(not DynastyData^.FMaterialConsumers.Contains(MaterialConsumerMessage.Provider));
       DynastyData^.FMaterialConsumers.Push(MaterialConsumerMessage.Provider);
       MaterialConsumerMessage.Provider.SetMaterialConsumerRegion(Self);
-      Result := True;
+      Result := hrHandled;
    end
    else
    if (Message is TObtainMaterialBusMessage) then
@@ -1133,7 +1134,10 @@ begin
             end;
          end;
       end;
-      Result := Obtain.Fulfilled;
+      if (Obtain.Fulfilled) then
+         Result := hrHandled
+      else
+         Result := inherited;
    end
    else
    if (Message is TStoreMaterialBusMessage) then
@@ -1204,16 +1208,13 @@ begin
             end;
          end;
       end;
-      Result := Store.Fulfilled;
+      if (Store.Fulfilled) then
+         Result := hrHandled
+      else
+         Result := inherited;
    end
    else
-   if ((Message is TRubbleCollectionMessage) or (Message is TDismantleMessage)) then
-   begin
-      Assert(False, ClassName + ' should never see ' + Message.ClassName);
-      Result := False;
-   end
-   else
-      Result := False;
+      Result := inherited;
 end;
 
 procedure TRegionFeatureNode.Sync();

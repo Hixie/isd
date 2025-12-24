@@ -21,7 +21,7 @@ type
    strict private
       FEnabled: Boolean;
    protected
-      function HandleBusMessage(Message: TBusMessage): Boolean; override;
+      function HandleBusMessage(Message: TBusMessage): THandleBusMessageResult; override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
       constructor Create(ASystem: TSystem);
@@ -58,16 +58,14 @@ begin
    FEnabled := True;
 end;
 
-function TOnOffFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
+function TOnOffFeatureNode.HandleBusMessage(Message: TBusMessage): THandleBusMessageResult;
 begin
    if (Message is TCheckDisabledBusMessage) then
    begin
-      Result := False;
       if (not FEnabled) then
          (Message as TCheckDisabledBusMessage).AddReason(drManuallyDisabled);
-   end
-   else
-      Result := False;
+   end;
+   Result := inherited;
 end;
 
 procedure TOnOffFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);

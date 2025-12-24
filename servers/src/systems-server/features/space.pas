@@ -36,7 +36,6 @@ type
       function GetMassFlowRate(): TRate; override;
       function GetSize(): Double; override;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
-      function HandleBusMessage(Message: TBusMessage): Boolean; override;
       procedure ApplyVisibility(); override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
@@ -286,19 +285,6 @@ var
 begin
    for Child in FChildren do
       Child.Walk(PreCallback, PostCallback);
-end;
-
-function TSolarSystemFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
-var
-   Child: TAssetNode;
-begin
-   for Child in FChildren do
-   begin
-      Result := Child.HandleBusMessage(Message);
-      if (Result) then
-         exit;
-   end;
-   Result := False;
 end;
 
 procedure TSolarSystemFeatureNode.ApplyVisibility();

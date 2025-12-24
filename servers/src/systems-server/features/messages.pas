@@ -39,7 +39,7 @@ type
    protected
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
-      function HandleBusMessage(Message: TBusMessage): Boolean; override;
+      function HandleBusMessage(Message: TBusMessage): THandleBusMessageResult; override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
       constructor Create(ASystem: TSystem; AFeatureClass: TMessageBoardFeatureClass);
@@ -177,7 +177,7 @@ begin
       Child.Walk(PreCallback, PostCallback);
 end;
 
-function TMessageBoardFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
+function TMessageBoardFeatureNode.HandleBusMessage(Message: TBusMessage): THandleBusMessageResult;
 var
    Child: TAssetNode;
    Notification: TNotificationMessage;
@@ -195,17 +195,11 @@ begin
          KnowledgeFeature := Child.GetFeatureByClass(TKnowledgeFeatureClass) as TKnowledgeFeatureNode;
          KnowledgeFeature.SetKnowledge(Notification.Research);
          AdoptChild(Child);
-         Result := True;
+         Result := hrHandled;
          exit;
       end;
    end;
-   for Child in FChildren do
-   begin
-      Result := Child.HandleBusMessage(Message);
-      if (Result) then
-         exit;
-   end;
-   Result := False;
+   Result := inherited;
 end;
 
 procedure TMessageBoardFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);
