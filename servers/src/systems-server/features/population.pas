@@ -197,7 +197,7 @@ var
    GossipMessage: TSpreadGossipBusMessage;
    HelpMessage: TNotificationMessage;
    DismantleMessage: TDismantleMessage;
-   Injected: TBusMessageResult;
+   Injected: TInjectBusMessageResult;
    Rehome: TRehomePopulation;
    Capacity: Cardinal;
    OrbitMessage: TGetNearestOrbitMessage;
@@ -234,7 +234,7 @@ begin
          nil
       );
       Injected := InjectBusMessage(HelpMessage);
-      if (Injected <> mrHandled) then
+      if (Injected <> irHandled) then
          Writeln('Discarding message from population center ("', HelpMessage.Body, '")');
       FreeAndNil(HelpMessage);
       CrashGossip.Timestamp := System.Now;
@@ -382,7 +382,7 @@ begin
    if ((FPopulation > 0) and (not Assigned(FPeopleBus)) and (FPriority <> NoPriority)) then
    begin
       Message := TRegisterHousingMessage.Create(Self);
-      if (InjectBusMessage(Message) <> mrHandled) then
+      if (InjectBusMessage(Message) <> irHandled) then
       begin
          FPriority := NoPriority;
       end

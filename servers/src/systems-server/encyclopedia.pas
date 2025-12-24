@@ -841,7 +841,7 @@ begin
             Writeln('SEARCHING FOR DESTRUCTORS');
             FindDestructors := TFindDestructorsMessage.Create(PlayerDynasty);
             try
-               if (Asset.InjectBusMessage(FindDestructors) <> mrHandled) then
+               if (Asset.InjectBusMessage(FindDestructors) <> irHandled) then
                begin
                   Writeln('NO DESTRUCTOR DETECTED');
                   Message.Error(ieNoDestructors);

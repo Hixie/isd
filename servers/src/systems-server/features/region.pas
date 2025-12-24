@@ -242,7 +242,7 @@ type
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
       function GetMass(): Double; override;
       function GetMassFlowRate(): TRate; override;
-      function ManageBusMessage(Message: TBusMessage): TBusMessageResult; override;
+      function ManageBusMessage(Message: TBusMessage): TInjectBusMessageResult; override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
       procedure Sync(); // move the ores around
@@ -1020,7 +1020,7 @@ begin
    end;
 end;
 
-function TRegionFeatureNode.ManageBusMessage(Message: TBusMessage): TBusMessageResult;
+function TRegionFeatureNode.ManageBusMessage(Message: TBusMessage): TInjectBusMessageResult;
 begin
    if ((Message is TRegisterMinerBusMessage) or
        (Message is TRegisterOrePileBusMessage) or
@@ -1034,7 +1034,7 @@ begin
       Result := DeferOrHandleBusMessage(Message);
    end
    else
-      Result := mrDeferred;
+      Result := irDeferred;
 end;
 
 function TRegionFeatureNode.HandleBusMessage(Message: TBusMessage): Boolean;
@@ -1590,7 +1590,7 @@ procedure TRegionFeatureNode.HandleChanges();
    begin
       Assert(not FAllocatedOres);
       Message := TAllocateOresBusMessage.Create(FFeatureClass.Depth, FFeatureClass.TargetCount, FFeatureClass.TargetQuantity);
-      if (InjectBusMessage(Message) = mrHandled) then
+      if (InjectBusMessage(Message) = irHandled) then
          FGroundComposition := Message.AssignedOres;
       FreeAndNil(Message);
       FAllocatedOres := True;

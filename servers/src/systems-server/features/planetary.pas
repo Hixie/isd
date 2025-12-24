@@ -42,7 +42,7 @@ type
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
       function GetMass(): Double; override; // kg
       function GetSize(): Double; override; // m
-      function ManageBusMessage(Message: TBusMessage): TBusMessageResult; override;
+      function ManageBusMessage(Message: TBusMessage): TInjectBusMessageResult; override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
@@ -149,7 +149,7 @@ begin
    Assert(Result <= 1.0);
 end;
 
-function TPlanetaryBodyFeatureNode.ManageBusMessage(Message: TBusMessage): TBusMessageResult;
+function TPlanetaryBodyFeatureNode.ManageBusMessage(Message: TBusMessage): TInjectBusMessageResult;
 var
    AllocateResourcesMessage: TAllocateOresBusMessage;
    OreIndex: TOres;
@@ -257,7 +257,7 @@ begin
       end;
       Fraction32.NormalizeArray(@FComposition[Low(FComposition)], Length(FComposition)); // renormalize our composition
       MarkAsDirty([dkUpdateClients, dkUpdateJournal]);
-      Result := mrHandled;
+      Result := irHandled;
    end
    else
       Result := inherited;

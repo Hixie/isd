@@ -267,11 +267,11 @@ type
       procedure WriteMaterialReference(Material: TMaterial);
    end;
 
-   TBusMessageResult = (
-      mrDeferred, // we're still going up the tree
-      mrRejected, // we've reached a node that said to give up on this message
-      mrInjected, // we did inject the message into a bus but it wasn't handled
-      mrHandled // the message got injected and handled
+   TInjectBusMessageResult = (
+      irDeferred, // we're still going up the tree
+      irRejected, // we've reached a node that said to give up on this message
+      irInjected, // we did inject the message into a bus but it wasn't handled
+      irHandled // the message got injected and handled
    );
 
    TBusMessage = class abstract(TDebugObject) end;
@@ -556,9 +556,9 @@ type
       function GetFeatureName(): UTF8String; virtual;
       function GetHappiness(): Double; virtual;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); virtual;
-      function InjectBusMessage(Message: TBusMessage): TBusMessageResult; // (send message up the tree) returns true if message found a bus
-      function ManageBusMessage(Message: TBusMessage): TBusMessageResult; virtual; // (consider sending message down the tree) returns true if feature was a bus for this message or should stop propagation
-      function DeferOrHandleBusMessage(Message: TBusMessage): TBusMessageResult; // convenience function for ManageBusMessage that tries to inject it higher, and if that rejects, has the asset handle it (typically used for management buses)
+      function InjectBusMessage(Message: TBusMessage): TInjectBusMessageResult; // (send message up the tree) returns true if message found a bus
+      function ManageBusMessage(Message: TBusMessage): TInjectBusMessageResult; virtual; // (consider sending message down the tree) returns true if feature was a bus for this message or should stop propagation
+      function DeferOrHandleBusMessage(Message: TBusMessage): TInjectBusMessageResult; // convenience function for ManageBusMessage that tries to inject it higher, and if that rejects, has the asset handle it (typically used for management buses)
       function HandleBusMessage(Message: TBusMessage): Boolean; virtual; // (send message down the tree) returns true if feature handled the message or should stop propagation
       procedure ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynasty.TArray); virtual; // OldDynasties is nil the first time this is called
       procedure ResetVisibility(); virtual;
@@ -693,7 +693,7 @@ type
       procedure ReportPermanentlyGone();
       function GetFeatureByClass(FeatureClass: FeatureClassReference): TFeatureNode; // returns nil if feature is absent
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback);
-      function InjectBusMessage(Message: TBusMessage): TBusMessageResult; // called by a node to send a message up the tree to a bus (ManageBusMessage); returns true if bus was found
+      function InjectBusMessage(Message: TBusMessage): TInjectBusMessageResult; // called by a node to send a message up the tree to a bus (ManageBusMessage); returns true if bus was found
       function HandleBusMessage(Message: TBusMessage): Boolean; // called by a bus (ManageBusMessage) to send a message down the tree; returs true if message was handled
       procedure MarkAsDirty(DirtyKinds: TDirtyKinds); virtual;
       procedure ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynasty.TArray); // OldDynasties is nil the first time this is called
@@ -1570,33 +1570,33 @@ begin
    Result := False;
 end;
 
-function TFeatureNode.InjectBusMessage(Message: TBusMessage): TBusMessageResult;
+function TFeatureNode.InjectBusMessage(Message: TBusMessage): TInjectBusMessageResult;
 begin
    Result := Parent.InjectBusMessage(Message);
 end;
 
-function TFeatureNode.ManageBusMessage(Message: TBusMessage): TBusMessageResult;
+function TFeatureNode.ManageBusMessage(Message: TBusMessage): TInjectBusMessageResult;
 begin
    // InjectBusMessage calls this on each feature until it finds one that doesn't defer.
    // If they all defer, it goes up to the parent asset and tries again.
-   Result := mrDeferred;
+   Result := irDeferred;
 end;
 
-function TFeatureNode.DeferOrHandleBusMessage(Message: TBusMessage): TBusMessageResult;
+function TFeatureNode.DeferOrHandleBusMessage(Message: TBusMessage): TInjectBusMessageResult;
 var
    Handled: Boolean;
 begin
-   Result := mrRejected;
+   Result := irRejected;
    if (Assigned(Parent.Parent)) then
       Result := Parent.Parent.InjectBusMessage(Message);
-   Assert(Result <> mrDeferred);
-   if (Result = mrRejected) then
+   Assert(Result <> irDeferred);
+   if (Result = irRejected) then
    begin
       Handled := Parent.HandleBusMessage(Message);
       if (Handled) then
-         Result := mrHandled
+         Result := irHandled
       else
-         Result := mrInjected;
+         Result := irInjected;
    end;
 end;
 
@@ -1996,13 +1996,13 @@ procedure TAssetNode.ReportPermanentlyGone();
 
 var
    Message: TAssetGoingAway;
-   Injected: TBusMessageResult;
+   Injected: TInjectBusMessageResult;
 begin
    if (Assigned(FOwner)) then
       FOwner.DecRef();
    Message := TAssetGoingAway.Create(Self);
    Injected := InjectBusMessage(Message);
-   Assert(Injected = mrInjected, 'TAssetGoingAway should always be injected but not marked handled.');
+   Assert(Injected = irInjected, 'TAssetGoingAway should always be injected but not marked handled.');
    FreeAndNil(Message);
    System.ReportChildIsPermanentlyGone(Self);
    Walk(@PropagateToChildren, nil);
@@ -2166,7 +2166,7 @@ begin
       PostCallback(Self);
 end;
 
-function TAssetNode.InjectBusMessage(Message: TBusMessage): TBusMessageResult;
+function TAssetNode.InjectBusMessage(Message: TBusMessage): TInjectBusMessageResult;
 var
    Feature: TFeatureNode;
    Handled: Boolean;
@@ -2174,7 +2174,7 @@ begin
    for Feature in FFeatures do
    begin
       Result := Feature.ManageBusMessage(Message);
-      if (Result <> mrDeferred) then
+      if (Result <> irDeferred) then
       begin
          exit;
       end;
@@ -2189,11 +2189,11 @@ begin
       begin
          Handled := HandleBusMessage(Message);
          Assert(not Handled, 'TAssetManagementBusMessages should not be marked as handled');
-         Result := mrInjected;
+         Result := irInjected;
       end
       else
       begin
-         Result := mrRejected;
+         Result := irRejected;
       end;
    end;
 end;

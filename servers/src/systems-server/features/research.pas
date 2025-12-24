@@ -259,7 +259,7 @@ function TResearchFeatureNode.HandleCommand(Command: UTF8String; var Message: TM
    procedure DetermineTopics(Topics, ObsoleteTopics: TTopicHashSet);
    var
       KnowledgeBase: TGetKnownResearchesMessage;
-      Injected: TBusMessageResult;
+      Injected: TInjectBusMessageResult;
       RequirementsMet: Boolean;
       Research, Requirement: TResearch;
       Node: TNode;
@@ -268,7 +268,7 @@ function TResearchFeatureNode.HandleCommand(Command: UTF8String; var Message: TM
       KnowledgeBase := TGetKnownResearchesMessage.Create(Parent.Owner);
       try
          Injected := InjectBusMessage(KnowledgeBase);
-         Assert(Injected = mrHandled);
+         Assert(Injected = irHandled);
          for Research in KnowledgeBase do
          begin
             for Node in Research.Unlocks do
@@ -438,7 +438,7 @@ var
    Candidates: TResearch.TArray;
    KnowledgeBase: TGetKnownResearchesMessage;
    WeightedCandidates: TWeightedResearchHashTable;
-   Injected: TBusMessageResult;
+   Injected: TInjectBusMessageResult;
    RequirementsMet: Boolean;
    Research, Candidate: TResearch;
    Node, Requirement: TNode;
@@ -462,7 +462,7 @@ begin
    {$IFDEF VERBOSE} Writeln(Parent.DebugName, ': Enumerating researches for dynasty ', Parent.Owner.DynastyID, '.'); {$ENDIF}
    try
       Injected := InjectBusMessage(KnowledgeBase);
-      Assert(Injected = mrHandled);
+      Assert(Injected = irHandled);
       if (not FSubscription.Subscribed) then
          FSubscription := KnowledgeBase.Subscribe(@HandleKnowledgeChanged);
       for Research in KnowledgeBase do
@@ -658,7 +658,7 @@ procedure TResearchFeatureNode.TriggerResearch(var Data);
 var
    Reward: TReward;
    RewardMessage: TNotificationMessage;
-   Injected: TBusMessageResult;
+   Injected: TInjectBusMessageResult;
    Body: UTF8String;
 begin
    Writeln(Parent.DebugName, ': Triggering research ', FCurrentResearch.ID);
@@ -676,7 +676,7 @@ begin
    Assert(Body <> '');
    RewardMessage := TNotificationMessage.Create(Parent, Body, FCurrentResearch);
    Injected := InjectBusMessage(RewardMessage);
-   if (Injected <> mrHandled) then
+   if (Injected <> irHandled) then
    begin
       Writeln(Parent.DebugName, ': Discarding message from research feature ("', RewardMessage.Body, '")');
       // TODO: now what? can we be notified when we would be able to send a message? can notification centers notify when they come online?

@@ -71,7 +71,7 @@ type
       function GetMassFlowRate(): TRate; override;
       function GetSize(): Double; override;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
-      function ManageBusMessage(Message: TBusMessage): TBusMessageResult; override;
+      function ManageBusMessage(Message: TBusMessage): TInjectBusMessageResult; override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
       procedure HandleVisibility(const DynastyIndex: Cardinal; var Visibility: TVisibility); override;
       procedure CheckVisibilityChanged(); override;
@@ -523,17 +523,17 @@ begin
    end;
 end;
 
-function TOrbitFeatureNode.ManageBusMessage(Message: TBusMessage): TBusMessageResult;
+function TOrbitFeatureNode.ManageBusMessage(Message: TBusMessage): TInjectBusMessageResult;
 begin
    if (Message is TPhysicalConnectionBusMessage) then
    begin
-      Result := mrRejected;
+      Result := irRejected;
    end
    else
    if (Message is TGetNearestOrbitMessage) then
    begin
       (Message as TGetNearestOrbitMessage).FOrbit := Parent;
-      Result := mrHandled;
+      Result := irHandled;
    end
    else
       Result := inherited;

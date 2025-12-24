@@ -65,7 +65,7 @@ type
    TFoodBusFeatureNode = class(TFeatureNode)
    protected
       procedure ParentMarkedAsDirty(ParentDirtyKinds, NewDirtyKinds: TDirtyKinds); override;
-      function ManageBusMessage(Message: TBusMessage): TBusMessageResult; override;
+      function ManageBusMessage(Message: TBusMessage): TInjectBusMessageResult; override;
       procedure HandleChanges(); override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
@@ -275,12 +275,12 @@ begin
    inherited;
 end;
 
-function TFoodBusFeatureNode.ManageBusMessage(Message: TBusMessage): TBusMessageResult;
+function TFoodBusFeatureNode.ManageBusMessage(Message: TBusMessage): TInjectBusMessageResult;
 begin
    if (Message is TInitFoodMessage) then
    begin
       Result := DeferOrHandleBusMessage(Message);
-      Assert(Result = mrInjected, 'TInitFoodMessage should not be marked as handled');
+      Assert(Result = irInjected, 'TInitFoodMessage should not be marked as handled');
    end
    else
       Result := inherited;
@@ -289,11 +289,11 @@ end;
 procedure TFoodBusFeatureNode.HandleChanges();
 var
    InitFoodMessage: TInitFoodMessage;
-   Injected: TBusMessageResult;
+   Injected: TInjectBusMessageResult;
 begin
    InitFoodMessage := TInitFoodMessage.Create();
    Injected := InjectBusMessage(InitFoodMessage);
-   Assert(Injected = mrInjected);
+   Assert(Injected = irInjected);
    InitFoodMessage.Process();
    InitFoodMessage.Free();
    inherited;

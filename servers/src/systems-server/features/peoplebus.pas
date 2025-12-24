@@ -142,7 +142,7 @@ type
          end;
       var
          FRecords: TPeopleBusRecords;
-      function ManageBusMessage(Message: TBusMessage): TBusMessageResult; override;
+      function ManageBusMessage(Message: TBusMessage): TInjectBusMessageResult; override;
       function HandleBusMessage(Message: TBusMessage): Boolean; override;
       procedure HandleChanges(); override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
@@ -524,7 +524,7 @@ begin
    inherited;
 end;
 
-function TPeopleBusFeatureNode.ManageBusMessage(Message: TBusMessage): TBusMessageResult;
+function TPeopleBusFeatureNode.ManageBusMessage(Message: TBusMessage): TInjectBusMessageResult;
 begin
    if (Message is TPeopleBusMessage) then
    begin

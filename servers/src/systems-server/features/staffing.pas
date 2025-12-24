@@ -146,7 +146,7 @@ begin
       if ((not Assigned(FPeopleBus)) and (FPriority <> NoPriority)) then
       begin
          Message := TRegisterEmployerMessage.Create(Self);
-         if (InjectBusMessage(Message) <> mrHandled) then
+         if (InjectBusMessage(Message) <> irHandled) then
          begin
             FPriority := NoPriority;
             MarkAsDirty([dkUpdateJournal]);

@@ -704,7 +704,7 @@ begin
       if (Assigned(FBuildingState) and (not Assigned(FBuildingState^.BuilderBus)) and (not (bsNoBuilderBus in FBuildingState^.Flags))) then
       begin
          Message := TRegisterStructureMessage.Create(Self);
-         if (InjectBusMessage(Message) <> mrHandled) then
+         if (InjectBusMessage(Message) <> irHandled) then
          begin
             Include(FBuildingState^.Flags, bsNoBuilderBus); // TODO: remove this when the parent changes
          end;
@@ -743,7 +743,7 @@ end;
 
 procedure TStructureFeatureNode.TriggerBuilding();
 var
-   Injected: TBusMessageResult;
+   Injected: TInjectBusMessageResult;
    Message: TRegisterMaterialConsumerBusMessage;
 begin
    Assert(Assigned(Parent.Owner));
@@ -755,7 +755,7 @@ begin
       begin
          Message := TRegisterMaterialConsumerBusMessage.Create(Self);
          Injected := InjectBusMessage(Message);
-         if (Injected <> mrHandled) then
+         if (Injected <> irHandled) then
          begin
             Include(FBuildingState^.Flags, bsNoRegion);
             Assert(FBuildingState^.StructuralIntegrityRate.IsZero);

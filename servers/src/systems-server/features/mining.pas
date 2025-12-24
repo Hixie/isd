@@ -138,7 +138,7 @@ begin
    if (FStatus.NeedsConnection) then
    begin
       Message := TRegisterMinerBusMessage.Create(Self);
-      if (InjectBusMessage(Message) <> mrHandled) then
+      if (InjectBusMessage(Message) <> irHandled) then
          FStatus.SetNoRegion();
       FreeAndNil(Message);
    end;

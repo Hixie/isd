@@ -145,7 +145,7 @@ type
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
       procedure Reset();
       procedure Sync();
-      function ManageBusMessage(Message: TBusMessage): TBusMessageResult; override;
+      function ManageBusMessage(Message: TBusMessage): TInjectBusMessageResult; override;
       procedure HandleChanges(); override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
@@ -835,7 +835,7 @@ begin
    end;
 end;
 
-function TBuilderBusFeatureNode.ManageBusMessage(Message: TBusMessage): TBusMessageResult;
+function TBuilderBusFeatureNode.ManageBusMessage(Message: TBusMessage): TInjectBusMessageResult;
 var
    RegisterBuilder: TRegisterBuilderMessage;
    RegisterStructure: TRegisterStructureMessage;
@@ -847,7 +847,7 @@ begin
       FRecords.AddBuilder(RegisterBuilder.Builder);
       RegisterBuilder.Builder.BuilderBusConnected(Self);
       MarkAsDirty([dkNeedsHandleChanges]);
-      Result := mrHandled;
+      Result := irHandled;
    end
    else
    if (Message is TRegisterStructureMessage) then
@@ -857,7 +857,7 @@ begin
       FRecords.AddStructure(RegisterStructure.Structure);
       RegisterStructure.Structure.BuilderBusConnected(Self);
       MarkAsDirty([dkNeedsHandleChanges]);
-      Result := mrHandled;
+      Result := irHandled;
    end
    else
       Result := inherited;
@@ -1053,7 +1053,7 @@ begin
    if ((FDisabledReasons = []) and (not Assigned(FBus))) then
    begin
       Message := TRegisterBuilderMessage.Create(Self);
-      if (InjectBusMessage(Message) <> mrHandled) then
+      if (InjectBusMessage(Message) <> irHandled) then
          Include(FDisabledReasons, drNoBus);
       FreeAndNil(Message);
    end;
