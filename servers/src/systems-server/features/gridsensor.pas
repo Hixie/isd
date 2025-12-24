@@ -94,7 +94,7 @@ begin
       FGrid := FGrid.Parent.Parent;
    end;
    FLastCountDetected := 0;
-   if (Enabled and Assigned(FGrid)) then
+   if ((RateLimit = 1.0) and Assigned(FGrid)) then // TODO: do something prorated when RateLimit > 0.0 but < 1.0
    begin
       OwnerIndex := System.DynastyIndex[Parent.Owner];
       FGrid.Walk(@SenseDown, nil);
@@ -124,7 +124,7 @@ var
 begin
    Assert(not Assigned(FKnownMaterials));
    Assert(not Assigned(FKnownAssetClasses));
-   if (Enabled and Assigned(FGrid)) then
+   if ((RateLimit = 1.0) and Assigned(FGrid)) then // TODO: do something prorated when RateLimit > 0.0 but < 1.0
    begin
       OwnerIndex := System.DynastyIndex[Parent.Owner];
       FGrid.Walk(@SenseDown, nil);
@@ -142,7 +142,7 @@ begin
    begin
       Writer.WriteCardinal(fcGridSensor);
       Writer.WriteCardinal(Cardinal(FDisabledReasons));
-      if (Enabled and (dmInternals in Visibility)) then
+      if ((RateLimit > 0.0) and (dmInternals in Visibility)) then
       begin
          Writer.WriteCardinal(fcGridSensorStatus);
          if (Assigned(FGrid)) then

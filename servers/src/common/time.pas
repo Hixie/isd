@@ -128,7 +128,9 @@ operator - (A: TMillisecondsDuration; B: TMillisecondsDuration): TMillisecondsDu
 operator - (A: TMillisecondsDuration): TMillisecondsDuration; inline;
 operator mod (A: TMillisecondsDuration; B: TMillisecondsDuration): TMillisecondsDuration; inline;
 operator * (A: TMillisecondsDuration; B: TRate): Double; inline;
+operator * (A: TMillisecondsDuration; B: Double): TMillisecondsDuration; inline;
 operator / (A: TMillisecondsDuration; B: TMillisecondsDuration): Double; inline;
+operator / (A: TMillisecondsDuration; B: Double): TMillisecondsDuration; inline;
 operator = (A: TMillisecondsDuration; B: TMillisecondsDuration): Boolean; inline;
 operator < (A: TMillisecondsDuration; B: TMillisecondsDuration): Boolean; inline;
 operator <= (A: TMillisecondsDuration; B: TMillisecondsDuration): Boolean; inline;
@@ -494,11 +496,36 @@ begin
       Result := A.Value * B.Value;
 end;
 
+operator * (A: TMillisecondsDuration; B: Double): TMillisecondsDuration;
+begin
+   if (A.IsInfinite) then
+   begin
+      if (B = 0.0) then
+      begin
+         Result.Value := 0
+      end
+      else
+      begin
+         Result.Value := A.Value;
+      end;
+   end
+   else // TODO: what if B is infinite or NaN
+      Result.Value := Round(A.Value * B);
+end;
+
 operator / (A: TMillisecondsDuration; B: TMillisecondsDuration): Double;
 begin
    Assert(A.IsFinite);
    Assert(B.IsFinite);
    Result := A.Value / B.Value;
+end;
+
+operator / (A: TMillisecondsDuration; B: Double): TMillisecondsDuration;
+begin
+   Assert(A.IsFinite);
+   Assert(B <> 0.0);
+   // TODO: what if B is infinite or NaN
+   Result.Value := Round(A.Value / B);
 end;
 
 operator = (A: TMillisecondsDuration; B: TMillisecondsDuration): Boolean;

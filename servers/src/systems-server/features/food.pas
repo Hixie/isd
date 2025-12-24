@@ -4,6 +4,8 @@ unit food;
 
 interface
 
+// TODO: this entire feature needs revamping
+
 uses
    systems, systemdynasty, serverstream, materials, hashtable,
    genericutils, techtree, tttokenizer, commonbuses;
@@ -353,8 +355,10 @@ end;
 procedure TFoodGenerationFeatureNode.HandleChanges();
 var
    NewDisabledReasons: TDisabledReasons;
+   NewRateLimit: Double;
 begin
-   NewDisabledReasons := CheckDisabled(Parent);
+   NewDisabledReasons := CheckDisabled(Parent, NewRateLimit);
+   // TODO: do something with NewRateLimit
    if (NewDisabledReasons <> FDisabledReasons) then
    begin
       FDisabledReasons := NewDisabledReasons;

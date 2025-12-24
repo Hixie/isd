@@ -18,12 +18,14 @@ type
    strict private
       FRegion: TRegionFeatureNode; // 8 bytes
       FDisabledReasons: TDisabledReasons; // 4 bytes
+      FRateLimit: Double; // 8 bytes
       FRate: TRate; // 8 bytes
       FSourceLimiting, FTargetLimiting: Boolean; // 1 byte
       function GetNeedsConnection(): Boolean; inline;
       function GetConnected(): Boolean; inline;
    public
       property DisabledReasons: TDisabledReasons read FDisabledReasons;
+      property RateLimit: Double read FRateLimit;
       property NeedsConnection: Boolean read GetNeedsConnection;
       property Connected: Boolean read GetConnected;
       property Region: TRegionFeatureNode read FRegion;
@@ -31,13 +33,13 @@ type
       property SourceLimiting: Boolean read FSourceLimiting;
       property TargetLimiting: Boolean read FTargetLimiting;
    public
-      procedure SetDisabledReasons(Value: TDisabledReasons);
+      procedure SetDisabledReasons(Value: TDisabledReasons; ARateLimit: Double);
       procedure SetRegion(ARegion: TRegionFeatureNode);
       function Update(ARate: TRate; ASourceLimiting, ATargetLimiting: Boolean): Boolean; // returns whether anything changed
       procedure SetNoRegion(); inline;
       procedure Reset();
    end;
-   {$IF SIZEOF(TRegionClientFields) > 3*8} {$FATAL} {$ENDIF}
+   {$IF SIZEOF(TRegionClientFields) > 4*8} {$FATAL} {$ENDIF}
 
    IMiner = interface ['IMiner']
       function GetMinerMaxRate(): TRate; // kg per second
@@ -285,7 +287,7 @@ uses
 
 function TRegionClientFields.GetNeedsConnection(): Boolean;
 begin
-   Result := (not Assigned(FRegion)) and (FDisabledReasons = []);
+   Result := (not Assigned(FRegion)) and (FRateLimit > 0.0);
 end;
 
 function TRegionClientFields.GetConnected(): Boolean;
@@ -293,9 +295,10 @@ begin
    Result := Assigned(FRegion);
 end;
 
-procedure TRegionClientFields.SetDisabledReasons(Value: TDisabledReasons);
+procedure TRegionClientFields.SetDisabledReasons(Value: TDisabledReasons; ARateLimit: Double);
 begin
    FDisabledReasons := Value;
+   FRateLimit := ARateLimit;
    FRegion := nil;
    FRate := TRate.Zero;
    FSourceLimiting := False;

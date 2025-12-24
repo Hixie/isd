@@ -20,6 +20,7 @@ type
       procedure BuilderBusConnected(Bus: TBuilderBusFeatureNode); // must come from builder bus
       procedure BuilderBusReset(); // must come from builder bus, can assume all other participants (notably, builders) were also reset
       procedure StartBuilding(Builder: TBuilderFeatureNode; BuildRate: TRate);
+      procedure UpdateBuildingRate(BuildRate: TRate);
       procedure StopBuilding();
       function GetAsset(): TAssetNode;
       function GetPriority(): TPriority;
@@ -177,6 +178,7 @@ type
    strict private
       FFeatureClass: TBuilderFeatureClass;
       FDisabledReasons: TDisabledReasons;
+      FRateLimit: Double;
       FBus: TBuilderBusFeatureNode;
       FStructures: TStructureHashSet;
       FPriority: TPriority; // TODO: must be reset to zero whenever the bus changes (including to/from nil)
@@ -1032,30 +1034,46 @@ var
    Structure: IStructure;
    NewDisabledReasons: TDisabledReasons;
    Message: TRegisterBuilderMessage;
+   RateLimit: Double;
 begin
-   NewDisabledReasons := CheckDisabled(Parent);
+   NewDisabledReasons := CheckDisabled(Parent, RateLimit);
    if (NewDisabledReasons <> FDisabledReasons) then
    begin
       FDisabledReasons := NewDisabledReasons;
       MarkAsDirty([dkUpdateClients]);
    end;
-   if ((FDisabledReasons <> []) and (Assigned(FBus))) then
+   if (RateLimit = 0.0) then
    begin
-      FBus.RemoveBuilder(Self);
-      FBus := nil;
-      if (Assigned(FStructures)) then
+      if (Assigned(FBus)) then
       begin
-         for Structure in FStructures do
-            Structure.StopBuilding();
-         FreeAndNil(FStructures);
+         FBus.RemoveBuilder(Self);
+         FBus := nil;
+         if (Assigned(FStructures)) then
+         begin
+            for Structure in FStructures do
+               Structure.StopBuilding();
+            FreeAndNil(FStructures);
+         end;
       end;
-   end;
-   if ((FDisabledReasons = []) and (not Assigned(FBus))) then
+      FRateLimit := RateLimit;
+   end
+   else
+   if (not Assigned(FBus)) then
    begin
+      FRateLimit := RateLimit;
       Message := TRegisterBuilderMessage.Create(Self);
       if (InjectBusMessage(Message) <> irHandled) then
          Include(FDisabledReasons, drNoBus);
       FreeAndNil(Message);
+   end
+   else
+   if (RateLimit <> FRateLimit) then
+   begin
+      FRateLimit := RateLimit;
+      for Structure in FStructures do
+      begin
+         Structure.UpdateBuildingRate(FFeatureClass.BuildRate * FRateLimit);
+      end;
    end;
    inherited;
 end;
@@ -1100,7 +1118,7 @@ end;
 procedure TBuilderFeatureNode.BuilderBusStartBuilding(Structure: IStructure); // must come from builder bus
 begin
    FStructures.Add(Structure);
-   Structure.StartBuilding(Self, FFeatureClass.BuildRate);
+   Structure.StartBuilding(Self, FFeatureClass.BuildRate * FRateLimit);
    MarkAsDirty([dkUpdateClients]);
 end;
 

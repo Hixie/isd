@@ -28,12 +28,17 @@ type
    TCheckDisabledBusMessage = class(TBusMessage)
    strict private
       FReasons: TDisabledReasons;
+      FRateLimit: Double;
+      FIdentifier: Pointer;
    public
-      procedure AddReason(Reason: TDisabledReason);
+      constructor Create(AIdentifier: Pointer);
+      procedure AddReason(Reason: TDisabledReason; ARateLimit: Double = 0.0);
       property Reasons: TDisabledReasons read FReasons;
+      property RateLimit: Double read FRateLimit;
+      property Identifier: Pointer read FIdentifier;
    end; // should be injected using Parent.HandleBusMessage
 
-function CheckDisabled(Asset: TAssetNode; CanOperateWhileUnowned: Boolean = False): TDisabledReasons;
+function CheckDisabled(Asset: TAssetNode; out RateLimit: Double; CanOperateWhileUnowned: Boolean = False; Identifier: Pointer = nil): TDisabledReasons;
 
 type
    TFindDestructorsMessage = class(TPhysicalConnectionBusMessage)
@@ -97,22 +102,37 @@ implementation
 uses
    sysutils;
 
-procedure TCheckDisabledBusMessage.AddReason(Reason: TDisabledReason);
+constructor TCheckDisabledBusMessage.Create(AIdentifier: Pointer);
 begin
-   Include(FReasons, Reason);
+   inherited Create();
+   FRateLimit := 1.0;
+   FIdentifier := AIdentifier;
 end;
 
-function CheckDisabled(Asset: TAssetNode; CanOperateWhileUnowned: Boolean = False): TDisabledReasons;
+procedure TCheckDisabledBusMessage.AddReason(Reason: TDisabledReason; ARateLimit: Double = 0.0);
+begin
+   Include(FReasons, Reason);
+   Assert(ARateLimit >= 0.0);
+   Assert(ARateLimit < 1.0);
+   if (ARateLimit < FRateLimit) then
+   begin
+      FRateLimit := ARateLimit;
+   end;
+end;
+
+function CheckDisabled(Asset: TAssetNode; out RateLimit: Double; CanOperateWhileUnowned: Boolean = False; Identifier: Pointer = nil): TDisabledReasons;
 var
    OnOffMessage: TCheckDisabledBusMessage;
 begin
-   ASsert(Assigned(Asset));
+   Assert(Assigned(Asset));
    if (Assigned(Asset.Owner) or CanOperateWhileUnowned) then
    begin
-      OnOffMessage := TCheckDisabledBusMessage.Create();
+      OnOffMessage := TCheckDisabledBusMessage.Create(Identifier);
       try
          Asset.HandleBusMessage(OnOffMessage);
          Result := OnOffMessage.Reasons;
+         RateLimit := OnOffMessage.RateLimit;
+         Assert((Result <> []) or (RateLimit = 1.0));
       finally
          FreeAndNil(OnOffMessage);
       end;
@@ -120,6 +140,7 @@ begin
    else
    begin
       Result := [drUnowned];
+      RateLimit := 0.0;
    end;
 end;
 

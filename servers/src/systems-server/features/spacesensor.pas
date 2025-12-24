@@ -127,7 +127,7 @@ begin
    FLastTop := nil;
    FActualStepsUp := 0;
    FLastCountDetected := 0;
-   if ((not Enabled) or not Assigned(Parent.Owner)) then
+   if ((RateLimit < 1.0) or not Assigned(Parent.Owner)) then // TODO: use RateLimit rather than turning off entirely at < 1.0
       exit; // no dynasty owns this sensor, nothing to apply // TODO: consider whether neutral sensors should still report number of detected assets
    OwnerIndex := System.DynastyIndex[Parent.Owner];
    Feature := Self;
@@ -202,7 +202,7 @@ begin
    Assert(not Assigned(FKnownAssetClasses));
    if (not Assigned(FLastBottom)) then
       exit;
-   Assert(Enabled);
+   Assert(RateLimit > 0.0);
    Assert(Assigned(Parent.Owner));
    Assert(Assigned(FLastTop));
    OwnerIndex := System.DynastyIndex[Parent.Owner];
@@ -241,7 +241,7 @@ begin
       Writer.WriteCardinal(FFeatureClass.FStepsUpFromOrbit);
       Writer.WriteCardinal(FFeatureClass.FStepsDownFromTop);
       Writer.WriteDouble(FFeatureClass.FMinSize);
-      if (Enabled and (Assigned(Parent.Owner)) and (dmInternals in Visibility)) then
+      if ((RateLimit > 0.0) and (Assigned(Parent.Owner)) and (dmInternals in Visibility)) then
       begin
          Writer.WriteCardinal(fcSpaceSensorStatus);
          if (Assigned(FLastBottom)) then

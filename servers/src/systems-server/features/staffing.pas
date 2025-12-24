@@ -123,9 +123,9 @@ procedure TStaffingFeatureNode.HandleChanges();
 var
    DisabledReasons: TDisabledReasons;
    Message: TRegisterEmployerMessage;
+   RateLimit: Double; // ignored
 begin
-   DisabledReasons := CheckDisabled(Parent);
-   Exclude(DisabledReasons, drUnderstaffed); // TODO: consider explicitly listing the reasons for which we wouldn't bother staffing instead
+   DisabledReasons := CheckDisabled(Parent, RateLimit, False, Self);
    if (DisabledReasons <> []) then
    begin
       if (FPriority <> 0) then
@@ -166,7 +166,12 @@ begin
    if (Message is TCheckDisabledBusMessage) then
    begin
       if (FWorkers < FFeatureClass.Jobs) then
-         (Message as TCheckDisabledBusMessage).AddReason(drUnderstaffed);
+         (Message as TCheckDisabledBusMessage).AddReason(drUnderstaffed, FWorkers / FFeatureClass.Jobs);
+      if ((Message as TCheckDisabledBusMessage).Identifier = Pointer(Self)) then
+      begin
+         Result := hrShortcut;
+         exit;
+      end;
    end;
    Result := inherited;
 end;

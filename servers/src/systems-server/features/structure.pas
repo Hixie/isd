@@ -103,6 +103,7 @@ type
       procedure BuilderBusConnected(Bus: TBuilderBusFeatureNode); // must come from builder bus
       procedure BuilderBusReset(); // must come from builder bus, can assume all other participants were also reset
       procedure StartBuilding(Builder: TBuilderFeatureNode; BuildRate: TRate); // from builder
+      procedure UpdateBuildingRate(BuildRate: TRate);
       procedure StopBuilding(); // from builder
       function GetAsset(): TAssetNode;
       function GetPriority(): TPriority;
@@ -735,6 +736,13 @@ begin
    FBuildingState^.Builder := Builder;
    FBuildingState^.StructuralIntegrityRate := BuildRate;
    TriggerBuilding();
+end;
+
+procedure TStructureFeatureNode.UpdateBuildingRate(BuildRate: TRate);
+begin
+   FBuildingState^.StructuralIntegrityRate := BuildRate;
+   Exclude(FBuildingState^.Flags, bsTriggered);
+   MarkAsDirty([dkUpdateClients, dkNeedsHandleChanges]);
 end;
 
 procedure TStructureFeatureNode.TriggerBuilding();

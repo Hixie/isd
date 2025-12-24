@@ -30,6 +30,7 @@ type
    strict private
       FUpdateResearchScheduled: Boolean;
       FDisabledReasons: TDisabledReasons;
+      FRateLimit: Double;
       FFeatureClass: TResearchFeatureClass;
       FSeed: Int64;
       FTopic: TTopic;
@@ -151,19 +152,41 @@ procedure TResearchFeatureNode.ScheduleUpdateResearch();
 begin
    FUpdateResearchScheduled := True;
    MarkAsDirty([dkNeedsHandleChanges]);
+   // HandleChanges is called soon thereafter, and calls UpdateResearch
 end;
 
 procedure TResearchFeatureNode.HandleChanges();
 var
    NewDisabledReasons: TDisabledReasons;
+   NewRateLimit: Double;
 begin
-   NewDisabledReasons := CheckDisabled(Parent);
+   NewDisabledReasons := CheckDisabled(Parent, NewRateLimit);
    if (NewDisabledReasons <> FDisabledReasons) then
    begin
       FDisabledReasons := NewDisabledReasons;
       MarkAsDirty([dkUpdateClients]);
    end;
-   if ((FDisabledReasons = []) and FUpdateResearchScheduled) then
+   if (NewRateLimit <> FRateLimit) then
+   begin
+      // There is a very nuanced hack here.
+      // When we load from the journal, we don't know the rate limit,
+      // but we _do_ have an active research. So the FRateLimit is at
+      // its default 0.0.
+      // We do want to bank that research, we just don't know what the
+      // rate limit was when it was set. If we call BankResearch,
+      // it'll crash, because it'll try to divide by FRateLimit, zero.
+      // However, we actually do know the rate limit, it's whatever
+      // rate limit we just computed, NewRateLimit.
+      // So here we skip banking with the "old" (zero) rate limit, but
+      // then we still schedule an update, and the update will itself
+      // call BankResearch again, which now has the actual rate limit,
+      // because we set FRateLimit to NewRateLimit here.
+      if (FRateLimit <> 0.0) then
+         BankResearch();
+      FRateLimit := NewRateLimit;
+      FUpdateResearchScheduled := True;
+   end;
+   if (FUpdateResearchScheduled) then
    begin
       FUpdateResearchScheduled := False;
       UpdateResearch();
@@ -399,9 +422,12 @@ var
 begin
    if (Assigned(FCurrentResearch)) then
    begin
+      Assert(FRateLimit > 0.0);
       Assert(not FBankedResearch.Has(FCurrentResearch));
+      if (Assigned(FResearchEvent)) then // it's nil, e.g., just after we load from the journal
+         CancelEvent(FResearchEvent);
       Elapsed := System.Now - FResearchStartTime;
-      FBankedResearch[FCurrentResearch] := Elapsed;
+      FBankedResearch[FCurrentResearch] := Elapsed / FRateLimit;
       FCurrentResearch := nil;
    end;
 end;
@@ -448,14 +474,13 @@ var
    Index: Cardinal;
    Duration, BankedTime: TMillisecondsDuration;
 begin
-   Assert(FDisabledReasons = []);
+   BankResearch(); // see also comment in HandleChanges
+
+   if (FRateLimit = 0.0) then
+      exit;
+   
    while (FSeed < 0) do
       FSeed := System.RandomNumberGenerator.GetUInt32();
-   if (Assigned(FResearchEvent)) then
-   begin
-      CancelEvent(FResearchEvent);
-   end;
-   BankResearch();
    KnowledgeBase := TGetKnownResearchesMessage.Create(Parent.Owner);
    WeightedCandidates := TWeightedResearchHashTable.Create();
    TotalWeight := 0;
@@ -627,9 +652,6 @@ begin
       end;
 
       // TODO: apply FSpecialties
-      // TODO: apply modifier based on how structurally sound this asset is
-      // TODO: apply modifiers based on how powered this asset is
-      // TODO: apply modifiers based on how staffed this asset is
 
       if (FBankedResearch.Has(FCurrentResearch)) then
       begin
@@ -640,8 +662,8 @@ begin
       else
          BankedTime := TMillisecondsDuration.FromMilliseconds(0);
 
-      FResearchStartTime := System.Now - BankedTime;
-
+      FResearchStartTime := System.Now - (BankedTime * FRateLimit);
+      Duration := Duration * FRateLimit;
       if (Duration.IsNegative) then
          Duration := TMillisecondsDuration.FromMilliseconds(0);
       Writeln(Parent.DebugName, ': Scheduled research ', FCurrentResearch.ID, '; T-', Duration.ToString());

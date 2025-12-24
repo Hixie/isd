@@ -1232,23 +1232,32 @@ the parent's, but their sum can.
 ### `<disabled>`
 
 Some features can be disabled, either manually or because they're out
-of resources or for some other reason. Such features often have a
-`<disabled>` bit field, which is 32 bits wide. The bits are defined as
-follows.
+of resources or for some other reason; either entirely, or merely in a
+manner that rate-limits the feature's normal productivity.
+
+Such features often have a `<disabled>` bit field, which is 32 bits
+wide and specifies what issues the feature is experiencing. The bits
+are defined as follows.
 
    0 (LSB) : The asset was manually disabled (see `fcOnOff` feature).
+             This always entirely disables the feature.
    1       : The asset's structural integrity has not yet reached the
              minimum functional threshold (see `fcStructure` feature).
+             Currently, this always entirely disables the feature.
    2       : The asset could not find a coordinating asset. For
              example, `fcMining` and `fcRefining` features need an
              ancestor asset with an `fcRegion` feature. This can also
              be reported by `fcBuilder` (there is no feature in the
              protocol that corresponds to the one builders need, but
              it is often also present on features with `fcRegion`).
+             This always entirely disables the feature.
    3       : The number of staff assigned to the asset is below the
              required number (see `fcStaffing` feature).
+             This rate-limits the feature in proportion to the
+             fraction of jobs staffed.
    4       : The asset requires a dynasty to own it, and does not
              have one.
+             This always entirely disables the feature.
    5       : reserved, always zero
    ...
    31 (MSB): reserved, always zero

@@ -25,11 +25,12 @@ type
       FKnownAssetClasses: TGetKnownAssetClassesMessage;
       FSubscription: TKnowledgeSubscription;
       FDisabledReasons: TDisabledReasons;
+      FRateLimit: Double;
       FLastCountDetected: Cardinal;
       procedure ResetVisibility(); override;
       procedure HandleKnowledgeChanged();
       procedure HandleChanges(); override;
-      property Enabled: Boolean read GetEnabled;
+      property RateLimit: Double read FRateLimit;
    public
       destructor Destroy(); override;
       procedure UpdateJournal(Journal: TJournalWriter); override;
@@ -112,20 +113,19 @@ end;
 procedure TSensorFeatureNode.HandleChanges();
 var
    NewDisabledReasons: TDisabledReasons;
+   NewRateLimit: Double;
 begin
-   NewDisabledReasons := CheckDisabled(Parent);
+   NewDisabledReasons := CheckDisabled(Parent, NewRateLimit);
+   if (NewRateLimit <> FRateLimit) then
+   begin
+      // turned on or off
+      MarkAsDirty([dkAffectsVisibility]);
+      FRateLimit := NewRateLimit;
+   end;
    if (NewDisabledReasons <> FDisabledReasons) then
    begin
-      if ((FDisabledReasons = []) or (NewDisabledReasons = [])) then
-      begin
-         // turned on or off
-         MarkAsDirty([dkUpdateClients, dkAffectsVisibility]);
-      end
-      else
-      begin
-         // we just changed what the reason was, so we're still disabled, so won't affect visibility
-         MarkAsDirty([dkUpdateClients]);
-      end;
+      // we changed what the reason was
+      MarkAsDirty([dkUpdateClients]);
       FDisabledReasons := NewDisabledReasons;
    end;
    inherited;

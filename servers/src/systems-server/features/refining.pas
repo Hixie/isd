@@ -98,7 +98,6 @@ end;
 
 destructor TRefiningFeatureNode.Destroy();
 begin
-   Writeln(DebugName, ' going away (FStatus.Connected=', FStatus.Connected, ')');
    if (FStatus.Connected) then
       FStatus.Region.RemoveRefinery(Self);
    inherited;
@@ -111,7 +110,7 @@ end;
 
 function TRefiningFeatureNode.GetRefineryMaxRate(): TRate; // kg per second
 begin
-   Result := FFeatureClass.FBandwidth;
+   Result := FFeatureClass.FBandwidth * FStatus.RateLimit;
 end;
 
 function TRefiningFeatureNode.GetRefineryCurrentRate(): TRate; // kg per second
@@ -146,14 +145,16 @@ procedure TRefiningFeatureNode.HandleChanges();
 var
    DisabledReasons: TDisabledReasons;
    Message: TRegisterRefineryBusMessage;
+   RateLimit: Double;
 begin
-   DisabledReasons := CheckDisabled(Parent);
-   if ((DisabledReasons <> []) and (FStatus.Connected)) then
+   DisabledReasons := CheckDisabled(Parent, RateLimit);
+   if ((RateLimit = 0.0) and (FStatus.Connected)) then
       FStatus.Region.RemoveRefinery(Self);
-   if (DisabledReasons <> FStatus.DisabledReasons) then
+   if ((DisabledReasons <> FStatus.DisabledReasons) or (RateLimit <> FStatus.RateLimit)) then
    begin
-      FStatus.SetDisabledReasons(DisabledReasons);
-      MarkAsDirty([dkUpdateClients]);
+      if (DisabledReasons <> FStatus.DisabledReasons) then
+         MarkAsDirty([dkUpdateClients]);
+      FStatus.SetDisabledReasons(DisabledReasons, RateLimit);
    end;
    if (FStatus.NeedsConnection) then
    begin

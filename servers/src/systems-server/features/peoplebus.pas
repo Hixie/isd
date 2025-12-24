@@ -587,6 +587,7 @@ begin
             Inc(WorkerCount, Housing.GetWorkers());
          end;
          TotalJobs := 0;
+         // TODO: support sending suboptimal amounts of people to employers
          for Employer in EmployerList do
          begin
             Jobs := Employer.GetJobs();

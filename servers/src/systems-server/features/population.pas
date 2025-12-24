@@ -10,7 +10,7 @@ uses
 
 // TODO: people try to move to the "best" houses
 // TODO: people in houses beyond the max are unhappy
-// TODO: disabled houses count as max=0
+// TODO: disabled houses count as max=0, or apply the ratio in some way
 // TODO: gossip should spread between population centers
 
 type
@@ -375,9 +375,10 @@ procedure TPopulationFeatureNode.HandleChanges();
 var
    NewDisabledReasons: TDisabledReasons;
    Message: TRegisterHousingMessage;
+   RateLimit: Double;
 begin
    Assert(Assigned(Parent));
-   NewDisabledReasons := CheckDisabled(Parent);
+   NewDisabledReasons := CheckDisabled(Parent, RateLimit); // TODO: do something with the rate limit
    if (NewDisabledReasons <> FDisabledReasons) then
    begin
       FDisabledReasons := NewDisabledReasons;
