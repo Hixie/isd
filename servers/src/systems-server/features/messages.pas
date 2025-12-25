@@ -80,7 +80,7 @@ type
 implementation
 
 uses
-   systemnetwork, systemdynasty, isdprotocol, sysutils;
+   systemnetwork, systemdynasty, isdprotocol, sysutils, exceptions;
 
 type
    PMessageBoardData = ^TMessageBoardData;

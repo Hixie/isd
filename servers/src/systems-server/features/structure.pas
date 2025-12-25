@@ -1084,7 +1084,7 @@ begin
          end
          else
          begin
-            TimeUntilMaterialFunctional := (FBuildingState^.MaterialsQuantity - FFeatureClass.MinimumFunctionalQuantity) / FBuildingState^.MaterialsQuantityRate;
+            TimeUntilMaterialFunctional := (FFeatureClass.MinimumFunctionalQuantity - FBuildingState^.MaterialsQuantity) / FBuildingState^.MaterialsQuantityRate;
          end;
       end
       else
@@ -1097,7 +1097,7 @@ begin
       end
       else
       begin
-         TimeUntilIntegrityFunctional := (FBuildingState^.StructuralIntegrity - FFeatureClass.MinimumFunctionalQuantity) / FBuildingState^.StructuralIntegrityRate;
+         TimeUntilIntegrityFunctional := (FFeatureClass.MinimumFunctionalQuantity - FBuildingState^.StructuralIntegrity) / FBuildingState^.StructuralIntegrityRate;
       end;
       if (TimeUntilMaterialFunctional > TimeUntilIntegrityFunctional) then
          TimeUntilIntegrityFunctional := TimeUntilMaterialFunctional;

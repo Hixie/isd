@@ -896,31 +896,42 @@ end;
 
 constructor TGrowthRate.FromEachMillisecond(A: Double);
 begin
-   Assert(A >= 0.0);
+   Assert(A >= 0.0, 'Negative growth rate: ' + FloatToStr(A));
    Value := A;
+   Assert(Value >= 0.0);
 end;
 
 constructor TGrowthRate.FromEachWeek(A: Double);
 begin
    Assert(A >= 0.0);
    Value := Power(A, 1.0 / (7 * 24 * 60 * 60 * 1000)); // $R-
+   Assert(Value >= 0.0);
 end;
 
 constructor TGrowthRate.FromDoublingTimeInMilliseconds(A: Double);
 begin
    Assert(A >= 0.0);
-   Value := Power(2, -A) - 1; // $R-
+   Value := Power(2, 1 / A); // $R-
+   Assert(Value >= 0.0);
 end;
    
 constructor TGrowthRate.FromDoublingTimeInWeeks(A: Double);
 begin
    Assert(A >= 0.0);
-   Value := Power(2, -A * 7 * 24 * 60 * 60 * 1000) - 1; // $R-
+   Value := Power(2, 1 / (A * 7 * 24 * 60 * 60 * 1000)); // $R-
+   Assert(Value >= 0.0);
 end;
    
 operator ** (A: TGrowthRate; B: TMillisecondsDuration): TFactor;
 begin
-   Result.Value := Power(A.Value, Double(B.Value)); // $R-
+   try
+      Result.Value := Power(A.Value, Double(B.Value)); // $R-
+   except
+      Writeln('A: ', A.Value:0:15);
+      Writeln('B: ', B.ToString());
+      ReportCurrentException();
+      Result.Value := 0.0;
+   end;
    Assert(Result.Value >= 0.0);
 end;
 
@@ -954,6 +965,7 @@ begin
    begin
       Result.Value := B.Value;
    end;
+   Assert(Result.Value >= 0.0);
 end;
 
 function Max(A: TGrowthRate; B: TGrowthRate): TGrowthRate;
@@ -966,6 +978,7 @@ begin
    begin
       Result.Value := B.Value;
    end;
+   Assert(Result.Value >= 0.0);
 end;
 
 

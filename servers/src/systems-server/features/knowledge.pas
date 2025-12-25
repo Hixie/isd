@@ -179,7 +179,8 @@ end;
 
 procedure TCollectKnownMaterialsMessage.AddKnownMaterial(Material: TMaterial);
 begin
-   FKnownMaterials.Add(Material);
+   if (not FKnownMaterials.Has(Material)) then
+      FKnownMaterials.Add(Material);
 end;
 
 

@@ -1574,10 +1574,17 @@ var
    var
       ChildResult: THandleBusMessageResult;
    begin
-      ChildResult := Child.HandleBusMessage(Message);
-      Result := ChildResult <> hrActive;
-      if (ChildResult = hrHandled) then
-         OverallResult := hrHandled;
+      if (OverallResult = hrActive) then
+      begin
+         ChildResult := Child.HandleBusMessage(Message);
+         if (ChildResult = hrHandled) then
+         begin
+            OverallResult := hrHandled;
+            Result := False;
+            exit;
+         end;
+      end;
+      Result := (OverallResult = hrActive) and (Child.Parent = Self);
    end;
    
 begin

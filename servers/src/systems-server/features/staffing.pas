@@ -121,12 +121,12 @@ end;
 
 procedure TStaffingFeatureNode.HandleChanges();
 var
-   DisabledReasons: TDisabledReasons;
    Message: TRegisterEmployerMessage;
    RateLimit: Double; // ignored
 begin
-   DisabledReasons := CheckDisabled(Parent, RateLimit, False, Self);
-   if (DisabledReasons <> []) then
+   CheckDisabled(Parent, RateLimit, False, Self);
+   Writeln(DebugName, ' has rate limit ', RateLimit);
+   if (RateLimit = 0.0) then
    begin
       if (FPriority <> 0) then
       begin
@@ -165,13 +165,13 @@ function TStaffingFeatureNode.HandleBusMessage(Message: TBusMessage): THandleBus
 begin
    if (Message is TCheckDisabledBusMessage) then
    begin
-      if (FWorkers < FFeatureClass.Jobs) then
-         (Message as TCheckDisabledBusMessage).AddReason(drUnderstaffed, FWorkers / FFeatureClass.Jobs);
       if ((Message as TCheckDisabledBusMessage).Identifier = Pointer(Self)) then
       begin
          Result := hrShortcut;
          exit;
       end;
+      if (FWorkers < FFeatureClass.Jobs) then
+         (Message as TCheckDisabledBusMessage).AddReason(drUnderstaffed, FWorkers / FFeatureClass.Jobs);
    end;
    Result := inherited;
 end;
