@@ -38,8 +38,7 @@ class OnOffFeature extends AbilityFeature {
           child: DecoratedBox(
             decoration: const ShapeDecoration(
               color: Colors.white,
-              shape: BeveledRectangleBorder(
-                side: BorderSide(),
+              shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.all(Radius.circular(20.0)),
               ),
             ),

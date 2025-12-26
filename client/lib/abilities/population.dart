@@ -18,7 +18,7 @@ class Gossip {
     required this.anchor,
     required this.people,
     required this.spreadRate,
-  });
+  }) : assert(spreadRate >= 0.0);
 
   final String message;
   final AssetNode? source;
