@@ -14,7 +14,7 @@ class ZoomCurve extends Curve {
   const ZoomCurve();
 
   static final double a = sqrt(2);
-  static final double b = (1 - a * a ) / (2 * a);
+  static final double b = (1 - a * a) / (2 * a);
   static final double c = -(b * b);
 
   @override
@@ -216,7 +216,11 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
   }
 
   double? _lastScale; // tracks intra-frame scales in case scale events come in faster than the refresh rate (easy to do with a mousewheel)
-
+  double? _scaleAtGestureStart; // the zoom when a ScaleUpdate gesture started
+  double? _zoomAtGestureStart;
+  Offset? _panAtGestureStart;
+  Offset? _accumulatedOffset;
+  
   static double _clampPan(double x, double viewport, double diameter, double rootCenterOffset) {
     final double margin = diameter * 0.99 + (viewport - diameter) / 2.0;
     return x.clamp(rootCenterOffset - margin, rootCenterOffset + margin);
@@ -307,15 +311,29 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
             zoom: this,
             child: GestureDetector(
               trackpadScrollCausesScale: true,
+              onScaleStart: (ScaleStartDetails details) {
+                final RenderBoxToRenderWorldAdapter box = _worldRoot;
+                _scaleAtGestureStart = box.layoutScale;
+                _zoomAtGestureStart = _zoom.value;
+                _panAtGestureStart = _pan.value;
+                _accumulatedOffset = Offset.zero;
+              },
+              onScaleEnd: (ScaleEndDetails details) {
+                _scaleAtGestureStart = null;
+                _zoomAtGestureStart = null;
+                _panAtGestureStart = null;
+              },
               onScaleUpdate: (ScaleUpdateDetails details) {
+                // TODO: still need to test this with pinch+zoom at the same time
                 setState(() {
                   final RenderBoxToRenderWorldAdapter box = _worldRoot;
+                  final Size size = box.size;
                   setState(() {
                     _lastScale ??= box.layoutScale;
-                    final double newScale = max(box.minScale, _lastScale! * details.scale);
-                    // TODO: check that this works when you pan AND zoom
-                    _updatePan(_pan.value + details.focalPointDelta / _lastScale!, newScale, zoom: _zoom.value + log(details.scale));
-                    _lastScale = newScale;
+                    final Offset sigma = -Offset(details.localFocalPoint.dx - size.width / 2.0, details.localFocalPoint.dy - size.height / 2.0) + details.focalPointDelta;
+                    final double newScale = max(box.minScale, _scaleAtGestureStart! * details.scale);
+                    _accumulatedOffset = _accumulatedOffset! + details.focalPointDelta / newScale;
+                    _updatePan(_panAtGestureStart! + _accumulatedOffset! + sigma / _scaleAtGestureStart! - sigma / newScale, newScale, zoom: _zoomAtGestureStart! + log(details.scale));
                   });
                 });
               },
@@ -417,8 +435,8 @@ class RenderBoxToRenderWorldAdapter extends RenderBox with RenderObjectWithChild
     required double zoom,
     required Map<WorldNode, Offset> precomputedPositions,
   }) : _diameter = diameter,
-       _zoom = zoom,
-       _precomputedPositions = precomputedPositions {
+        _zoom = zoom,
+        _precomputedPositions = precomputedPositions {
     this.child = child;
   }
 
