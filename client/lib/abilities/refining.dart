@@ -44,7 +44,7 @@ class RefiningFeature extends AbilityFeature {
       }
       return 'Storage full. Add more piles to restart refining.';
     }
-    assert(currentRate == maxRate);
+    assert(currentRate == maxRate, 'currentRate = $currentRate, maxRate = $maxRate');
     return 'Refining at full rate.';
   }
 

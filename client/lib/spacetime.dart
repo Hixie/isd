@@ -48,9 +48,9 @@ class SpaceTime {
   SpaceTime(this.clock, this._anchorTime, this._timeFactor) : _origin = clock.now;
 
   final SystemClock clock;
-  final int _anchorTime; // ms from server
-  final double _timeFactor;
   final DateTime _origin;
+  int _anchorTime; // ms from server
+  double _timeFactor;
 
   static DateTime? _lastFrameTime;
   static final Set<VoidCallback> _callbacks = <VoidCallback>{};
@@ -64,6 +64,11 @@ class SpaceTime {
     for (VoidCallback callback in oldCallbacks) {
       callback();
     }
+  }
+
+  void update(int newAnchorTime, double newTimeFactor) {
+    _anchorTime = newAnchorTime;
+    _timeFactor = newTimeFactor;
   }
 
   // returns local system time in milliseconds

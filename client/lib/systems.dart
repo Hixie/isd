@@ -24,7 +24,7 @@ import 'assetclasses.dart';
 import 'assets.dart';
 import 'binarystream.dart';
 import 'connection.dart';
-import 'containers/assetpile.dart';
+//import 'containers/assetpile.dart';
 import 'containers/grid.dart';
 import 'containers/messages.dart';
 import 'containers/orbits.dart';
@@ -136,12 +136,19 @@ class SystemServer {
       final int systemID = reader.readUInt32();
       final int currentTime = reader.readInt64();
       final double timeFactor = reader.readDouble();
-      final SpaceTime spaceTime = SpaceTime(clock, currentTime, timeFactor);
-      final SystemNode system = _systems.putIfAbsent(systemID, () => SystemNode(
-        id: systemID,
-        sendCallback: _connection.send,
-        spaceTime: spaceTime,
-      ));
+      final SpaceTime spaceTime;
+      if (_systems.containsKey(systemID)) {
+        spaceTime = _systems[systemID]!.spaceTime;
+        spaceTime.update(currentTime, timeFactor);
+      } else {
+        spaceTime = SpaceTime(clock, currentTime, timeFactor);
+        _systems[systemID] = SystemNode(
+          id: systemID,
+          sendCallback: _connection.send,
+          spaceTime: spaceTime,
+        );
+      }
+      final SystemNode system = _systems[systemID]!;
       final int rootAssetID = reader.readUInt32();
       assert(rootAssetID > 0);
       system.root = _assets.putIfAbsent(rootAssetID, () => AssetNode(id: rootAssetID, parent: system));
@@ -542,12 +549,12 @@ class SystemServer {
               final int workers = reader.readUInt32();
               features.add(StaffingFeature(jobs: jobs, workers: workers));
             case fcAssetPile:
-              final List<AssetNode> children = <AssetNode>[];
-              AssetNode? child;
-              while ((child = _readAsset(reader)) != null) {
-                children.add(child!);
-              }
-              features.add(AssetPileFeature(children));
+              //final List<AssetNode> children = <AssetNode>[];
+              //AssetNode? child;
+              //while ((child = _readAsset(reader)) != null) {
+              //  children.add(child!);
+              //}
+              //features.add(AssetPileFeature(children));
             default:
               throw NetworkError(
                 'Client does not support feature code 0x${featureCode.toRadixString(16).padLeft(8, "0")}, '
