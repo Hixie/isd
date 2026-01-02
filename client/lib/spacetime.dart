@@ -43,12 +43,12 @@ class SystemClock {
   }
 }
 
-@immutable
 class SpaceTime {
   SpaceTime(this.clock, this._anchorTime, this._timeFactor) : _origin = clock.now;
 
   final SystemClock clock;
-  final DateTime _origin;
+
+  DateTime _origin;
   int _anchorTime; // ms from server
   double _timeFactor;
 
@@ -69,6 +69,7 @@ class SpaceTime {
   void update(int newAnchorTime, double newTimeFactor) {
     _anchorTime = newAnchorTime;
     _timeFactor = newTimeFactor;
+    _origin = clock.now;
   }
 
   // returns local system time in milliseconds
