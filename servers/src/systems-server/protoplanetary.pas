@@ -5,7 +5,7 @@ unit protoplanetary;
 interface
 
 uses
-   materials, random, plasticarrays, systems;
+   materials, random, plasticarrays, systems, masses;
 
 type
    TBodyComposition = record
@@ -17,7 +17,7 @@ type
 
    TBody = record
    private
-      Mass: Double; // approximation computed from Composition
+      Mass: TMass; // approximation computed from Composition
       function GetAverageDistance(): Double;
    public
       Seed: Cardinal;
@@ -28,7 +28,7 @@ type
       Temperature: Double;
       Moons: PBodyArray;
       property AverageOrbitalDistance: Double read GetAverageDistance;
-      property ApproximateMass: Double read Mass;
+      property ApproximateMass: TMass read Mass;
    end;
 
    TBodyDistanceUtils = record
@@ -41,10 +41,10 @@ type
    TBodyArray = specialize PlasticArray<TBody, TBodyDistanceUtils>;
 
 // TODO: have different logic for home systems, support systems, and other random systems
-procedure CondenseProtoplanetaryDisk(StarMass, StarRadius, HillRadius, StarTemperature: Double; const Materials: TMaterial.TArray; System: TSystem; out Planets: TBodyArray);
+procedure CondenseProtoplanetaryDisk(StarMass: TMass; StarRadius, HillRadius, StarTemperature: Double; const Materials: TMaterial.TArray; System: TSystem; out Planets: TBodyArray);
 
 {$IFDEF DEBUG}
-function WeighBody(const Body: TBody): Double;
+function WeighBody(const Body: TBody): TMass;
 {$ENDIF}
 
 implementation
@@ -142,13 +142,14 @@ begin
    Result := Distance * (1 + Eccentricity * Eccentricity / 2.0);
 end;
 
-function WeighBody(const Body: TBody): Double;
+function WeighBody(const Body: TBody): TMass;
 var
    Index: Cardinal;
-   BodyRadius, BodyVolume, MaterialMass: Double;
+   BodyRadius, BodyVolume: Double;
+   MaterialMass: TMass;
    TotalRelativeVolume: Double;
 begin
-   Result := 0.0;
+   Result := TMass.Zero;
    Assert(Length(Body.Composition) > 0);
    BodyRadius := Body.Radius;
    BodyVolume := BodyRadius * BodyRadius * BodyRadius * Pi * 4.0 / 3.0; // $R- // If it overflows, other things have gone very wrong already.
@@ -161,7 +162,7 @@ begin
    begin
       if (Body.Composition[Index].RelativeVolume > 0.0) then
       begin
-         MaterialMass := (Body.Composition[Index].RelativeVolume / TotalRelativeVolume) * BodyVolume * Body.Composition[Index].Material.Density;
+         MaterialMass := TMass.FromKg((Body.Composition[Index].RelativeVolume / TotalRelativeVolume) * BodyVolume * Body.Composition[Index].Material.Density);
          Result := Result + MaterialMass;
       end;
    end;
@@ -313,21 +314,21 @@ begin
    Result := TotalRelativeVolume > 0.0;
 end;
 
-function RocheLimit(const PrimaryMass, SecondaryMass, SecondaryRadius: Double): Double;
+function RocheLimit(const PrimaryMass, SecondaryMass: TMass; SecondaryRadius: Double): Double;
 begin
    Assert(SecondaryRadius > 0);
-   Assert(PrimaryMass > 0);
-   Assert(SecondaryMass > 0);
-   Result := SecondaryRadius * ((2.0 * PrimaryMass / SecondaryMass) ** (1.0 / 3.0)); // $R-
+   Assert(PrimaryMass.IsPositive);
+   Assert(SecondaryMass.IsPositive);
+   Result := SecondaryRadius * ((2.0 * (PrimaryMass / SecondaryMass)) ** (1.0 / 3.0)); // $R-
 end;
 
-procedure CondenseProtoplanetaryDisk(StarMass, StarRadius, HillRadius, StarTemperature: Double; const Materials: TMaterial.TArray; System: TSystem; out Planets: TBodyArray);
+procedure CondenseProtoplanetaryDisk(StarMass: TMass; StarRadius, HillRadius, StarTemperature: Double; const Materials: TMaterial.TArray; System: TSystem; out Planets: TBodyArray);
 var
    Randomizer: TRandomNumberGenerator;
    Index, PlanetIndex, GenerationStart: Cardinal;
    Min, Max, Distance, MoonDistance, PreviousDistance, NextDistance, Alpha, Beta, PlanetDistance, Area,
-   PlanetProbability, ProtoplanetaryDiscHeight, LocalProtoplanetaryDiscHeight, PlanetMass, ProtoplanetaryDiscRadius,
-   MoonSize, PlanetHillRadius, CumulativeMoonMasses: Double;
+   PlanetProbability, ProtoplanetaryDiscHeight, LocalProtoplanetaryDiscHeight, ProtoplanetaryDiscRadius, MoonSize, PlanetHillRadius: Double;
+   PlanetMass, CumulativeMoonMasses: TMass;
    Clockwise, DidAddPlanet: Boolean;
    Planet, Moon: TBody;
 begin
@@ -432,9 +433,9 @@ begin
                // MOONS
                Assert(Length(Planet.Composition) = Length(Materials));
                Distance := Planet.Distance;
-               PlanetHillRadius := Distance * (1 - Planet.Eccentricity) * Power((PlanetMass / (3 * (PlanetMass + StarMass))), 1/3); // $R-
+               PlanetHillRadius := Distance * (1 - Planet.Eccentricity) * Power((PlanetMass / ((PlanetMass + StarMass) * 3)), 1/3); // $R-
                MoonSize := Randomizer.Perturb(Planet.Radius * MaxMoonSizeRatio, MoonSizePerturbationParameters);
-               CumulativeMoonMasses := 0.0;
+               CumulativeMoonMasses := TMass.Zero;
                while ((MoonSize > MinMoonSize) and (CumulativeMoonMasses < Planet.Mass * MoonMassRatio)) do
                begin
                   MoonDistance := Randomizer.GetDouble(0.0, PlanetHillRadius);

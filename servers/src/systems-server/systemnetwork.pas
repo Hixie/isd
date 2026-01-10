@@ -105,7 +105,7 @@ implementation
 uses
    sysutils, hashfunctions, isdprotocol, passwords, exceptions, orbit,
    spacesensor, structure, errors, plot, planetary, population,
-   messages, knowledge, food, research, space;
+   messages, knowledge, research, space;
 
 constructor TSystemHashTable.Create();
 begin
@@ -289,6 +289,7 @@ end;
 
 procedure TConnection.DoPlay(var Message: TMessage);
 var
+   Visibility: TVisibility;
    SystemID, AssetID: Cardinal;
    Command: UTF8String;
    System: TSystem;
@@ -309,7 +310,14 @@ begin
       Asset := System.FindCommandTarget(FDynasty, TAssetID(AssetID));
       if (Assigned(Asset)) then
       begin
-         Asset.HandleCommand(Command, Message);
+         if (not Assigned(Asset.Owner) or (Asset.Owner = FDynasty)) then
+         begin
+            Visibility := Asset.ReadVisibilityFor(System.DynastyIndex[FDynasty]);
+            if ((dmDetectable * Visibility <> []) and (dmClassKnown in Visibility)) then
+            begin
+               Asset.HandleCommand(PlayerDynasty, Command, Message);
+            end;
+         end;
       end;
    end;
    // check for success

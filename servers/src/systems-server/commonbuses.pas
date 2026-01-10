@@ -5,7 +5,7 @@ unit commonbuses;
 interface
 
 uses
-   systems, systemdynasty, materials, gossip, time;
+   systems, systemdynasty, materials, gossip, time, masses;
 
 type
    TPriority = 0..2147483647;
@@ -17,14 +17,26 @@ const
 
 type
    TDisabledReason = (
-      drManuallyDisabled, // Manually disabled.
-      drStructuralIntegrity, // Structural integrity has not yet reached minimum functional threshold.
-      drNoBus, // Not usually used with TCheckDisabledBusMessage, but indicates no appropriate bus could be reached (e.g. TRegionFeatureNode for mining/refining, or TBuilderBusFeatureNode for builders).
-      drUnderstaffed, // Staffing levels are below required levels for funcionality.
-      drUnowned // The asset is not associated with a dynasty.
+      drManuallyDisabled = $00, // Manually disabled.
+      drStructuralIntegrity = $01, // Structural integrity has not yet reached minimum functional threshold.
+      drNoBus = $02, // Not usually used with TCheckDisabledBusMessage, but indicates no appropriate bus could be reached (e.g. TRegionFeatureNode for mining/refining, or TBuilderBusFeatureNode for builders).
+      drUnderstaffed = $03, // Staffing levels are below required levels for funcionality.
+      drUnowned = $04, // The asset is not associated with a dynasty.
+      drCannotGuaranteeInput = $05, // A factory is disabled because the region could not guarantee availibility of input.
+      drCannotStoreOutput = $06 // A factory is disabled because the region could not guarantee availability of space for output.
    );
    TDisabledReasons = set of TDisabledReason;
 
+   TFactoryDisabledReason = ( // guaranteed to be bitwise compatible with TDisabledReason except for fdActive
+      fdActive = $00,
+      fdCannotGuaranteeInput = Cardinal(drCannotGuaranteeInput),
+      fdCannotStoreOutput = Cardinal(drCannotStoreOutput)
+   );
+   
+const
+   drActive = High(TFactoryDisabledReason);
+   
+type
    TCheckDisabledBusMessage = class(TBusMessage)
    strict private
       FReasons: TDisabledReasons;
@@ -64,7 +76,7 @@ type
       constructor Create(AOwner: TDynasty; ATarget: TAssetNode; ANow: TTimeInMilliseconds);
       destructor Destroy(); override;
       procedure AddExcessPopulation(Quantity: Cardinal; Gossip: TGossipHashTable);
-      procedure AddExcessMaterial(Material: TMaterial; Quantity: UInt64);
+      procedure AddExcessMaterial(Material: TMaterial; Quantity: TQuantity64);
       procedure AddExcessAsset(Asset: TAssetNode);
       property Owner: TDynasty read FOwner;
       property Target: TAssetNode read FTarget;
@@ -132,7 +144,6 @@ begin
          Asset.HandleBusMessage(OnOffMessage);
          Result := OnOffMessage.Reasons;
          RateLimit := OnOffMessage.RateLimit;
-         Assert((Result <> []) or (RateLimit = 1.0));
       finally
          FreeAndNil(OnOffMessage);
       end;
@@ -142,6 +153,7 @@ begin
       Result := [drUnowned];
       RateLimit := 0.0;
    end;
+   Assert((Result <> []) or (RateLimit = 1.0));
 end;
 
 
@@ -173,7 +185,7 @@ begin
    inherited;
 end;
 
-procedure TDismantleMessage.AddExcessMaterial(Material: TMaterial; Quantity: UInt64);
+procedure TDismantleMessage.AddExcessMaterial(Material: TMaterial; Quantity: TQuantity64);
 begin
    if (not Assigned(FMaterials)) then
       FMaterials := TMaterialQuantityHashTable.Create();

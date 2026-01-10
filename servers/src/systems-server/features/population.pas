@@ -5,8 +5,8 @@ unit population;
 interface
 
 uses
-   systems, serverstream, materials, food, systemdynasty, techtree,
-   peoplebus, commonbuses, gossip;
+   systems, serverstream, materials, systemdynasty, techtree,
+   peoplebus, commonbuses, gossip, masses;
 
 // TODO: people try to move to the "best" houses
 // TODO: people in houses beyond the max are unhappy
@@ -27,7 +27,7 @@ type
       property MaxPopulation: Cardinal read FMaxPopulation;
    end;
 
-   TPopulationFeatureNode = class(TFeatureNode, IFoodConsumer, IHousing)
+   TPopulationFeatureNode = class(TFeatureNode, IHousing)
    private
       // source of truth
       FPopulation: Cardinal; // if this changes, call FPeopleBus.ClientChanged and MarkAsDirty dkAffectsVisibility
@@ -44,7 +44,7 @@ type
    protected
       procedure Attaching(); override;
       procedure Detaching(); override;
-      function GetMass(): Double; override;
+      function GetMass(): TMass; override;
       function GetHappiness(): Double; override;
       function HandleBusMessage(Message: TBusMessage): THandleBusMessageResult; override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
@@ -180,11 +180,12 @@ begin
       FPriority := 0;
       FPeopleBus := nil;
    end;
+   MarkAsDirty([dkHappinessChanged]);
 end;
 
-function TPopulationFeatureNode.GetMass(): Double;
+function TPopulationFeatureNode.GetMass(): TMass;
 begin
-   Result := MeanIndividualMass * FPopulation;
+   Result := TMass.FromKg(MeanIndividualMass) * FPopulation;
 end;
 
 function TPopulationFeatureNode.GetHappiness(): Double;
@@ -260,11 +261,6 @@ begin
    if (Message is TRubbleCollectionMessage) then
    begin
       XXX; // TODO: we should account for the mass of dead bodies when turning population into rubble
-   end
-   else
-   if (Message is TInitFoodMessage) then
-   begin
-      (Message as TInitFoodMessage).RequestFoodToEat(Self, FPopulation);
    end
    else
    if (Message is TFindDestructorsMessage) then

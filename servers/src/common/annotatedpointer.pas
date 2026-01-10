@@ -11,9 +11,11 @@ type
       FValue: PtrUInt;
       function GetAssigned(): Boolean; inline;
    public
-      class operator := (Value: PType): specialize TAnnotatedPointer<PType, TFlags>; inline;
+      class operator := (Value: PType): specialize TAnnotatedPointer<PType, TFlags>; inline; // also clears flags
       procedure Clear(); inline;
+      procedure Wrap(Value: PType); inline;
       function Unwrap(): PType; inline;
+      procedure ConfigureFlag(Flag: TFlags; Value: Boolean); inline;
       procedure SetFlag(Flag: TFlags); inline;
       procedure ClearFlag(Flag: TFlags); inline;
       function IsFlagSet(Flag: TFlags): Boolean; inline;
@@ -36,6 +38,11 @@ begin
    FValue := $00;
 end;
 
+procedure TAnnotatedPointer.Wrap(Value: PType);
+begin
+   FValue := PtrUInt(Value) or (FValue and $07)
+end;
+
 function TAnnotatedPointer.Unwrap(): PType;
 begin
    Result := PType(FValue and not $07);
@@ -45,6 +52,14 @@ end;
 function TAnnotatedPointer.GetAssigned(): Boolean;
 begin
    Result := system.Assigned(PType(FValue and not $07));
+end;
+
+procedure TAnnotatedPointer.ConfigureFlag(Flag: TFlags; Value: Boolean);
+begin
+   if (Value) then
+      FValue := FValue or PtrUInt(1 shl Ord(Flag))
+   else
+      FValue := FValue and not PtrUInt(1 shl Ord(Flag));
 end;
 
 procedure TAnnotatedPointer.SetFlag(Flag: TFlags);

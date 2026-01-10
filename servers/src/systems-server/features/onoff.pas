@@ -6,7 +6,7 @@ interface
 
 uses
    basenetwork, systems, serverstream, materials, techtree,
-   messageport, isdprotocol;
+   messageport, isdprotocol, systemdynasty;
 
 type
    TOnOffFeatureClass = class(TFeatureClass)
@@ -27,14 +27,13 @@ type
       constructor Create(ASystem: TSystem);
       procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader); override;
-      function HandleCommand(Command: UTF8String; var Message: TMessage): Boolean; override;
+      function HandleCommand(PlayerDynasty: TDynasty; Command: UTF8String; var Message: TMessage): Boolean; override;
    end;
 
 implementation
 
 uses
-   exceptions, sysutils, systemnetwork, systemdynasty,
-   knowledge, messages, typedump, commonbuses;
+   exceptions, sysutils, knowledge, messages, typedump, commonbuses;
 
 constructor TOnOffFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
 begin
@@ -90,19 +89,11 @@ begin
    FEnabled := Journal.ReadBoolean();
 end;
 
-function TOnOffFeatureNode.HandleCommand(Command: UTF8String; var Message: TMessage): Boolean;
-var
-   PlayerDynasty: TDynasty;
+function TOnOffFeatureNode.HandleCommand(PlayerDynasty: TDynasty; Command: UTF8String; var Message: TMessage): Boolean;
 begin
    if (Command = ccEnable) then
    begin
       Result := True;
-      PlayerDynasty := (Message.Connection as TConnection).PlayerDynasty;
-      if (PlayerDynasty <> Parent.Owner) then
-      begin
-         Message.Error(ieInvalidMessage);
-         exit;
-      end;
       if (Message.CloseInput()) then
       begin
          Message.Reply();
@@ -123,12 +114,6 @@ begin
    if (Command = ccDisable) then
    begin
       Result := True;
-      PlayerDynasty := (Message.Connection as TConnection).PlayerDynasty;
-      if (PlayerDynasty <> Parent.Owner) then
-      begin
-         Message.Error(ieInvalidMessage);
-         exit;
-      end;
       if (Message.CloseInput()) then
       begin
          Message.Reply();

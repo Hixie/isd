@@ -31,8 +31,9 @@ Fields:
 
 The connection must have had a successful `login` prior to this message.
 
-The command is routed to the given asset, which must be owned by the
-dynasty. For details about which commands are available for assets
+The command is routed to the given asset, which must either be unowned
+or owned by the dynasty, must be visible, and whose asset class must
+be known. For details about which commands are available for assets
 with various features, see the feature definitions below. Unless
 otherwise stated, features do not support any commands.
 
@@ -625,7 +626,9 @@ the cell at `<x>`,`<y>`.)
 The `<buildables>` lists the asset classes that can be built on this
 grid. Each is followed by a size, which is the number of cells in each
 dimension that the asset would take if built. (This is a number in the
-range 1..255 or 1..`<dimension>`, whichever is smaller.)
+range 1..255 or 1..`<dimension>`, whichever is smaller.) It is an
+error if this list is not empty in the case of the asset class not
+being known or the grid itself not being detectable.
 
 This feature supports the following command:
 
@@ -714,6 +717,9 @@ and must only have features from the following list:
 It is an error if the server sends a physical asset, or an asset with
 any other feature, as a child of an `fcMessageBoard`.
 
+It is an error if the server sends an `fcMessageBoard` feature for an
+asset whose class is not known.
+
 
 #### `fcMessage` (0x0D)
 
@@ -769,12 +775,15 @@ This feature supports the following commands:
  * `mark-read`: no additional fields. Sets the "read" bit to 0x01.
  * `mark-unread`: no additional fields. Sets the "read" bit to 0x00.
 
+It is an error if the server sends an `fcMessage` feature for an asset
+whose class is not known.
+
 
 #### `fcRubblePile` (0x0E)
 
 ```bnf
 <featuredata>       ::= [ <materialid> <quantity> ]* <zero32> <quantity>
-<quantity>          ::= <uint64>
+<quantity>          ::= <int64>
 ```
 
 Indicates that the asset contains, possibly among other things, a pile
@@ -896,6 +905,9 @@ asset owner):
    `get-topics`. Setting one that is obsolete has no effect. The empty
    string is a valid selection (that has no effect).
 
+It is an error if the server sends an `fcResearch` feature for an
+asset whose class is not known.
+
 
 #### `fcMining` (0x12)
 
@@ -917,8 +929,9 @@ not mining, if applicable. It is defined in its own section below.
 The `<flags>` bit field has eight bits interpreted as follows:
 
    0 (LSB): There is no more to mine in the source. (If set,
-            `<currentrate> is zero.)
-   1      : The mining is being rate-limited by the targets.
+            `<currentrate> is zero, and this is the only bit set.)
+   1      : There are no piles into which to place mined ore,
+            or the piles are full.
    2      : reserved, always zero
    3      : reserved, always zero
    4      : reserved, always zero
@@ -934,14 +947,13 @@ the availability of resources (see `fcRegion`) and capacity in piles
 A mining feature is _active_ if it is in a region (`fcRegion`), not
 disabled, and there's more to mine.
 
-When the miner is labeled as rate-limited by the targets, the actual
-useful mining rate is determined by the consumers (refineries,
-`fcRefining`) but the given rate is the maximum rate; excess mining
-product that could not be refined is returned to the ground (where it
-may be mined again).
+When there are no available piles, the actual _useful_ mining rate is
+determined by the consumers (refineries, `fcRefining`) but the given
+rate is the maximum rate; excess mining product that could not be
+refined is returned to the ground (where it may be mined again).
 
-Once a region runs out of minable materials, the targets are no longer
-considered to be a limiting factor, even if the ore piles are full.
+Once a region runs out of minable materials, mining stops and the
+piles are not considered an issue, even if the ore piles are full.
 
 The materials mined will be evident in assets with an `fcOrePile`
 feature (which will have a non-zero mass flow rate while the materials
@@ -970,18 +982,19 @@ or slightly less than the rated capacity.
 An empty pile has mass zero. The listed materials are those that are
 recognized.
 
-This feature supports the following command (allowed by any dynasty
-that can detect the pile):
+This feature supports the following command:
 
  * `analyze`: No fields. Returns the time of the analysis (int64),
    followed by an approximation of the total quantity of material in
    the pile (double), followed by a list of pairs of material IDs
-   (int64) and quantities (uint64) giving the known ores and how much
-   of each there is. (The difference between the sum of these
-   quantities and the given total quantity is the number of unknown
-   ores.) These numbers are quantities, not masses.
+   (int64) and quantities (int64, though negative numbers indicate a
+   server error) giving the known ores and how much of each there is.
+   (The difference between the sum of these quantities and the given
+   total quantity is the number of unknown ores.) These numbers are
+   quantities, not masses.
 
 > TODO: change this to use a binary response
+> TODO: consider if other dynasties should be allowed to do this
 
 
 #### `fcRegion` (0x14)
@@ -1069,9 +1082,9 @@ removed, if negative) from the pile.
 
 ```bnf
 <featuredata>       ::= <quantity> <flowrate> <capacity> <material>
-<quantity>          ::= <uint64>
+<quantity>          ::= <int64>
 <flowrate>          ::= <double>
-<capacity>          ::= <uint64>
+<capacity>          ::= <int64>
 <material>          ::= <materialname> ( <materialid> | <zero32> )
 ```
 
@@ -1197,6 +1210,9 @@ asset owner):
  * `disable`: No fields. Disables the asset. Returns a boolean
    indicating if anything changed.
 
+It is an error if the server sends an `fcOnOff` feature for an
+asset whose class is not known.
+
 
 #### `fcStaffing` (0x1E)
 
@@ -1213,7 +1229,7 @@ people are working it.
 Staff comes from `fcPopulation` centers.
 
 The `<jobs>` is zero if the dynasty does not have access to the
-asset's internals and does not know about the asset class. Otherwise,
+asset's internals or does not know about the asset class. Otherwise,
 it is non-zero.
 
 

@@ -5,7 +5,7 @@ unit orbit;
 interface
 
 uses
-   systems, providers, serverstream, time, techtree;
+   systems, providers, serverstream, time, techtree, masses;
 
 type
    TOrbitBusMessage = class abstract(TBusMessage) end;
@@ -67,8 +67,8 @@ type
    protected
       procedure AdoptOrbitingChild(Child: TAssetNode); // Child must be an orbit.
       procedure ParentMarkedAsDirty(ParentDirtyKinds, NewDirtyKinds: TDirtyKinds); override;
-      function GetMass(): Double; override;
-      function GetMassFlowRate(): TRate; override;
+      function GetMass(): TMass; override;
+      function GetMassFlowRate(): TMassRate; override;
       function GetSize(): Double; override;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
       function ManageBusMessage(Message: TBusMessage): TInjectBusMessageResult; override;
@@ -85,8 +85,8 @@ type
       procedure DropChild(Child: TAssetNode); override;
       procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader); override;
-      function GetHillDiameter(Child: TAssetNode; ChildPrimaryMass: Double): Double;
-      function GetRocheLimit(ChildRadius, ChildMass: Double): Double; // returns minimum semi-major axis for a hypothetical child planetary body orbitting our primary
+      function GetHillDiameter(Child: TAssetNode; ChildPrimaryMass: TMass): Double;
+      function GetRocheLimit(ChildRadius: Double; ChildMass: TMass): Double; // returns minimum semi-major axis for a hypothetical child planetary body orbitting our primary
       function GetAverageDistance(Child: TAssetNode): Double;
       procedure SetPrimaryChild(APrimaryChild: TAssetNode); // must be called immediately after orbit is created and given a parent asset
       // given child should have a TOrbitFeatureNode, use Encyclopedia.WrapAssetForOrbit
@@ -116,7 +116,7 @@ type
       Index: Cardinal;
       procedure Init();
       // Returns hill diameter of the child body in this orbit, with mass ChildMass, assuming the orbit is around a body of mass PrimaryMass.
-      function GetHillDiameter(PrimaryMass, ChildMass: Double): Double; // meters
+      function GetHillDiameter(PrimaryMass, ChildMass: TMass): Double; // meters
       // Returns whether Child can have children if it is in this orbit, around a primary Parent
       // (which must be the feature node containing the primary around which we're orbiting).
       // Child must be the actual body (not the orbit asset) that is orbiting Parent.
@@ -129,19 +129,19 @@ begin
    CrashEvent := nil;
 end;
 
-function TOrbitData.GetHillDiameter(PrimaryMass, ChildMass: Double): Double;
+function TOrbitData.GetHillDiameter(PrimaryMass, ChildMass: TMass): Double;
 begin
    Assert(SemiMajorAxis > 0.0, 'Cannot get hill diameter of asset with zero semimajor axis');
    Assert(Eccentricity <> 1.0, 'Cannot get hill diameter of asset with 1.0 eccentricity axis');
-   Assert(PrimaryMass > 0.0, 'Cannot get hill diameter of asset orbiting primary with zero mass');
-   Assert(ChildMass > 0.0, 'Cannot get hill diameter of asset with zero mass');
+   Assert(PrimaryMass.IsPositive, 'Cannot get hill diameter of asset orbiting primary with zero mass');
+   Assert(ChildMass.IsPositive, 'Cannot get hill diameter of asset with zero mass');
    Assert(PrimaryMass > ChildMass);
-   Result := 2.0 * SemiMajorAxis * (1.0 - Eccentricity) * ((ChildMass / (3 * (ChildMass + PrimaryMass))) ** 1/3); // m // $R-
+   Result := 2.0 * SemiMajorAxis * (1.0 - Eccentricity) * ((ChildMass.ToSIUnits() / (3 * (ChildMass + PrimaryMass).ToSIUnits())) ** 1/3); // m // $R-
 end;
 
 function TOrbitData.GetCanHaveOrbitalChildren(Parent: TOrbitFeatureNode; Child: TAssetNode): Boolean;
 begin
-   Assert(Child.Mass > 0.0);
+   Assert(Child.Mass.IsPositive);
    Assert(Assigned(Parent.PrimaryChild));
    Assert(Parent.PrimaryChild.MassFlowRate.IsNearZero);
    Assert(Child.MassFlowRate.IsNearZero);
@@ -159,7 +159,7 @@ begin
    Assert(Child.MassFlowRate.IsNearZero);
    // we assume the child's mass is <<< the parent's mass. // TODO: assert this
    A := SemiMajorAxis; // m
-   M := Parent.PrimaryChild.Mass; // kg
+   M := Parent.PrimaryChild.Mass.ToSIUnits(); // kg
    Result := TMillisecondsDuration.FromMilliseconds(1000 * 2.0 * pi * SqRt(A*A*A/(G*M))); // $R-
 end;
 
@@ -280,25 +280,25 @@ begin
    inherited;
 end;
 
-function TOrbitFeatureNode.GetHillDiameter(Child: TAssetNode; ChildPrimaryMass: Double): Double;
+function TOrbitFeatureNode.GetHillDiameter(Child: TAssetNode; ChildPrimaryMass: TMass): Double;
 begin
    // Child is the Orbit asset that is spinning around our primary.
    Assert(Assigned(Child.ParentData));
    Assert(Assigned(FPrimaryChild));
    Assert(ChildPrimaryMass <= Child.Mass); // Child.Mass includes the mass of child's satellites.
-   Assert(ChildPrimaryMass < FPrimaryChild.Mass, 'Child=' + Child.DebugName + ' Child.Mass=' + FloatToStr(Child.Mass) + ' ChildPrimaryMass=' + FloatToStr(ChildPrimaryMass) + ' FPrimaryChild.Mass=' + FloatToStr(FPrimaryChild.Mass)); // otherwise it wouldn't be orbiting us, we'd be orbiting it
+   Assert(ChildPrimaryMass < FPrimaryChild.Mass, 'Child=' + Child.DebugName + ' Child.Mass=' + Child.Mass.ToString() + ' ChildPrimaryMass=' + ChildPrimaryMass.ToString() + ' FPrimaryChild.Mass=' + FPrimaryChild.Mass.ToString()); // otherwise it wouldn't be orbiting us, we'd be orbiting it
    Assert(FPrimaryChild.MassFlowRate.IsNearZero);
    Result := POrbitData(Child.ParentData)^.GetHillDiameter(FPrimaryChild.Mass, ChildPrimaryMass);
 end;
 
-function TOrbitFeatureNode.GetRocheLimit(ChildRadius, ChildMass: Double): Double;
+function TOrbitFeatureNode.GetRocheLimit(ChildRadius: Double; ChildMass: TMass): Double;
 begin
    // This only applies to bodies that are held together purely by gravitational forces, like planets.
    // It doesn't apply to bodies that are held together by, like, screws and stuff.
-   Assert(ChildMass > 0);
+   Assert(ChildMass.IsPositive);
    Assert(Assigned(FPrimaryChild));
    Assert(FPrimaryChild.MassFlowRate.IsNearZero);
-   Result := ChildRadius * ((2 * FPrimaryChild.Mass / ChildMass) ** (1.0 / 3.0)); // $R-
+   Result := ChildRadius * (((FPrimaryChild.Mass / ChildMass) * 2) ** (1.0 / 3.0)); // $R-
 end;
 
 function TOrbitFeatureNode.GetAverageDistance(Child: TAssetNode): Double;
@@ -317,7 +317,7 @@ procedure TOrbitFeatureNode.SetPrimaryChild(APrimaryChild: TAssetNode);
 begin
    Assert(not Assigned(FPrimaryChild));
    Assert(Assigned(APrimaryChild));
-   Assert(APrimaryChild.Mass > 0, 'Primary child "' + APrimaryChild.AssetName + '" (class "' + APrimaryChild.AssetClass.Name + '") has zero mass');
+   Assert(APrimaryChild.Mass.IsPositive, 'Primary child "' + APrimaryChild.AssetName + '" (class "' + APrimaryChild.AssetClass.Name + '") has zero mass');
    Assert(APrimaryChild.MassFlowRate.IsNearZero);
    AdoptChild(APrimaryChild);
    FPrimaryChild := APrimaryChild;
@@ -421,7 +421,7 @@ begin
 
    if (Child.Parent = Self) then
    begin
-      Assert(Child.Mass = 0.0, 'unexpectedly, the crashed child still has mass ' + FloatToStr(Child.Mass) + ' after being handled');
+      Assert(Child.Mass.IsZero, 'unexpectedly, the crashed child still has mass ' + Child.Mass.ToString() + ' after being handled');
       Child.ReportPermanentlyGone();
       DropChild(Child);
       Child.Free();
@@ -445,15 +445,15 @@ begin
    inherited;
 end;
 
-function TOrbitFeatureNode.GetMass(): Double;
+function TOrbitFeatureNode.GetMass(): TMass;
 var
    Child: TAssetNode;
 begin
-   Result := 0.0;
+   Result := TMass.Zero;
    if (Assigned(FPrimaryChild)) then
    begin
       Result := Result + FPrimaryChild.Mass;
-      Assert(Result > 0.0, 'Primary child of orbit has zero mass.');
+      Assert(Result.IsPositive, 'Primary child of orbit has zero mass.');
    end;
    for Child in FChildren do
    begin
@@ -462,11 +462,11 @@ begin
    end;
 end;
 
-function TOrbitFeatureNode.GetMassFlowRate(): TRate;
+function TOrbitFeatureNode.GetMassFlowRate(): TMassRate;
 var
    Child: TAssetNode;
 begin
-   Result := TRate.Zero;
+   Result := TMassRate.MZero;
    if (Assigned(FPrimaryChild)) then
    begin
       Result := Result + FPrimaryChild.MassFlowRate;

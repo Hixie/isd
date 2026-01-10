@@ -5,7 +5,7 @@ unit grid;
 interface
 
 uses
-   systems, serverstream, basenetwork, systemdynasty, techtree, tttokenizer, time;
+   systems, serverstream, basenetwork, systemdynasty, techtree, tttokenizer, time, masses;
 
 type
    TGridFeatureClass = class abstract (TFeatureClass) end;
@@ -62,8 +62,8 @@ type
       FKnownClasses: TAssetClassKnowledge;
       procedure AdoptGridChild(Child: TAssetNode; X, Y, ChildSize: Cardinal);
    protected
-      function GetMass(): Double; override;
-      function GetMassFlowRate(): TRate; override;
+      function GetMass(): TMass; override;
+      function GetMassFlowRate(): TMassRate; override;
       function GetSize(): Double; override;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
       procedure ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynasty.TArray); override;
@@ -76,7 +76,7 @@ type
       procedure DropChild(Child: TAssetNode); override;
       procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader); override;
-      function HandleCommand(Command: UTF8String; var Message: TMessage): Boolean; override;
+      function HandleCommand(PlayerDynasty: TDynasty; Command: UTF8String; var Message: TMessage): Boolean; override;
       procedure HandleKnowledge(const DynastyIndex: Cardinal; const Sensors: ISensorsProvider); override;
       property Dimension: Cardinal read FDimension;
       property CellSize: Double read FCellSize;
@@ -85,7 +85,7 @@ type
 implementation
 
 uses
-   sysutils, isdprotocol, orbit, exceptions, knowledge, systemnetwork, math;
+   sysutils, isdprotocol, orbit, exceptions, knowledge, math;
 
 type
    PGridData = ^TGridData;
@@ -374,20 +374,20 @@ begin
    inherited;
 end;
 
-function TGridFeatureNode.GetMass(): Double;
+function TGridFeatureNode.GetMass(): TMass;
 var
    Child: TAssetNode;
 begin
-   Result := 0.0;
+   Result := TMass.Zero;
    for Child in FChildren do
       Result := Result + Child.Mass;
 end;
 
-function TGridFeatureNode.GetMassFlowRate(): TRate;
+function TGridFeatureNode.GetMassFlowRate(): TMassRate;
 var
    Child: TAssetNode;
 begin
-   Result := TRate.Zero;
+   Result := TMassRate.MZero;
    for Child in FChildren do
       Result := Result + Child.MassFlowRate;
 end;
@@ -466,13 +466,16 @@ begin
          end;
       end;
       Writer.WriteCardinal(0);
-      for AssetClass in FKnownClasses[DynastyIndex] do
+      if ((dmDetectable * Visibility <> []) and (dmClassKnown in Visibility)) then
       begin
-         Cells := Double(AssetClass.DefaultSize) / Double(FCellSize);
-         if ((Cells > 0.0) and (Cells <= 255.0)) then
+         for AssetClass in FKnownClasses[DynastyIndex] do
          begin
-            AssetClass.Serialize(Writer);
-            Writer.WriteByte(Ceil(Cells)); // $R-
+            Cells := Double(AssetClass.DefaultSize) / Double(FCellSize);
+            if ((Cells > 0.0) and (Cells <= 255.0)) then
+            begin
+               AssetClass.Serialize(Writer);
+               Writer.WriteByte(Ceil(Cells)); // $R-
+            end;
          end;
       end;
       Writer.WriteCardinal(0);
@@ -561,10 +564,9 @@ begin
    end;
 end;
 
-function TGridFeatureNode.HandleCommand(Command: UTF8String; var Message: TMessage): Boolean;
+function TGridFeatureNode.HandleCommand(PlayerDynasty: TDynasty; Command: UTF8String; var Message: TMessage): Boolean;
 var
    X, Y, ChildSize, Index: Cardinal;
-   PlayerDynasty: TDynasty;
    AssetClassID: TAssetClassID;
    AssetClasses: TAssetClassArray;
    AssetClass: TAssetClass;
@@ -576,7 +578,6 @@ begin
       Result := True;
       X := Message.Input.ReadCardinal();
       Y := Message.Input.ReadCardinal();
-      PlayerDynasty := (Message.Connection as TConnection).PlayerDynasty;
       AssetClassID := Message.Input.ReadLongint();
       AssetClasses := FKnownClasses[System.DynastyIndex[PlayerDynasty]];
       if (Length(AssetClasses) = 0) then
@@ -641,7 +642,7 @@ begin
          Writeln(DebugName, ' building ', AssetClass.Name, ' at ', X, ',', Y, ' for dynasty ', PlayerDynasty.DynastyID);
          Asset := AssetClass.Spawn(PlayerDynasty, System);
          AdoptGridChild(Asset, X, Y, ChildSize);
-         Assert(Asset.Mass = 0); // if you put something down, it shouldn't immediately have mass
+         Assert(Asset.Mass.IsZero); // if you put something down, it shouldn't immediately have mass
          Assert(Asset.Size <= ChildSize * FCellSize, 'Unexpectedly put ' + Asset.DebugName + ' of size ' + FloatToStr(Asset.Size) + 'm in cell size ' + FloatToStr(ChildSize * FCellSize) + 'm');
          Message.CloseOutput();
       end;

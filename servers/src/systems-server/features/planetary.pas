@@ -5,20 +5,20 @@ unit planetary;
 interface
 
 uses
-   systems, serverstream, materials, techtree, tttokenizer, isdnumbers;
+   systems, serverstream, materials, techtree, tttokenizer, isdnumbers, masses;
 
 type
    TAllocateOresBusMessage = class(TPhysicalConnectionBusMessage)
    strict private
       FDepth: Cardinal;
       FTargetCount: Cardinal;
-      FTargetQuantity: UInt64;
+      FTargetQuantity: TQuantity64;
    public
       AssignedOres: TOreQuantities;
-      constructor Create(ADepth: Cardinal; ATargetCount: Cardinal; ATargetQuantity: UInt64);
+      constructor Create(ADepth: Cardinal; ATargetCount: Cardinal; ATargetQuantity: TQuantity64);
       property Depth: Cardinal read FDepth;
       property TargetCount: Cardinal read FTargetCount;
-      property TargetQuantity: UInt64 read FTargetQuantity;
+      property TargetQuantity: TQuantity64 read FTargetQuantity;
    end;
 
    TPlanetaryBodyFeatureClass = class(TFeatureClass)
@@ -40,13 +40,13 @@ type
       function GetBondAlbedo(): Double;
    protected
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
-      function GetMass(): Double; override; // kg
+      function GetMass(): TMass; override; // kg
       function GetSize(): Double; override; // m
       function ManageBusMessage(Message: TBusMessage): TInjectBusMessageResult; override;
       function HandleBusMessage(Message: TBusMessage): THandleBusMessageResult; override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
-      constructor Create(ASystem: TSystem; ASeed: Cardinal; ADiameter, ATemperature: Double; AComposition: TOreFractions; AMass: Double; AConsiderForDynastyStart: Boolean);
+      constructor Create(ASystem: TSystem; ASeed: Cardinal; ADiameter, ATemperature: Double; AComposition: TOreFractions; AMass: TMass; AConsiderForDynastyStart: Boolean);
       destructor Destroy(); override;
       procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader); override;
@@ -62,7 +62,7 @@ implementation
 uses
    isdprotocol, sysutils, exceptions, math, rubble, commonbuses;
 
-constructor TAllocateOresBusMessage.Create(ADepth: Cardinal; ATargetCount: Cardinal; ATargetQuantity: UInt64);
+constructor TAllocateOresBusMessage.Create(ADepth: Cardinal; ATargetCount: Cardinal; ATargetQuantity: TQuantity64);
 begin
    inherited Create();
    FDepth := ADepth;
@@ -89,14 +89,14 @@ begin
 end;
 
 
-constructor TPlanetaryBodyFeatureNode.Create(ASystem: TSystem; ASeed: Cardinal; ADiameter, ATemperature: Double; AComposition: TOreFractions; AMass: Double; AConsiderForDynastyStart: Boolean);
+constructor TPlanetaryBodyFeatureNode.Create(ASystem: TSystem; ASeed: Cardinal; ADiameter, ATemperature: Double; AComposition: TOreFractions; AMass: TMass; AConsiderForDynastyStart: Boolean);
 begin
    inherited Create(ASystem);
    FSeed := ASeed;
    FDiameter := ADiameter;
    FTemperature := ATemperature;
    FComposition := AComposition;
-   FMass := Int256.FromDouble(AMass);
+   FMass := Int256.FromDouble(AMass.AsDouble);
    FConsiderForDynastyStart := AConsiderForDynastyStart;
 end;
 
@@ -110,9 +110,9 @@ begin
    inherited;
 end;
 
-function TPlanetaryBodyFeatureNode.GetMass(): Double; // kg
+function TPlanetaryBodyFeatureNode.GetMass(): TMass; // kg
 begin
-   Result := FMass.ToDouble();
+   Result := TMass.FromKg(FMass);
 end;
 
 function TPlanetaryBodyFeatureNode.GetSize(): Double;
@@ -157,7 +157,7 @@ var
    ConsiderOre, IncludeOre: Boolean;
    TargetCount, RemainingCount, Index: Cardinal;
    CurrentFraction, IncludedFraction: Fraction32;
-   ApproximateMass, CandidateMass, MaxMass: Double;
+   ApproximateMass, CandidateMass, MaxMass: TMass;
    SelectedOres: TOreFilter;
 begin
    if (Message is TAllocateOresBusMessage) then
@@ -166,7 +166,7 @@ begin
       TargetCount := AllocateResourcesMessage.TargetCount;
       Assert(TargetCount > 0);
       SelectedOres.Clear();
-      ApproximateMass := FMass.ToDouble();
+      ApproximateMass := TMass.FromKg(FMass);
       RemainingCount := 0;
       for OreIndex in TOres do
       begin
@@ -239,21 +239,21 @@ begin
             begin
                // finish it off
                FComposition[OreIndex].ResetToZero();
-               AllocateResourcesMessage.AssignedOres[OreIndex] := Round(MaxMass / Material.MassPerUnit); // $R-
+               AllocateResourcesMessage.AssignedOres[OreIndex] := MaxMass / Material.MassPerUnit; // $R-
             end
             else
             begin
                // extract a little
                FComposition[OreIndex].Subtract(CandidateMass / ApproximateMass);
-               AllocateResourcesMessage.AssignedOres[OreIndex] := RoundUInt64(CandidateMass / Material.MassPerUnit); // $R-
+               AllocateResourcesMessage.AssignedOres[OreIndex] := CandidateMass / Material.MassPerUnit; // $R-
             end;
-            FMass.Subtract(Int256.FromDouble(Material.MassPerUnit * AllocateResourcesMessage.AssignedOres[OreIndex]));
+            FMass.Subtract(Int256.FromDouble((AllocateResourcesMessage.AssignedOres[OreIndex] * Material.MassPerUnit).AsDouble));
          end
          else
          begin
-            AllocateResourcesMessage.AssignedOres[OreIndex] := 0;
+            AllocateResourcesMessage.AssignedOres[OreIndex] := TQuantity64.Zero;
          end;
-         Writeln('  Ore #', OreIndex, ': ', AllocateResourcesMessage.AssignedOres[OreIndex]);
+         Writeln('  Ore #', OreIndex, ': ', AllocateResourcesMessage.AssignedOres[OreIndex].ToString());
       end;
       Fraction32.NormalizeArray(@FComposition[Low(FComposition)], Length(FComposition)); // renormalize our composition
       MarkAsDirty([dkUpdateClients, dkUpdateJournal]);

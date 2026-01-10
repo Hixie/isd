@@ -67,6 +67,7 @@ type
       procedure ResetToZero(); inline;
       procedure Add(Value: Double);
       procedure Subtract(Value: Double);
+      function Increment(Delta: Double): Double; // 0 <= Value < 1, 0 <= Delta < 1.0
       function ToDouble(): Double;
       class operator + (A: Fraction32; B: Fraction32): Fraction32; inline;
       class operator * (Multiplicand: Fraction32; Multiplier: Double): Double; inline;
@@ -558,6 +559,19 @@ begin
    Assert(ToDouble() - Value <= 1.0);
    Assert(ToDouble() - Value >= 0.0);
    FNumerator := FNumerator - Round(Value * FDenominator); // $R-
+end;
+
+function Fraction32.Increment(Delta: Double): Double;
+var
+   Work: Cardinal;
+begin
+   Assert((FDenominator - 1) + (FDenominator) <= High(Cardinal));
+   Assert(FNumerator < FDenominator);
+   Assert(Delta >= 0);
+   Assert(Delta < 1.0);
+   Work := FNumerator + Round(Delta * FDenominator); // $R-
+   Result := Work div FDenominator;
+   FNumerator := Work mod FDenominator; // $R-
 end;
 
 function Fraction32.ToDouble(): Double;

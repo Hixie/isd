@@ -9,8 +9,8 @@ class jobs1000 {
   icon: "test";
   build: land;
   feature: TSizeFeatureClass 10m;
-  feature: TStaffingFeatureClass 1000 jobs;
   feature: TOnOffFeatureClass;
+  feature: TStaffingFeatureClass 1000 jobs;
 }
 
 class jobs2000 {
@@ -20,8 +20,8 @@ class jobs2000 {
   icon: "test";
   build: land;
   feature: TSizeFeatureClass 10m;
-  feature: TStaffingFeatureClass 2000 jobs;
   feature: TOnOffFeatureClass;
+  feature: TStaffingFeatureClass 2000 jobs;
 }
 
 research unlock {

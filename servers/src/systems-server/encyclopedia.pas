@@ -6,7 +6,7 @@ interface
 
 uses
    techtree, systems, configuration, astronomy, materials,
-   random, systemdynasty, space, basenetwork;
+   random, systemdynasty, space, basenetwork, masses;
 
 type
    TEncyclopedia = class(TEncyclopediaView)
@@ -25,7 +25,7 @@ type
          FPlanetaryBody, FRegion: TAssetClass;
          FProtoplanetaryMaterials: TMaterial.TArray; // order matters, it's used in protoplanetary generation
          FDarkMatter: TMaterial;
-         FMinMassPerOreUnit: Double; // cached value based on ores in materials passed to constructor
+         FMinMassPerOreUnit: TMassPerUnit; // cached value based on ores in materials passed to constructor
       function GetStarClass(Category: TStarCategory): TAssetClass;
       function CreateRegion(CellSize: Double; Dimension: Cardinal; System: TSystem): TAssetNode;
    protected
@@ -33,7 +33,7 @@ type
       function GetMaterial(ID: TMaterialID): TMaterial; override;
       function GetResearch(ID: TResearchID): TResearch; override;
       function GetTopic(Name: UTF8String): TTopic; override;
-      function GetMinMassPerOreUnit(): Double; override;
+      function GetMinMassPerOreUnit(): TMassPerUnit; override;
       procedure RegisterAssetClass(AssetClass: TAssetClass);
    public
       constructor Create(Settings: PSettings; const AMaterials: TMaterial.TArray; TechTree: TTechnologyTree); // AMaterials must contain all TOres
@@ -50,7 +50,7 @@ type
       function Craterize(Diameter: Double; OldAssets: TAssetNode.TArray; NewAsset: TAssetNode): TAssetNode; override;
       function HandleBusMessage(Asset: TAssetNode; Message: TBusMessage): THandleBusMessageResult; override;
       procedure Dismantle(Asset: TAssetNode; Message: TMessage); override;
-      property MinMassPerOreUnit: Double read FMinMassPerOreUnit;
+      property MinMassPerOreUnit: TMassPerUnit read FMinMassPerOreUnit;
    public // built-in asset classes
       property SpaceClass: TAssetClass read FSpace;
       property PlaceholderShip: TAssetClass read FPlaceholderShip;
@@ -66,7 +66,7 @@ uses
    sysutils, math, floatutils, exceptions, isdnumbers, protoplanetary,
    time, isdprotocol, gossip, commonbuses, systemnetwork,
    // this must import every feature, so they get registered:
-   assetpile, builders, food, grid, gridsensor, internalsensor,
+   assetpile, builders, grid, gridsensor, internalsensor,
    knowledge, materialpile, messages, mining, name, onoff, orbit,
    orepile, peoplebus, planetary, plot, population, proxy, refining,
    region, research, rubble, size, spacesensor, staffing, stellar,
@@ -111,7 +111,7 @@ begin
    FMaterials := TMaterialIDHashTable.Create();
    FProtoplanetaryMaterials := AMaterials;
    RegisterMaterials(FProtoplanetaryMaterials);
-   {$PUSH} {$IEEEERRORS OFF} FMinMassPerOreUnit := Infinity; {$POP}
+   FMinMassPerOreUnit := TMassPerUnit.Infinity;
    for Ore in TOres do
    begin
       Assert(FMaterials.Has(Ore));
@@ -195,7 +195,7 @@ begin
       'The most fundamental and least useful material in the universe, used only for placeholders.',
       DarkMatterIcon,
       ukBulkResource,
-      1e-3, // smallest unit is 1 gram
+      TMassPerUnit.FromGPerUnit(1), // smallest unit is 1 gram
       1.0, // kg per m^3
       0.0,
       [], // tags
@@ -252,9 +252,8 @@ begin
       'Region',
       'An area of a planetary body.',
       [
-         TRegionFeatureClass.Create(1, 10, High(UInt64)),
+         TRegionFeatureClass.Create(1, 10, TQuantity64.Max),
          TKnowledgeBusFeatureClass.Create(),
-         TFoodBusFeatureClass.Create(),
          TBuilderBusFeatureClass.Create(),
          TPeopleBusFeatureClass.Create(),
          TGenericGridFeatureClass.Create() // must be after the busses, so that they don't defer to something in the grid
@@ -284,13 +283,11 @@ begin
       [
          TSpaceSensorFeatureClass.Create(10 { max steps to orbit }, 3 { steps up from orbit }, 2 { steps down from top }, 2e5 { min size (meters) }, [dmVisibleSpectrum]),
          TGridSensorFeatureClass.Create([dmVisibleSpectrum]),
-         TStructureFeatureClass.Create([TMaterialLineItem.Create('Shell', FDarkMatter, 10000 { mass in units (g): 10kg })], 1 { min functional quantity }, 500.0 { default diameter, m }),
+         TStructureFeatureClass.Create([TMaterialLineItem.Create('Shell', FDarkMatter, TQuantity32.FromUnits(10000) { mass in units (g): 10kg })], TQuantity32.FromUnits(1) { min functional quantity }, 500.0 { default diameter, m }),
          TDynastyOriginalColonyShipFeatureClass.Create(),
          TPopulationFeatureClass.Create(False, 2000),
          TMessageBoardFeatureClass.Create(FMessage),
          TKnowledgeBusFeatureClass.Create(),
-         TFoodBusFeatureClass.Create(),
-         TFoodGenerationFeatureClass.Create(100),
          TPeopleBusFeatureClass.Create(),
          TResearchFeatureClass.Create(),
          TInternalSensorFeatureClass.Create([dmVisibleSpectrum]),
@@ -404,7 +401,7 @@ begin
    Result := FTopics[Name];
 end;
 
-function TEncyclopedia.GetMinMassPerOreUnit(): Double;
+function TEncyclopedia.GetMinMassPerOreUnit(): TMassPerUnit;
 begin
    Result := FMinMassPerOreUnit;
 end;
@@ -480,10 +477,10 @@ procedure TEncyclopedia.CondenseProtoplanetaryDisks(Space: TSolarSystemFeatureNo
             Assert(BodyComposition.Material.ID >= Low(TOres));
             Assert(BodyComposition.Material.ID <= High(TOres));
             Assert(BodyComposition.RelativeVolume > 0);
-            Assert(BodyComposition.Material.MassPerUnit > 0);
+            Assert(BodyComposition.Material.MassPerUnit.IsPositive);
             Assert(BodyComposition.Material.Density > 0);
             Assert(AssetComposition[BodyComposition.Material.ID].IsZero);
-            AssetComposition[BodyComposition.Material.ID] := Fraction32.FromDouble((BodyComposition.RelativeVolume / TotalRelativeVolume) * TotalVolume * BodyComposition.Material.Density / Body.ApproximateMass);
+            AssetComposition[BodyComposition.Material.ID] := Fraction32.FromDouble((BodyComposition.RelativeVolume / TotalRelativeVolume) * TotalVolume * BodyComposition.Material.Density / Body.ApproximateMass.ToSIUnits());
             // This might end up being zero, if the RelativeVolume is very very low (but non-zero). That's fine, the default is zero anyway.
          end;
       end;
@@ -516,7 +513,7 @@ procedure TEncyclopedia.CondenseProtoplanetaryDisks(Space: TSolarSystemFeatureNo
       Satellite: TBody;
    begin
       Node := CreateBodyNode(Body);
-      Assert(ApproximatelyEqual(Node.Mass, WeighBody(Body)), 'Node.Mass = ' + FloatToStr(Node.Mass) + '; WeighBody = ' + FloatToStr(WeighBody(Body)));
+      Assert(ApproximatelyEqual(Node.Mass.ToSIUnits(), WeighBody(Body).ToSIUnits()), 'Node.Mass = ' + Node.Mass.ToString() + '; WeighBody = ' + WeighBody(Body).ToString());
       Assert(Node.Size < Orbit.PrimaryChild.Size);
       OrbitNode := WrapAssetForOrbit(Node);
       Orbit.AddOrbitingChild(
@@ -573,7 +570,6 @@ begin
       [
          TRegionFeatureNode.Create(System, FRegion.Features[0] as TRegionFeatureClass),
          TKnowledgeBusFeatureNode.Create(System),
-         TFoodBusFeatureNode.Create(System),
          TBuilderBusFeatureNode.Create(System),
          TPeopleBusFeatureNode.Create(System),
          TGridFeatureNode.Create(System, bePlanetRegion, CellSize, Dimension)
@@ -693,7 +689,7 @@ begin
    // for the semi-major axis.
    Period := (GameStartTime * System.TimeFactor).Scale(3.0);
    PeriodOverTwoPi := Period.ToSIUnits() / (2 * Pi); // $R-
-   A := Power(PeriodOverTwoPi * PeriodOverTwoPi * G * Home.Mass, 1/3); // $R-
+   A := Power(PeriodOverTwoPi * PeriodOverTwoPi * G * Home.Mass.ToSIUnits(), 1/3); // $R-
    Omega := System.RandomNumberGenerator.GetDouble(0.0, 2.0 * Pi); // $R-
    (Home.Parent as TOrbitFeatureNode).AddOrbitingChild(
       WrapAssetForOrbit(PlaceholderShip.Spawn(
@@ -702,16 +698,14 @@ begin
          [
             TSpaceSensorFeatureNode.Create(System, PlaceholderShip.Features[0] as TSpaceSensorFeatureClass),
             TGridSensorFeatureNode.Create(System, PlaceholderShip.Features[1] as TGridSensorFeatureClass),
-            TStructureFeatureNode.Create(System, PlaceholderShip.Features[2] as TStructureFeatureClass, 10000 { materials quantity }, 10000 { hp }),
+            TStructureFeatureNode.Create(System, PlaceholderShip.Features[2] as TStructureFeatureClass, TQuantity32.FromUnits(10000) { materials quantity }, 10000 { hp }),
             TDynastyOriginalColonyShipFeatureNode.Create(System, Dynasty),
             TPopulationFeatureNode.CreatePopulated(System, PlaceholderShip.Features[4] as TPopulationFeatureClass, 2000),
             TMessageBoardFeatureNode.Create(System, PlaceholderShip.Features[5] as TMessageBoardFeatureClass),
             TKnowledgeBusFeatureNode.Create(System),
-            TFoodBusFeatureNode.Create(System),
-            TFoodGenerationFeatureNode.Create(System, PlaceholderShip.Features[8] as TFoodGenerationFeatureClass),
             TPeopleBusFeatureNode.Create(System),
-            TResearchFeatureNode.Create(System, PlaceholderShip.Features[10] as TResearchFeatureClass),
-            TInternalSensorFeatureNode.Create(System, PlaceholderShip.Features[11] as TInternalSensorFeatureClass),
+            TResearchFeatureNode.Create(System, PlaceholderShip.Features[8] as TResearchFeatureClass),
+            TInternalSensorFeatureNode.Create(System, PlaceholderShip.Features[9] as TInternalSensorFeatureClass),
             TKnowledgeFeatureNode.Create(System, PlaceholderShipInstructionManual),
             TOnOffFeatureNode.Create(System)
          ]
@@ -841,7 +835,7 @@ begin
       begin
          Writeln('DISMANTLE LOGIC CALLED');
          Writeln('TARGET: ', Asset.DebugName);
-         if (Asset.Mass <> 0.0) then
+         if (Asset.Mass.IsNotZero) then
          begin
             Writeln('SEARCHING FOR DESTRUCTORS');
             FindDestructors := TFindDestructorsMessage.Create(PlayerDynasty);
@@ -893,7 +887,7 @@ begin
                Index := 0;
                for Material in ExcessMaterials do
                begin
-                  Writeln('RUBBLE CONTENTS: ', Material.Name, ' ', ExcessMaterials[Material] * Material.MassPerUnit, 'kg');
+                  Writeln('RUBBLE CONTENTS: ', Material.Name, ' ', (ExcessMaterials[Material] * Material.MassPerUnit).ToString());
                   RubbleComposition[Index].Init(Material, ExcessMaterials[Material]);
                   Inc(Index);
                end;

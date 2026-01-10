@@ -240,7 +240,6 @@ class city {
   build: land;
   feature: TParameterizedGridFeatureClass 6*6, 100m, land;
   feature: TKnowledgeBusFeatureClass;
-  feature: TFoodBusFeatureClass;
   // feature: TStructureFeatureClass size 100m, materials (
   //   "Roads": "Silicon" * 1000,
   //   "Infrastructure": "Iron" * 1000,

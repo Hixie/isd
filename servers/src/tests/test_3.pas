@@ -165,7 +165,7 @@ begin
       Verify(Workers = 0);
    end;
 
-   // disable the first one
+   // disable the second one
    SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(Jobs2.ID) + #00'disable'#00);
    Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
    VerifyPositiveResponse(Response);

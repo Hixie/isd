@@ -5,7 +5,7 @@ unit surface;
 interface
 
 uses
-   systems, serverstream, techtree, time;
+   systems, serverstream, techtree, time, masses;
 
 type
    TCreateRegionCallback = function (CellSize: Double; Dimension: Cardinal; System: TSystem): TAssetNode of object;
@@ -35,8 +35,8 @@ type
       function GetOrCreateRegionAt(X, Y: Integer; Dimension: Cardinal = 0): TAssetNode; // X,Y constrained as above
    protected
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
-      function GetMass(): Double; override;
-      function GetMassFlowRate(): TRate; override;
+      function GetMass(): TMass; override;
+      function GetMassFlowRate(): TMassRate; override;
       function GetSize(): Double; override;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
       function HandleBusMessage(Message: TBusMessage): THandleBusMessageResult; override;
@@ -219,20 +219,20 @@ begin
    inherited;
 end;
 
-function TSurfaceFeatureNode.GetMass(): Double;
+function TSurfaceFeatureNode.GetMass(): TMass;
 var
    Child: TAssetNode;
 begin
-   Result := 0.0;
+   Result := TMass.Zero;
    for Child in FChildren do
       Result := Result + Child.Mass;
 end;
 
-function TSurfaceFeatureNode.GetMassFlowRate(): TRate;
+function TSurfaceFeatureNode.GetMassFlowRate(): TMassRate;
 var
    Child: TAssetNode;
 begin
-   Result := TRate.Zero;
+   Result := TMassRate.MZero;
    for Child in FChildren do
       Result := Result + Child.MassFlowRate;
 end;

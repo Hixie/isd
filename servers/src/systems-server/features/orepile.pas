@@ -6,7 +6,7 @@ interface
 
 uses
    basenetwork, systems, serverstream, materials, techtree,
-   messageport, region, time, annotatedpointer, systemdynasty;
+   messageport, region, time, annotatedpointer, systemdynasty, masses;
 
 type
    TOreMaterialKnowledgePackage = record
@@ -32,7 +32,7 @@ type
 
    TOrePileFeatureClass = class(TFeatureClass)
    private
-      FCapacityMass: Double; // max kg storage
+      FCapacityMass: TMass; // max kg storage
    strict protected
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
@@ -49,7 +49,7 @@ type
       FDynastyKnowledge: TOreMaterialKnowledgePackage; // per dynasty bits for each ore
       FRegion: specialize TAnnotatedPointer<TRegionFeatureNode, TRegionFlag>; // TODO: either use TAnnotatedPointer more widely, or remove the use here
    private // IOrePile
-      function GetOrePileCapacity(): Double; // kg
+      function GetOrePileCapacity(): TMass;
       procedure SetOrePileRegion(Region: TRegionFeatureNode);
       procedure RegionAdjustedOrePiles();
       procedure DisconnectOrePile();
@@ -57,8 +57,8 @@ type
    protected
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
       procedure Detaching(); override;
-      function GetMass(): Double; override;
-      function GetMassFlowRate(): TRate; override;
+      function GetMass(): TMass; override;
+      function GetMassFlowRate(): TMassRate; override;
       function HandleBusMessage(Message: TBusMessage): THandleBusMessageResult; override;
       procedure HandleChanges(); override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
@@ -70,7 +70,7 @@ type
       destructor Destroy(); override;
       procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader); override;
-      function HandleCommand(Command: UTF8String; var Message: TMessage): Boolean; override;
+      function HandleCommand(PlayerDynasty: TDynasty; Command: UTF8String; var Message: TMessage): Boolean; override;
    end;
 
 // TODO: handle our ancestor chain changing
@@ -78,7 +78,7 @@ type
 implementation
 
 uses
-   exceptions, sysutils, systemnetwork, knowledge, messages, isdprotocol, rubble, commonbuses;
+   exceptions, sysutils, knowledge, messages, isdprotocol, rubble, commonbuses;
 
 function TOreMaterialKnowledgePackage.GetIsPointer(): Boolean;
 begin
@@ -284,7 +284,7 @@ begin
    inherited;
 end;
 
-function TOrePileFeatureNode.GetOrePileCapacity(): Double; // kg
+function TOrePileFeatureNode.GetOrePileCapacity(): TMass;
 begin
    Result := FFeatureClass.FCapacityMass;
 end;
@@ -375,7 +375,7 @@ begin
    end;
 end;
 
-function TOrePileFeatureNode.GetMass(): Double;
+function TOrePileFeatureNode.GetMass(): TMass;
 begin
    if (FRegion.Assigned) then
    begin
@@ -383,12 +383,12 @@ begin
    end
    else
    begin
-      Result := 0.0;
+      Result := TMass.Zero;
    end;
-   Assert(Result >= 0.0);
+   Assert(not Result.IsNegative);
 end;
 
-function TOrePileFeatureNode.GetMassFlowRate(): TRate;
+function TOrePileFeatureNode.GetMassFlowRate(): TMassRate;
 begin
    if (FRegion.Assigned) then
    begin
@@ -396,7 +396,7 @@ begin
    end
    else
    begin
-      Result := TRate.Zero;
+      Result := TMassRate.MZero;
    end;
 end;
 
@@ -410,9 +410,9 @@ begin
    if ((dmDetectable * Visibility <> []) and (dmClassKnown in Visibility)) then // TODO: should probably be able to recognize special kinds of ore piles even if you didn't research them?
    begin
       Writer.WriteCardinal(fcOrePile);
-      Writer.WriteDouble(Mass);
+      Writer.WriteDouble(Mass.AsDouble);
       Writer.WriteDouble(MassFlowRate.AsDouble);
-      Writer.WriteDouble(FFeatureClass.FCapacityMass);
+      Writer.WriteDouble(FFeatureClass.FCapacityMass.AsDouble);
       if (FRegion.Assigned) then
       begin
          Ores := FRegion.Unwrap().GetOresPresentForPile(Self) and FDynastyKnowledge[DynastyIndex];
@@ -452,19 +452,17 @@ procedure TOrePileFeatureNode.ApplyJournal(Journal: TJournalReader);
 begin
 end;
 
-function TOrePileFeatureNode.HandleCommand(Command: UTF8String; var Message: TMessage): Boolean;
+function TOrePileFeatureNode.HandleCommand(PlayerDynasty: TDynasty; Command: UTF8String; var Message: TMessage): Boolean;
 var
-   PlayerDynasty: TDynasty;
    DynastyIndex: Cardinal;
    OreKnowledge: TOreFilter;
    OreQuantities: TOreQuantities;
    Ore: TOres;
-   Total: Double;
+   Total: TQuantity64;
 begin
    if (Command = ccAnalyze) then
    begin
       Result := True;
-      PlayerDynasty := (Message.Connection as TConnection).PlayerDynasty;
       DynastyIndex := System.DynastyIndex[PlayerDynasty];
       // TODO: check if we have the right visibility on the ore pile to do an analysis
       if (Message.CloseInput()) then
@@ -474,19 +472,19 @@ begin
          begin
             OreKnowledge := FRegion.Unwrap().GetOresPresentForPile(Self) and FDynastyKnowledge[DynastyIndex];
             OreQuantities := FRegion.Unwrap().GetOresForPile(Self);
-            Total := 0.0;
+            Total := TQuantity64.Zero;
             for Ore in TOres do
             begin
                Total := Total + OreQuantities[Ore];
             end;
             Message.Output.WriteInt64(System.Now.AsInt64);
-            Message.Output.WriteDouble(Total);
+            Message.Output.WriteInt64(Total.AsInt64);
             for Ore in TOres do
             begin
-               if (OreKnowledge[Ore] and (OreQuantities[Ore] > 0)) then
+               if (OreKnowledge[Ore] and (OreQuantities[Ore].IsPositive)) then
                begin
                   Message.Output.WriteLongint(Ore);
-                  Message.Output.WriteQWord(OreQuantities[Ore]);
+                  Message.Output.WriteInt64(OreQuantities[Ore].AsInt64);
                end;
             end;
          end;

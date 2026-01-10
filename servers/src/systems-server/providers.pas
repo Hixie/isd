@@ -5,7 +5,7 @@ unit providers;
 interface
 
 uses
-   systems;
+   systems, masses;
 
 type
    IHillDiameterProvider = interface ['IHillDiameterProvider']
@@ -13,7 +13,7 @@ type
       // It must be a child of the receiver.
       // Usually this will be an Orbit asset, actually, whose primary is the "real" node (body) we care about.
       // ChildMass is the mass of that orbit asset's primary body, i.e. not including any satellites.
-      function GetHillDiameter(Child: TAssetNode; ChildPrimaryMass: Double): Double;
+      function GetHillDiameter(Child: TAssetNode; ChildPrimaryMass: TMass): Double;
    end;
 
    IAssetNameProvider = interface ['IAssetNameProvider']

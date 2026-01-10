@@ -7,7 +7,7 @@ interface
 //{$DEFINE VERBOSE}
 
 uses
-   hashtable, genericutils, basenetwork, systemnetwork, systems,
+   hashtable, genericutils, basenetwork, systems,
    serverstream, systemdynasty, materials, techtree, time,
    commonbuses, knowledge;
 
@@ -54,7 +54,7 @@ type
       destructor Destroy(); override;
       procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader); override;
-      function HandleCommand(Command: UTF8String; var Message: TMessage): Boolean; override;
+      function HandleCommand(PlayerDynasty: TDynasty; Command: UTF8String; var Message: TMessage): Boolean; override;
    end;
 
    // TODO: unsubscribe when the ancestor chain changes
@@ -62,7 +62,7 @@ type
 implementation
 
 uses
-   exceptions, sysutils, arrayutils, isdprotocol, messages;
+   exceptions, sysutils, arrayutils, isdprotocol, messages, typedump;
 
 constructor TResearchTimeHashTable.Create();
 begin
@@ -161,6 +161,7 @@ var
    NewRateLimit: Double;
 begin
    NewDisabledReasons := CheckDisabled(Parent, NewRateLimit);
+   Writeln(DebugName, ' has disabled reasons [', specialize SetToString<TDisabledReasons>(NewDisabledReasons), '] and rate limit ', NewRateLimit:0:3);
    if (NewDisabledReasons <> FDisabledReasons) then
    begin
       FDisabledReasons := NewDisabledReasons;
@@ -168,21 +169,7 @@ begin
    end;
    if (NewRateLimit <> FRateLimit) then
    begin
-      // There is a very nuanced hack here.
-      // When we load from the journal, we don't know the rate limit,
-      // but we _do_ have an active research. So the FRateLimit is at
-      // its default 0.0.
-      // We do want to bank that research, we just don't know what the
-      // rate limit was when it was set. If we call BankResearch,
-      // it'll crash, because it'll try to divide by FRateLimit, zero.
-      // However, we actually do know the rate limit, it's whatever
-      // rate limit we just computed, NewRateLimit.
-      // So here we skip banking with the "old" (zero) rate limit, but
-      // then we still schedule an update, and the update will itself
-      // call BankResearch again, which now has the actual rate limit,
-      // because we set FRateLimit to NewRateLimit here.
-      if (FRateLimit <> 0.0) then
-         BankResearch();
+      BankResearch();
       FRateLimit := NewRateLimit;
       FUpdateResearchScheduled := True;
    end;
@@ -208,11 +195,13 @@ begin
    end;
    if (Assigned(FCurrentResearch)) then
    begin
+      Assert(FRateLimit > 0.0);
       Journal.WriteInt32(FCurrentResearch.ID);
       Journal.WriteInt64(FResearchStartTime.AsInt64);
    end
    else
       Journal.WriteInt32(TResearch.kNil);
+   Journal.WriteDouble(FRateLimit);
    Journal.WriteCardinal(Length(FSpecialties));
    for Research in FSpecialties do
       Journal.WriteInt32(Research.ID);
@@ -258,6 +247,7 @@ begin
       FCurrentResearch := System.Encyclopedia.Researches[ResearchID]; // $R-
       FResearchStartTime := TTimeInMilliseconds.FromMilliseconds(Journal.ReadInt64());
    end;
+   FRateLimit := Journal.ReadDouble();
    Count := Journal.ReadCardinal();
    SetLength(FSpecialties, Count);
    if (Count > 0) then
@@ -277,7 +267,7 @@ begin
       FTopic := nil;
 end;
 
-function TResearchFeatureNode.HandleCommand(Command: UTF8String; var Message: TMessage): Boolean;
+function TResearchFeatureNode.HandleCommand(PlayerDynasty: TDynasty; Command: UTF8String; var Message: TMessage): Boolean;
 
    procedure DetermineTopics(Topics, ObsoleteTopics: TTopicHashSet);
    var
@@ -330,7 +320,6 @@ function TResearchFeatureNode.HandleCommand(Command: UTF8String; var Message: TM
    end;
 
 var
-   PlayerDynasty: TDynasty;
    Topics, ObsoleteTopics: TTopicHashSet;
    Topic: TTopic;
    TopicName: UTF8String;
@@ -338,12 +327,6 @@ begin
    if (Command = ccGetTopics) then
    begin
       Result := True;
-      PlayerDynasty := (Message.Connection as TConnection).PlayerDynasty;
-      if (PlayerDynasty <> Parent.Owner) then
-      begin
-         Message.Error(ieInvalidMessage);
-         exit;
-      end;
       if (Message.CloseInput()) then
       begin
          Message.Reply();
@@ -368,7 +351,6 @@ begin
    else
    if (Command = ccSetTopic) then
    begin
-      PlayerDynasty := (Message.Connection as TConnection).PlayerDynasty;
       if (PlayerDynasty <> Parent.Owner) then
       begin
          Message.Error(ieInvalidMessage);
@@ -422,7 +404,7 @@ var
 begin
    if (Assigned(FCurrentResearch)) then
    begin
-      Assert(FRateLimit > 0.0);
+      Assert(FRateLimit > 0.0, DebugName + ' has rate limit ' + FloatToStr(FRateLimit));
       Assert(not FBankedResearch.Has(FCurrentResearch));
       if (Assigned(FResearchEvent)) then // it's nil, e.g., just after we load from the journal
          CancelEvent(FResearchEvent);
@@ -477,7 +459,10 @@ begin
    BankResearch(); // see also comment in HandleChanges
 
    if (FRateLimit = 0.0) then
+   begin
+      FCurrentResearch := nil;
       exit;
+   end;
    
    while (FSeed < 0) do
       FSeed := System.RandomNumberGenerator.GetUInt32();
@@ -684,6 +669,7 @@ var
    Body: UTF8String;
 begin
    Writeln(Parent.DebugName, ': Triggering research ', FCurrentResearch.ID);
+   Assert(FRateLimit > 0.0);
    FResearchEvent := nil;
    Assert(not FBankedResearch.Has(FCurrentResearch));
    Assert(Length(FCurrentResearch.Rewards) > 0);

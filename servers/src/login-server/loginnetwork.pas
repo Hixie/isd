@@ -61,6 +61,7 @@ type
       function ParseDynastyArguments(Message: TMessage): TDynasty;
       procedure SendBinary(var Message: TMessage; BinaryFile: TBinaryFile);
       function GetInternalPassword(): UTF8String; override;
+      procedure RecordScoreUpdate(DynastyID: Cardinal; Score: Double);
       procedure HandleIPC(const Command: UTF8String; const Arguments: TBinaryStreamReader); override;
    protected
       procedure DoCreateDynasty(var Message: TMessage) message 'new'; // no arguments
@@ -184,6 +185,9 @@ begin
    StarID := FServer.GalaxyManager.SelectNextHomeSystem();
    FServer.SystemServerDatabase.IncreaseLoadOnServer(SystemServerID);
 
+   // Record starting score (0)
+   RecordScoreUpdate(Dynasty.ID, 0.0);
+   
    // Connect to system server and create actual system
    InternalSystemConnectionSocket := TInternalSystemConnection.Create(PendingMessage, FServer, SystemServerDetails);
    try
@@ -435,11 +439,39 @@ begin
    Result := FServer.Password;
 end;
 
+procedure TConnection.RecordScoreUpdate(DynastyID: Cardinal; Score: Double);
+var
+   ScoreRecord: TScoreRecord; // {BOGUS Note: Local variable "ScoreRecord" is assigned but never used}
+   ScoreFile: File of TScoreRecord;
+begin
+   Writeln('Recording score update for dynasty ', DynastyID, ': ', Score:0:5);
+   Assert(Assigned(FServer.Clock));
+   ScoreRecord.TimeStamp := FServer.Clock.AsUnixEpoch();
+   ScoreRecord.Score := Score;
+   Assign(ScoreFile, GenerateScoreFilename(FServer.DataDirectory + DynastyDataSubDirectory, DynastyID));
+   FileMode := 2;
+   Reset(ScoreFile);
+   Seek(ScoreFile, FileSize(ScoreFile));
+   BlockWrite(ScoreFile, ScoreRecord, 1);
+   Close(ScoreFile);
+   FServer.UserDatabase.RegisterScoreUpdate(DynastyID, ScoreRecord.Score);
+   {$IFDEF TESTSUITE}
+   Inc(FServer.FDebugScoresReceived);
+   if (FServer.FDebugAwaitScores.Assigned) then
+   begin
+      FServer.FDebugAwaitScores.Value.RemoveHold();
+      if (not FServer.FDebugAwaitScores.Value.HasHolds) then
+      begin
+         FServer.FDebugAwaitScores.Free();
+      end;
+   end;
+   {$ENDIF}
+end;
+
 procedure TConnection.HandleIPC(const Command: UTF8String; const Arguments: TBinaryStreamReader);
 var
    DynastyID: Cardinal;
-   ScoreRecord: TScoreRecord; // {BOGUS Note: Local variable "ScoreRecord" is assigned but never used}
-   ScoreFile: File of TScoreRecord;
+   Score: Double;
    {$IFDEF TESTSUITE}
    ExpectedScores: Cardinal;
    AwaitScores: TInternalConversation;
@@ -454,28 +486,9 @@ begin
          Disconnect();
          exit;
       end;
-      Assert(Assigned(FServer.Clock));
-      ScoreRecord.TimeStamp := FServer.Clock.AsUnixEpoch();
-      ScoreRecord.Score := Arguments.ReadDouble();
-      Assign(ScoreFile, GenerateScoreFilename(FServer.DataDirectory + DynastyDataSubDirectory, DynastyID));
-      FileMode := 2;
-      Reset(ScoreFile);
-      Seek(ScoreFile, FileSize(ScoreFile));
-      BlockWrite(ScoreFile, ScoreRecord, 1);
-      Close(ScoreFile);
+      Score := Arguments.ReadDouble();
+      RecordScoreUpdate(DynastyID, Score);
       Write(#$01);
-      FServer.UserDatabase.RegisterScoreUpdate(DynastyID, ScoreRecord.Score);
-      {$IFDEF TESTSUITE}
-      Inc(FServer.FDebugScoresReceived);
-      if (FServer.FDebugAwaitScores.Assigned) then
-      begin
-         FServer.FDebugAwaitScores.Value.RemoveHold();
-         if (not FServer.FDebugAwaitScores.Value.HasHolds) then
-         begin
-            FServer.FDebugAwaitScores.Free();
-         end;
-      end;
-      {$ENDIF}
    end
    {$IFDEF TESTSUITE}
    else

@@ -7,7 +7,7 @@ unit techtree;
 interface
 
 uses
-   sysutils, time, systems, plasticarrays, genericutils, tttokenizer, materials;
+   sysutils, time, systems, plasticarrays, genericutils, tttokenizer, materials, masses;
 
 type
    TTechnologyTree = class
@@ -40,9 +40,9 @@ function ReadMaterial(Reader: TTechTreeReader): TMaterial;
 function ReadTopic(Reader: TTechTreeReader): TTopic;
 function ReadNumber(Tokens: TTokenizer; Min, Max: Int64): Int64;
 function ReadLength(Tokens: TTokenizer): Double;
-function ReadMass(Tokens: TTokenizer): Double;
-function ReadMassPerTime(Tokens: TTokenizer): TRate;
-function ReadQuantity(Tokens: TTokenizer; Material: TMaterial): Int64;
+function ReadMass(Tokens: TTokenizer): TMass;
+function ReadMassPerTime(Tokens: TTokenizer): TMassRate;
+function ReadQuantity(Tokens: TTokenizer; Material: TMaterial): TQuantity64;
 function ReadKeywordPerTime(Tokens: TTokenizer; Keyword: UTF8String; Min, Max: Int64): TRate;
 function ReadComma(Tokens: TTokenizer): Boolean;
 
@@ -677,7 +677,9 @@ var
       Name, AmbiguousName, Description: UTF8String;
       Icon: TIcon;
       UnitKind: TUnitKind;
-      Length, Volume, MassPerUnit, Density: Double;
+      Mass: TMass;
+      Length, Volume, Density: Double;
+      MassPerUnit: TMassPerUnit;
       Tag: UTF8String;
       Tags: TMaterialTags;
    begin
@@ -746,9 +748,10 @@ var
                   end;
                   Length := ReadLength(Tokens);
                   Tokens.ReadIdentifier('weighs');
-                  MassPerUnit := ReadMass(Tokens);
+                  Mass := ReadMass(Tokens);
+                  MassPerUnit := Mass / TQuantity64.One;
                   Volume := Length * Length * Length;
-                  Density := MassPerUnit / Volume;
+                  Density := Mass.ToSIUnits() / Volume;
                end;
          else
             Tokens.Error('Unknown directive "%s" in material block', [Keyword]);
@@ -922,7 +925,7 @@ begin
    end;
 end;
 
-function ReadMass(Tokens: TTokenizer): Double;
+function ReadMass(Tokens: TTokenizer): TMass;
 var
    Value: Int64;
    Keyword: UTF8String;
@@ -932,15 +935,15 @@ begin
       Tokens.Error('Invalid mass "%d"; must be greater than zero', [Value]);
    Keyword := Tokens.ReadIdentifier();
    case Keyword of
-      'kg': Result := Value;
-      'g': Result := Value / 1000.0;
-      'mg': Result := Value / 1000000.0;
+      'kg': Result := TMass.FromKg(Value);
+      'g': Result := TMass.FromG(Value);
+      'mg': Result := TMass.FromMg(Value);
    else
       Tokens.Error('Unknown unit for mass "%s"', [Keyword]);
    end;
 end;
 
-function ReadQuantity(Tokens: TTokenizer; Material: TMaterial): Int64;
+function ReadQuantity(Tokens: TTokenizer; Material: TMaterial): TQuantity64;
 var
    Value: Int64;
    Keyword: UTF8String;
@@ -950,40 +953,39 @@ begin
       Tokens.Error('Invalid quantity "%d"; must be greater than zero', [Value]);
    Keyword := Tokens.ReadIdentifier();
    case Keyword of
-      'kg': Result := Round(Value / Material.MassPerUnit);
-      'g': Result := Round(Value / (1000.0 * Material.MassPerUnit));
-      'mg': Result := Round(Value / (1000000.0 * Material.MassPerUnit));
-      'units': Result := Round(Value / (1000000.0 * Material.MassPerUnit));
+      'kg': Result := TMass.FromKg(Value) / Material.MassPerUnit;
+      'g': Result := TMass.FromG(Value) / Material.MassPerUnit;
+      'mg': Result := TMass.FromMg(Value) / Material.MassPerUnit;
+      'units': Result := TQuantity64.FromUnits(Value); // $R-
    else
       Tokens.Error('Unknown unit for quantity "%s"', [Keyword]);
    end;
 end;
 
-function ConvertValueToRate(Tokens: TTokenizer; Value: Double): TRate;
+function ReadTimeDenominator(Tokens: TTokenizer): TMillisecondsDuration;
 var
    Keyword: UTF8String;
 begin
    Tokens.ReadSlash();
    Keyword := Tokens.ReadIdentifier();
    case Keyword of
-      'h': Value := Value / (60.0 * 60.0 * 1000.0);
-      'min': Value := Value / (60.0 * 1000.0);
-      's': Value := Value / 1000.0;
-      'ms': ;
+      'h': Result := TMillisecondsDuration.FromMilliseconds(60.0 * 60.0 * 1000.0);
+      'min': Result := TMillisecondsDuration.FromMilliseconds(60.0 * 1000.0);
+      's': Result := TMillisecondsDuration.FromMilliseconds(1000.0);
+      'ms': Result := TMillisecondsDuration.FromMilliseconds(1.0);
    else
       Tokens.Error('Unknown unit for time "%s"', [Keyword]);
    end;
-   Result := TRate.FromPerMillisecond(Value);
 end;
 
-function ReadMassPerTime(Tokens: TTokenizer): TRate;
+function ReadMassPerTime(Tokens: TTokenizer): TMassRate;
 var
-   Value: Double;
+   Value: TMass;
 begin
    Value := ReadMass(Tokens);
-   if (Value < 0.0) then
-      Tokens.Error('Invalid throughput "%f"; must be positive', [Value]);
-   Result := ConvertValueToRate(Tokens, Value);
+   if (Value.IsNegative) then
+      Tokens.Error('Invalid throughput "%s"; must be positive', [Value.ToString()]);
+   Result := Value / ReadTimeDenominator(Tokens);
 end;
 
 function ReadKeywordPerTime(Tokens: TTokenizer; Keyword: UTF8String; Min, Max: Int64): TRate;
@@ -992,7 +994,7 @@ var
 begin
    Value := ReadNumber(Tokens, Min, Max);
    Tokens.ReadIdentifier(Keyword);
-   Result := ConvertValueToRate(Tokens, Value);
+   Result := Value / ReadTimeDenominator(Tokens);
 end;
 
 function ReadComma(Tokens: TTokenizer): Boolean;

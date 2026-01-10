@@ -5,7 +5,7 @@ unit time;
 interface
 
 uses
-   clock;
+   clock, masses, isdnumbers;
 
 type
    TMillisecondsDuration = record // solar system milliseconds duration; supports Infinity and -Infinity
@@ -76,33 +76,58 @@ type
       property AsDouble: Double read Value; // for storage, restore with FromFactor(Double)
       function ToString(): UTF8String;
    end;
-
+   
    TRate = record
    private
       Value: Double;
-      function GetIsZero(): Boolean; inline;
+      function GetIsExactZero(): Boolean; inline;
+      function GetIsNotExactZero(): Boolean; inline;
       {$IFOPT C+} function GetIsNearZero(): Boolean; inline; {$ENDIF}
-      function GetIsNotZero(): Boolean; inline;
+      {$IFOPT C+} function GetIsNotNearZero(): Boolean; inline; {$ENDIF}
       function GetIsPositive(): Boolean; inline;
+      function GetIsNegative(): Boolean; inline;
       function GetIsFinite(): Boolean; inline;
       function GetIsInfinite(): Boolean; inline;
-      class function GetInfinity(): TRate; inline; static;
-      class function GetZero(): TRate; inline; static;
    public
       constructor FromPerSecond(A: Double);
       constructor FromPerMillisecond(A: Double);
       function ToString(NumeratorUnit: UTF8String = ''): UTF8String;
-      property IsZero: Boolean read GetIsZero;
+      property IsExactZero: Boolean read GetIsExactZero;
+      property IsNotExactZero: Boolean read GetIsNotExactZero;
       {$IFOPT C+} property IsNearZero: Boolean read GetIsNearZero; {$ENDIF}
-      property IsNotZero: Boolean read GetIsNotZero;
+      {$IFOPT C+} property IsNotNearZero: Boolean read GetIsNotNearZero; {$ENDIF}
       property IsPositive: Boolean read GetIsPositive; // >0
+      property IsNegative: Boolean read GetIsNegative; // <0
       property IsFinite: Boolean read GetIsFinite;
       property IsInfinite: Boolean read GetIsInfinite;
-      property AsDouble: Double read Value; // for storage, restore with FromMilliseconds(Double)
-      class property Zero: TRate read GetZero;
-      class property Infinity: TRate read GetInfinity;
+      property AsDouble: Double read Value; // for storage, restore with FromPerMilliseconds(Double)
    end;
 
+   TMassRate = type TRate;
+   TQuantityRate = type TRate;
+
+   function ApplyIncrementally(Rate: TRate; Time: TMillisecondsDuration; var Fraction: Fraction32): Int64;
+   function ApplyIncrementally(Rate: TQuantityRate; Time: TMillisecondsDuration; var Fraction: Fraction32): TQuantity64;
+   function ApplyIncrementally(Rate: TMassRate; Time: TMillisecondsDuration; var Fraction: Fraction32): TMass;
+
+type
+   TRateConstants = record helper for TRate
+   private
+      class function GetInfinity(): TRate; inline; static;
+      class function GetZero(): TRate; inline; static;
+      class function GetMInfinity(): TMassRate; inline; static;
+      class function GetMZero(): TMassRate; inline; static;
+      class function GetQInfinity(): TQuantityRate; inline; static;
+      class function GetQZero(): TQuantityRate; inline; static;
+   public
+      class property Zero: TRate read GetZero;
+      class property Infinity: TRate read GetInfinity;
+      class property MZero: TMassRate read GetMZero;
+      class property MInfinity: TMassRate read GetMInfinity;
+      class property QZero: TQuantityRate read GetQZero;
+      class property QInfinity: TQuantityRate read GetQInfinity;
+   end;
+   
    TGrowthRate = record // used for exponential growth with **
    private
       Value: Double;
@@ -127,7 +152,6 @@ operator + (A: TMillisecondsDuration; B: TMillisecondsDuration): TMillisecondsDu
 operator - (A: TMillisecondsDuration; B: TMillisecondsDuration): TMillisecondsDuration; inline;
 operator - (A: TMillisecondsDuration): TMillisecondsDuration; inline;
 operator mod (A: TMillisecondsDuration; B: TMillisecondsDuration): TMillisecondsDuration; inline;
-operator * (A: TMillisecondsDuration; B: TRate): Double; inline;
 operator * (A: TMillisecondsDuration; B: Double): TMillisecondsDuration; inline;
 operator / (A: TMillisecondsDuration; B: TMillisecondsDuration): Double; inline;
 operator / (A: TMillisecondsDuration; B: Double): TMillisecondsDuration; inline;
@@ -157,7 +181,6 @@ operator + (A: TRate; B: TRate): TRate; inline;
 operator - (A: TRate; B: TRate): TRate; inline;
 operator - (A: TRate): TRate; inline;
 operator * (A: TRate; B: Double): TRate; inline;
-operator / (A: Double; B: TRate): TMillisecondsDuration; inline;
 operator / (A: TRate; B: TRate): Double; inline;
 operator / (A: TRate; B: Double): TRate; inline;
 operator = (A: TRate; B: TRate): Boolean; inline;
@@ -166,6 +189,52 @@ operator <= (A: TRate; B: TRate): Boolean; inline;
 operator > (A: TRate; B: TRate): Boolean; inline;
 operator >= (A: TRate; B: TRate): Boolean; inline;
 function Min(A: TRate; B: TRate): TRate; overload;
+
+operator + (A: TMassRate; B: TMassRate): TMassRate; inline;
+operator - (A: TMassRate; B: TMassRate): TMassRate; inline;
+operator - (A: TMassRate): TMassRate; inline;
+operator * (A: TMassRate; B: Double): TMassRate; inline;
+operator / (A: TMassRate; B: TMassRate): Double; inline;
+operator / (A: TMassRate; B: Double): TMassRate; inline;
+operator = (A: TMassRate; B: TMassRate): Boolean; inline;
+operator < (A: TMassRate; B: TMassRate): Boolean; inline;
+operator <= (A: TMassRate; B: TMassRate): Boolean; inline;
+operator > (A: TMassRate; B: TMassRate): Boolean; inline;
+operator >= (A: TMassRate; B: TMassRate): Boolean; inline;
+function Min(A: TMassRate; B: TMassRate): TMassRate; overload;
+
+operator + (A: TQuantityRate; B: TQuantityRate): TQuantityRate; inline;
+operator - (A: TQuantityRate; B: TQuantityRate): TQuantityRate; inline;
+operator - (A: TQuantityRate): TQuantityRate; inline;
+operator * (A: TQuantityRate; B: Double): TQuantityRate; inline;
+operator / (A: TQuantityRate; B: TQuantityRate): Double; inline;
+operator / (A: TQuantityRate; B: Double): TQuantityRate; inline;
+operator = (A: TQuantityRate; B: TQuantityRate): Boolean; inline;
+operator < (A: TQuantityRate; B: TQuantityRate): Boolean; inline;
+operator <= (A: TQuantityRate; B: TQuantityRate): Boolean; inline;
+operator > (A: TQuantityRate; B: TQuantityRate): Boolean; inline;
+operator >= (A: TQuantityRate; B: TQuantityRate): Boolean; inline;
+function Min(A: TQuantityRate; B: TQuantityRate): TQuantityRate; overload;
+
+
+operator * (A: TMillisecondsDuration; B: TRate): Double; inline;
+operator * (A: TMillisecondsDuration; B: TMassRate): TMass; inline;
+operator * (A: TMillisecondsDuration; B: TQuantityRate): TQuantity64; inline;
+
+operator * (A: TQuantity64; B: TRate): TQuantityRate;
+operator * (A: TQuantityRate; B: TMassPerUnit): TMassRate; inline;
+
+operator / (A: Double; B: TRate): TMillisecondsDuration; inline;
+operator / (A: TMassRate; B: TMassPerUnit): TQuantityRate; inline;
+operator / (A: TQuantity64; B: TQuantityRate): TMillisecondsDuration; inline;
+operator / (A: TQuantity32; B: TQuantityRate): TMillisecondsDuration; inline;
+
+operator / (A: TMass; B: TMassRate): TMillisecondsDuration; inline;
+
+operator / (A: Double; B: TMillisecondsDuration): TRate; inline;
+operator / (A: TMass; B: TMillisecondsDuration): TMassRate; inline;
+operator / (A: TQuantity64; B: TMillisecondsDuration): TQuantityRate; inline;
+operator / (A: TQuantity32; B: TMillisecondsDuration): TQuantityRate; inline;
 
 operator ** (A: TGrowthRate; B: TMillisecondsDuration): TFactor; inline;
 operator * (A: Double; B: TFactor): Double; inline;
@@ -480,22 +549,6 @@ begin
    Result.Value := A.Value mod B.Value;
 end;
 
-operator * (A: TMillisecondsDuration; B: TRate): Double;
-begin
-   if (A.IsInfinite) then
-   begin
-      {$PUSH}
-      {$IEEEERRORS OFF}
-      if (A.Value > 0) then
-         Result := Infinity
-      else
-         Result := NegInfinity;
-      {$POP}
-   end
-   else
-      Result := A.Value * B.Value;
-end;
-
 operator * (A: TMillisecondsDuration; B: Double): TMillisecondsDuration;
 begin
    if (A.IsInfinite) then
@@ -503,6 +556,11 @@ begin
       if (B = 0.0) then
       begin
          Result.Value := 0
+      end
+      else
+      if (B < 0.0) then
+      begin
+         Result.Value := -A.Value;
       end
       else
       begin
@@ -757,7 +815,7 @@ begin
    Value := A;
 end;
 
-function TRate.GetIsZero(): Boolean;
+function TRate.GetIsExactZero(): Boolean;
 begin
    Result := Value = 0.0;
 end;
@@ -769,7 +827,14 @@ begin
 end;
 {$ENDIF}
 
-function TRate.GetIsNotZero(): Boolean;
+{$IFOPT C+}
+function TRate.GetIsNotNearZero(): Boolean;
+begin
+   Result := Abs(Value) >= 0.00000001; // TODO: this is completely arbitrary
+end;
+{$ENDIF}
+
+function TRate.GetIsNotExactZero(): Boolean;
 begin
    Result := Value <> 0.0;
 end;
@@ -777,6 +842,11 @@ end;
 function TRate.GetIsPositive(): Boolean;
 begin
    Result := Value > 0.0;
+end;
+
+function TRate.GetIsNegative(): Boolean;
+begin
+   Result := Value < 0.0;
 end;
 
 function TRate.GetIsFinite(): Boolean;
@@ -797,6 +867,11 @@ begin
    end
    else
    begin
+      if (Value < 0.0001 / (60.0 * 60.0 * 1000.0)) then
+      begin
+         Result := FloatToStrF(Value * 60.0 * 60.0 * 1000.0, ffFixed, 0, 15, FloatFormat) + NumeratorUnit + '/h';
+      end
+      else
       if (Value < 0.1 / (60.0 * 60.0 * 1000.0)) then
       begin
          Result := FloatToStrF(Value * 60.0 * 60.0 * 1000.0, ffFixed, 0, 5, FloatFormat) + NumeratorUnit + '/h';
@@ -808,7 +883,33 @@ begin
    end;
 end;
 
-class function TRate.GetInfinity(): TRate;
+
+function ApplyIncrementally(Rate: TRate; Time: TMillisecondsDuration; var Fraction: Fraction32): Int64;
+var
+   Amount: Double;
+begin
+   Amount := Rate.Value * Time.Value;
+   Result := Trunc(Amount) + Round(Fraction.Increment(Frac(Amount))); // $R-
+end;
+
+function ApplyIncrementally(Rate: TQuantityRate; Time: TMillisecondsDuration; var Fraction: Fraction32): TQuantity64;
+var
+   Amount: Double;
+begin
+   Amount := Rate.Value * Time.Value;
+   Result := TQuantity64.FromUnits(TruncUInt64(Amount) + Round(Fraction.Increment(Frac(Amount)))); // $R-
+end;
+
+function ApplyIncrementally(Rate: TMassRate; Time: TMillisecondsDuration; var Fraction: Fraction32): TMass;
+var
+   Amount: Double;
+begin
+   Amount := Rate.Value * Time.Value;
+   Result := TMass.FromKg(Trunc(Amount) + Fraction.Increment(Frac(Amount))); // $R-
+end;
+
+
+class function TRateConstants.GetInfinity(): TRate;
 begin
    {$PUSH}
    {$IEEEERRORS OFF}
@@ -816,7 +917,7 @@ begin
    {$POP}
 end;
 
-class function TRate.GetZero(): TRate;
+class function TRateConstants.GetZero(): TRate;
 begin
    Result.Value := 0.0;
 end;
@@ -839,11 +940,6 @@ end;
 operator * (A: TRate; B: Double): TRate;
 begin
    Result.Value := A.Value * B;
-end;
-
-operator / (A: Double; B: TRate): TMillisecondsDuration;
-begin
-   Result := TMillisecondsDuration.FromMilliseconds(A / B.Value);
 end;
 
 operator / (A: TRate; B: TRate): Double;
@@ -891,6 +987,293 @@ begin
    begin
       Result := B;
    end;
+end;
+
+
+class function TRateConstants.GetMInfinity(): TMassRate;
+begin
+   {$PUSH}
+   {$IEEEERRORS OFF}
+   Result.Value := math.Infinity;
+   {$POP}
+end;
+
+class function TRateConstants.GetMZero(): TMassRate;
+begin
+   Result.Value := 0.0;
+end;
+
+operator + (A: TMassRate; B: TMassRate): TMassRate;
+begin
+   Result.Value := A.Value + B.Value;
+end;
+
+operator - (A: TMassRate; B: TMassRate): TMassRate;
+begin
+   Result.Value := A.Value - B.Value;
+end;
+
+operator - (A: TMassRate): TMassRate;
+begin
+   Result.Value := -A.Value;
+end;
+
+operator * (A: TMassRate; B: Double): TMassRate;
+begin
+   Result.Value := A.Value * B;
+end;
+
+operator / (A: TMassRate; B: TMassRate): Double;
+begin
+   Result := A.Value / B.Value;
+end;
+
+operator / (A: TMassRate; B: Double): TMassRate;
+begin
+   Result.Value := A.Value / B;
+end;
+
+operator = (A: TMassRate; B: TMassRate): Boolean;
+begin
+   Result := A.Value = B.Value;
+end;
+
+operator < (A: TMassRate; B: TMassRate): Boolean;
+begin
+   Result := A.Value < B.Value;
+end;
+
+operator <= (A: TMassRate; B: TMassRate): Boolean;
+begin
+   Result := A.Value <= B.Value;
+end;
+
+operator > (A: TMassRate; B: TMassRate): Boolean;
+begin
+   Result := A.Value > B.Value;
+end;
+
+operator >= (A: TMassRate; B: TMassRate): Boolean;
+begin
+   Result := A.Value >= B.Value;
+end;
+
+function Min(A: TMassRate; B: TMassRate): TMassRate;
+begin
+   if (A < B) then
+   begin
+      Result := A;
+   end
+   else
+   begin
+      Result := B;
+   end;
+end;
+
+
+class function TRateConstants.GetQInfinity(): TQuantityRate;
+begin
+   {$PUSH}
+   {$IEEEERRORS OFF}
+   Result.Value := math.Infinity;
+   {$POP}
+end;
+
+class function TRateConstants.GetQZero(): TQuantityRate;
+begin
+   Result.Value := 0.0;
+end;
+
+operator + (A: TQuantityRate; B: TQuantityRate): TQuantityRate;
+begin
+   Result.Value := A.Value + B.Value;
+end;
+
+operator - (A: TQuantityRate; B: TQuantityRate): TQuantityRate;
+begin
+   Result.Value := A.Value - B.Value;
+end;
+
+operator - (A: TQuantityRate): TQuantityRate;
+begin
+   Result.Value := -A.Value;
+end;
+
+operator * (A: TQuantityRate; B: Double): TQuantityRate;
+begin
+   Result.Value := A.Value * B;
+end;
+
+operator / (A: TQuantityRate; B: TQuantityRate): Double;
+begin
+   Result := A.Value / B.Value;
+end;
+
+operator / (A: TQuantityRate; B: Double): TQuantityRate;
+begin
+   Result.Value := A.Value / B;
+end;
+
+operator = (A: TQuantityRate; B: TQuantityRate): Boolean;
+begin
+   Result := A.Value = B.Value;
+end;
+
+operator < (A: TQuantityRate; B: TQuantityRate): Boolean;
+begin
+   Result := A.Value < B.Value;
+end;
+
+operator <= (A: TQuantityRate; B: TQuantityRate): Boolean;
+begin
+   Result := A.Value <= B.Value;
+end;
+
+operator > (A: TQuantityRate; B: TQuantityRate): Boolean;
+begin
+   Result := A.Value > B.Value;
+end;
+
+operator >= (A: TQuantityRate; B: TQuantityRate): Boolean;
+begin
+   Result := A.Value >= B.Value;
+end;
+
+function Min(A: TQuantityRate; B: TQuantityRate): TQuantityRate;
+begin
+   if (A < B) then
+   begin
+      Result := A;
+   end
+   else
+   begin
+      Result := B;
+   end;
+end;
+
+
+operator * (A: TMillisecondsDuration; B: TRate): Double;
+begin
+   if (A.IsInfinite) then
+   begin
+      {$PUSH}
+      {$IEEEERRORS OFF}
+      if (B.IsExactZero) then
+      begin
+         Result := 0.0;
+      end
+      else
+      if (A.IsPositive = B.IsPositive) then
+      begin
+         Result := Infinity;
+      end
+      else
+      begin
+         Result := NegInfinity;
+      end;
+      {$POP}
+   end
+   else
+      Result := A.Value * B.Value;
+end;
+
+operator * (A: TMillisecondsDuration; B: TMassRate): TMass;
+begin
+   if (A.IsInfinite) then
+   begin
+      if (B.IsExactZero) then
+      begin
+         Result := TMass.Zero;
+      end
+      else
+      if (A.IsPositive = B.IsPositive) then
+      begin
+         Result := TMass.Infinity;
+      end
+      else
+      begin
+         raise ERangeError.Create('Negative mass unsupported');
+      end;
+   end
+   else
+      Result := TMass.FromKg(A.Value * B.Value);
+end;
+
+operator * (A: TMillisecondsDuration; B: TQuantityRate): TQuantity64;
+begin
+   if (A.IsInfinite) then
+   begin
+      if (B.IsExactZero) then
+      begin
+         Result := TQuantity64.Zero;
+      end
+      else
+      begin
+         raise ERangeError.Create('Infinite quantities unsupported');
+      end;
+   end
+   else
+      Result := TQuantity64.FromUnits(Round(A.Value * B.Value));
+end;
+
+
+operator * (A: TQuantity64; B: TRate): TQuantityRate;
+begin
+   Result.Value := A.AsInt64 * B.Value;
+end;
+   
+operator * (A: TQuantityRate; B: TMassPerUnit): TMassRate;
+begin
+   Result.Value := A.Value * B.AsDouble;
+end;
+
+
+
+operator / (A: Double; B: TRate): TMillisecondsDuration;
+begin
+   Result := TMillisecondsDuration.FromMilliseconds(A / B.Value);
+end;
+
+operator / (A: TMassRate; B: TMassPerUnit): TQuantityRate;
+begin
+   Result.Value := A.Value / B.AsDouble;
+end;
+
+operator / (A: TQuantity64; B: TQuantityRate): TMillisecondsDuration;
+begin
+   Result := TMillisecondsDuration.FromMilliseconds(A.AsInt64 / B.Value);
+end;
+
+operator / (A: TQuantity32; B: TQuantityRate): TMillisecondsDuration;
+begin
+   Result := TMillisecondsDuration.FromMilliseconds(A.AsCardinal / B.Value);
+end;
+
+
+operator / (A: TMass; B: TMassRate): TMillisecondsDuration;
+begin
+   Result := TMillisecondsDuration.FromMilliseconds(A.AsDouble / B.Value);
+end;
+
+
+operator / (A: Double; B: TMillisecondsDuration): TRate;
+begin
+   Result.Value := A / B.Value;
+end;
+
+operator / (A: TMass; B: TMillisecondsDuration): TMassRate;
+begin
+   Result.Value := A.ToSIUnits() / B.Value;
+end;
+
+operator / (A: TQuantity64; B: TMillisecondsDuration): TQuantityRate;
+begin
+   Result.Value := A.AsInt64 / B.Value;
+end;
+
+operator / (A: TQuantity32; B: TMillisecondsDuration): TQuantityRate;
+begin
+   Result.Value := A.AsCardinal / B.Value;
 end;
 
 

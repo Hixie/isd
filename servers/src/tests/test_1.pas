@@ -45,6 +45,7 @@ var
    Grid: TModelGridFeature;
    AssetClass, AssetClass2: Int32;
    Scores: TBinaryStreamReader;
+   Rate1, Rate2, Rate3, Rate4: Double;
 begin
    // Check high scores with no players.
    LoginServer := FLoginServer.ConnectWebSocket();
@@ -102,7 +103,7 @@ begin
    Verify(Scores.ReadCardinal() = 1); // last data point
    Verify(Scores.ReadCardinal() = 1); // number of data points
    Verify(Scores.ReadInt64() = 0); // system start time
-   Verify(Scores.ReadDouble() = 100.0); // default happiness
+   Verify(Scores.ReadDouble() = 0.0); // default happiness
    Scores.ReadEnd();
    FreeAndNil(Scores);
    Response := TStringStreamReader.Create(LoginServer.ReadWebSocketStringMessage());
@@ -152,9 +153,9 @@ begin
    Verify(Scores.ReadCardinal() = 2); // last data point
    Verify(Scores.ReadCardinal() = 2); // number of data points
    Verify(Scores.ReadInt64() = 0); // system start time
-   Verify(Scores.ReadDouble() = 100.0); // default happiness
+   Verify(Scores.ReadDouble() = 0.0); // default happiness
    Verify(Scores.ReadInt64() = 120); // login server time at time of crash
-   Verify(Round(Scores.ReadDouble()) = -100); // updated happiness
+   Verify(Round(Scores.ReadDouble()) = -2000000.0); // updated happiness (2000 people * -1000 happiness)
    Scores.ReadEnd();
    FreeAndNil(Scores);
    Response := TStringStreamReader.Create(LoginServer.ReadWebSocketStringMessage());
@@ -511,6 +512,16 @@ begin
       Verify(Parent = Miner);
       Verify(CurrentRate = 0);
    end;
+   with (specialize GetUpdatedFeature<TModelRefiningFeature>(ModelSystem, 0)) do
+   begin
+      Verify(Ore = 12); // iron
+      Rate1 := CurrentRate / 1000.0;
+   end;
+   with (specialize GetUpdatedFeature<TModelRefiningFeature>(ModelSystem, 1)) do
+   begin
+      Verify(Ore = 9); // silicon
+      Rate2 := CurrentRate / 1000.0;
+   end;
    with (specialize GetUpdatedFeature<TModelOrePileFeature>(ModelSystem, 0)) do
    begin
       Verify(Parent = Miner);
@@ -522,29 +533,45 @@ begin
    end;
    with (specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem, 0)) do
    begin
+      Verify(MaterialName = 'Iron');
       Verify(PileMassFlowRate = Parent.MassFlowRate);
+      Verify(PileMassFlowRate = 0.0);
    end;
    with (specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem, 1)) do
    begin
-      Verify(PileMassFlowRate = 0.0);
-      Verify(Parent.MassFlowRate > 0.0);
+      Verify(MaterialName = 'Silicon');
+      Rate3 := PileMassFlowRate / 1000.0;
    end;
+   with (specialize GetUpdatedFeature<TModelStructureFeature>(ModelSystem)) do
+   begin
+      Verify(Hp = 1);
+      Verify(HpRate > 0);
+      Verify(Quantity = 1);
+      Verify(QuantityRate > 0);
+      Rate4 := QuantityRate;
+      Verify(Parent.MassFlowRate > 0.0);
+      Verify(Rate1 = Rate4); // refining iron directly into table building
+      Verify(Rate2 = Rate3); // refining silicon directly into pile
+      Verify(Rate1 + Rate3 = Parent.MassFlowRate / 1000); // iron and silicon refining both contribute to table mass
+   end;
+   Verify(specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem, 1).Parent = specialize GetUpdatedFeature<TModelStructureFeature>(ModelSystem).Parent);
+
+   Verify(Abs(specialize GetUpdatedFeature<TModelOrePileFeature>(ModelSystem, 0).PileMassFlowRate
+            + specialize GetUpdatedFeature<TModelOrePileFeature>(ModelSystem, 1).PileMassFlowRate
+            + specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem, 0).PileMassFlowRate
+            + specialize GetUpdatedFeature<TModelStructureFeature>(ModelSystem, 0).Parent.MassFlowRate
+            - DrillBit.CurrentRate) < 1e-18); // there's some small floating point error
+
+   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 4); // structure completes filling materials (updating assets are all the piles and such)
    with (specialize GetUpdatedFeature<TModelStructureFeature>(ModelSystem)) do
    begin
       Verify(Hp = 2);
       Verify(HpRate > 0);
-      Verify(Quantity = 2);
-      Verify(QuantityRate > 0);
-      Verify(Parent.MassFlowRate > 0.0);
+      Verify(Quantity = 3);
+      Verify(QuantityRate = 0);
    end;
-   Verify(specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem, 1).Parent = specialize GetUpdatedFeature<TModelStructureFeature>(ModelSystem).Parent);
-   Verify(specialize GetUpdatedFeature<TModelOrePileFeature>(ModelSystem, 0).PileMassFlowRate
-        + specialize GetUpdatedFeature<TModelOrePileFeature>(ModelSystem, 1).PileMassFlowRate
-        + specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem, 0).PileMassFlowRate
-        + specialize GetUpdatedFeature<TModelStructureFeature>(ModelSystem, 0).Parent.MassFlowRate
-        - DrillBit.CurrentRate = 0.0);
 
-   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 5); // structure completes building
+   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 2); // structure completes building (updating assets are the structure and rally point)
    with (specialize GetUpdatedFeature<TModelStructureFeature>(ModelSystem)) do
    begin
       Verify(Hp = 3);

@@ -4,6 +4,8 @@ unit endtoend;
 
 interface
 
+//{$DEFINE VERBOSE_WEBSOCKET}
+
 uses
    sysutils, harness, unixtype, unixutils, configuration, stringstream, binarystream;
 
@@ -117,7 +119,7 @@ implementation
 
 uses
    exceptions, fileutils, passwords, sockets, baseunix, base64,
-   csvdocument, servers, isdprotocol, strutils;
+   csvdocument, servers, isdprotocol, strutils, typedump;
 
 const
    TestPasswordLength = 64;
@@ -319,6 +321,7 @@ procedure TServerWebSocket.ParseFrame();
 var
    CurrentByte: Byte;
 begin
+   {$IFDEF VERBOSE_WEBSOCKET} Writeln('ParseFrame:'); {$ENDIF}
    repeat
       if (FPendingDataStart = FPendingDataEnd) then
       begin
@@ -327,6 +330,7 @@ begin
          ReceiveWebSocketBytes();
       end;
       CurrentByte := FPendingDataBuffer[FPendingDataStart];
+      {$IFDEF VERBOSE_WEBSOCKET} Writeln('  ', specialize EnumToString<TWebSocketClientParseMode>(FParseMode), ': 0x', HexStr(CurrentByte, 2)); {$ENDIF}
       case (FParseMode) of
          wsFrameByte1: begin
             FPendingFrameType := TWebSocketFrameType(CurrentByte and $0F);
@@ -336,7 +340,9 @@ begin
          end;
          wsFrameByte2: begin
             FPendingFrameLength := Byte(CurrentByte and $7F);
-            // assume bit 8 is clear (masking bit, client must not mask)
+            // check bit 8 is clear (masking bit, server must not mask)
+            if ((CurrentByte and $80) > 0) then
+               raise Exception.Create('server sent masked payload');
             case (FPendingFrameLength) of
              0: begin FPendingFramePayload := ''; FParseMode := wsFrameByte1; end;
              1..125: begin FPendingFrameIndex := 0; SetLength(FPendingFramePayload, FPendingFrameLength); FParseMode := wsFramePayload; end;

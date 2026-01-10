@@ -7,7 +7,8 @@ interface
 uses
    systemdynasty, configuration, hashtable, genericutils, isdprotocol,
    serverstream, stringstream, random, materials, basenetwork,
-   time, tttokenizer, stringutils, hashsettight, rtlutils, plasticarrays;
+   time, tttokenizer, stringutils, hashsettight, rtlutils, plasticarrays,
+   masses;
 
 // VISIBILITY
 //
@@ -513,7 +514,8 @@ const
       dkUpdateClients, dkUpdateJournal,
       dkAffectsVisibility, dkAffectsKnowledge,
       dkChildren, dkChildAffectsNames,
-      dkMassChanged, dkHappinessChanged
+      dkMassChanged
+      // assets that affect happiness should set dkHappinessChanged when attaching and detaching
    ];
 
 type
@@ -556,8 +558,8 @@ type
       procedure Detaching(); virtual; // called when an ancestor is about to lose its Parent
       procedure MarkAsDirty(DirtyKinds: TDirtyKinds); inline; // Utility function, calls Parent.MarkAsDirty().
       procedure ParentMarkedAsDirty(ParentDirtyKinds, NewDirtyKinds: TDirtyKinds); virtual; // Called when the parent is marked as dirty.
-      function GetMass(): Double; virtual; // kg
-      function GetMassFlowRate(): TRate; virtual; // kg/s
+      function GetMass(): TMass; virtual; // kg
+      function GetMassFlowRate(): TMassRate; virtual; // kg/s
       function GetSize(): Double; virtual; // m
       function GetFeatureName(): UTF8String; virtual;
       function GetHappiness(): Double; virtual;
@@ -584,10 +586,10 @@ type
       procedure DropChild(Child: TAssetNode); virtual;
       procedure UpdateJournal(Journal: TJournalWriter); virtual;
       procedure ApplyJournal(Journal: TJournalReader); virtual;
-      function HandleCommand(Command: UTF8String; var Message: TMessage): Boolean; virtual; // return true if command is handled (prevents further handling)
+      function HandleCommand(PlayerDynasty: TDynasty; Command: UTF8String; var Message: TMessage): Boolean; virtual; // return true if command is handled (prevents further handling)
       procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); virtual;
-      property Mass: Double read GetMass; // kg
-      property MassFlowRate: TRate read GetMassFlowRate; // kg/s
+      property Mass: TMass read GetMass; // kg
+      property MassFlowRate: TMassRate read GetMassFlowRate; // kg/s
       property Size: Double read GetSize; // m
       property FeatureName: UTF8String read GetFeatureName;
       property Happiness: Double read GetHappiness;
@@ -642,7 +644,7 @@ type
       function GetAssetClass(ID: TAssetClassID): TAssetClass; virtual; abstract;
       function GetResearch(ID: TResearchID): TResearch; virtual; abstract;
       function GetTopic(Name: UTF8String): TTopic; virtual; abstract;
-      function GetMinMassPerOreUnit(): Double; virtual; abstract;
+      function GetMinMassPerOreUnit(): TMassPerUnit; virtual; abstract;
    public
       function Craterize(Diameter: Double; OldAssets: TAssetNodeArray; NewAsset: TAssetNode): TAssetNode; virtual; abstract;
       function HandleBusMessage(Asset: TAssetNode; Message: TBusMessage): THandleBusMessageResult; virtual; abstract;
@@ -650,7 +652,7 @@ type
       property AssetClasses[ID: TAssetClassID]: TAssetClass read GetAssetClass;
       property Researches[ID: TResearchID]: TResearch read GetResearch;
       property Topics[Name: UTF8String]: TTopic read GetTopic;
-      property MinMassPerOreUnit: Double read GetMinMassPerOreUnit;
+      property MinMassPerOreUnit: TMassPerUnit read GetMinMassPerOreUnit;
    end;
 
    TAssetNode = class(TDebugObject)
@@ -672,8 +674,8 @@ type
       FDirty: TDirtyKinds;
       FDynastyNotes: TDynastyNotesPackage; // TDynastyNotesPackage is 64 bits for one dynasty, and a pointer into the heap for more than one
       function GetFeature(Index: Cardinal): TFeatureNode;
-      function GetMass(): Double; // kg
-      function GetMassFlowRate(): TRate; // kg/s
+      function GetMass(): TMass; // kg
+      function GetMassFlowRate(): TMassRate; // kg/s
       function GetSize(): Double; // m
       function GetDensity(): Double; // kg/m^3
       function GetAssetName(): UTF8String;
@@ -716,7 +718,7 @@ type
       procedure UpdateJournal(Journal: TJournalWriter);
       procedure ApplyJournal(Journal: TJournalReader);
       function ID(DynastyIndex: Cardinal; AllowZero: Boolean = False): TAssetID;
-      procedure HandleCommand(Command: UTF8String; var Message: TMessage);
+      procedure HandleCommand(PlayerDynasty: TDynasty; Command: UTF8String; var Message: TMessage);
       function IsReal(): Boolean;
       property Parent: TFeatureNode read GetParent;
       property HasParent: Boolean read GetHasParent;
@@ -725,8 +727,8 @@ type
       property AssetClass: TAssetClass read FAssetClass;
       property Owner: TDynasty read FOwner write SetOwner;
       property Features[Index: Cardinal]: TFeatureNode read GetFeature;
-      property Mass: Double read GetMass; // kg
-      property MassFlowRate: TRate read GetMassFlowRate; // kg/s
+      property Mass: TMass read GetMass; // kg
+      property MassFlowRate: TMassRate read GetMassFlowRate; // kg/s
       property Size: Double read GetSize; // meters, must be greater than zero
       property Density: Double read GetDensity; // kg/m^3; computed from mass and size, assuming spherical shape
       property AssetName: UTF8String read GetAssetName;
@@ -1537,14 +1539,14 @@ procedure TFeatureNode.ParentMarkedAsDirty(ParentDirtyKinds, NewDirtyKinds: TDir
 begin
 end;
 
-function TFeatureNode.GetMass(): Double; // kg
+function TFeatureNode.GetMass(): TMass; // kg
 begin
-   Result := 0.0;
+   Result := TMass.Zero;
 end;
 
-function TFeatureNode.GetMassFlowRate(): TRate; // kg/s
+function TFeatureNode.GetMassFlowRate(): TMassRate; // kg/s
 begin
-   Result := TRate.Zero;
+   Result := TMassRate.MZero;
 end;
 
 function TFeatureNode.GetSize(): Double; // m
@@ -1667,7 +1669,7 @@ procedure TFeatureNode.ApplyJournal(Journal: TJournalReader);
 begin
 end;
 
-function TFeatureNode.HandleCommand(Command: UTF8String; var Message: TMessage): Boolean;
+function TFeatureNode.HandleCommand(PlayerDynasty: TDynasty; Command: UTF8String; var Message: TMessage): Boolean;
 begin
    Assert(
       TMethod(@Self.HandleCommand).Code = Pointer(@TFeatureNode.HandleCommand),
@@ -2052,25 +2054,25 @@ begin
    Result := FFeatures[Index];
 end;
 
-function TAssetNode.GetMass(): Double; // kg
+function TAssetNode.GetMass(): TMass; // kg
 var
    Feature: TFeatureNode;
 begin
-   Result := 0.0;
+   Result := TMass.Zero;
    for Feature in FFeatures do
       Result := Result + Feature.Mass;
 end;
 
-function TAssetNode.GetMassFlowRate(): TRate; // kg/s
+function TAssetNode.GetMassFlowRate(): TMassRate; // kg/s
 var
-   Rate: TRate;
+   Rate: TMassRate;
    Feature: TFeatureNode;
    {$IFOPT C+}
    DebugFeatures: array of UTF8String;
    Line: UTF8String;
    {$ENDIF}
 begin
-   Result := TRate.Zero;
+   Result := TMassRate.MZero;
    {$IFOPT C+} DebugFeatures := []; {$ENDIF}
    for Feature in FFeatures do
    begin
@@ -2085,7 +2087,7 @@ begin
       {$ENDIF}
    end;
    {$IFOPT C+}
-   if (Result.IsNotZero) then
+   if (Result.IsNotNearZero) then
    begin
       if (Length(DebugFeatures) > 1) then
       begin
@@ -2124,7 +2126,7 @@ var
 begin
    Radius := Size / 2.0;
    Assert(Radius > 0);
-   Result := Mass / (4.0 / 3.0 * Pi * Radius * Radius * Radius); // $R-
+   Result := Mass.ToSIUnits() / (4.0 / 3.0 * Pi * Radius * Radius * Radius); // $R-
 end;
 
 function TAssetNode.GetAssetName(): UTF8String;
@@ -2440,8 +2442,8 @@ begin
       begin
          Writer.WriteCardinal(0);
       end;
-      Assert(Mass >= -0.000001);
-      Writer.WriteDouble(Mass);
+      Assert(Mass.AsDouble >= -0.000001);
+      Writer.WriteDouble(Mass.AsDouble);
       Writer.WriteDouble(MassFlowRate.AsDouble);
       Assert(Size >= 0.0);
       Writer.WriteDouble(Size);
@@ -2618,13 +2620,13 @@ begin
    Result := FSystem;
 end;
 
-procedure TAssetNode.HandleCommand(Command: UTF8String; var Message: TMessage);
+procedure TAssetNode.HandleCommand(PlayerDynasty: TDynasty; Command: UTF8String; var Message: TMessage);
 var
    Feature: TFeatureNode;
 begin
    for Feature in FFeatures do
    begin
-      if (Feature.HandleCommand(Command, Message)) then
+      if (Feature.HandleCommand(PlayerDynasty, Command, Message)) then
          exit;
    end;
 end;
@@ -2654,7 +2656,7 @@ begin
       if (IsDefinitelyGhost) then
       begin
          Assert((not HaveAnswer) or not Result, 'This asset is having an existential crisis: ' + DebugName); {BOGUS Warning: Function result variable does not seem to be initialized}
-         Assert(Mass = 0, DebugName + ' has mass but is definitely real according to ' + Feature.ClassName);
+         Assert(Mass.IsZero, DebugName + ' has mass but is definitely real according to ' + Feature.ClassName);
          Result := False;
          HaveAnswer := True;
       end;
@@ -2673,7 +2675,11 @@ end;
 
 function TAssetNode.GetDebugName(): UTF8String;
 begin
-   Result := '<' + AssetClass.Name + ' @' + HexStr(Self);
+   if (not Assigned(AssetClass)) then
+      Result := '<unknown'
+   else
+      Result := '<' + AssetClass.Name;
+   Result := Result + ' @' + HexStr(Self);
    if (AssetName <> '') then
       Result := Result + ' "' + AssetName + '"';
    if (Assigned(Owner)) then

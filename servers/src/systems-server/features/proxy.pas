@@ -5,7 +5,7 @@ unit proxy;
 interface
 
 uses
-   systems, serverstream, techtree, time;
+   systems, serverstream, techtree, time, masses;
 
 type
    TProxyFeatureClass = class(TFeatureClass)
@@ -20,8 +20,8 @@ type
    private
       FChild: TAssetNode;
    protected
-      function GetMass(): Double; override;
-      function GetMassFlowRate(): TRate; override;
+      function GetMass(): TMass; override;
+      function GetMassFlowRate(): TMassRate; override;
       function GetSize(): Double; override;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
@@ -88,24 +88,24 @@ begin
    inherited;
 end;
 
-function TProxyFeatureNode.GetMass(): Double;
+function TProxyFeatureNode.GetMass(): TMass;
 begin
    if (Assigned(FChild)) then
    begin
       Result := FChild.Mass;
    end
    else
-      Result := 0.0;
+      Result := TMass.Zero;
 end;
 
-function TProxyFeatureNode.GetMassFlowRate(): TRate;
+function TProxyFeatureNode.GetMassFlowRate(): TMassRate;
 begin
    if (Assigned(FChild)) then
    begin
       Result := FChild.MassFlowRate;
    end
    else
-      Result := TRate.Zero;
+      Result := TMassRate.MZero;
 end;
 
 function TProxyFeatureNode.GetSize(): Double;

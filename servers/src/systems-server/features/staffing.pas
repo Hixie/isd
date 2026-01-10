@@ -125,7 +125,7 @@ var
    RateLimit: Double; // ignored
 begin
    CheckDisabled(Parent, RateLimit, False, Self);
-   Writeln(DebugName, ' has rate limit ', RateLimit);
+   Writeln(DebugName, ' has ignored disabled reasons and rate limit ', RateLimit:0:3);
    if (RateLimit = 0.0) then
    begin
       if (FPriority <> 0) then
@@ -170,6 +170,8 @@ begin
          Result := hrShortcut;
          exit;
       end;
+      if (not Assigned(FPeopleBus)) then
+         (Message as TCheckDisabledBusMessage).AddReason(drNoBus);
       if (FWorkers < FFeatureClass.Jobs) then
          (Message as TCheckDisabledBusMessage).AddReason(drUnderstaffed, FWorkers / FFeatureClass.Jobs);
    end;

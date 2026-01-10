@@ -5,7 +5,7 @@ unit materials;
 interface
 
 uses
-   hashtable, hashfunctions, hashsettight, genericutils, stringutils, isdnumbers, time, isdprotocol;
+   hashtable, hashfunctions, hashsettight, genericutils, stringutils, isdnumbers, time, isdprotocol, masses;
 
 type
    TMaterial = class;
@@ -26,36 +26,42 @@ type
 
    TMaterialQuantity = record
       Material: TMaterial;
-      Quantity: UInt64;
-      procedure Init(AMaterial: TMaterial; AQuantity: UInt64);
-      procedure Dec(Delta: UInt64);
+      Quantity: TQuantity64;
+      procedure Init(AMaterial: TMaterial; AQuantity: TQuantity64);
+      procedure Dec(Delta: TQuantity64);
    end;
 
-   TMaterialQuantityHashTable = class(specialize THashTable<TMaterial, UInt64, TObjectUtils>)
+   TMaterialQuantityHashTable = class(specialize THashTable<TMaterial, TQuantity64, TObjectUtils>)
       constructor Create(ACount: THashTableSizeInt = 2);
-      procedure Inc(Material: TMaterial; Delta: UInt64); inline;
-      procedure Inc(Material: TMaterial; Delta: Int64); inline;
-      procedure Dec(Material: TMaterial; Delta: UInt64); inline;
-      procedure Dec(Material: TMaterial; Delta: Int64); inline;
-      function ClampedDec(Material: TMaterial; Delta: UInt64): UInt64; inline; // returns how much was actually transferred
+      procedure Inc(Material: TMaterial; Delta: TQuantity64); inline;
+      procedure Dec(Material: TMaterial; Delta: TQuantity64); inline;
+      function ClampedDec(Material: TMaterial; Delta: TQuantity64): TQuantity64; inline; // returns how much was actually transferred
    end;
 
-   TMaterialRateHashTable = class(specialize THashTable<TMaterial, TRate, TObjectUtils>)
+   TMaterialRateHashTable = class(specialize THashTable<TMaterial, TQuantityRate, TObjectUtils>)
       constructor Create(ACount: THashTableSizeInt = 2);
-      procedure Inc(Material: TMaterial; Delta: TRate);
-      procedure RemoveZeroes(); // removes entries whose rate is zero
+      procedure Inc(Material: TMaterial; Delta: TQuantityRate);
+      procedure Dec(Material: TMaterial; Delta: TQuantityRate);
+   end;
+
+   TMaterialCountHashTable = class(specialize THashTable<TMaterial, Cardinal, TObjectUtils>)
+      constructor Create(ACount: THashTableSizeInt = 2);
+      procedure Inc(Material: TMaterial; Delta: Cardinal); inline;
+      procedure Dec(Material: TMaterial; Delta: Cardinal); inline;
    end;
 
    PMaterialQuantityArray = ^TMaterialQuantityArray;
    TMaterialQuantityArray = array of TMaterialQuantity;
 
-   PQuantityArray = ^TQuantityArray;
-   TQuantityArray = array of UInt64;
+   PQuantityArray = ^TQuantity64Array;
+   TQuantity64Array = array of TQuantity64;
 
-   TOreQuantities = array[TOres] of UInt64;
+   POreQuantities = ^TOreQuantities;
+   
+   TOreQuantities = array[TOres] of TQuantity64;
    TOreFractions = array[TOres] of Fraction32;
-   TOreRates = array[TOres] of TRate;
-   TOreMasses = array[TOres] of Double;
+   TOreRates = array[TOres] of TMassRate;
+   TOreMasses = array[TOres] of TMass;
 
    TMaterialAbundanceParameters = record
       Distance: Double;
@@ -92,7 +98,7 @@ type
       FName, FAmbiguousName, FDescription: UTF8String;
       FIcon: TIcon;
       FUnitKind: TUnitKind;
-      FMassPerUnit: Double; // kg
+      FMassPerUnit: TMassPerUnit; // kg
       FDensity: Double; // m^3
       FBondAlbedo: Double;
       FTags: TMaterialTags;
@@ -100,14 +106,14 @@ type
    private
       function GetIsOre(): Boolean; inline;
    public
-      constructor Create(AID: TMaterialID; AName, AAmbiguousName, ADescription: UTF8String; AIcon: TIcon; AUnitKind: TUnitKind; AMassPerUnit, ADensity, ABondAlbedo: Double; ATags: TMaterialTags; AAbundance: TMaterialAbundance);
+      constructor Create(AID: TMaterialID; AName, AAmbiguousName, ADescription: UTF8String; AIcon: TIcon; AUnitKind: TUnitKind; AMassPerUnit: TMassPerUnit; ADensity, ABondAlbedo: Double; ATags: TMaterialTags; AAbundance: TMaterialAbundance);
       property ID: TMaterialID read FID; // negative numbers for built-in materials, TOres range for ores, positive numbers above TOres for tech tree components. Never zero.
       property AmbiguousName: UTF8String read FAmbiguousName;
       property Name: UTF8String read FName;
       property Description: UTF8String read FDescription;
       property Icon: TIcon read FIcon;
       property UnitKind: TUnitKind read FUnitKind;
-      property MassPerUnit: Double read FMassPerUnit; // kg
+      property MassPerUnit: TMassPerUnit read FMassPerUnit; // kg
       property Density: Double read FDensity; // kg/m^3
       property BondAlbedo: Double read FBondAlbedo;
       property Tags: TMaterialTags read FTags;
@@ -162,6 +168,8 @@ const
 
 function LoadOres(Filename: RawByteString): TMaterial.TArray;
 
+function MaterialHash32(const Key: TMaterial): DWord;
+
 implementation
 
 uses
@@ -184,19 +192,19 @@ end;
 
 
 
-procedure TMaterialQuantity.Init(AMaterial: TMaterial; AQuantity: UInt64);
+procedure TMaterialQuantity.Init(AMaterial: TMaterial; AQuantity: TQuantity64);
 begin
    Material := AMaterial;
    Quantity := AQuantity;
 end;
 
-procedure TMaterialQuantity.Dec(Delta: UInt64);
+procedure TMaterialQuantity.Dec(Delta: TQuantity64);
 begin
    Assert(Assigned(Material));
-   Assert(Delta > 0);
+   Assert(Delta.IsPositive);
    Assert(Delta <= Quantity);
    Quantity := Quantity - Delta; // $R-
-   if (Quantity = 0) then
+   if (Quantity.IsZero) then
       Material := nil;
 end;
 
@@ -206,14 +214,14 @@ begin
    inherited Create(@MaterialHash32, ACount);
 end;
 
-procedure TMaterialQuantityHashTable.Inc(Material: TMaterial; Delta: UInt64);
+procedure TMaterialQuantityHashTable.Inc(Material: TMaterial; Delta: TQuantity64);
 var
-   Value: UInt64;
+   Value: TQuantity64;
 begin
-   Assert(Delta <> 0);
+   Assert(Delta.IsNotZero);
    if (Has(Material)) then
    begin
-      if (Delta > High(UInt64) - Self[Material]) then
+      if (Delta > TQuantity64.Max - Self[Material]) then
       begin
          raise EOverflow.Create('Overflowed TMaterialQuantityHashTable value');
       end;
@@ -226,47 +234,20 @@ begin
    Self[Material] := Value;
 end;
 
-procedure TMaterialQuantityHashTable.Inc(Material: TMaterial; Delta: Int64);
-var
-   Value: UInt64;
+procedure TMaterialQuantityHashTable.Dec(Material: TMaterial; Delta: TQuantity64);
 begin
-   Assert(Delta <> 0);
-   if (Has(Material)) then
-   begin
-      Assert((Delta > 0) or (Self[Material] + Delta >= 0));
-      if ((Delta > 0) and (UInt64(Delta) > High(UInt64) - Self[Material])) then
-      begin
-         raise EOverflow.Create('Overflowed TMaterialQuantityHashTable value');
-      end;
-      Value := Self[Material] + Delta; // $R-
-   end
-   else
-   begin
-      Assert(Delta > 0);
-      Value := Delta; // $R-
-   end;
-   Self[Material] := Value;
-end;
-
-procedure TMaterialQuantityHashTable.Dec(Material: TMaterial; Delta: UInt64);
-begin
-   Assert(Delta <> 0);
-   Assert(Delta > 0);
+   Assert(Delta.IsNotZero);
+   Assert(Delta.IsPositive);
    Assert(Has(Material));
    Assert(Delta <= Self[Material]);
    Self[Material] := Self[Material] - Delta; // $R-
 end;
 
-procedure TMaterialQuantityHashTable.Dec(Material: TMaterial; Delta: Int64);
-begin
-   Inc(Material, -Delta);
-end;
-
-function TMaterialQuantityHashTable.ClampedDec(Material: TMaterial; Delta: UInt64): UInt64;
+function TMaterialQuantityHashTable.ClampedDec(Material: TMaterial; Delta: TQuantity64): TQuantity64;
 begin
    // Return how much the value was actually changed.
-   Assert(Delta <> 0);
-   Assert(Delta > 0);
+   Assert(Delta.IsNotZero);
+   Assert(Delta.IsPositive);
    if (Delta <= Self[Material]) then
    begin
       Result := Delta;
@@ -275,8 +256,8 @@ begin
    else
    begin
       Result := Self[Material];
-      if (Result > 0) then
-         Self[Material] := 0;
+      if (Result.IsPositive) then
+         Self[Material] := TQuantity64.Zero;
    end;
 end;
 
@@ -286,9 +267,9 @@ begin
    inherited Create(@MaterialHash32, ACount);
 end;
 
-procedure TMaterialRateHashTable.Inc(Material: TMaterial; Delta: TRate);
+procedure TMaterialRateHashTable.Inc(Material: TMaterial; Delta: TQuantityRate);
 var
-   Value: TRate;
+   Value: TQuantityRate;
 begin
    if (Has(Material)) then
    begin
@@ -301,40 +282,51 @@ begin
    Self[Material] := Value;
 end;
 
-procedure TMaterialRateHashTable.RemoveZeroes();
+procedure TMaterialRateHashTable.Dec(Material: TMaterial; Delta: TQuantityRate);
 var
-   Index: Cardinal;
-   Entry: PHashTableEntry;
-   LastEntry: PPHashTableEntry;
-   NextEntry: PHashTableEntry;
+   Value: TQuantityRate;
 begin
-   if (Length(FTable) > 0) then
+   if (Has(Material)) then
    begin
-      for Index := Low(FTable) to High(FTable) do // $R-
-      begin
-         LastEntry := @FTable[Index];
-         Entry := LastEntry^;
-         while (Assigned(Entry)) do
-         begin
-            NextEntry := Entry^.Next;
-            if (Entry^.Value.IsZero) then
-            begin
-               LastEntry^ := Entry^.Next;
-               Dispose(Entry);
-               Dec(FCount);
-            end
-            else
-            begin
-               LastEntry := @Entry^.Next;
-            end;
-            Entry := NextEntry;
-         end;
-      end;
+      Value := Self[Material] - Delta;
+   end
+   else
+   begin
+      Value := -Delta;
    end;
+   Self[Material] := Value;
 end;
 
 
-constructor TMaterial.Create(AID: TMaterialID; AName, AAmbiguousName, ADescription: UTF8String; AIcon: TIcon; AUnitKind: TUnitKind; AMassPerUnit, ADensity, ABondAlbedo: Double; ATags: TMaterialTags; AAbundance: TMaterialAbundance);
+constructor TMaterialCountHashTable.Create(ACount: THashTableSizeInt = 2);
+begin
+   inherited Create(@MaterialHash32, ACount);
+end;
+
+procedure TMaterialCountHashTable.Inc(Material: TMaterial; Delta: Cardinal);
+var
+   Value: Cardinal;
+begin
+   if (Has(Material)) then
+   begin
+      Value := Self[Material] + Delta; // $R-
+   end
+   else
+   begin
+      Value := Delta;
+   end;
+   Self[Material] := Value;
+end;
+
+procedure TMaterialCountHashTable.Dec(Material: TMaterial; Delta: Cardinal);
+begin
+   Assert(Has(Material));
+   Assert(Delta <= Self[Material]);
+   Self[Material] := Self[Material] - Delta; // $R-
+end;
+
+
+constructor TMaterial.Create(AID: TMaterialID; AName, AAmbiguousName, ADescription: UTF8String; AIcon: TIcon; AUnitKind: TUnitKind; AMassPerUnit: TMassPerUnit; ADensity, ABondAlbedo: Double; ATags: TMaterialTags; AAbundance: TMaterialAbundance);
 begin
    inherited Create();
    Assert(AID <> 0); // zero means "not recognized"
@@ -586,7 +578,7 @@ begin
          MaterialDescription,
          MaterialIcon,
          ukBulkResource,
-         1000.0, // MassPerUnit for ores is always 1 metric ton
+         TMassPerUnit.FromKgPerUnit(1000.0), // MassPerUnit for ores is always 1 metric ton
          MaterialDensity,
          MaterialBondAlbedo,
          MaterialTags,

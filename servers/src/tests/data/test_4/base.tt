@@ -37,7 +37,6 @@ class city {
   build: land;
   feature: TParameterizedGridFeatureClass 6*6, 100m, land;
   feature: TKnowledgeBusFeatureClass;
-  feature: TFoodBusFeatureClass;
 }
 
 class mining-big-hole {

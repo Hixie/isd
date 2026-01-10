@@ -5,7 +5,7 @@ unit messages;
 interface
 
 uses
-   systems, serverstream, time, knowledge, basenetwork, techtree;
+   systems, serverstream, time, knowledge, basenetwork, techtree, systemdynasty;
 
 type
    TNotificationMessage = class(TKnowledgeBusMessage)
@@ -73,14 +73,14 @@ type
       procedure SetMessage(ASourceSystemID: Cardinal; ATimestamp: TTimeInMilliseconds; ABody: UTF8String);
       procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader); override;
-      function HandleCommand(Command: UTF8String; var Message: TMessage): Boolean; override;
+      function HandleCommand(PlayerDynasty: TDynasty; Command: UTF8String; var Message: TMessage): Boolean; override;
       procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); override;
    end;
 
 implementation
 
 uses
-   systemnetwork, systemdynasty, isdprotocol, sysutils, exceptions;
+   isdprotocol, sysutils, exceptions;
 
 type
    PMessageBoardData = ^TMessageBoardData;
@@ -354,20 +354,12 @@ begin
    MarkAsDirty([dkUpdateClients, dkUpdateJournal]);
 end;
 
-function TMessageFeatureNode.HandleCommand(Command: UTF8String; var Message: TMessage): Boolean;
-var
-   PlayerDynasty: TDynasty;
+function TMessageFeatureNode.HandleCommand(PlayerDynasty: TDynasty; Command: UTF8String; var Message: TMessage): Boolean;
 begin
    if (Command = ccMarkRead) then
    begin
       Result := True;
       Assert(Assigned(Message.Connection)); // we get here synchronously from connection code, so it hasn't had time to go away yet
-      PlayerDynasty := (Message.Connection as TConnection).PlayerDynasty;
-      if (PlayerDynasty <> Parent.Owner) then
-      begin
-         Message.Error(ieInvalidMessage);
-         exit;
-      end;
       if (Message.CloseInput()) then
       begin
          Message.Reply();
@@ -381,12 +373,6 @@ begin
    begin
       Result := True;
       Assert(Assigned(Message.Connection)); // we get here synchronously from connection code, so it hasn't had time to go away yet
-      PlayerDynasty := (Message.Connection as TConnection).PlayerDynasty;
-      if (PlayerDynasty <> Parent.Owner) then
-      begin
-         Message.Error(ieInvalidMessage);
-         exit;
-      end;
       if (Message.CloseInput()) then
       begin
          Message.Reply();

@@ -628,7 +628,7 @@ begin
                      if (mtPressurized in Material.Tags) then
                         Flags := Flags or $10;
                      Writer.WriteUInt64(Flags);
-                     Writer.WriteDouble(Material.MassPerUnit);
+                     Writer.WriteDouble(Material.MassPerUnit.AsDouble);
                      Writer.WriteDouble(Material.Density);
                   end;
                rkMessage: ;

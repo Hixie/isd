@@ -6,12 +6,12 @@ interface
 
 uses
    basenetwork, systems, serverstream, materials, techtree,
-   messageport, region, time, systemdynasty;
+   messageport, region, time, systemdynasty, masses;
 
 type
    TMaterialPileFeatureClass = class(TFeatureClass)
    private
-      FMaxQuantity: Int64;
+      FMaxQuantity: TQuantity64;
       FMaterial: TMaterial;
    strict protected
       function GetFeatureNodeClass(): FeatureNodeReference; override;
@@ -27,15 +27,15 @@ type
       FRegion: TRegionFeatureNode;
    private // IMaterialPile
       function GetMaterialPileMaterial(): TMaterial;
-      function GetMaterialPileCapacity(): UInt64; // quantity
+      function GetMaterialPileCapacity(): TQuantity64;
       procedure SetMaterialPileRegion(Region: TRegionFeatureNode);
       procedure RegionAdjustedMaterialPiles();
       procedure DisconnectMaterialPile();
       function GetDynasty(): TDynasty;
    protected
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
-      function GetMass(): Double; override;
-      function GetMassFlowRate(): TRate; override;
+      function GetMass(): TMass; override;
+      function GetMassFlowRate(): TMassRate; override;
       function HandleBusMessage(Message: TBusMessage): THandleBusMessageResult; override;
       procedure HandleChanges(); override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
@@ -103,9 +103,9 @@ begin
    Result := FFeatureClass.FMaterial;
 end;
 
-function TMaterialPileFeatureNode.GetMaterialPileCapacity(): UInt64; // quantity
+function TMaterialPileFeatureNode.GetMaterialPileCapacity(): TQuantity64;
 begin
-   Assert(FFeatureClass.FMaxQuantity > 0);
+   Assert(FFeatureClass.FMaxQuantity.IsPositive);
    Result := FFeatureClass.FMaxQuantity; // $R-
 end;
 
@@ -135,7 +135,7 @@ end;
 
 function TMaterialPileFeatureNode.HandleBusMessage(Message: TBusMessage): THandleBusMessageResult;
 var
-   Quantity: UInt64;
+   Quantity: TQuantity64;
 begin
    if (Message is TRubbleCollectionMessage) then
    begin
@@ -164,7 +164,7 @@ begin
             Writeln('  calling region to rehome pile contents');
             Quantity := FRegion.RehomeMaterialPile(Self);
             FRegion := nil;
-            if (Quantity > 0) then
+            if (Quantity.IsPositive) then
                (Message as TDismantleMessage).AddExcessMaterial(FFeatureClass.FMaterial, Quantity);
             MarkAsDirty([dkUpdateClients, dkNeedsHandleChanges]);
          end;
@@ -186,7 +186,7 @@ begin
    inherited;
 end;
 
-function TMaterialPileFeatureNode.GetMass(): Double;
+function TMaterialPileFeatureNode.GetMass(): TMass;
 begin
    if (Assigned(FRegion)) then
    begin
@@ -194,12 +194,12 @@ begin
    end
    else
    begin
-      Result := 0.0;
+      Result := TMass.Zero;
    end;
-   Assert(Result >= -0.0000001);
+   Assert(Result.AsDouble >= -0.0000001);
 end;
 
-function TMaterialPileFeatureNode.GetMassFlowRate(): TRate;
+function TMaterialPileFeatureNode.GetMassFlowRate(): TMassRate;
 begin
    if (Assigned(FRegion)) then
    begin
@@ -207,7 +207,7 @@ begin
    end
    else
    begin
-      Result := TRate.Zero;
+      Result := TMassRate.MZero;
    end;
 end;
 
@@ -224,7 +224,7 @@ begin
             Writer.WriteCardinal(fcMaterialPile);
             if (Assigned(FRegion)) then
             begin
-               Writer.WriteDouble(FRegion.GetMaterialPileMass(Self));
+               Writer.WriteDouble(FRegion.GetMaterialPileMass(Self).AsDouble);
                Writer.WriteDouble(FRegion.GetMaterialPileMassFlowRate(Self).AsDouble);
             end
             else
@@ -232,22 +232,22 @@ begin
                Writer.WriteDouble(0);
                Writer.WriteDouble(0);
             end;
-            Writer.WriteDouble(FFeatureClass.FMaxQuantity * FFeatureClass.FMaterial.MassPerUnit);
+            Writer.WriteDouble((FFeatureClass.FMaxQuantity * FFeatureClass.FMaterial.MassPerUnit).AsDouble);
          end;
         ukComponent:
          begin
             Writer.WriteCardinal(fcMaterialStack);
             if (Assigned(FRegion)) then
             begin
-               Writer.WriteUInt64(FRegion.GetMaterialPileQuantity(Self));
+               Writer.WriteInt64(FRegion.GetMaterialPileQuantity(Self).AsInt64);
                Writer.WriteDouble(FRegion.GetMaterialPileQuantityFlowRate(Self).AsDouble);
             end
             else
             begin
-               Writer.WriteUInt64(0);
+               Writer.WriteInt64(0);
                Writer.WriteDouble(0);
             end;
-            Writer.WriteInt64(FFeatureClass.FMaxQuantity);
+            Writer.WriteInt64(FFeatureClass.FMaxQuantity.AsInt64);
          end;
       end;
       if (FMaterialKnowledge.GetEntry(DynastyIndex)) then

@@ -93,7 +93,7 @@ begin
    ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 18); // crash
    // HomeRegion := specialize GetUpdatedFeature<TModelGridFeature>(ModelSystem).Parent;
 
-   LoginServerIPC.AwaitScores(2);
+   LoginServerIPC.AwaitScores(1);
 
    FreeAndNil(ModelSystem);
    SystemsServerIPC.CloseSocket();

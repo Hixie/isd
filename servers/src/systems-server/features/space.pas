@@ -5,7 +5,7 @@ unit space;
 interface
 
 uses
-   systems, providers, serverstream, techtree, time;
+   systems, providers, serverstream, techtree, time, masses;
 
 type
    TSolarSystemFeatureClass = class(TFeatureClass)
@@ -32,8 +32,8 @@ type
       procedure AdoptSolarSystemChild(Child: TAssetNode; DistanceFromCenter, Theta, HillDiameter: Double); // lengths are in meters // child must be orbit
       procedure ParentMarkedAsDirty(ParentDirtyKinds, NewDirtyKinds: TDirtyKinds); override;
       procedure AddPolarChildFromJournal(Child: TAssetNode; Distance, Theta, HillDiameter: Double); // lengths are in meters // child must be orbit
-      function GetMass(): Double; override;
-      function GetMassFlowRate(): TRate; override;
+      function GetMass(): TMass; override;
+      function GetMassFlowRate(): TMassRate; override;
       function GetSize(): Double; override;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
       procedure ApplyVisibility(); override;
@@ -47,7 +47,7 @@ type
       procedure AddCartesianChild(Child: TAssetNode; X, Y: Double); // meters, first must be at 0,0; call ComputeHillSpheres after calling AddCartesianChild for all children // marks the child as new
       procedure ComputeHillSpheres(); // call this after all stars have been added
       function GetAssetName(): UTF8String;
-      function GetHillDiameter(Child: TAssetNode; ChildPrimaryMass: Double): Double;
+      function GetHillDiameter(Child: TAssetNode; ChildPrimaryMass: TMass): Double;
       procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); override;
       property Children[Index: Cardinal]: TAssetNode read GetChild; // child might be nil; non-nil children must all be orbits
       property ChildCount: Cardinal read GetChildCount; // some of the children might be nil
@@ -251,20 +251,20 @@ begin
    inherited;
 end;
 
-function TSolarSystemFeatureNode.GetMass(): Double;
+function TSolarSystemFeatureNode.GetMass(): TMass;
 var
    Child: TAssetNode;
 begin
-   Result := 0.0;
+   Result := TMass.Zero;
    for Child in FChildren do
       Result := Result + Child.Mass;
 end;
 
-function TSolarSystemFeatureNode.GetMassFlowRate(): TRate;
+function TSolarSystemFeatureNode.GetMassFlowRate(): TMassRate;
 var
    Child: TAssetNode;
 begin
-   Result := TRate.Zero;
+   Result := TMassRate.MZero;
    for Child in FChildren do
       Result := Result + Child.MassFlowRate;
 end;
@@ -413,7 +413,7 @@ begin
    MaxRadius := FFeatureClass.FStarGroupingThreshold / 2.0;
    for Index := Low(FChildren) to High(FChildren) do // $R-
    begin
-      CandidateHillRadius := FChildren[Index].Mass * FFeatureClass.FGravitionalInfluenceConstant / 2.0;
+      CandidateHillRadius := FChildren[Index].Mass.ToSIUnits() * FFeatureClass.FGravitionalInfluenceConstant / 2.0;
       if (CandidateHillRadius > MaxRadius) then
          CandidateHillRadius := MaxRadius;
       for SubIndex := Low(FChildren) to High(FChildren) do // $R-
@@ -442,7 +442,7 @@ begin
    end;
 end;
 
-function TSolarSystemFeatureNode.GetHillDiameter(Child: TAssetNode; ChildPrimaryMass: Double): Double;
+function TSolarSystemFeatureNode.GetHillDiameter(Child: TAssetNode; ChildPrimaryMass: TMass): Double;
 begin
    Result := PSolarSystemData(Child.ParentData)^.HillDiameter;
 end;

@@ -5,7 +5,7 @@ unit stellar;
 interface
 
 uses
-   sysutils, systems, astronomy, providers, serverstream, techtree, tttokenizer;
+   sysutils, systems, astronomy, providers, serverstream, techtree, tttokenizer, masses;
 
 type
    TStarFeatureClass = class(TFeatureClass)
@@ -22,7 +22,7 @@ type
       function GetCategory(): TStarCategory; inline;
       function GetTemperature(): Double;
    protected
-      function GetMass(): Double; override;
+      function GetMass(): TMass; override;
       function GetSize(): Double; override;
       function HandleBusMessage(Message: TBusMessage): THandleBusMessageResult; override;
       procedure ApplyVisibility(); override;
@@ -77,21 +77,21 @@ begin
    Result := CategoryOf(StarID);
 end;
 
-function TStarFeatureNode.GetMass(): Double;
+function TStarFeatureNode.GetMass(): TMass;
 begin
    case Category of
-      2: Result := 30.0e30;
-      3: Result := 0.7e30;
-      4: Result := 1.0e30;
-      5: Result := 8.2e30;
-      6: Result := 2.0e30;
-      7: Result := 15.8e30;
-      8: Result := 5.2e30;
-      9: Result := 10.0e30;
-      10: Result := 100.0e30;
+      2: Result := TMass.FromKg(30.0e30);
+      3: Result := TMass.FromKg(0.7e30);
+      4: Result := TMass.FromKg(1.0e30);
+      5: Result := TMass.FromKg(8.2e30);
+      6: Result := TMass.FromKg(2.0e30);
+      7: Result := TMass.FromKg(15.8e30);
+      8: Result := TMass.FromKg(5.2e30);
+      9: Result := TMass.FromKg(10.0e30);
+      10: Result := TMass.FromKg(100.0e30);
    else
       Assert(False);
-      Result := 0.0;
+      Result := TMass.Zero;
    end;
    Result := Result * Modifier(0.5, 2.0, StarID, MassSalt);
 end;

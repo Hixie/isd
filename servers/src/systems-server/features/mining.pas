@@ -13,7 +13,7 @@ uses
 type
    TMiningFeatureClass = class(TFeatureClass)
    private
-      FBandwidth: TRate; // kg per second
+      FBandwidth: TMassRate; // kg per second
    strict protected
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
@@ -26,10 +26,10 @@ type
       FFeatureClass: TMiningFeatureClass;
       FStatus: TRegionClientFields;
    private // IMiner
-      function GetMinerMaxRate(): TRate; // kg per second
-      function GetMinerCurrentRate(): TRate; // kg per second
+      function GetMinerMaxRate(): TMassRate; // kg per second
+      function GetMinerCurrentRate(): TMassRate; // kg per second
       procedure SetMinerRegion(Region: TRegionFeatureNode);
-      procedure StartMiner(Rate: TRate; SourceLimiting, TargetLimiting: Boolean);
+      procedure StartMiner(Rate: TMassRate; SourceLimiting, TargetLimiting: Boolean);
       procedure DisconnectMiner();
       function GetDynasty(): TDynasty;
    protected
@@ -85,16 +85,19 @@ end;
 destructor TMiningFeatureNode.Destroy();
 begin
    if (FStatus.Connected) then
+   begin
       FStatus.Region.RemoveMiner(Self);
+      FStatus.Reset();
+   end;
    inherited;
 end;
 
-function TMiningFeatureNode.GetMinerMaxRate(): TRate; // kg per second
+function TMiningFeatureNode.GetMinerMaxRate(): TMassRate; // kg per second
 begin
    Result := FFeatureClass.FBandwidth * FStatus.RateLimit;
 end;
 
-function TMiningFeatureNode.GetMinerCurrentRate(): TRate; // kg per second
+function TMiningFeatureNode.GetMinerCurrentRate(): TMassRate; // kg per second
 begin
    Result := FStatus.Rate;
 end;
@@ -104,7 +107,7 @@ begin
    FStatus.SetRegion(Region);
 end;
 
-procedure TMiningFeatureNode.StartMiner(Rate: TRate; SourceLimiting, TargetLimiting: Boolean); // kg per second
+procedure TMiningFeatureNode.StartMiner(Rate: TMassRate; SourceLimiting, TargetLimiting: Boolean); // kg per second
 begin
    if (FStatus.Update(Rate, SourceLimiting, TargetLimiting)) then
       MarkAsDirty([dkUpdateClients]);
@@ -129,7 +132,10 @@ var
 begin
    DisabledReasons := CheckDisabled(Parent, RateLimit);
    if ((RateLimit = 0.0) and (FStatus.Connected)) then
+   begin
       FStatus.Region.RemoveMiner(Self);
+      FStatus.Reset();
+   end;
    if ((DisabledReasons <> FStatus.DisabledReasons) or (RateLimit <> FStatus.RateLimit)) then
    begin
       if (DisabledReasons <> FStatus.DisabledReasons) then

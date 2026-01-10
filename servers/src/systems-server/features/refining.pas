@@ -8,13 +8,13 @@ interface
 
 uses
    basenetwork, systems, serverstream, materials, techtree,
-   messageport, region, time, systemdynasty;
+   messageport, region, time, systemdynasty, isdnumbers;
 
 type
    TRefiningFeatureClass = class(TFeatureClass)
    private
       FOre: TOres;
-      FBandwidth: TRate; // kg per second
+      FBandwidth: TMassRate; // kg per second
    strict protected
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
@@ -29,12 +29,13 @@ type
       FOreKnowledge: TKnowledgeSummary;
    private // IRefinery
       function GetRefineryOre(): TOres;
-      function GetRefineryMaxRate(): TRate; // kg per second
-      function GetRefineryCurrentRate(): TRate; // kg per second
+      function GetRefineryMaxRate(): TMassRate; // kg per second
+      function GetRefineryCurrentRate(): TMassRate; // kg per second
       procedure SetRefineryRegion(Region: TRegionFeatureNode);
-      procedure StartRefinery(Rate: TRate; SourceLimiting, TargetLimiting: Boolean); // kg per second
+      procedure StartRefinery(Rate: TMassRate; SourceLimiting, TargetLimiting: Boolean); // kg per second
       procedure DisconnectRefinery();
       function GetDynasty(): TDynasty;
+      function GetPendingFraction(): PFraction32;
    protected
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
       procedure HandleChanges(); override;
@@ -108,12 +109,12 @@ begin
    Result := FFeatureClass.FOre;
 end;
 
-function TRefiningFeatureNode.GetRefineryMaxRate(): TRate; // kg per second
+function TRefiningFeatureNode.GetRefineryMaxRate(): TMassRate; // kg per second
 begin
    Result := FFeatureClass.FBandwidth * FStatus.RateLimit;
 end;
 
-function TRefiningFeatureNode.GetRefineryCurrentRate(): TRate; // kg per second
+function TRefiningFeatureNode.GetRefineryCurrentRate(): TMassRate; // kg per second
 begin
    Result := FStatus.Rate;
 end;
@@ -123,7 +124,7 @@ begin
    FStatus.SetRegion(Region);
 end;
 
-procedure TRefiningFeatureNode.StartRefinery(Rate: TRate; SourceLimiting, TargetLimiting: Boolean); // kg per second
+procedure TRefiningFeatureNode.StartRefinery(Rate: TMassRate; SourceLimiting, TargetLimiting: Boolean); // kg per second
 begin
    Assert(Assigned(FStatus.Region));
    if (FStatus.Update(Rate, SourceLimiting, TargetLimiting)) then
@@ -139,6 +140,11 @@ end;
 function TRefiningFeatureNode.GetDynasty(): TDynasty;
 begin
    Result := Parent.Owner;
+end;
+      
+function TRefiningFeatureNode.GetPendingFraction(): PFraction32;
+begin
+   Result := FStatus.GetPendingFraction();
 end;
 
 procedure TRefiningFeatureNode.HandleChanges();
