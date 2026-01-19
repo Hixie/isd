@@ -39,6 +39,9 @@ The first field is a 32 bit number called the conversation ID
 (uint32). The second field is a command (string). Subsequent fields
 are arguments to the command and are command-specific.
 
+Missing fields are treated as zero, false, or the empty string, as
+appropriate.
+
 The server responds with the same field format. Replies always start
 with a field that says `reply`, then the conversation ID (uint32),
 then either a `T` if the command was successful, followed by some
@@ -50,29 +53,17 @@ followed by an error code from this list:
    player, with a command that is only valid for player-owned assets,
    will return this (see [systems-server/README.md]).
    
-   'unrecognized credentials': invalid username or password.
-   
-   'inadequate username': the username did not fulfill the
+   'inadequate password': the password did not fulfill the
    requirements described in [login-server/README.md].
    
-   'inadequate password': the password did not fulfill the
+   'inadequate username': the username did not fulfill the
    requirements described in [login-server/README.md].
    
    'internal error': some error was caught on the server side. This
    does not indicate a client problem. Please report such errors.
    
-   'unknown file code': an invalid file code was specified for the
-   `get-file` command (see [login-server/README.md]).
-   
-   'not logged in': a command was sent that expects the connection to
-   be authenticated, before the `login` command was successfully sent.
-   
    'invalid command': the command is not recognized. Only commands
    documented in these README files are known.
-   
-   'unknown dynasty': the specified dynasty is not recognized, for
-   example when requesting dynasty scores via `get-scores` (see
-   [login-server/README.md]).
    
    'no destructors': a `play`/`dismantle` command (see
    [systems-server/README.md]) was sent to an asset that cannot find a
@@ -80,7 +71,22 @@ followed by an error code from this list:
    dismantled. For example, this may happen when trying to dismantle a
    star, unless the player has especially advanced (as yet
    unimplemented) technology.
+   
+   'not logged in': a command was sent that expects the connection to
+   be authenticated, before the `login` command was successfully sent.
+   
+   'range error': A command was sent with an argument outside the
+   valid range of values (e.g. `set-state` to an `fcFactory` with a
+   rate above the maximum rate or below zero).
+   
+   'unknown dynasty': the specified dynasty is not recognized, for
+   example when requesting dynasty scores via `get-scores` (see
+   [login-server/README.md]).
+   
+   'unknown file code': an invalid file code was specified for the
+   `get-file` command (see [login-server/README.md]).
 
+   'unrecognized credentials': invalid username or password.
 
 Replies are not guaranteed to be sent back in the order that messages
 were received (hence the conversation ID field).

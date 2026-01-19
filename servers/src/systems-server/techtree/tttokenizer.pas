@@ -25,7 +25,7 @@ type
       type
          TTokenKind = (
             tkPending,
-            tkIdentifier, tkString, tkNumber,
+            tkIdentifier, tkString, tkInteger, tkDouble,
             tkOpenBrace, tkCloseBrace, tkOpenParenthesis, tkCloseParenthesis,
             tkComma, tkColon, tkSemicolon, tkPercentage, tkAsterisk, tkSlash,
             tkEOF
@@ -36,7 +36,8 @@ type
          FPosition: QWord;
          FLine, FColumn: Cardinal;
          FCurrentKind: TTokenKind;
-         FNumericValue: Int64;
+         FNumericInteger: Int64;
+         FNumericDouble: Double;
          FStringValue: UTF8String;
       procedure Tokenize();
       procedure EnsureToken(); inline;
@@ -51,6 +52,7 @@ type
       procedure ReadIdentifier(Keyword: UTF8String);
       function ReadString(): UTF8String;
       function ReadNumber(): Int64;
+      function ReadDouble(): Double;
       procedure ReadOpenBrace();
       procedure ReadCloseBrace();
       procedure ReadOpenParenthesis();
@@ -64,6 +66,8 @@ type
       function IsIdentifier(): Boolean;
       function IsIdentifier(Keyword: UTF8String): Boolean;
       function IsString(): Boolean;
+      function IsNumber(): Boolean; // integer only
+      function IsDouble(): Boolean;
       function IsCloseBrace(): Boolean;
       function IsOpenParenthesis(): Boolean;
       function IsCloseParenthesis(): Boolean;
@@ -77,7 +81,7 @@ implementation
 
 uses
    {$IFDEF VERBOSE} unicode, {$ENDIF}
-   typedump, exceptions, rtlutils, plasticarrays, genericutils;
+   typedump, exceptions, rtlutils, plasticarrays, genericutils, math;
 
 constructor EParseError.CreateFmt(const AMessage: UTF8String; const Arguments: array of const; ALine, AColumn: Cardinal);
 begin
@@ -198,12 +202,12 @@ const
    kNewline = #$0A;
    kSpace = #$20;
 type
-   TTokenMode = (tmTop, tmIdentifier, tmNumber, tmString,
+   TTokenMode = (tmTop, tmIdentifier, tmNumber, tmNumberFraction, tmString,
                  tmMultilineStringStart, tmMultilineStringFirstLinePrefix, tmMultilineStringPrefix, tmMultilineStringBodyStart, tmMultilineStringBody,
                  tmSlash, tmLineComment, tmBlockComment, tmBlockCommentEnd);
 var
    Mode: TTokenMode;
-   Current, ExpectedIndent, CurrentIndent: Cardinal;
+   Current, ExpectedIndent, CurrentIndent, NumberLength, NumberDecimalPosition: Cardinal;
    Negative: Boolean;
    Number: UInt64;
    SegmentStart, SegmentCheckpoint: QWord;
@@ -289,7 +293,9 @@ begin
                      begin
                         Negative := False;
                         Number := 0;
+                        NumberLength := 0;
                         Mode := tmNumber;
+                        // we do not advance, so digit is reinterpreted again in tmNumber immediately
                      end;
                   $3A: // U+003B COLON character (:)
                      begin
@@ -337,14 +343,19 @@ begin
                end;
             tmNumber:
                case (Current) of
+                  $45, $65: // E, e
+                     begin
+                        Error('Exponents not supported in numeric format', []);
+                     end;
                   $2E:
                      begin
-                        Error('Numeric literals do not yet support fractions; unexpected fraction', []);
-                        //Advance();
-                        //Mode := tmNumberFraction;
+                        Advance();
+                        NumberDecimalPosition := NumberLength;
+                        Mode := tmNumberFraction;
                      end;
                   $30..$39:
                      begin
+                        Inc(NumberLength);
                         {$PUSH}
                         {$OVERFLOWCHECKS-}
                         {$RANGECHECKS-}
@@ -361,14 +372,47 @@ begin
                         Advance();
                      end;
                else
-                  FCurrentKind := tkNumber;
+                  FCurrentKind := tkInteger;
                   if (Negative) then
                   begin
-                     FNumericValue := -Number; // $R-
+                     FNumericInteger := -Number; // $R-
                   end
                   else
                   begin
-                     FNumericValue := Number; // $R-
+                     FNumericInteger := Number; // $R-
+                  end;
+               end;
+            tmNumberFraction:
+               case (Current) of
+                  $45, $65: // E, e
+                     begin
+                        Error('Exponents not supported in numeric format', []);
+                     end;
+                  $2E:
+                     begin
+                        Error('Unexpected decimal point in fraction', []);
+                     end;
+                  $30..$39:
+                     begin
+                        Inc(NumberLength);
+                        if (NumberLength > 15) then
+                           Error('Too many digits in number', []);
+                        {$PUSH}
+                        {$OVERFLOWCHECKS-}
+                        {$RANGECHECKS-}
+                        Number := Number * 10 + Current - $30;
+                        {$POP}
+                        Advance();
+                     end;
+               else
+                  FCurrentKind := tkDouble;
+                  if (Negative) then
+                  begin
+                     FNumericDouble := -Number / Power(10, (NumberLength - NumberDecimalPosition)); // $R-
+                  end
+                  else
+                  begin
+                     FNumericDouble := Number / Power(10, (NumberLength - NumberDecimalPosition)); // $R-
                   end;
                end;
             tmString:
@@ -635,8 +679,20 @@ end;
 function TTokenizer.ReadNumber(): Int64;
 begin
    EnsureToken();
-   ExpectToken(tkNumber);
-   Result := FNumericValue;
+   ExpectToken(tkInteger);
+   Result := FNumericInteger;
+   FCurrentKind := tkPending;
+end;
+
+function TTokenizer.ReadDouble(): Double;
+begin
+   EnsureToken();
+   case (FCurrentKind) of
+     tkInteger: Result := FNumericInteger;
+     tkDouble: Result := FNumericDouble;
+     else
+       Error('Expected a numeric token but got %s', [specialize EnumToString<TTokenKind>(FCurrentKind)]);
+   end;
    FCurrentKind := tkPending;
 end;
 
@@ -726,6 +782,18 @@ function TTokenizer.IsString(): Boolean;
 begin
    EnsureToken();
    Result := FCurrentKind = tkString;
+end;
+
+function TTokenizer.IsNumber(): Boolean;
+begin
+   EnsureToken();
+   Result := FCurrentKind = tkInteger;
+end;
+
+function TTokenizer.IsDouble(): Boolean;
+begin
+   EnsureToken();
+   Result := FCurrentKind in [tkInteger, tkDouble];
 end;
 
 function TTokenizer.IsCloseBrace(): Boolean;

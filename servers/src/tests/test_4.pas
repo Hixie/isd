@@ -98,9 +98,8 @@ begin
    ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 2);
    with (specialize GetUpdatedFeature<TModelMiningFeature>(ModelSystem)) do
    begin
-      Verify(DisabledReasons = %00000000);
+      Verify(DisabledReasons = %01000000); // rate limited by target (no piles)
       Verify(CurrentRate = 0.0);
-      Verify(Flags = %00000010); // rate limited by target (no piles)
       Hole := Parent;
    end;
 
@@ -112,16 +111,14 @@ begin
    ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 3);
    with (specialize GetUpdatedFeature<TModelMiningFeature>(ModelSystem)) do
    begin
-      Verify(DisabledReasons = %00000000);
+      Verify(DisabledReasons = %01000000); // rate limited by target (no piles, so we can't mine faster than the refining)
       Verify(CurrentRate > 0.0);
-      Verify(Flags = %00000010); // rate limited by target (no piles, so we can't mine faster than the refining)
       Verify(Parent = Hole);
    end;
    with (specialize GetUpdatedFeature<TModelRefiningFeature>(ModelSystem)) do
    begin
-      Verify(DisabledReasons = %00000000);
+      Verify(DisabledReasons = %00100000); // rate limited by source (no piles, so we can't refine faster than the mining)
       Verify(CurrentRate > 0.0);
-      Verify(Flags = %00000001); // rate limited by source (no piles, so we can't refine faster than the mining)
       IronTable := Parent;
    end;
 
@@ -129,16 +126,14 @@ begin
    ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 2);
    with (specialize GetUpdatedFeature<TModelMiningFeature>(ModelSystem)) do
    begin
-      Verify(DisabledReasons = %00000000);
+      Verify(DisabledReasons = %01000000); // rate limited by target (no piles, so we can't mine faster than the refining)
       Verify(CurrentRate = 0.0);
-      Verify(Flags = %00000010); // rate limited by target (no piles, so we can't mine faster than the refining)
       Verify(Parent = Hole);
    end;
    with (specialize GetUpdatedFeature<TModelRefiningFeature>(ModelSystem)) do
    begin
-      Verify(DisabledReasons = %00000000);
+      Verify(DisabledReasons = %01100000); // rate limited by source (no piles, so we can't refine faster than the mining) and target (pile full)
       Verify(CurrentRate = 0.0);
-      Verify(Flags = %00000011); // rate limited by source (no piles, so we can't refine faster than the mining) and target (pile full)
       Verify(Parent = IronTable);
    end;
    with (specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem)) do
@@ -157,9 +152,8 @@ begin
    ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 1);
    with (specialize GetUpdatedFeature<TModelRefiningFeature>(ModelSystem)) do
    begin
-      Verify(DisabledReasons = %00000001);
+      Verify(DisabledReasons = %00000100); // disabled
       Verify(CurrentRate = 0.0);
-      Verify(Flags = %00000000);
       Verify(Parent = IronTable);
    end;
    with (specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem)) do
@@ -178,9 +172,8 @@ begin
    ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 3);
    with (specialize GetUpdatedFeature<TModelRefiningFeature>(ModelSystem, 0)) do
    begin
-      Verify(DisabledReasons = %00000001);
+      Verify(DisabledReasons = %00000100);
       Verify(CurrentRate = 0.0);
-      Verify(Flags = %00000000);
       Verify(Parent = IronTable);
    end;
    with (specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem, 0)) do
@@ -194,7 +187,6 @@ begin
    begin
       Verify(DisabledReasons = %00000010);
       Verify(CurrentRate = 0.0);
-      Verify(Flags = %00000000);
       SiliconTable := Parent;
    end;
    with (specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem, 1)) do
@@ -220,9 +212,8 @@ begin
    ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 4);
    with (specialize GetUpdatedFeature<TModelRefiningFeature>(ModelSystem, 0)) do
    begin
-      Verify(DisabledReasons = %00000001);
+      Verify(DisabledReasons = %00000100);
       Verify(CurrentRate = 0.0);
-      Verify(Flags = %00000000);
       Verify(Parent = IronTable);
    end;
    with (specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem, 0)) do
@@ -236,7 +227,6 @@ begin
    begin
       Verify(DisabledReasons = %00000010);
       Verify(CurrentRate = 0.0);
-      Verify(Flags = %00000000);
       Verify(Parent = SiliconTable);
    end;
    with (specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem, 1)) do
@@ -275,16 +265,14 @@ begin
    ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 4);
    with (specialize GetUpdatedFeature<TModelMiningFeature>(ModelSystem)) do
    begin
-      Verify(DisabledReasons = %00000000);
+      Verify(DisabledReasons = %01000000); // rate limited by target (no piles, so we can't mine faster than the refining)
       Verify(CurrentRate > 0.0);
-      Verify(Flags = %00000010); // rate limited by target (no piles, so we can't mine faster than the refining)
       Verify(Parent = Hole);
    end;
    with (specialize GetUpdatedFeature<TModelRefiningFeature>(ModelSystem, 0)) do
    begin
-      Verify(DisabledReasons = %00000001);
+      Verify(DisabledReasons = %00000100);
       Verify(CurrentRate = 0.0);
-      Verify(Flags = %00000000);
       Verify(Parent = IronTable);
    end;
    with (specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem, 0)) do
@@ -296,9 +284,8 @@ begin
    end;
    with (specialize GetUpdatedFeature<TModelRefiningFeature>(ModelSystem, 1)) do
    begin
-      Verify(DisabledReasons = %00000000);
+      Verify(DisabledReasons = %00100000); // rate limited by source
       Verify(CurrentRate > 0.0);
-      Verify(Flags = %00000001); // rate limited by source
       Verify(Parent = SiliconTable);
    end;
    with (specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem, 1)) do
@@ -335,9 +322,8 @@ begin
    ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 2);
    with (specialize GetUpdatedFeature<TModelRefiningFeature>(ModelSystem, 0)) do
    begin
-      Verify(DisabledReasons = %00000001);
+      Verify(DisabledReasons = %00000100);
       Verify(CurrentRate = 0.0);
-      Verify(Flags = %00000000);
       Verify(Parent = IronTable);
    end;
    with (specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem, 0)) do
@@ -349,9 +335,8 @@ begin
    end;
    with (specialize GetUpdatedFeature<TModelRefiningFeature>(ModelSystem, 1)) do
    begin
-      Verify(DisabledReasons = %00000000);
+      Verify(DisabledReasons = %00100000); // rate limited by source
       Verify(CurrentRate > 0.0);
-      Verify(Flags = %00000001); // rate limited by source
       Verify(Parent = SiliconTable);
    end;
    with (specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem, 1)) do
@@ -381,16 +366,14 @@ begin
    ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 3);
    with (specialize GetUpdatedFeature<TModelMiningFeature>(ModelSystem)) do
    begin
-      Verify(DisabledReasons = %00000000);
+      Verify(DisabledReasons = %01000000); // rate limited by target (no piles, so we can't mine faster than the refining)
       Verify(CurrentRate = 0.0);
-      Verify(Flags = %00000010); // rate limited by target (no piles, so we can't mine faster than the refining)
       Verify(Parent = Hole);
    end;
    with (specialize GetUpdatedFeature<TModelRefiningFeature>(ModelSystem, 0)) do
    begin
-      Verify(DisabledReasons = %00000001);
+      Verify(DisabledReasons = %00000100);
       Verify(CurrentRate = 0.0);
-      Verify(Flags = %00000000);
       Verify(Parent = IronTable);
    end;
    with (specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem, 0)) do
@@ -402,9 +385,8 @@ begin
    end;
    with (specialize GetUpdatedFeature<TModelRefiningFeature>(ModelSystem, 1)) do
    begin
-      Verify(DisabledReasons = %00000000);
+      Verify(DisabledReasons = %01100000); // rate limited by source and target
       Verify(CurrentRate = 0.0);
-      Verify(Flags = %00000011); // rate limited by source and target
       Verify(Parent = SiliconTable);
    end;
    with (specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem, 1)) do
@@ -439,9 +421,8 @@ begin
    ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 3);
    with (specialize GetUpdatedFeature<TModelRefiningFeature>(ModelSystem, 1)) do
    begin
-      Verify(DisabledReasons = %00000000);
+      Verify(DisabledReasons = %01100000); // rate limited by source
       Verify(CurrentRate = 0.0);
-      Verify(Flags = %00000011); // rate limited by source
       Verify(Parent = SiliconTable);
    end;
    with (specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem, 1)) do
@@ -470,7 +451,7 @@ begin
    end;
    with (specialize GetUpdatedFeature<TModelBuilderFeature>(ModelSystem, 1)) do
    begin
-      Verify(DisabledReasons = %00000001);
+      Verify(DisabledReasons = %00000100);
       Verify(Capacity = 1);
       Verify(Structures.Length = 0);
       Verify(Parent = Rally);

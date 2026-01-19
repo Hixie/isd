@@ -91,7 +91,8 @@ type
    public
       constructor FromPerSecond(A: Double);
       constructor FromPerMillisecond(A: Double);
-      function ToString(NumeratorUnit: UTF8String = ''): UTF8String;
+      procedure Reset(NewValue: Double = 0.0); // sets the value (useful when the precise type is not known, since TRate.Zero, TMassRate.MZero and TQuantityRate.QZero aren't type compatible)
+      function ToString(NumeratorUnit: UTF8String): UTF8String;
       property IsExactZero: Boolean read GetIsExactZero;
       property IsNotExactZero: Boolean read GetIsNotExactZero;
       {$IFOPT C+} property IsNearZero: Boolean read GetIsNearZero; {$ENDIF}
@@ -100,7 +101,7 @@ type
       property IsNegative: Boolean read GetIsNegative; // <0
       property IsFinite: Boolean read GetIsFinite;
       property IsInfinite: Boolean read GetIsInfinite;
-      property AsDouble: Double read Value; // for storage, restore with FromPerMilliseconds(Double)
+      property AsDouble: Double read Value; // for storage, restore with FromPerMillisecond(Double)
    end;
 
    TMassRate = type TRate;
@@ -126,6 +127,36 @@ type
       class property MInfinity: TMassRate read GetMInfinity;
       class property QZero: TQuantityRate read GetQZero;
       class property QInfinity: TQuantityRate read GetQInfinity;
+   end;
+
+   TQuantityRateSum = record
+   private
+      Value: TSum;
+      class operator Initialize(var Rec: TQuantityRateSum);
+      function GetIsZero(): Boolean; inline;
+      function GetIsNotZero(): Boolean; inline;
+      function GetIsNegative(): Boolean; inline;
+      function GetIsPositive(): Boolean; inline;
+   public
+      procedure Reset(); inline;
+      procedure Inc(Delta: TQuantityRate); inline;
+      procedure Dec(Delta: TQuantityRate); inline;
+      procedure Inc(Delta: TQuantityRateSum); inline;
+      procedure Dec(Delta: TQuantityRateSum); inline;
+      class operator Copy(constref Source: TQuantityRateSum; var Destination: TQuantityRateSum);
+      property IsZero: Boolean read GetIsZero;
+      property IsNotZero: Boolean read GetIsNotZero;
+      property IsNegative: Boolean read GetIsNegative;
+      property IsPositive: Boolean read GetIsPositive;
+      property AsSum: TSum read Value;
+      function ToQuantityRate(): TQuantityRate; inline;
+      function ToDouble(): Double; inline;
+      function ToString(): UTF8String;
+      class operator <(A, B: TQuantityRateSum): Boolean; inline;
+      class operator <=(A, B: TQuantityRateSum): Boolean; inline;
+      class operator >=(A, B: TQuantityRateSum): Boolean; inline;
+      class operator >(A, B: TQuantityRateSum): Boolean; inline;
+      class operator -(A, B: TQuantityRateSum): TQuantityRateSum;
    end;
    
    TGrowthRate = record // used for exponential growth with **
@@ -196,6 +227,7 @@ operator - (A: TMassRate): TMassRate; inline;
 operator * (A: TMassRate; B: Double): TMassRate; inline;
 operator / (A: TMassRate; B: TMassRate): Double; inline;
 operator / (A: TMassRate; B: Double): TMassRate; inline;
+operator / (A: TMassRate; B: TMass): TRate; inline;
 operator = (A: TMassRate; B: TMassRate): Boolean; inline;
 operator < (A: TMassRate; B: TMassRate): Boolean; inline;
 operator <= (A: TMassRate; B: TMassRate): Boolean; inline;
@@ -209,13 +241,14 @@ operator - (A: TQuantityRate): TQuantityRate; inline;
 operator * (A: TQuantityRate; B: Double): TQuantityRate; inline;
 operator / (A: TQuantityRate; B: TQuantityRate): Double; inline;
 operator / (A: TQuantityRate; B: Double): TQuantityRate; inline;
+operator / (A: TQuantityRate; B: TQuantity64): TRate; inline;
+operator / (A: TQuantityRate; B: TQuantity32): TRate; inline;
 operator = (A: TQuantityRate; B: TQuantityRate): Boolean; inline;
 operator < (A: TQuantityRate; B: TQuantityRate): Boolean; inline;
 operator <= (A: TQuantityRate; B: TQuantityRate): Boolean; inline;
 operator > (A: TQuantityRate; B: TQuantityRate): Boolean; inline;
 operator >= (A: TQuantityRate; B: TQuantityRate): Boolean; inline;
 function Min(A: TQuantityRate; B: TQuantityRate): TQuantityRate; overload;
-
 
 operator * (A: TMillisecondsDuration; B: TRate): Double; inline;
 operator * (A: TMillisecondsDuration; B: TMassRate): TMass; inline;
@@ -339,7 +372,7 @@ end;
 
 function TMillisecondsDuration.ToString(): UTF8String;
 var
-   Scaled: Double;
+   Scaled, Days: Double;
 begin
    if (Value = Low(Value)) then
    begin
@@ -388,21 +421,21 @@ begin
             end
             else
             begin
-               Scaled := Scaled / 24;
-               if (Scaled < 7) then
+               Days := Scaled / 24;
+               if (Days < 7) then
                begin
-                  Result := IntToStr(Round(Scaled)) + 'd';
+                  Result := IntToStr(Round(Days)) + 'd';
                end
                else
                begin
-                  Scaled := Scaled / 7;
+                  Scaled := Days / 7;
                   if (Scaled < 53) then
                   begin
                      Result := IntToStr(Round(Scaled)) + 'w';
                   end
                   else
                   begin
-                     Scaled := Scaled / 365.25;
+                     Scaled := Days / 365;
                      Result := IntToStr(Round(Scaled)) + 'y';
                   end;
                end;
@@ -815,6 +848,11 @@ begin
    Value := A;
 end;
 
+procedure TRate.Reset(NewValue: Double);
+begin
+   Value := NewValue;
+end;
+
 function TRate.GetIsExactZero(): Boolean;
 begin
    Result := Value = 0.0;
@@ -859,7 +897,7 @@ begin
    Result := math.IsInfinite(Value);
 end;
 
-function TRate.ToString(NumeratorUnit: UTF8String = ''): UTF8String;
+function TRate.ToString(NumeratorUnit: UTF8String): UTF8String;
 begin
    if (Value = 0.0) then
    begin
@@ -867,6 +905,8 @@ begin
    end
    else
    begin
+      if (Length(NumeratorUnit) > 2) then
+         NumeratorUnit := ' ' + NumeratorUnit;
       if (Value < 0.0001 / (60.0 * 60.0 * 1000.0)) then
       begin
          Result := FloatToStrF(Value * 60.0 * 60.0 * 1000.0, ffFixed, 0, 15, FloatFormat) + NumeratorUnit + '/h';
@@ -874,11 +914,11 @@ begin
       else
       if (Value < 0.1 / (60.0 * 60.0 * 1000.0)) then
       begin
-         Result := FloatToStrF(Value * 60.0 * 60.0 * 1000.0, ffFixed, 0, 5, FloatFormat) + NumeratorUnit + '/h';
+         Result := FloatToStrF(Value * 60.0 * 60.0 * 1000.0, ffFixed, 0, 55, FloatFormat) + NumeratorUnit + '/h';
       end
       else
       begin
-         Result := FloatToStrF(Value * 60.0 * 60.0 * 1000.0, ffFixed, 0, 1, FloatFormat) + NumeratorUnit + '/h';
+         Result := FloatToStrF(Value * 60.0 * 60.0 * 1000.0, ffFixed, 0, 15, FloatFormat) + NumeratorUnit + '/h';
       end;
    end;
 end;
@@ -1033,6 +1073,11 @@ begin
    Result.Value := A.Value / B;
 end;
 
+operator / (A: TMassRate; B: TMass): TRate;
+begin
+   Result.Value := A.Value / B.AsDouble;
+end;
+
 operator = (A: TMassRate; B: TMassRate): Boolean;
 begin
    Result := A.Value = B.Value;
@@ -1112,6 +1157,16 @@ end;
 operator / (A: TQuantityRate; B: Double): TQuantityRate;
 begin
    Result.Value := A.Value / B;
+end;
+
+operator / (A: TQuantityRate; B: TQuantity64): TRate;
+begin
+   Result.Value := A.Value / B.AsInt64;
+end;
+
+operator / (A: TQuantityRate; B: TQuantity32): TRate;
+begin
+   Result.Value := A.Value / B.AsCardinal;
 end;
 
 operator = (A: TQuantityRate; B: TQuantityRate): Boolean;
@@ -1277,6 +1332,104 @@ begin
 end;
 
 
+class operator TQuantityRateSum.Initialize(var Rec: TQuantityRateSum);
+begin
+   Rec.Value.Reset();
+end;
+
+function TQuantityRateSum.ToQuantityRate(): TQuantityRate;
+begin
+   Result.Value := Value.ToDouble();
+end;
+
+function TQuantityRateSum.ToDouble(): Double;
+begin
+   Result := Value.ToDouble();
+end;
+
+procedure TQuantityRateSum.Reset();
+begin
+   Value.Reset();
+end;
+
+function TQuantityRateSum.GetIsZero(): Boolean;
+begin
+   Result := Value.IsZero;
+end;
+
+function TQuantityRateSum.GetIsNotZero(): Boolean;
+begin
+   Result := Value.IsNotZero;
+end;
+
+function TQuantityRateSum.GetIsNegative(): Boolean;
+begin
+   Result := Value.IsNegative;
+end;
+
+function TQuantityRateSum.GetIsPositive(): Boolean;
+begin
+   Result := Value.IsPositive;
+end;
+
+procedure TQuantityRateSum.Inc(Delta: TQuantityRate);
+begin
+   Value.Inc(Delta.AsDouble);
+end;
+
+procedure TQuantityRateSum.Dec(Delta: TQuantityRate);
+begin
+   Value.Dec(Delta.AsDouble);
+end;
+
+procedure TQuantityRateSum.Inc(Delta: TQuantityRateSum);
+begin
+   Value.Inc(Delta.Value);
+end;
+
+procedure TQuantityRateSum.Dec(Delta: TQuantityRateSum);
+begin
+   Value.Dec(Delta.Value);
+end;
+
+class operator TQuantityRateSum.Copy(constref Source: TQuantityRateSum; var Destination: TQuantityRateSum);
+begin
+   Destination.Value := Source.Value;
+end;
+
+function TQuantityRateSum.ToString(): UTF8String;
+begin
+   Result := ToQuantityRate.ToString('units');
+end;
+
+class operator TQuantityRateSum.< (A, B: TQuantityRateSum): Boolean;
+begin
+   Result := A.Value < B.Value;
+end;
+
+class operator TQuantityRateSum.> (A, B: TQuantityRateSum): Boolean;
+begin
+   Result := A.Value > B.Value;
+end;
+
+class operator TQuantityRateSum.<= (A, B: TQuantityRateSum): Boolean;
+begin
+   Result := A.Value <= B.Value;
+end;
+
+class operator TQuantityRateSum.>= (A, B: TQuantityRateSum): Boolean;
+begin
+   Result := A.Value >= B.Value;
+end;
+
+class operator TQuantityRateSum.- (A, B: TQuantityRateSum): TQuantityRateSum;
+begin
+   Result.Value.Reset();
+   Result.Value.Inc(A.Value);
+   Result.Value.Dec(B.Value);
+end;
+
+   
 constructor TGrowthRate.FromEachMillisecond(A: Double);
 begin
    Assert(A >= 0.0, 'Negative growth rate: ' + FloatToStr(A));

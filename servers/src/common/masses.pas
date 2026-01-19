@@ -297,7 +297,7 @@ end;
 
 function TMass.ToString(): UTF8String;
 begin
-   Result := FloatToStrF(Value, ffFixed, 0, 1, FloatFormat) + 'kg';
+   Result := FloatToStrF(Value, ffFixed, 0, 15, FloatFormat) + 'kg';
 end;
 
 function TMass.GetIsZero(): Boolean;
@@ -368,7 +368,7 @@ end;
 
 function TMassPerUnit.ToString(): UTF8String;
 begin
-   Result := FloatToStrF(Value, ffFixed, 0, 1, FloatFormat) + 'kg/units';
+   Result := FloatToStrF(Value, ffFixed, 0, 15, FloatFormat) + 'kg/units';
 end;
 
 function TMassPerUnit.GetIsZero(): Boolean;
@@ -402,13 +402,11 @@ end;
 
 operator - (A: TQuantity64; B: TQuantity64): TQuantity64;
 begin
-   Assert(A >= B);
    Result.Value := A.Value - B.Value;
 end;
 
 operator - (A: TQuantity64; B: TQuantity32): TQuantity64;
 begin
-   Assert(A >= B);
    Result.Value := A.Value - B.Value;
 end;
 

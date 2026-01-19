@@ -24,7 +24,7 @@ type
    TMiningFeatureNode = class(TFeatureNode, IMiner)
    strict private
       FFeatureClass: TMiningFeatureClass;
-      FStatus: TRegionClientFields;
+      FStatus: specialize TRegionClientFields<TMassRate>;
    private // IMiner
       function GetMinerMaxRate(): TMassRate; // kg per second
       function GetMinerCurrentRate(): TMassRate; // kg per second
@@ -85,10 +85,8 @@ end;
 destructor TMiningFeatureNode.Destroy();
 begin
    if (FStatus.Connected) then
-   begin
       FStatus.Region.RemoveMiner(Self);
-      FStatus.Reset();
-   end;
+   FStatus.Reset();
    inherited;
 end;
 
@@ -141,6 +139,8 @@ begin
       if (DisabledReasons <> FStatus.DisabledReasons) then
          MarkAsDirty([dkUpdateClients]);
       FStatus.SetDisabledReasons(DisabledReasons, RateLimit);
+      if (FStatus.Connected) then
+         FStatus.Region.ClientChanged();
    end;
    if (FStatus.NeedsConnection) then
    begin
@@ -155,7 +155,6 @@ end;
 procedure TMiningFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);
 var
    Visibility: TVisibility;
-   Flags: Byte;
 begin
    Visibility := Parent.ReadVisibilityFor(DynastyIndex);
    if ((dmDetectable * Visibility <> []) and (dmClassKnown in Visibility)) then
@@ -163,12 +162,6 @@ begin
       Writer.WriteCardinal(fcMining);
       Writer.WriteDouble(FFeatureClass.FBandwidth.AsDouble);
       Writer.WriteCardinal(Cardinal(FStatus.DisabledReasons));
-      Flags := $00;
-      if (FStatus.SourceLimiting) then
-         Flags := Flags or $01; // $R-
-      if (FStatus.TargetLimiting) then
-         Flags := Flags or $02; // $R-
-      Writer.WriteByte(Flags);
       Writer.WriteDouble(FStatus.Rate.AsDouble);
    end;
 end;

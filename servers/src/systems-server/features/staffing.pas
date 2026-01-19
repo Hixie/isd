@@ -23,7 +23,7 @@ type
    strict private
       FFeatureClass: TStaffingFeatureClass;
       FPeopleBus: TPeopleBusFeatureNode;
-      FPriority: TPriority; // TODO: if equal to NoPriority, should reset to zero when ancestor chain changes
+      FPriority: TPriority;
       FWorkers: Cardinal; // call MarkAsDirty dkAffectsVisibility anytime it changes to/from zero
    protected
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
@@ -102,7 +102,8 @@ procedure TStaffingFeatureNode.Attaching();
 begin
    Assert(not Assigned(FPeopleBus));
    Assert(FWorkers = 0);
-   // FPriority could be non-zero if coming from journal
+   if (FPriority = NoPriority) then
+      FPriority := 0;
    MarkAsDirty([dkNeedsHandleChanges]);
 end;
 
@@ -170,7 +171,7 @@ begin
          Result := hrShortcut;
          exit;
       end;
-      if (not Assigned(FPeopleBus)) then
+      if (FPriority = NoPriority) then
          (Message as TCheckDisabledBusMessage).AddReason(drNoBus);
       if (FWorkers < FFeatureClass.Jobs) then
          (Message as TCheckDisabledBusMessage).AddReason(drUnderstaffed, FWorkers / FFeatureClass.Jobs);

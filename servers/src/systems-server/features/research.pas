@@ -18,7 +18,7 @@ type
 
    TResearchFeatureClass = class(TFeatureClass)
    private
-      FFacilities: TTopic.TArray;
+      FFacilities: TTopic.TArray; // implicit topics provided by research feature
    strict protected
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
@@ -433,7 +433,9 @@ procedure TResearchFeatureNode.UpdateResearch();
             Result := True;
             exit;
          end;
-      end;
+      end
+         // XXX else check if the other features on this asset are providing facilities
+         ;
       Result := False;
    end;
 

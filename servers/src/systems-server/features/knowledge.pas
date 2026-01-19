@@ -590,11 +590,34 @@ begin
 end;
 
 procedure TKnowledgeFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);
+
+   procedure SendMaterial(Material: TMaterial);
+   var
+      Flags: UInt64;
+   begin
+      Writer.WriteByte($02);
+      Writer.WriteInt32(Material.ID);
+      Writer.WriteStringReference(Material.Icon);
+      Writer.WriteStringReference(Material.Name);
+      Writer.WriteStringReference(Material.Description);
+      Flags := $00;
+      case Material.UnitKind of
+         ukBulkResource: ;
+         ukComponent: Flags := Flags or $02;
+      end;
+      if (mtFluid in Material.Tags) then
+         Flags := Flags or $01;
+      if (mtPressurized in Material.Tags) then
+         Flags := Flags or $10;
+      Writer.WriteUInt64(Flags);
+      Writer.WriteDouble(Material.MassPerUnit.AsDouble);
+      Writer.WriteDouble(Material.Density);
+   end;
+   
 var
    Visibility: TVisibility;
    Reward: TReward;
    Material: TMaterial;
-   Flags: UInt64;
 begin
    Visibility := Parent.ReadVisibilityFor(DynastyIndex);
    if ((dmDetectable * Visibility <> []) and (dmClassKnown in Visibility)) then
@@ -609,27 +632,12 @@ begin
                   begin
                      Writer.WriteByte($01);
                      Reward.AssetClass.Serialize(Writer);
+                     for Material in Reward.AssetClass.GetRelatedMaterials(System) do
+                        SendMaterial(Material);
                   end;
                rkMaterial:
                   begin
-                     Writer.WriteByte($02);
-                     Material := Reward.Material;
-                     Writer.WriteInt32(Material.ID);
-                     Writer.WriteStringReference(Material.Icon);
-                     Writer.WriteStringReference(Material.Name);
-                     Writer.WriteStringReference(Material.Description);
-                     Flags := $00;
-                     case Material.UnitKind of
-                        ukBulkResource: ;
-                        ukComponent: Flags := Flags or $02;
-                     end;
-                     if (mtFluid in Material.Tags) then
-                        Flags := Flags or $01;
-                     if (mtPressurized in Material.Tags) then
-                        Flags := Flags or $10;
-                     Writer.WriteUInt64(Flags);
-                     Writer.WriteDouble(Material.MassPerUnit.AsDouble);
-                     Writer.WriteDouble(Material.Density);
+                     SendMaterial(Reward.Material);
                   end;
                rkMessage: ;
             end;

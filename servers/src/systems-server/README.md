@@ -462,14 +462,21 @@ specified as `<builder>`. Otherwise, this will be a zero.
 Following this, values describing the asset's structural integrity are
 given:
 
- * a number indicating how much material is in the asset. This is
-   between zero and the sum of the `<max>` values, and fills
-   components in the order given.
- * the rate at which that number is increasing.
- * a number indicating the structural integrity of the asset.
- * the rate at which _that_ number is increasing.
- * the minimum required structural integrity for the object to
-   function (0 if the asset class is not known).
+ * `<quantity>`: a number indicating how much material is in the
+   asset. This is between zero and the sum of the `<max>` values, and
+   fills components in the order given.
+   
+ * `<rate>` (1): the rate at which that number is increasing.
+ 
+ * `<hp>`: a number indicating the structural integrity of the asset.
+ 
+ * `<rate>` (2): the rate at which _that_ number is increasing.
+ 
+ * `<minhp>`: the minimum required structural integrity for the object
+   to function (if the asset class is not known, this will be zero; it
+   can also be zero even if the asset class _is_ known, meaning the
+   asset does not require its structure to be functional, e.g. for an
+   asset that is also an `fcOrePile`).
 
 The maximum structural integrity is the sum of the quantities in the
 material line items (which may be incomplete if the asset class is not
@@ -877,6 +884,9 @@ bit integer with three defined values, 000=solid, 001=fluid,
 For asset classes and materials, names never end with punctuation,
 descriptions always do.
 
+Knowledge features may sometimes contain the same material
+redundantly. Clients are encouraged to hide duplicate entries.
+
 
 #### `fcResearch` (0x11)
 
@@ -912,9 +922,8 @@ asset whose class is not known.
 #### `fcMining` (0x12)
 
 ```bnf
-<featuredata>       ::= <maxrate> <disabled> <flags> <currentrate>
+<featuredata>       ::= <maxrate> <disabled> <currentrate>
 <maxrate>           ::= <double> // kg/ms
-<flags>             ::= <byte> ; see below
 <currentrate>       ::= <double> // kg/ms
 ```
 
@@ -926,26 +935,10 @@ with an `fcOrePile` feature that are descendants of the same
 The `<disabled>` bit field has bits that specify why the feature is
 not mining, if applicable. It is defined in its own section below.
 
-The `<flags>` bit field has eight bits interpreted as follows:
-
-   0 (LSB): There is no more to mine in the source. (If set,
-            `<currentrate> is zero, and this is the only bit set.)
-   1      : There are no piles into which to place mined ore,
-            or the piles are full.
-   2      : reserved, always zero
-   3      : reserved, always zero
-   4      : reserved, always zero
-   5      : reserved, always zero
-   6      : reserved, always zero
-   7 (MSB): reserved, always zero
-
 The `<maxrate>` is the maximum rate of mining for this feature. The
 `<currentrate>` is the current rate of mining. This is affected by
 the availability of resources (see `fcRegion`) and capacity in piles
 (see `fcOrePile`).
-
-A mining feature is _active_ if it is in a region (`fcRegion`), not
-disabled, and there's more to mine.
 
 When there are no available piles, the actual _useful_ mining rate is
 determined by the consumers (refineries, `fcRefining`) but the given
@@ -955,9 +948,9 @@ refined is returned to the ground (where it may be mined again).
 Once a region runs out of minable materials, mining stops and the
 piles are not considered an issue, even if the ore piles are full.
 
-The materials mined will be evident in assets with an `fcOrePile`
-feature (which will have a non-zero mass flow rate while the materials
-are being mined).
+If not used by refining assets, the materials mined will be evident in
+assets with an `fcOrePile` feature (which will have a non-zero mass
+flow rate while the materials are being mined).
 
 
 #### `fcOrePile` (0x13)
@@ -1023,10 +1016,9 @@ collapse.
 #### `fcRefining` (0x15)
 
 ```bnf
-<featuredata>       ::= <ore> <maxrate> <disabled> <flags> <currentrate>
-<ore>               ::= <materialid> | <zero32>
+<featuredata>       ::= <ore> <maxrate> <disabled> <currentrate>
+<ore>               ::= <materialid>
 <maxrate>           ::= <double> // kg/ms
-<flags>             ::= <byte> ; see below
 <currentrate>       ::= <double> // kg/ms
 ```
 
@@ -1034,31 +1026,19 @@ Moves a specific ore (`<ore>`) from the nearest ancestor `fcRegion`'s
 `fcOrePile`s (the sources) to appropriate `fcMaterialPile`s in that
 same region (the targets).
 
-The `<ore>` will be zero if it is not known.
+This feature is only sent if the asset class is known, and if the
+asset class is known then the ore is guaranteed to be known because
+its material will be included in the same knowledge feature as the
+asset class, so `<ore>` will never be zero.
 
 The `<disabled>` bit field has bits that specify why the feature is
 not mining, if applicable. It is defined in its own section below.
 
-The `<flags>` bit field has eight bits interpreted as follows:
-
-   0 (LSB): The refining is being rate-limited by the sources.
-   1      : The refining is being rate-limited by the targets.
-   2      : reserved, always zero
-   3      : reserved, always zero
-   4      : reserved, always zero
-   5      : reserved, always zero
-   6      : reserved, always zero
-   7 (MSB): reserved, always zero
-
 The `<maxrate>` is the maximum rate of refining for this feature. The
-`<currentrate>` is the current rate of refining. This is affected by
-the availability of resources (see `fcMining`, `fcOrePile`) and
-capacity of the target piles (see `fcMaterialPile`). If it is less
-than `<maxrate>` then one of the first two bits of `<flags>` will be
-set, explaining why.
-
-A refining feature is _active_ if it is in a region (`fcRegion`), and
-not disabled.
+`<currentrate>` is the current rate of refining. If they are not the
+same, then at least one bit of `<disabled>` will be set (e.g.
+insufficient staffing, insufficient inputs, insufficient space for
+outputs).
 
 
 #### `fcMaterialPile` (0x16)
@@ -1071,11 +1051,16 @@ not disabled.
 <material>          ::= <materialname> ( <materialid> | <zero32> )
 ```
 
-Piles of sorted bulk materials, generated by refineries (`fcRefining`) or
-factories, used by factories and to build structures (`fcStructure`).
+Piles of sorted bulk materials, generated by refineries (`fcRefining`)
+or factories (`fcFactory`), used by factories and to build structures
+(`fcStructure`).
 
 The `<flowrate>` gives the mass per millisecond being added (or
 removed, if negative) from the pile.
+
+This feature can be sent even if the asset class is not known. The
+`<materialid>` will be zero if the _material_ is not known. (If the
+asset class is known, the material is guaranteed to also be known.)
 
 
 #### `fcMaterialStack` (0x17)
@@ -1089,11 +1074,15 @@ removed, if negative) from the pile.
 ```
 
 Piles of sorted non-bulk materials, generated by refineries
-(`fcRefining`) or factories, used by factories and to build structures
-(`fcStructure`).
+(`fcRefining`) or factories (`fcFactory`), used by factories and to
+build structures (`fcStructure`).
 
 The `<flowrate>` gives a number of items per millisecond being added
 (or removed, if negative) from the pile.
+
+This feature can be sent even if the asset class is not known. The
+`<materialid>` will be zero if the _material_ is not known. (If the
+asset class is known, the material is guaranteed to also be known.)
 
 
 #### `fcGridSensor` (0x18)
@@ -1229,7 +1218,7 @@ people are working it.
 Staff comes from `fcPopulation` centers.
 
 The `<jobs>` is zero if the dynasty does not have access to the
-asset's internals or does not know about the asset class. Otherwise,
+asset's internals and does not know about the asset class. Otherwise,
 it is non-zero.
 
 
@@ -1245,6 +1234,60 @@ the asset in a haphazard fashion. Each child's size will not exceed
 the parent's, but their sum can.
 
 
+### `fcFactory` (0x20)
+
+```bnf
+<featuredata>       ::= <inputs> <outputs> <maxrate> <configuredrate> <currentrate> <disabled>
+<inputs>            ::= <materialmanifest>
+<outputs>           ::= <materialmanifest>
+<materialmanifest>  ::= ( <materialid> <quantity> )* <zero32>
+<quantity>          ::= <uint32> ; not zero
+<maxrate>           ::= <double> ; iterations/ms
+<configuredrate>    ::= <double> ; iterations/ms
+<currentrate>       ::= <double> ; iterations/ms
+```
+
+A feature that converts items from one type to another.
+
+The inputs and outputs are a list of materials (without duplicates),
+with non-zero quantities. Each iteration, the factory takes those
+inputs from material piles/stacks, other factories, and refineries in
+the region, and creates the specified outputs and puts them back into
+the region.
+
+The mass of the inputs will equal the mass of the outputs.
+
+This feature is only sent if the asset class is known, and if the
+asset class is known then the materials involed are guaranteed to be
+known because they will be included in the same knowledge feature as
+the asset class.
+
+The `<currentrate>` is the lowest of the `<maxrate>`, the
+`<configuredrate>`, and any rate limitations implied by `<disabled>`
+(e.g. power or staffing limitations). It specifies the frequency of
+factory iterations.
+
+A factory's output may be delayed if the input cannot immediately be
+found, but any such delays are offset by faster production later, such
+that the average rate is the stated `<currentrate>`. (Such delays will
+only be visible if the region sends an update, e.g. because another
+factory is built. There is no unambiguous way for the client to
+determine the state of such delayed productions, and clients are
+encouraged to just act as if they did not happen, though this might
+result in numbers in the UI going up and down inexplicably.)
+
+This feature supports the following commands (only allowed from the
+asset owner):
+
+ * `set-rate`: One field, a double. Sets the `<configuredrate>`. The
+   rate can be set to any value from zero to `<maxrate>`. The response
+   contains no additional fields.
+
+A factory shuts down automatically if it cannot sustain its
+`<configuredrate>` (due to insufficient inputs or insufficient space
+for outputs); it does not automatically throttle itself.
+
+
 ### `<disabled>`
 
 Some features can be disabled, either manually or because they're out
@@ -1255,17 +1298,17 @@ Such features often have a `<disabled>` bit field, which is 32 bits
 wide and specifies what issues the feature is experiencing. The bits
 are defined as follows.
 
-   0 (LSB) : The asset was manually disabled (see `fcOnOff` feature).
-             This always entirely disables the feature.
-   1       : The asset's structural integrity has not yet reached the
-             minimum functional threshold (see `fcStructure` feature).
-             Currently, this always entirely disables the feature.
-   2       : The asset could not find a coordinating asset. For
+   0 (LSB) : The asset could not find a coordinating asset. For
              example, `fcMining` and `fcRefining` features need an
              ancestor asset with an `fcRegion` feature. This can also
              be reported by `fcBuilder` (there is no feature in the
              protocol that corresponds to the one builders need, but
              it is often also present on features with `fcRegion`).
+             This always entirely disables the feature.
+   1       : The asset's structural integrity has not yet reached the
+             minimum functional threshold (see `fcStructure` feature).
+             Currently, this always entirely disables the feature.
+   2       : The asset was manually disabled (see `fcOnOff` feature).
              This always entirely disables the feature.
    3       : The number of staff assigned to the asset is below the
              required number (see `fcStaffing` feature).
@@ -1274,7 +1317,27 @@ are defined as follows.
    4       : The asset requires a dynasty to own it, and does not
              have one.
              This always entirely disables the feature.
-   5       : reserved, always zero
+   5       : `fcFactory`: The asset is a factory configured to run at
+             a speed that requires inputs faster than they are being
+             generated.
+             `fcRefining`: The asset is a refinery that is being
+             source-limited (i.e. would go faster if more ore was
+             available).
+             `fcMining`: Mining has stopped because any further mining
+             in this region would dangerously collapse the area.
+             Either mine in another area or find another means to
+             extract resources from this region.
+   6       : `fcFactory`: The asset is a factory whose output has
+             nowhere to go, or whose output is being generated faster
+             than other assets are able to consume it. Reducing the
+             factory's speed may help.
+             `fcRefining`: The asset is a refinery that is being
+             target-limited (i.e. would go faster if more space was
+             available to store the refined material).
+             `fcMining`: There is no space to store the ore being
+             mined, so anything not being refined is being dumped back
+             in the ground.
+   7       : reserved, always zero
    ...
    31 (MSB): reserved, always zero
 
@@ -1282,11 +1345,16 @@ If any bit is set, the other bits not being set does not mean their
 condition does not apply. For example, an abandoned, broken, unstaffed
 gun tower may be flagged as only not having a dynasty (bit 4).
 Similarly, a broken mining drill floating in space, turned off, and
-unstaffed, may be flagged as only disabled (0), broken (1), and
-missing its coordinating asset (2), despite also missing staff. This
-is caused by server-side optimizations; once one or more reasons to
+unstaffed, may be flagged as only missing its coordinating asset (0),
+broken (1), and disabled (2), despite also missing staff. This is
+caused by server-side optimizations; once one or more reasons to
 consider an asset disabled are found, the logic to determine other
 reasons may be skipped.
+
+In general, the order of features on an asset does not affect the
+`<disabled>` reasoning. The exception is features, like `fcStaffing`,
+that themselves can be enabled or disabled. For such features, only
+features earlier in the asset will affect the `<disabled>` reasoning.
 
 
 # Systems Server Internal Protocol

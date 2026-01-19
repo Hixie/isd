@@ -173,7 +173,6 @@ begin
    with (specialize GetUpdatedFeature<TModelMiningFeature>(ModelSystem)) do
    begin
       Verify(DisabledReasons = %00000000);
-      Verify(Flags = %00000000);
       Verify(CurrentRate = Double(0.001));
    end;
    with (specialize GetUpdatedFeature<TModelOrePileFeature>(ModelSystem)) do
@@ -187,9 +186,8 @@ begin
    ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 1);
    with (specialize GetUpdatedFeature<TModelMiningFeature>(ModelSystem)) do
    begin
-      Verify(DisabledReasons = %00000000);
+      Verify(DisabledReasons = %01000000); // rate limited by target
       Verify(CurrentRate = 0.0);
-      Verify(Flags = %00000010); // rate limited by target
    end;
    with (specialize GetUpdatedFeature<TModelOrePileFeature>(ModelSystem)) do
    begin
@@ -221,7 +219,6 @@ begin
    begin
       Verify(CurrentRate = Double(0.001));
       Verify(DisabledReasons = %00000000);
-      Verify(Flags = %00000000);
    end;
    with (specialize GetUpdatedFeature<TModelOrePileFeature>(ModelSystem, 0)) do
    begin
@@ -246,8 +243,7 @@ begin
    begin
       Miner := ModelSystem.Assets[Parent.ID];
       Verify(CurrentRate = 0.0);
-      Verify(DisabledReasons = %00000000);
-      Verify(Flags = %00000010); // rate limited by target
+      Verify(DisabledReasons = %01000000); // rate limited by target
    end;
    with (specialize GetUpdatedFeature<TModelOrePileFeature>(ModelSystem, 0)) do
    begin
@@ -272,8 +268,7 @@ begin
    with (specialize GetUpdatedFeature<TModelMiningFeature>(ModelSystem)) do
    begin
       Verify(CurrentRate = 0.0);
-      Verify(DisabledReasons = %00000001); // this is the miner we disabled
-      Verify(Flags = %00000000);
+      Verify(DisabledReasons = %00000100); // this is the miner we disabled
    end;
    with (specialize GetUpdatedFeature<TModelOrePileFeature>(ModelSystem, 0)) do
    begin
@@ -299,8 +294,7 @@ begin
    with (specialize GetUpdatedFeature<TModelMiningFeature>(ModelSystem)) do
    begin
       Verify(CurrentRate = 0.0);
-      Verify(DisabledReasons = %00000001); // still disabled
-      Verify(Flags = %00000000);
+      Verify(DisabledReasons = %00000100); // still disabled
    end;
    with (specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem)) do
    begin
@@ -315,7 +309,6 @@ begin
       Verify(Ore = 12);
       Verify(MaxRate = Double(1000 / 3.6e6));
       Verify(DisabledReasons = %00000000);
-      Verify(Flags = %00000000);
       Verify(CurrentRate = Double(1000 / 3.6e6));
    end;
    with (specialize GetUpdatedFeature<TModelOrePileFeature>(ModelSystem, 0)) do
@@ -351,8 +344,7 @@ begin
    begin
       Verify(Parent = Miner);
       Verify(CurrentRate = 0.0);
-      Verify(DisabledReasons = %00000001); // still disabled
-      Verify(Flags = %00000000);
+      Verify(DisabledReasons = %00000100); // still disabled
    end;
    with (specialize GetUpdatedFeature<TModelOrePileFeature>(ModelSystem, 0)) do
    begin
@@ -392,8 +384,7 @@ begin
    begin
       Verify(Parent = ModelSystem.GetUpdatedAssets()[2]);
       Verify(Ore = 12);
-      Verify(DisabledReasons = %00000000);
-      Verify(Flags = %00000010);
+      Verify(DisabledReasons = %01000000);
       Verify(CurrentRate = 0.0);
    end;
    with (specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem)) do

@@ -11,12 +11,12 @@ type
    TRubbleCollectionMessage = class(TBusMessage)
    private
       FCount: Cardinal;
-      FResult: TMaterialQuantityArray;
-      function GetComposition(): TMaterialQuantityArray;
+      FResult: TMaterialQuantity64Array;
+      function GetComposition(): TMaterialQuantity64Array;
    public
       procedure Grow(Count: Cardinal);
       procedure AddMaterial(Material: TMaterial; Quantity: TQuantity64);
-      property Composition: TMaterialQuantityArray read GetComposition;
+      property Composition: TMaterialQuantity64Array read GetComposition;
    end;
 
 type
@@ -30,7 +30,7 @@ type
 
    TRubblePileFeatureNode = class(TFeatureNode)
    strict private
-      FComposition: TMaterialQuantityArray;
+      FComposition: TMaterialQuantity64Array;
       FDiameter: Double;
    protected
       function GetMass(): TMass; override; // kg
@@ -38,13 +38,13 @@ type
       function HandleBusMessage(Message: TBusMessage): THandleBusMessageResult; override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
-      constructor Create(ASystem: TSystem; ADiameter: Double; AComposition: TMaterialQuantityArray);
+      constructor Create(ASystem: TSystem; ADiameter: Double; AComposition: TMaterialQuantity64Array);
       procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader); override;
       procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); override;
       function HandleCommand(PlayerDynasty: TDynasty; Command: UTF8String; var Message: TMessage): Boolean; override;
       procedure Resize(NewSize: Double);
-      procedure AbsorbRubble(Composition: TMaterialQuantityArray);
+      procedure AbsorbRubble(Composition: TMaterialQuantity64Array);
    end;
 
 implementation
@@ -66,7 +66,7 @@ begin
    FResult[FCount].Init(Material, Quantity);
 end;
 
-function TRubbleCollectionMessage.GetComposition(): TMaterialQuantityArray;
+function TRubbleCollectionMessage.GetComposition(): TMaterialQuantity64Array;
 begin
    SetLength(FResult, FCount);
    Result := FResult;
@@ -90,9 +90,9 @@ begin
 end;
 
 
-constructor TRubblePileFeatureNode.Create(ASystem: TSystem; ADiameter: Double; AComposition: TMaterialQuantityArray);
+constructor TRubblePileFeatureNode.Create(ASystem: TSystem; ADiameter: Double; AComposition: TMaterialQuantity64Array);
 var
-   CompositionEntry: TMaterialQuantity;
+   CompositionEntry: TMaterialQuantity64;
 begin
    inherited Create(ASystem);
    FDiameter := ADiameter;
@@ -106,7 +106,7 @@ end;
 
 function TRubblePileFeatureNode.GetMass(): TMass; // kg
 var
-   CompositionEntry: TMaterialQuantity;
+   CompositionEntry: TMaterialQuantity64;
 begin
    Result := TMass.Zero;
    for CompositionEntry in FComposition do
@@ -127,7 +127,7 @@ var
    RubbleMessage: TRubbleCollectionMessage;
    DismantleMessage: TDismantleMessage;
    Store: TStoreMaterialBusMessage;
-   Entry: TMaterialQuantity;
+   Entry: TMaterialQuantity64;
 begin
    if (Message is TCheckDisabledBusMessage) then
    begin
@@ -238,10 +238,10 @@ begin
    FDiameter := NewSize;
 end;
 
-procedure TRubblePileFeatureNode.AbsorbRubble(Composition: TMaterialQuantityArray);
+procedure TRubblePileFeatureNode.AbsorbRubble(Composition: TMaterialQuantity64Array);
 var
    IndexSrc, IndexDst: Cardinal;
-   CompositionEntry: TMaterialQuantity;
+   CompositionEntry: TMaterialQuantity64;
 begin
    Assert(Length(Composition) > 0);
    if (Length(FComposition) = 0) then

@@ -128,8 +128,8 @@ begin
    LastTime := ModelSystem.CurrentTime;
    with (specialize GetUpdatedFeature<TModelMiningFeature>(ModelSystem)) do
    begin
+      Verify(DisabledReasons = %01000000); // no piles
       Verify(CurrentRate > 0.0);
-      Verify(Flags = 2); // no piles
    end;
    with (specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem)) do
    begin
@@ -393,8 +393,8 @@ begin
    end;
    with (specialize GetUpdatedFeature<TModelMiningFeature>(ModelSystem, 0)) do
    begin
+      Verify(DisabledReasons = %01000000); // piles full
       Verify(CurrentRate = 0.0);
-      Verify(Flags = 2); // piles full
    end;
 
    FreeAndNil(ModelSystem);

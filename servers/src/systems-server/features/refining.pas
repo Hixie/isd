@@ -14,9 +14,11 @@ type
    TRefiningFeatureClass = class(TFeatureClass)
    private
       FOre: TOres;
-      FBandwidth: TMassRate; // kg per second
+      FBandwidth: TQuantityRate;
    strict protected
       function GetFeatureNodeClass(): FeatureNodeReference; override;
+   protected
+      procedure CollectRelatedMaterials(var Materials: TMaterial.TPlasticArray; const Encyclopedia: TMaterialEncyclopedia); override;
    public
       constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
       function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
@@ -25,23 +27,25 @@ type
    TRefiningFeatureNode = class(TFeatureNode, IRefinery)
    strict private
       FFeatureClass: TRefiningFeatureClass;
-      FStatus: TRegionClientFields;
-      FOreKnowledge: TKnowledgeSummary;
+      FStatus: specialize TRegionClientFields<TQuantityRate>;
+      {$IFOPT C+} FOreKnowledge: TKnowledgeSummary; {$ENDIF}
    private // IRefinery
       function GetRefineryOre(): TOres;
-      function GetRefineryMaxRate(): TMassRate; // kg per second
-      function GetRefineryCurrentRate(): TMassRate; // kg per second
+      function GetRefineryMaxRate(): TQuantityRate;
+      function GetRefineryCurrentRate(): TQuantityRate;
       procedure SetRefineryRegion(Region: TRegionFeatureNode);
-      procedure StartRefinery(Rate: TMassRate; SourceLimiting, TargetLimiting: Boolean); // kg per second
+      procedure StartRefinery(Rate: TQuantityRate; SourceLimiting, TargetLimiting: Boolean);
       procedure DisconnectRefinery();
       function GetDynasty(): TDynasty;
       function GetPendingFraction(): PFraction32;
    protected
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
       procedure HandleChanges(); override;
+      {$IFOPT C+}
       procedure ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynasty.TArray); override;
       procedure ResetVisibility(); override;
       procedure HandleKnowledge(const DynastyIndex: Cardinal; const Sensors: ISensorsProvider); override;
+      {$ENDIF}
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
       constructor Create(ASystem: TSystem; AFeatureClass: TRefiningFeatureClass);
@@ -70,7 +74,7 @@ begin
    Reader.Tokens.ReadComma();
    Reader.Tokens.ReadIdentifier('max');
    Reader.Tokens.ReadIdentifier('throughput');
-   FBandwidth := ReadMassPerTime(Reader.Tokens);
+   FBandwidth := ReadQuantityPerTime(Reader.Tokens, Material);
 end;
 
 function TRefiningFeatureClass.GetFeatureNodeClass(): FeatureNodeReference;
@@ -81,6 +85,11 @@ end;
 function TRefiningFeatureClass.InitFeatureNode(ASystem: TSystem): TFeatureNode;
 begin
    Result := TRefiningFeatureNode.Create(ASystem, Self);
+end;
+
+procedure TRefiningFeatureClass.CollectRelatedMaterials(var Materials: TMaterial.TPlasticArray; const Encyclopedia: TMaterialEncyclopedia);
+begin
+   Materials.Push(Encyclopedia.Materials[FOre]);
 end;
 
 
@@ -101,6 +110,7 @@ destructor TRefiningFeatureNode.Destroy();
 begin
    if (FStatus.Connected) then
       FStatus.Region.RemoveRefinery(Self);
+   FStatus.Reset();
    inherited;
 end;
 
@@ -109,12 +119,12 @@ begin
    Result := FFeatureClass.FOre;
 end;
 
-function TRefiningFeatureNode.GetRefineryMaxRate(): TMassRate; // kg per second
+function TRefiningFeatureNode.GetRefineryMaxRate(): TQuantityRate;
 begin
    Result := FFeatureClass.FBandwidth * FStatus.RateLimit;
 end;
 
-function TRefiningFeatureNode.GetRefineryCurrentRate(): TMassRate; // kg per second
+function TRefiningFeatureNode.GetRefineryCurrentRate(): TQuantityRate;
 begin
    Result := FStatus.Rate;
 end;
@@ -124,9 +134,10 @@ begin
    FStatus.SetRegion(Region);
 end;
 
-procedure TRefiningFeatureNode.StartRefinery(Rate: TMassRate; SourceLimiting, TargetLimiting: Boolean); // kg per second
+procedure TRefiningFeatureNode.StartRefinery(Rate: TQuantityRate; SourceLimiting, TargetLimiting: Boolean);
 begin
    Assert(Assigned(FStatus.Region));
+   Assert((Rate = FFeatureClass.FBandwidth) xor (SourceLimiting or TargetLimiting));
    if (FStatus.Update(Rate, SourceLimiting, TargetLimiting)) then
       MarkAsDirty([dkUpdateClients]);
 end;
@@ -155,12 +166,17 @@ var
 begin
    DisabledReasons := CheckDisabled(Parent, RateLimit);
    if ((RateLimit = 0.0) and (FStatus.Connected)) then
+   begin
       FStatus.Region.RemoveRefinery(Self);
+      FStatus.Reset();
+   end;
    if ((DisabledReasons <> FStatus.DisabledReasons) or (RateLimit <> FStatus.RateLimit)) then
    begin
       if (DisabledReasons <> FStatus.DisabledReasons) then
          MarkAsDirty([dkUpdateClients]);
       FStatus.SetDisabledReasons(DisabledReasons, RateLimit);
+      if (FStatus.Connected) then
+         FStatus.Region.ClientChanged();
    end;
    if (FStatus.NeedsConnection) then
    begin
@@ -175,32 +191,34 @@ end;
 procedure TRefiningFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);
 var
    Visibility: TVisibility;
-   Flags: Byte;
+   Material: TMaterial;
 begin
    Visibility := Parent.ReadVisibilityFor(DynastyIndex);
    if ((dmDetectable * Visibility <> []) and (dmClassKnown in Visibility)) then
    begin
       Writer.WriteCardinal(fcRefining);
+      {$IFOPT C+}
+      Assert(FOreKnowledge.GetEntry(DynastyIndex));
       if (FOreKnowledge.GetEntry(DynastyIndex)) then
       begin
+      {$ENDIF}
          Writer.WriteCardinal(FFeatureClass.FOre);
+      {$IFOPT C+}
       end
       else
       begin
          Writer.WriteCardinal(0);
       end;
-      Writer.WriteDouble(FFeatureClass.FBandwidth.AsDouble);
+      {$ENDIF};
+      Material := System.Encyclopedia.Materials[FFeatureClass.FOre];
+      Writer.WriteDouble((FFeatureClass.FBandwidth * Material.MassPerUnit).AsDouble);
       Writer.WriteCardinal(Cardinal(FStatus.DisabledReasons));
-      Flags := $00;
-      if (FStatus.SourceLimiting) then
-         Flags := Flags or $01; // $R-
-      if (FStatus.TargetLimiting) then
-         Flags := Flags or $02; // $R-
-      Writer.WriteByte(Flags);
-      Writer.WriteDouble(FStatus.Rate.AsDouble);
+      Writer.WriteDouble((FStatus.Rate * Material.MassPerUnit).AsDouble);
+      Assert((FStatus.Rate = FFeatureClass.FBandwidth) or (FStatus.DisabledReasons <> []));
    end;
 end;
 
+{$IFOPT C+}
 procedure TRefiningFeatureNode.ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynasty.TArray);
 begin
    FOreKnowledge.Init(Length(NewDynasties)); // $R-
@@ -215,6 +233,7 @@ procedure TRefiningFeatureNode.HandleKnowledge(const DynastyIndex: Cardinal; con
 begin
    FOreKnowledge.SetEntry(DynastyIndex, Sensors.Knows(System.Encyclopedia.Materials[FFeatureClass.FOre]));
 end;
+{$ENDIF}
 
 procedure TRefiningFeatureNode.UpdateJournal(Journal: TJournalWriter);
 begin

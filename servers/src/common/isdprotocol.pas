@@ -36,6 +36,7 @@ const
    ccAnalyze = 'analyze';
    ccGetTopics = 'get-topics';
    ccSetTopic = 'set-topic';
+   ccRate = 'set-rate';
 
 const
    ieInvalidMessage = 'invalid message';
@@ -48,6 +49,7 @@ const
    ieInvalidCommand = 'invalid command';
    ieUnknownDynasty = 'unknown dynasty';
    ieNoDestructors = 'no destructors';
+   ieRangeError = 'range error';
 
 const
    // These must increment monotonically and their values must never change
@@ -84,7 +86,8 @@ const
    fcOnOff = $1D;
    fcStaffing = $1E;
    fcAssetPile = $1F;
-   fcHighestKnownFeatureCode = fcAssetPile;
+   fcFactory = $20;
+   fcHighestKnownFeatureCode = fcFactory;
 
 type
    TAssetClassID = LongInt; // signed because negative values are built-in, and positive values are in tech tree

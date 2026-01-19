@@ -66,7 +66,7 @@ uses
    sysutils, math, floatutils, exceptions, isdnumbers, protoplanetary,
    time, isdprotocol, gossip, commonbuses, systemnetwork,
    // this must import every feature, so they get registered:
-   assetpile, builders, grid, gridsensor, internalsensor,
+   assetpile, builders, factory, grid, gridsensor, internalsensor,
    knowledge, materialpile, messages, mining, name, onoff, orbit,
    orepile, peoplebus, planetary, plot, population, proxy, refining,
    region, research, rubble, size, spacesensor, staffing, stellar,
@@ -722,7 +722,7 @@ function TEncyclopedia.Craterize(Diameter: Double; OldAssets: TAssetNode.TArray;
 var
    OldAsset: TAssetNode;
    CompositionTable: TMaterialQuantityHashTable;
-   Composition: TMaterialQuantityArray;
+   Composition: TMaterialQuantity64Array;
    RubbleCollectionMessage: TRubbleCollectionMessage;
    Index: Cardinal;
    Material: TMaterial;
@@ -814,7 +814,7 @@ var
    FindDestructors: TFindDestructorsMessage;
    ExcessAssets: TAssetNode.TArray;
    ExcessMaterials: TMaterialQuantityHashTable;
-   RubbleComposition: TMaterialQuantityArray;
+   RubbleComposition: TMaterialQuantity64Array;
    Child: TAssetNode;
    Material: TMaterial;
    Index: Cardinal;

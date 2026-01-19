@@ -38,12 +38,14 @@ function ReadBuildEnvironment(Tokens: TTokenizer): TBuildEnvironment;
 function ReadAssetClass(Reader: TTechTreeReader): TAssetClass;
 function ReadMaterial(Reader: TTechTreeReader): TMaterial;
 function ReadTopic(Reader: TTechTreeReader): TTopic;
-function ReadNumber(Tokens: TTokenizer; Min, Max: Int64): Int64;
+function ReadNumber(Tokens: TTokenizer; Min, Max: Int64): Int64; // integer only
+function ReadPerTime(Tokens: TTokenizer): TRate;
 function ReadLength(Tokens: TTokenizer): Double;
 function ReadMass(Tokens: TTokenizer): TMass;
 function ReadMassPerTime(Tokens: TTokenizer): TMassRate;
 function ReadQuantity(Tokens: TTokenizer; Material: TMaterial): TQuantity64;
-function ReadKeywordPerTime(Tokens: TTokenizer; Keyword: UTF8String; Min, Max: Int64): TRate;
+function ReadQuantityPerTime(Tokens: TTokenizer; Material: TMaterial): TQuantityRate;
+function ReadKeywordPerTime(Tokens: TTokenizer; Keyword: UTF8String): TRate;
 function ReadComma(Tokens: TTokenizer): Boolean;
 
 implementation
@@ -782,6 +784,7 @@ begin
       begin
          MaterialNames[Material.Name] := Material;
          MaterialIDs[Material.ID] := Material;
+         // XXX create implicit topics for each material
       end;
       NewMaterials.Prepare(16);
       try
@@ -907,10 +910,10 @@ end;
 
 function ReadLength(Tokens: TTokenizer): Double;
 var
-   Value: Int64;
+   Value: Double;
    Keyword: UTF8String;
 begin
-   Value := Tokens.ReadNumber();
+   Value := Tokens.ReadDouble();
    if (Value <= 0) then
       Tokens.Error('Invalid length "%d"; must be greater than zero', [Value]);
    Keyword := Tokens.ReadIdentifier();
@@ -927,10 +930,10 @@ end;
 
 function ReadMass(Tokens: TTokenizer): TMass;
 var
-   Value: Int64;
+   Value: Double;
    Keyword: UTF8String;
 begin
-   Value := Tokens.ReadNumber();
+   Value := Tokens.ReadDouble();
    if (Value <= 0) then
       Tokens.Error('Invalid mass "%d"; must be greater than zero', [Value]);
    Keyword := Tokens.ReadIdentifier();
@@ -969,6 +972,8 @@ begin
    Tokens.ReadSlash();
    Keyword := Tokens.ReadIdentifier();
    case Keyword of
+      'w': Result := TMillisecondsDuration.FromMilliseconds(7.0 * 24.0 * 60.0 * 60.0 * 1000.0);
+      'd': Result := TMillisecondsDuration.FromMilliseconds(24.0 * 60.0 * 60.0 * 1000.0);
       'h': Result := TMillisecondsDuration.FromMilliseconds(60.0 * 60.0 * 1000.0);
       'min': Result := TMillisecondsDuration.FromMilliseconds(60.0 * 1000.0);
       's': Result := TMillisecondsDuration.FromMilliseconds(1000.0);
@@ -976,6 +981,14 @@ begin
    else
       Tokens.Error('Unknown unit for time "%s"', [Keyword]);
    end;
+end;
+
+function ReadPerTime(Tokens: TTokenizer): TRate;
+var
+   Value: Double;
+begin
+   Value := Tokens.ReadDouble();
+   Result := Value / ReadTimeDenominator(Tokens);
 end;
 
 function ReadMassPerTime(Tokens: TTokenizer): TMassRate;
@@ -988,11 +1001,21 @@ begin
    Result := Value / ReadTimeDenominator(Tokens);
 end;
 
-function ReadKeywordPerTime(Tokens: TTokenizer; Keyword: UTF8String; Min, Max: Int64): TRate;
+function ReadQuantityPerTime(Tokens: TTokenizer; Material: TMaterial): TQuantityRate;
+var
+   Value: TQuantity64;
+begin
+   Value := ReadQuantity(Tokens, Material);
+   if (Value.IsNegative) then
+      Tokens.Error('Invalid throughput "%s"; must be positive', [Value.ToString()]);
+   Result := Value / ReadTimeDenominator(Tokens);
+end;
+
+function ReadKeywordPerTime(Tokens: TTokenizer; Keyword: UTF8String): TRate;
 var
    Value: Double;
 begin
-   Value := ReadNumber(Tokens, Min, Max);
+   Value := Tokens.ReadDouble();
    Tokens.ReadIdentifier(Keyword);
    Result := Value / ReadTimeDenominator(Tokens);
 end;

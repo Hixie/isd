@@ -17,24 +17,28 @@ const
 
 type
    TDisabledReason = (
-      drManuallyDisabled = $00, // Manually disabled.
-      drStructuralIntegrity = $01, // Structural integrity has not yet reached minimum functional threshold.
-      drNoBus = $02, // Not usually used with TCheckDisabledBusMessage, but indicates no appropriate bus could be reached (e.g. TRegionFeatureNode for mining/refining, or TBuilderBusFeatureNode for builders).
-      drUnderstaffed = $03, // Staffing levels are below required levels for funcionality.
-      drUnowned = $04, // The asset is not associated with a dynasty.
-      drCannotGuaranteeInput = $05, // A factory is disabled because the region could not guarantee availibility of input.
-      drCannotStoreOutput = $06 // A factory is disabled because the region could not guarantee availability of space for output.
+      drNoBus = 0, // Not usually used with TCheckDisabledBusMessage, but indicates no appropriate bus could be reached (e.g. TRegionFeatureNode for mining/refining, or TBuilderBusFeatureNode for builders).
+      drStructuralIntegrity = 1, // Structural integrity has not yet reached minimum functional threshold.
+      drManuallyDisabled = 2, // Manually disabled.
+      drUnderstaffed = 3, // Staffing levels are below required levels for functionality.
+      drUnowned = 4, // The asset is not associated with a dynasty.
+      drCannotGuaranteeInput = 5, // A factory is disabled because the region could not guarantee availibility of input.
+      drCannotStoreOutput = 6, // A factory is disabled because the region could not guarantee availability of space for output.
+      drActive // unused; reserved value for fdActive
    );
    TDisabledReasons = set of TDisabledReason;
 
    TFactoryDisabledReason = ( // guaranteed to be bitwise compatible with TDisabledReason except for fdActive
-      fdActive = $00,
+      fdNotYetActive = Cardinal(drNoBus), // never sent by region, intended as initial value
       fdCannotGuaranteeInput = Cardinal(drCannotGuaranteeInput),
-      fdCannotStoreOutput = Cardinal(drCannotStoreOutput)
+      fdCannotStoreOutput = Cardinal(drCannotStoreOutput),
+      fdActive = Cardinal(drActive) // never sent by region
    );
+   {$IF SIZEOF(TFactoryDisabledReason) > SIZEOF(TDisabledReason) } {$FATAL TFactoryDisabledReason inconsistent} {$ENDIF}
    
 const
-   drActive = High(TFactoryDisabledReason);
+   drSourceLimited = drCannotGuaranteeInput; // For refineries and miners.
+   drTargetLimited = drCannotStoreOutput; // For refineries and miners.
    
 type
    TCheckDisabledBusMessage = class(TBusMessage)

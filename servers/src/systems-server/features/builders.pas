@@ -973,7 +973,9 @@ begin
          'build':
             begin
                Acknowledge(bkBuildRate);
-               FBuildRate := ReadKeywordPerTime(Reader.Tokens, 'hp', 1, High(Int64));
+               FBuildRate := ReadKeywordPerTime(Reader.Tokens, 'hp');
+               if (not FBuildRate.IsPositive) then
+                  Reader.Tokens.Error('Invalid build rate: %s', [FBuildRate.ToString('units')]);
             end;
       else
          Reader.Tokens.Error('Unexpected keyword "%s"', [Keyword]);

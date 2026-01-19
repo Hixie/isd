@@ -475,8 +475,8 @@ begin
       if (not ParsedMessage.InputClosed) then
          ParsedMessage.Error(ieInvalidMessage);
    except
-      ParsedMessage.Error(ieInternalError);
       ReportCurrentException();
+      ParsedMessage.Error(ieInternalError);
       raise;
    end;
 end;

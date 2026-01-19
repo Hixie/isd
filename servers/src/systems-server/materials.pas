@@ -5,14 +5,14 @@ unit materials;
 interface
 
 uses
-   hashtable, hashfunctions, hashsettight, genericutils, stringutils, isdnumbers, time, isdprotocol, masses;
+   hashtable, hashfunctions, hashsettight, genericutils, stringutils, isdnumbers, time, isdprotocol, masses, plasticarrays;
 
 type
    TMaterial = class;
 
    TMaterialID = LongInt; // signed because negative values are built-in, and positive values are in tech tree and ores.mrf
 
-   TOres = 1..22; // IDs that are valid in the ores.mrf file (but not the tech tree)
+   TOres = 1..23; // IDs that are valid in the ores.mrf file (but not the tech tree; tech tree uses 65+)
 
    TMaterialHashSet = specialize TObjectSet<TMaterial>;
 
@@ -24,11 +24,16 @@ type
       constructor Create(ACount: THashTableSizeInt = 8);
    end;
 
-   TMaterialQuantity = record
+   TMaterialQuantity64 = record
       Material: TMaterial;
       Quantity: TQuantity64;
       procedure Init(AMaterial: TMaterial; AQuantity: TQuantity64);
       procedure Dec(Delta: TQuantity64);
+   end;
+
+   TMaterialQuantity32 = record
+      Material: TMaterial;
+      Quantity: TQuantity32;
    end;
 
    TMaterialQuantityHashTable = class(specialize THashTable<TMaterial, TQuantity64, TObjectUtils>)
@@ -38,10 +43,15 @@ type
       function ClampedDec(Material: TMaterial; Delta: TQuantity64): TQuantity64; inline; // returns how much was actually transferred
    end;
 
-   TMaterialRateHashTable = class(specialize THashTable<TMaterial, TQuantityRate, TObjectUtils>)
+   // Uses 127.128 fixed point arithmetic! Not Doubles!
+   TMaterialRateHashTable = class(specialize THashTable<TMaterial, TQuantityRateSum, TObjectUtils>)
+   public
       constructor Create(ACount: THashTableSizeInt = 2);
+      procedure Reset(Material: TMaterial);
       procedure Inc(Material: TMaterial; Delta: TQuantityRate);
+      procedure Inc(Material: TMaterial; Delta: TQuantityRateSum);
       procedure Dec(Material: TMaterial; Delta: TQuantityRate);
+      procedure Dec(Material: TMaterial; Delta: TQuantityRateSum);
    end;
 
    TMaterialCountHashTable = class(specialize THashTable<TMaterial, Cardinal, TObjectUtils>)
@@ -50,17 +60,21 @@ type
       procedure Dec(Material: TMaterial; Delta: Cardinal); inline;
    end;
 
-   PMaterialQuantityArray = ^TMaterialQuantityArray;
-   TMaterialQuantityArray = array of TMaterialQuantity;
+   PMaterialQuantityArray = ^TMaterialQuantity64Array;
+   TMaterialQuantity64Array = array of TMaterialQuantity64;
 
-   PQuantityArray = ^TQuantity64Array;
+   PMaterialQuantity32Array = ^TMaterialQuantity32Array;
+   TMaterialQuantity32Array = array of TMaterialQuantity32;
+
+   PQuantity64Array = ^TQuantity64Array;
    TQuantity64Array = array of TQuantity64;
 
    POreQuantities = ^TOreQuantities;
    
    TOreQuantities = array[TOres] of TQuantity64;
    TOreFractions = array[TOres] of Fraction32;
-   TOreRates = array[TOres] of TMassRate;
+   TOreRates = array[TOres] of TQuantityRate;
+   TFixedPointOreRates = array[TOres] of TQuantityRateSum;
    TOreMasses = array[TOres] of TMass;
 
    TMaterialAbundanceParameters = record
@@ -89,17 +103,25 @@ type
    );
    TMaterialTags = set of TMaterialTag;
 
+   MaterialUtils = record
+      class function Equals(const A, B: TMaterial): Boolean; static; inline;
+      class function LessThan(const A, B: TMaterial): Boolean; static; inline;
+      class function GreaterThan(const A, B: TMaterial): Boolean; static; inline;
+      class function Compare(const A, B: TMaterial): Int64; static; inline;
+   end;
+
    TMaterial = class sealed
    public
       type
          TArray = array of TMaterial;
+         TPlasticArray = specialize PlasticArray<TMaterial, MaterialUtils>;
    protected
       FID: TMaterialID;
       FName, FAmbiguousName, FDescription: UTF8String;
       FIcon: TIcon;
       FUnitKind: TUnitKind;
       FMassPerUnit: TMassPerUnit; // kg
-      FDensity: Double; // m^3
+      FDensity: Double; // kg/m^3
       FBondAlbedo: Double;
       FTags: TMaterialTags;
       FAbundance: TMaterialAbundance;
@@ -173,7 +195,7 @@ function MaterialHash32(const Key: TMaterial): DWord;
 implementation
 
 uses
-   sysutils, strutils, intutils, math, plasticarrays;
+   sysutils, strutils, intutils, math;
 
 function MaterialHash32(const Key: TMaterial): DWord;
 begin
@@ -192,13 +214,13 @@ end;
 
 
 
-procedure TMaterialQuantity.Init(AMaterial: TMaterial; AQuantity: TQuantity64);
+procedure TMaterialQuantity64.Init(AMaterial: TMaterial; AQuantity: TQuantity64);
 begin
    Material := AMaterial;
    Quantity := AQuantity;
 end;
 
-procedure TMaterialQuantity.Dec(Delta: TQuantity64);
+procedure TMaterialQuantity64.Dec(Delta: TQuantity64);
 begin
    Assert(Assigned(Material));
    Assert(Delta.IsPositive);
@@ -221,10 +243,6 @@ begin
    Assert(Delta.IsNotZero);
    if (Has(Material)) then
    begin
-      if (Delta > TQuantity64.Max - Self[Material]) then
-      begin
-         raise EOverflow.Create('Overflowed TMaterialQuantityHashTable value');
-      end;
       Value := Self[Material] + Delta; // $R-
    end
    else
@@ -239,7 +257,6 @@ begin
    Assert(Delta.IsNotZero);
    Assert(Delta.IsPositive);
    Assert(Has(Material));
-   Assert(Delta <= Self[Material]);
    Self[Material] := Self[Material] - Delta; // $R-
 end;
 
@@ -248,6 +265,7 @@ begin
    // Return how much the value was actually changed.
    Assert(Delta.IsNotZero);
    Assert(Delta.IsPositive);
+   Assert(not Self[Material].IsNegative);
    if (Delta <= Self[Material]) then
    begin
       Result := Delta;
@@ -267,34 +285,76 @@ begin
    inherited Create(@MaterialHash32, ACount);
 end;
 
+procedure TMaterialRateHashTable.Reset(Material: TMaterial);
+var
+   Value: TQuantityRateSum;
+begin
+   Value.Reset();
+   Items[Material] := Value;
+end;
+
 procedure TMaterialRateHashTable.Inc(Material: TMaterial; Delta: TQuantityRate);
 var
-   Value: TQuantityRate;
+   Value: TQuantityRateSum;
 begin
    if (Has(Material)) then
    begin
-      Value := Self[Material] + Delta;
+      Value := Items[Material];
+   end
+   else
+   begin
+      Value.Reset();
+   end;
+   Value.Inc(Delta);
+   Items[Material] := Value;
+end;
+
+procedure TMaterialRateHashTable.Dec(Material: TMaterial; Delta: TQuantityRate);
+var
+   Value: TQuantityRateSum;
+begin
+   if (Has(Material)) then
+   begin
+      Value := Items[Material];
+   end
+   else
+   begin
+      Value.Reset();
+   end;
+   Value.Dec(Delta);
+   Items[Material] := Value;
+end;
+
+procedure TMaterialRateHashTable.Inc(Material: TMaterial; Delta: TQuantityRateSum);
+var
+   Value: TQuantityRateSum;
+begin
+   if (Has(Material)) then
+   begin
+      Value := Items[Material];
+      Value.Inc(Delta);
    end
    else
    begin
       Value := Delta;
    end;
-   Self[Material] := Value;
+   inherited Items[Material] := Value;
 end;
 
-procedure TMaterialRateHashTable.Dec(Material: TMaterial; Delta: TQuantityRate);
+procedure TMaterialRateHashTable.Dec(Material: TMaterial; Delta: TQuantityRateSum);
 var
-   Value: TQuantityRate;
+   Value: TQuantityRateSum;
 begin
    if (Has(Material)) then
    begin
-      Value := Self[Material] - Delta;
+      Value := Items[Material];
    end
    else
    begin
-      Value := -Delta;
+      Value.Reset();
    end;
-   Self[Material] := Value;
+   Value.Dec(Delta);
+   Items[Material] := Value;
 end;
 
 
@@ -323,6 +383,27 @@ begin
    Assert(Has(Material));
    Assert(Delta <= Self[Material]);
    Self[Material] := Self[Material] - Delta; // $R-
+end;
+
+
+class function MaterialUtils.Equals(const A, B: TMaterial): Boolean;
+begin
+   Result := A = B;
+end;
+
+class function MaterialUtils.LessThan(const A, B: TMaterial): Boolean;
+begin
+   Result := A.ID < B.ID;
+end;
+
+class function MaterialUtils.GreaterThan(const A, B: TMaterial): Boolean;
+begin
+   Result := A.ID > B.ID;
+end;
+
+class function MaterialUtils.Compare(const A, B: TMaterial): Int64;
+begin
+   Result := A.ID - B.ID;
 end;
 
 
@@ -446,35 +527,6 @@ begin
 end;
 
 
-type
-   MaterialUtils = record
-      class function Equals(const A, B: TMaterial): Boolean; static; inline;
-      class function LessThan(const A, B: TMaterial): Boolean; static; inline;
-      class function GreaterThan(const A, B: TMaterial): Boolean; static; inline;
-      class function Compare(const A, B: TMaterial): Int64; static; inline;
-   end;
-
-class function MaterialUtils.Equals(const A, B: TMaterial): Boolean;
-begin
-   Result := A = B;
-end;
-
-class function MaterialUtils.LessThan(const A, B: TMaterial): Boolean;
-begin
-   Result := A.ID < B.ID;
-end;
-
-class function MaterialUtils.GreaterThan(const A, B: TMaterial): Boolean;
-begin
-   Result := A.ID > B.ID;
-end;
-
-class function MaterialUtils.Compare(const A, B: TMaterial): Int64;
-begin
-   Result := A.ID - B.ID;
-end;
-
-
 function LoadOres(Filename: RawByteString): TMaterial.TArray;
 
    function ParseDouble(Value: UTF8String): Double;
@@ -498,7 +550,7 @@ var
    MaterialDensity, MaterialBondAlbedo, MaterialDistance, MaterialAbundance: Double;
    MaterialAbundances: array of TMaterialAbundanceParameters;
    Material: TMaterial;
-   MaterialList: specialize PlasticArray<TMaterial, MaterialUtils>;
+   MaterialList: TMaterial.TPlasticArray;
 begin
    MaterialList.Prepare(High(TOres) + 1);
    Assign(F, Filename);
@@ -536,7 +588,7 @@ begin
             raise EConvertError.Create('Unknown material tag "' + Tag + '"');
          end;
       end;
-      Readln(F, DensityLine); // floating point number
+      Readln(F, DensityLine); // floating point number, kg/m^3
       MaterialDensity := ParseDouble(DensityLine);
       Readln(F, BondAlbedoLine); // floating point number
       if (BondAlbedoLine = 'n/a') then

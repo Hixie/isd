@@ -467,6 +467,8 @@ type
    strict protected
       function GetFeatureNodeClass(): FeatureNodeReference; virtual; abstract;
       function GetDefaultSize(): Double; virtual;
+   protected
+      procedure CollectRelatedMaterials(var Materials: TMaterial.TPlasticArray; const Encyclopedia: TMaterialEncyclopedia); virtual;
    public
       constructor CreateFromTechnologyTree(Reader: TTechTreeReader); virtual; abstract;
       function InitFeatureNode(ASystem: TSystem): TFeatureNode; virtual; abstract;
@@ -634,6 +636,7 @@ type
       property Description: UTF8String read FDescription;
       property Icon: TIcon read FIcon;
       property DefaultSize: Double read GetDefaultSize;
+      function GetRelatedMaterials(const System: TSystem): TMaterial.TArray;
    public
       property ID: TAssetClassID read FID;
       property AmbiguousName: UTF8String read FAmbiguousName;
@@ -1438,6 +1441,10 @@ begin
    Result := 0.0;
 end;
 
+procedure TFeatureClass.CollectRelatedMaterials(var Materials: TMaterial.TPlasticArray; const Encyclopedia: TMaterialEncyclopedia);
+begin
+end;
+
 
 constructor TFeatureNode.CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem);
 begin
@@ -1908,6 +1915,16 @@ end;
 function TAssetClass.CanBuild(BuildEnvironment: TBuildEnvironment): Boolean;
 begin
    Result := BuildEnvironment in FBuildEnvironments;
+end;
+
+function TAssetClass.GetRelatedMaterials(const System: TSystem): TMaterial.TArray;
+var
+   Materials: TMaterial.TPlasticArray;
+   Feature: TFeatureClass;
+begin
+   for Feature in FFeatures do
+      Feature.CollectRelatedMaterials(Materials, System.Encyclopedia);
+   Result := Materials.Distill();
 end;
 
 

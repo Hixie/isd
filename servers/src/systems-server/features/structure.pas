@@ -200,7 +200,7 @@ begin
    Reader.Tokens.ReadCloseParenthesis();
    Reader.Tokens.ReadComma();
    Reader.Tokens.ReadIdentifier('minimum');
-   FMinimumFunctionalQuantity := TQuantity32.FromUnits(ReadNumber(Reader.Tokens, 1, Total.AsCardinal)); // $R-
+   FMinimumFunctionalQuantity := TQuantity32.FromUnits(ReadNumber(Reader.Tokens, 0, Total.AsCardinal)); // $R-
    FBillOfMaterials := MaterialsList.Distill();
    FTotalQuantityCache := ComputeTotalQuantity();
    FMassCache := ComputeMass();
@@ -850,7 +850,7 @@ var
    Index: Cardinal;
    Level: TQuantity32;
    Obtain: TObtainMaterialBusMessage;
-   ObtainedMaterial: TMaterialQuantity;
+   ObtainedMaterial: TMaterialQuantity64;
 begin
    Writeln(DebugName, ' :: FetchMaterials');
    Assert(Assigned(Parent.Owner));
@@ -916,7 +916,7 @@ begin
       if (FBuildingState^.MaterialsQuantityRate.IsPositive) then
       begin
          Assert(Assigned(FBuildingState^.PendingMaterial));
-         FBuildingState^.Region.SyncForMaterialConsumer();
+         FBuildingState^.Region.ClientChanged();
          // DeliverMaterialConsumer() will be called here
       end;
       FBuildingState^.Region.RemoveMaterialConsumer(Self);
@@ -1165,7 +1165,7 @@ begin
       if (FBuildingState^.MaterialsQuantityRate.IsNotExactZero) then
       begin
          Assert(Assigned(FBuildingState^.PendingMaterial));
-         FBuildingState^.Region.SyncForMaterialConsumer();
+         FBuildingState^.Region.ClientChanged();
          // DeliverMaterialConsumer() will be called here, and it handles the structural integrity stuff
       end
       else
@@ -1206,7 +1206,7 @@ begin
       begin
          // we still have materials to get, but we don't yet know what is next
          Assert(FBuildingState^.PendingQuantity.IsZero); // reset by DeliverMaterialConsumer
-         FBuildingState^.Region.SyncForMaterialConsumer();
+         FBuildingState^.Region.ClientChanged();
          Assert(FBuildingState^.MaterialsQuantityRate.IsNearZero); // reset by ReconsiderMaterialConsumer calling PauseMaterialConsumer
          Assert(FBuildingState^.StructuralIntegrity < FFeatureClass.TotalQuantity.AsCardinal);
          Assert(FBuildingState^.StructuralIntegrityRate.IsNotNearZero);

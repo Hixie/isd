@@ -6,7 +6,7 @@ interface
 
 uses
    basenetwork, systems, serverstream, materials, techtree,
-   messageport, region, time, systemdynasty, masses;
+   messageport, region, time, systemdynasty, masses, annotatedpointer;
 
 type
    TMaterialPileFeatureClass = class(TFeatureClass)
@@ -15,6 +15,8 @@ type
       FMaterial: TMaterial;
    strict protected
       function GetFeatureNodeClass(): FeatureNodeReference; override;
+   protected
+      procedure CollectRelatedMaterials(var Materials: TMaterial.TPlasticArray; const Encyclopedia: TMaterialEncyclopedia); override;
    public
       constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
       function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
@@ -22,9 +24,12 @@ type
 
    TMaterialPileFeatureNode = class(TFeatureNode, IMaterialPile)
    strict private
+      type
+         TRegionStatus = (rsNoRegion);
+   strict private
       FFeatureClass: TMaterialPileFeatureClass;
       FMaterialKnowledge: TKnowledgeSummary;
-      FRegion: TRegionFeatureNode;
+      FRegion: specialize TAnnotatedPointer<TRegionFeatureNode, TRegionStatus>;
    private // IMaterialPile
       function GetMaterialPileMaterial(): TMaterial;
       function GetMaterialPileCapacity(): TQuantity64;
@@ -45,6 +50,8 @@ type
    public
       constructor Create(ASystem: TSystem; AFeatureClass: TMaterialPileFeatureClass);
       destructor Destroy(); override;
+      procedure Attaching(); override;
+      procedure Detaching(); override;
       procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader); override;
    end;
@@ -76,6 +83,11 @@ begin
    Result := TMaterialPileFeatureNode.Create(ASystem, Self);
 end;
 
+procedure TMaterialPileFeatureClass.CollectRelatedMaterials(var Materials: TMaterial.TPlasticArray; const Encyclopedia: TMaterialEncyclopedia);
+begin
+   Materials.Push(FMaterial);
+end;
+
 
 constructor TMaterialPileFeatureNode.Create(ASystem: TSystem; AFeatureClass: TMaterialPileFeatureClass);
 begin
@@ -92,10 +104,25 @@ end;
 
 destructor TMaterialPileFeatureNode.Destroy();
 begin
-   if (Assigned(FRegion)) then
-      FRegion.RemoveMaterialPile(Self);
+   if (FRegion.Assigned) then
+      FRegion.Unwrap().RemoveMaterialPile(Self);
+   FRegion.Clear();
    FMaterialKnowledge.Done();
    inherited;
+end;
+
+procedure TMaterialPileFeatureNode.Attaching();
+begin
+   Assert(not FRegion.Assigned);
+   Assert(FRegion.IsFlagClear(rsNoRegion));
+   MarkAsDirty([dkNeedsHandleChanges]);
+end;
+
+procedure TMaterialPileFeatureNode.Detaching();
+begin
+   if (FRegion.Assigned) then
+      FRegion.Unwrap().RemoveMaterialPile(Self);
+   FRegion.Clear();
 end;
 
 function TMaterialPileFeatureNode.GetMaterialPileMaterial(): TMaterial;
@@ -111,20 +138,20 @@ end;
 
 procedure TMaterialPileFeatureNode.SetMaterialPileRegion(Region: TRegionFeatureNode);
 begin
-   Assert(not Assigned(FRegion));
+   Assert(not FRegion.Assigned);
    FRegion := Region;
 end;
 
 procedure TMaterialPileFeatureNode.RegionAdjustedMaterialPiles();
 begin
-   Assert(Assigned(FRegion));
+   Assert(FRegion.Assigned);
    MarkAsDirty([dkUpdateClients]);
 end;
 
 procedure TMaterialPileFeatureNode.DisconnectMaterialPile();
 begin
-   Assert(Assigned(FRegion));
-   FRegion := nil;
+   Assert(FRegion.Assigned);
+   FRegion.Clear();
    MarkAsDirty([dkUpdateClients, dkNeedsHandleChanges]);
 end;
 
@@ -139,10 +166,10 @@ var
 begin
    if (Message is TRubbleCollectionMessage) then
    begin
-      if (Assigned(FRegion)) then
+      if (FRegion.Assigned) then
       begin
-         Quantity := FRegion.ExtractMaterialPile(Self);
-         FRegion := nil;
+         Quantity := FRegion.Unwrap().ExtractMaterialPile(Self); // this also disconnects the pile
+         FRegion.Clear();
          (Message as TRubbleCollectionMessage).AddMaterial(FFeatureClass.FMaterial, Quantity);
          MarkAsDirty([dkUpdateClients, dkNeedsHandleChanges]);
       end;
@@ -154,16 +181,16 @@ begin
       if (not Assigned(Parent.Owner)) then
       begin
          // TODO: once we support frozen piles, transfer the contents to the region's material piles on behalf of the Messsage.Owner
-         Assert(not Assigned(FRegion));
+         Assert(not FRegion.Assigned);
       end
       else
       begin
          Assert((Message as TDismantleMessage).Owner = Parent.Owner);
-         if (Assigned(FRegion)) then
+         if (FRegion.Assigned) then
          begin
             Writeln('  calling region to rehome pile contents');
-            Quantity := FRegion.RehomeMaterialPile(Self);
-            FRegion := nil;
+            Quantity := FRegion.Unwrap().RehomeMaterialPile(Self); // this also disconnects the pile
+            FRegion.Clear();
             if (Quantity.IsPositive) then
                (Message as TDismantleMessage).AddExcessMaterial(FFeatureClass.FMaterial, Quantity);
             MarkAsDirty([dkUpdateClients, dkNeedsHandleChanges]);
@@ -177,10 +204,13 @@ procedure TMaterialPileFeatureNode.HandleChanges();
 var
    Message: TRegisterMaterialPileBusMessage;
 begin
-   if (Assigned(Parent.Owner) and not Assigned(FRegion)) then
+   if (Assigned(Parent.Owner) and not FRegion.Assigned and FRegion.IsFlagClear(rsNoRegion)) then
    begin
       Message := TRegisterMaterialPileBusMessage.Create(Self);
-      InjectBusMessage(Message); // TODO: if we didn't find a region, we shouldn't do this again until our ancestor chain changed
+      if (InjectBusMessage(Message) <> irHandled) then
+         FRegion.SetFlag(rsNoRegion)
+      else
+         Assert(FRegion.Assigned);         
       FreeAndNil(Message);
    end;
    inherited;
@@ -188,9 +218,9 @@ end;
 
 function TMaterialPileFeatureNode.GetMass(): TMass;
 begin
-   if (Assigned(FRegion)) then
+   if (FRegion.Assigned) then
    begin
-      Result := FRegion.GetMaterialPileMass(Self);
+      Result := FRegion.Unwrap().GetMaterialPileMass(Self);
    end
    else
    begin
@@ -201,9 +231,9 @@ end;
 
 function TMaterialPileFeatureNode.GetMassFlowRate(): TMassRate;
 begin
-   if (Assigned(FRegion)) then
+   if (FRegion.Assigned) then
    begin
-      Result := FRegion.GetMaterialPileMassFlowRate(Self);
+      Result := FRegion.Unwrap().GetMaterialPileMassFlowRate(Self);
    end
    else
    begin
@@ -216,16 +246,16 @@ var
    Visibility: TVisibility;
 begin
    Visibility := Parent.ReadVisibilityFor(DynastyIndex);
-   if ((dmDetectable * Visibility <> []) and (dmClassKnown in Visibility)) then
+   if (dmDetectable * Visibility <> []) then
    begin
       case (FFeatureClass.FMaterial.UnitKind) of
        ukBulkResource:
          begin
             Writer.WriteCardinal(fcMaterialPile);
-            if (Assigned(FRegion)) then
+            if (FRegion.Assigned) then
             begin
-               Writer.WriteDouble(FRegion.GetMaterialPileMass(Self).AsDouble);
-               Writer.WriteDouble(FRegion.GetMaterialPileMassFlowRate(Self).AsDouble);
+               Writer.WriteDouble(FRegion.Unwrap().GetMaterialPileMass(Self).AsDouble);
+               Writer.WriteDouble(FRegion.Unwrap().GetMaterialPileMassFlowRate(Self).AsDouble);
             end
             else
             begin
@@ -237,10 +267,10 @@ begin
         ukComponent:
          begin
             Writer.WriteCardinal(fcMaterialStack);
-            if (Assigned(FRegion)) then
+            if (FRegion.Assigned) then
             begin
-               Writer.WriteInt64(FRegion.GetMaterialPileQuantity(Self).AsInt64);
-               Writer.WriteDouble(FRegion.GetMaterialPileQuantityFlowRate(Self).AsDouble);
+               Writer.WriteInt64(FRegion.Unwrap().GetMaterialPileQuantity(Self).AsInt64);
+               Writer.WriteDouble(FRegion.Unwrap().GetMaterialPileQuantityFlowRate(Self).AsDouble);
             end
             else
             begin

@@ -448,12 +448,10 @@ type
    strict private
       FMaxRate: Double;
       FDisabledReasons: Cardinal;
-      FFlags: Byte;
       FCurrentRate: Double;
    published
       property MaxRate: Double read FMaxRate write FMaxRate;
       property DisabledReasons: Cardinal read FDisabledReasons write FDisabledReasons;
-      property Flags: Byte read FFlags write FFlags;
       property CurrentRate: Double read FCurrentRate write FCurrentRate;
    end;
 
@@ -488,13 +486,11 @@ type
       FOre: Int32;
       FMaxRate: Double;
       FDisabledReasons: Cardinal;
-      FFlags: Byte;
       FCurrentRate: Double;
    published
       property Ore: Int32 read FOre write FOre;
       property MaxRate: Double read FMaxRate write FMaxRate;
       property DisabledReasons: Cardinal read FDisabledReasons write FDisabledReasons;
-      property Flags: Byte read FFlags write FFlags;
       property CurrentRate: Double read FCurrentRate write FCurrentRate;
    end;
 
@@ -614,6 +610,27 @@ type
       Children: specialize PlasticArray <UInt32, specialize IncomparableUtils<UInt32>>;
    end;
 
+   TModelFactoryFeature = class (TModelFeature)
+   public
+      procedure UpdateFrom(Stream: TServerStreamReader); override;
+   public
+      type
+         TFactoryEntry = record
+            MaterialID: Int32;
+            Quantity: UInt32;
+         end;
+   public
+      FInputs, FOutputs: array of TFactoryEntry;
+   strict private
+      FMaxRate, FConfiguredRate, FCurrentRate: Double;
+      FDisabledReasons: Cardinal;
+   published
+      property MaxRate: Double read FMaxRate write FMaxRate;
+      property ConfiguredRate: Double read FConfiguredRate write FConfiguredRate;
+      property CurrentRate: Double read FCurrentRate write FCurrentRate;
+      property DisabledReasons: Cardinal read FDisabledReasons write FDisabledReasons;
+   end;
+
 const
    ModelFeatureClasses: array[1..fcHighestKnownFeatureCode] of TModelFeatureClass = (
      TModelStarFeature,
@@ -646,7 +663,8 @@ const
      TModelInternalSensorStatusFeature,
      TModelOnOffFeature,
      TModelStaffingFeature,
-     TModelAssetPileFeature
+     TModelAssetPileFeature,
+     TModelFactoryFeature
   );
 
 implementation
@@ -1577,7 +1595,6 @@ procedure TModelMiningFeature.UpdateFrom(Stream: TServerStreamReader);
 begin
    MaxRate := Stream.ReadDouble();
    DisabledReasons := Stream.ReadCardinal();
-   Flags := Stream.ReadByte();
    CurrentRate := Stream.ReadDouble();
 end;
 
@@ -1611,7 +1628,6 @@ begin
    Ore := Stream.ReadInt32();
    MaxRate := Stream.ReadDouble();
    DisabledReasons := Stream.ReadCardinal();
-   Flags := Stream.ReadByte();
    CurrentRate := Stream.ReadDouble();
 end;
 
@@ -1722,6 +1738,36 @@ begin
    if (not Children.IsEmpty) then
       for Index := 0 to Children.Length - 1 do // $R-
          Callback(System.Assets[Children[Index]]);
+end;
+
+
+
+procedure TModelFactoryFeature.UpdateFrom(Stream: TServerStreamReader);
+type
+   TFactoryEntryArray = array of TFactoryEntry;
+   
+   procedure ReadManifest(var Manifest: TFactoryEntryArray);
+   var
+      ID: Int32;
+   begin
+      SetLength(Manifest, 0);
+      ID := Stream.ReadInt32();
+      while (ID <> 0) do
+      begin
+         SetLength(Manifest, Length(Manifest) + 1);
+         Manifest[High(Manifest)].MaterialID := ID;
+         Manifest[High(Manifest)].Quantity := Stream.ReadCardinal();
+         ID := Stream.ReadInt32();
+      end;
+   end;
+   
+begin
+   ReadManifest(FInputs);
+   ReadManifest(FOutputs);
+   FMaxRate := Stream.ReadDouble();
+   FConfiguredRate := Stream.ReadDouble();
+   FCurrentRate := Stream.ReadDouble();
+   FDisabledReasons := Stream.ReadCardinal();
 end;
 
 end.
