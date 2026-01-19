@@ -77,9 +77,9 @@ class MaterialStackFeature extends AbilityFeature {
         else if (quantity == 0.0)
           const Text('Storage is empty.')
         else if (pileQuantityFlowRate > 0.0)
-          Text('Storage is filling at ${prettyQuantity((pileQuantityFlowRate * 1000.0 * 60.0 * 60.0).truncate(), zero: "zero")} per hour.')
+          Text('Storage is filling at ${prettyRate(pileQuantityFlowRate, const Quantity('', ''))}.')
         else if (pileQuantityFlowRate < 0.0)
-          Text('Storage is draining at ${prettyQuantity((-pileQuantityFlowRate * 1000.0 * 60.0 * 60.0).truncate(), zero: "zero")} per hour.')
+          Text('Storage is draining at ${prettyRate(-pileQuantityFlowRate, const Quantity('', ''))}.')
         else if (pileQuantityFlowRate < 0.0)
           const Text('Storage is not changing.'),
       ],

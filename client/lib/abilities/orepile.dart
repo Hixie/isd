@@ -78,9 +78,9 @@ class OrePileFeature extends AbilityFeature {
         else if (mass == 0.0)
           const Text('Storage is empty.')
         else if (pileMassFlowRate > 0.0)
-          Text('Storage is filling at ${prettyMass(pileMassFlowRate * 1000.0 * 60.0 * 60.0)} per hour.')
+          Text('Storage is filling at ${prettyRate(pileMassFlowRate, const Mass())}.')
         else if (pileMassFlowRate < 0.0)
-          Text('Storage is draining at ${prettyMass(-pileMassFlowRate * 1000.0 * 60.0 * 60.0)} per hour.')
+          Text('Storage is draining at ${prettyRate(-pileMassFlowRate, const Mass())}.')
         else if (pileMassFlowRate < 0.0)
           const Text('Storage is not changing.'),
       ],

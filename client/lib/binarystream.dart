@@ -3,10 +3,11 @@ import 'dart:typed_data';
 
 import 'assetclasses.dart';
 
-class SystemSingletons {
+class SystemSingletons implements AssetClassMap {
   final Map<int, String> _strings = <int, String>{};
   final Map<int, AssetClass> _assetClasses = <int, AssetClass>{};
 
+  @override
   AssetClass assetClass(int id) => _assetClasses[id]!;
 
   void reset() {

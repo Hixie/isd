@@ -71,6 +71,8 @@ class OnOffFeature extends AbilityFeature {
   @override
   String get status {
     for (Feature feature in parent.features) {
+      if (feature == this)
+        continue;
       final String? result = feature.status;
       if (result != null)
         return result;

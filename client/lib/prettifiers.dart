@@ -17,44 +17,33 @@ String prettyTime(int time, { bool precise = true }) {
   return 'Day $day';
 }
 
-String prettyQuantity(int quantity, { String zero = '0', String singular = '', String plural = '' }) {
-  if (quantity < 0)
-    return prettyQuantity(-quantity, singular: singular, plural: plural);
-  if (quantity < 1) {
-    return zero;
-  }
-  if (quantity == 1) {
-    return '$quantity$singular';
-  }
-  if (quantity < 1e6) {
-    return '$quantity$plural';
-  }
-  if (quantity < 1e9) {
-    return (quantity / 1e6).toStringAsFixed(2) + ' million$plural';
-  }
-  if (quantity < 1e12) {
-    return (quantity / 1e9).toStringAsFixed(2) + ' billion$plural';
-  }
-  return '${prettyNumberWithExponent(quantity.toDouble())}$plural';
+abstract class Unit {
+  const Unit();
+  String get singular;
+  String pretty(double value);
 }
 
-String prettyHp(double hp) {
-  if (hp == 0.0) {
-    return '0';
+String prettyNumberWithExponent(double number) {
+  if (number.isNaN)
+    return 'NaN';
+  if (number.isInfinite) {
+    if (number > 0)
+      return '∞';
+    return '-∞';
   }
-  if (hp < 1) {
-    return prettyNumberWithExponent(hp);
+  if (number == 0.0) {
+    return '0.0';
   }
-  if (hp < 1e6) {
-    return hp.round().toString();
+  final String sign;
+  if (number < 0) {
+    sign = '-';
+    number = -number;
+  } else {
+    sign = '';
   }
-  if (hp < 1e9) {
-    return (hp / 1e6).toStringAsFixed(2) + ' million';
-  }
-  if (hp < 1e12) {
-    return (hp / 1e9).toStringAsFixed(2) + ' billion';
-  }
-  return prettyNumberWithExponent(hp);
+  final int exponent = (log(number) / log(10)).floor();
+  final double mantissa = number / pow(10.0, exponent);
+  return '$sign${mantissa.toStringAsFixed(1)}×10${_superscript("$exponent")}';
 }
 
 String prettyNumber(double number) {
@@ -82,6 +71,83 @@ String prettyNumber(double number) {
   return prettyNumberWithExponent(number);
 }
 
+String prettyQuantity(int quantity, { String zero = '0', String singular = '', String plural = '' }) {
+  if (quantity < 0)
+    return prettyQuantity(-quantity, singular: singular, plural: plural);
+  if (quantity < 1) {
+    return zero;
+  }
+  if (quantity == 1) {
+    return '$quantity$singular';
+  }
+  if (quantity < 1e6) {
+    return '$quantity$plural';
+  }
+  if (quantity < 1e9) {
+    return (quantity / 1e6).toStringAsFixed(2) + ' million$plural';
+  }
+  if (quantity < 1e12) {
+    return (quantity / 1e9).toStringAsFixed(2) + ' billion$plural';
+  }
+  return '${prettyNumberWithExponent(quantity.toDouble())}$plural';
+}
+
+class Quantity extends Unit {
+  const Quantity(this.singular, this.plural);
+  @override
+  final String singular;
+  final String plural;
+  @override
+  String pretty(double value) {
+    if (value.toInt() == value) {
+      return prettyQuantity(value.toInt(), singular: singular, plural: plural);
+    }
+    return '${prettyNumber(value)} $plural';
+  }
+}
+
+String prettyHp(double hp) {
+  if (hp == 0.0) {
+    return '0';
+  }
+  if (hp < 1) {
+    return prettyNumberWithExponent(hp);
+  }
+  if (hp < 1e6) {
+    return hp.round().toString();
+  }
+  if (hp < 1e9) {
+    return (hp / 1e6).toStringAsFixed(2) + ' million';
+  }
+  if (hp < 1e12) {
+    return (hp / 1e9).toStringAsFixed(2) + ' billion';
+  }
+  return prettyNumberWithExponent(hp);
+}
+
+class Hp extends Unit {
+  const Hp();
+  @override
+  String get singular => 'hp';
+  @override
+  String pretty(double value) => '${prettyHp(value)} hp';
+}
+
+String prettyIterations(double value) {
+  if (value.toInt() == value) {
+    return prettyQuantity(value.round(), singular: 'iteration', plural: 'iterations');
+  }
+  return '${prettyNumber(value)} iterations';
+}
+
+class Iterations extends Unit {
+  const Iterations();
+  @override
+  String get singular => 'iteration';
+  @override
+  String pretty(double value) => prettyIterations(value);
+}
+
 String prettyHappiness(double happiness) {
   if (happiness <= 0.0) {
     return '☹ ' + prettyNumber(happiness);
@@ -93,22 +159,30 @@ String prettyMass(double mass) {
   if (mass == 0.0) {
     return '0.0 kg';
   }
-  if (mass < 0.001) {
+  if (mass < 0.003) {
     return (mass * 1000000).toStringAsFixed(1) + ' mg';
   }
-  if (mass < 1) {
+  if (mass < 3) {
     return (mass * 1000).toStringAsFixed(1) + ' g';
   }
-  if (mass < 1000) {
+  if (mass < 1900) {
     return mass.toStringAsFixed(1) + ' kg';
   }
-  if (mass < 1000000) {
+  if (mass < 1900000) {
     return (mass / 1000).toStringAsFixed(1) + ' tonnes';
   }
   if (mass < 1000000000) {
     return (mass / 1000000).toStringAsFixed(1) + ' megatonnes';
   }
   return '${prettyNumberWithExponent(mass)} kg';
+}
+
+class Mass extends Unit {
+  const Mass();
+  @override
+  String get singular => 'kg';
+  @override
+  String pretty(double value) => prettyMass(value);
 }
 
 String prettyVolume(double cubicMeters) {
@@ -134,6 +208,14 @@ String prettyVolume(double cubicMeters) {
     return (cubicMeters * 1e-6).toStringAsFixed(1) + ' GL'; // or hm³
   }
   return '${prettyNumberWithExponent(cubicMeters)} m³';
+}
+
+class Volume extends Unit {
+  const Volume();
+  @override
+  String get singular => 'm³';
+  @override
+  String pretty(double value) => prettyVolume(value);
 }
 
 String prettyLength(double m, { int sigfig = 3 }) {
@@ -240,27 +322,63 @@ String prettyLength(double m, { int sigfig = 3 }) {
   return '${roundValue.toStringAsFixed(1)} $units';
 }
 
-String prettyNumberWithExponent(double number) {
-  if (number.isNaN)
-    return 'NaN';
-  if (number.isInfinite) {
-    if (number > 0)
-      return '∞';
-    return '-∞';
+class Length extends Unit {
+  const Length();
+  @override
+  String get singular => 'm';
+  @override
+  String pretty(double value) => prettyLength(value);
+}
+
+String prettyDuration(double time) {
+  if (time <= 0.001) {
+    return '${(time * 1000000).toStringAsFixed(1)} ns';
   }
-  if (number == 0.0) {
-    return '0.0';
+  if (time < 1.0) {
+    return '${(time * 1000).toStringAsFixed(1)} μs';
   }
-  final String sign;
-  if (number < 0) {
-    sign = '-';
-    number = -number;
-  } else {
-    sign = '';
+  if (time < 1200.0) {
+    return '${time.toStringAsFixed(1)} ms';
   }
-  final int exponent = (log(number) / log(10)).floor();
-  final double mantissa = number / pow(10.0, exponent);
-  return '$sign${mantissa.toStringAsFixed(1)}×10${_superscript("$exponent")}';
+  time /= 1000;
+  if (time <= 90.0) {
+    return '${time.toStringAsFixed(1)} s';
+  }
+  time /= 60;
+  if (time <= 90.0) {
+    return '${time.toStringAsFixed(1)} min';
+  }
+  time /= 60;
+  if (time <= 36.0) {
+    return '${time.toStringAsFixed(1)} h';
+  }
+  time /= 24;
+  final double days = time;
+  if (time == 1.0) {
+    return '${time.toStringAsFixed(1)} day';
+  }
+  if (time <= 9.0) {
+    return '${time.toStringAsFixed(1)} days';
+  }
+  time /= 7;
+  if (time == 1.0) {
+    return '${time.toStringAsFixed(1)} week';
+  }
+  if (time <= 52.0) {
+    return '${time.toStringAsFixed(1)} weeks';
+  }
+  time = days / 365;
+  if (time == 1.0) {
+    return '${time.toStringAsFixed(1)} year';
+  }
+  return '${time.toStringAsFixed(1)} years';
+}
+
+String prettyRate(double rate, Unit units) {
+  if (rate == 0.0)
+    return 'stopped';
+  final double perHour = rate * 1000.0 * 60.0 * 60.0;
+  return '${units.pretty(perHour)} per hour (1 ${units.singular} every ${prettyDuration(1.0 / rate)})';
 }
 
 String prettyFraction(double value) {

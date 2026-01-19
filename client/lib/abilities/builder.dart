@@ -24,8 +24,8 @@ class BuilderFeature extends AbilityFeature {
 
   @override
   String get status {
-    if (!disabledReason.enabled)
-      return disabledReason.description;
+    if (!disabledReason.fullyActive)
+      return disabledReason.describe(buildRate);
     return 'Ready';
   }
 
@@ -54,7 +54,7 @@ class BuilderFeature extends AbilityFeature {
                     ],
                   ),
                 ),
-              Text('Maximum build rate: ${prettyHp(buildRate* 1000 * 60 * 60)} hp per hour.'),
+              Text('Maximum build rate: ${prettyRate(buildRate, const Hp())}.'),
             ],
           ),
         ),

@@ -20,8 +20,8 @@ class ResearchFeature extends AbilityFeature {
 
   @override
   String get status {
-    if (!disabledReason.enabled)
-      return disabledReason.description;
+    if (!disabledReason.fullyActive)
+      return disabledReason.describe(null);
     return 'Ready';
   }
 
@@ -153,10 +153,9 @@ class ResearchTopicUi extends StatefulWidget {
 
 @immutable
 class _Topic {
-  const _Topic(this.name, this.label, this.current);
+  const _Topic(this.name, this.label);
   final String name;
   final String label;
-  final bool current;
 
   static int alphabeticalSort(_Topic a, _Topic b) {
     return a.label.compareTo(b.label);
@@ -181,12 +180,11 @@ class _ResearchTopicUiState extends State<ResearchTopicUi> {
           setState(() {
             while (!reader.eof) {
               final String name = reader.readString();
-              final bool current = reader.readBool();
-              if (current)
-                _options.add(_Topic(name, name, current));
+              if (reader.readBool())
+                _options.add(_Topic(name, name));
             }
             _options.sort(_Topic.alphabeticalSort);
-            _options.add(const _Topic('', 'Undirected research', true));
+            _options.add(const _Topic('', 'Undirected research'));
             _pending = false;
             _tired = false;
           });

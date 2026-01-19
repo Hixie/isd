@@ -69,8 +69,8 @@ class PopulationFeature extends AbilityFeature {
 
   @override
   String get status {
-    if (!disabledReason.enabled)
-      return disabledReason.description;
+    if (!disabledReason.fullyActive)
+      return disabledReason.describe(null);
     return 'Ready';
   }
 

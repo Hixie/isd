@@ -11,7 +11,7 @@ class AssetClass {
     required this.description,
   });
 
-  final int id;
+  final int id; // zero if asset class is unknown
   final String icon;
   final String name;
   final String description;
@@ -31,4 +31,8 @@ class AssetClass {
   Widget asIcon(BuildContext context, { required double size, IconsManager? icons, String? tooltip }) {
     return IconsManager.icon(context, icon, size: size, tooltip: tooltip ?? this.tooltip, icons: icons);
   }
+}
+
+abstract interface class AssetClassMap { // ignore: one_member_abstracts
+  AssetClass assetClass(int id);
 }

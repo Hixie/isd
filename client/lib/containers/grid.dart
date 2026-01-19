@@ -17,6 +17,8 @@ import '../world.dart';
 typedef Buildable = ({AssetClass assetClass, int size});
 typedef GridParameters = ({int x, int y, int size});
 
+// TODO: when the connection drops, we create new AssetClass instances, but we don't update the _GridState's selection
+
 class _GridState extends ChangeNotifier {
   AssetClass? get selection => _selection;
   AssetClass? _selection;
@@ -27,12 +29,17 @@ class _GridState extends ChangeNotifier {
 }
 
 class GridFeature extends ContainerFeature {
-  GridFeature(this.cellSize, this.dimension, this.buildables, this.children);
+  GridFeature(this.cellSize, this.dimension, Set<Buildable> buildables, this.assetClassMap, this.children) : buildables = buildables.toList()..sort(_sortBuildables);
 
+  static int _sortBuildables(Buildable a, Buildable b) {
+    return a.assetClass.name.compareTo(b.assetClass.name);
+  }
+  
   final double cellSize;
   final int dimension;
 
   final List<Buildable> buildables;
+  final AssetClassMap assetClassMap;
 
   // consider this read-only; the entire GridFeature gets replaced when the child list changes
   final Map<AssetNode, GridParameters> children;
@@ -44,6 +51,9 @@ class GridFeature extends ContainerFeature {
     super.init(oldFeature);
     if (oldFeature is GridFeature) {
       _state = oldFeature._state;
+      if (_state!._selection != null) {
+        _state!._selection = assetClassMap.assetClass(_state!._selection!.id);
+      }
     } else {
       _state = _GridState();
     }
@@ -122,12 +132,14 @@ class GridFeature extends ContainerFeature {
                   padding: const EdgeInsets.only(bottom: 8.0),
                   child: ListenableBuilder(
                     listenable: _state!,
-                    builder: (BuildContext context, Widget? child) => BuildableDish(
-                      // TODO: let the user drag the palette out and close the inspector
-                      assetClasses: buildables.map((Buildable buildable) => buildable.assetClass).toList(),
-                      onSelect: (AssetClass? assetClass) => _state!.selection = assetClass,
-                      selection: _state!.selection,
-                    ),
+                    builder: (BuildContext context, Widget? child) {
+                      return BuildableDish(
+                         // TODO: let the user drag the palette out and close the inspector
+                         assetClasses: buildables.map((Buildable buildable) => buildable.assetClass).toList(),
+                         onSelect: (AssetClass? assetClass) => _state!.selection = assetClass,
+                         selection: _state!.selection,
+                      );
+                    },
                   ),
                 ),
               if (children.isEmpty)

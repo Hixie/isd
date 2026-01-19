@@ -29,8 +29,8 @@ class SpaceSensorFeature extends AbilityFeature {
 
   @override
   String get status {
-    if (!disabledReason.enabled)
-      return disabledReason.description;
+    if (!disabledReason.fullyActive)
+      return disabledReason.describe(null);
     return 'Ready';
   }
 
@@ -95,8 +95,8 @@ class GridSensorFeature extends AbilityFeature {
 
   @override
   String get status {
-    if (!disabledReason.enabled)
-      return disabledReason.description;
+    if (!disabledReason.fullyActive)
+      return disabledReason.describe(null);
     return 'Ready';
   }
 
@@ -146,8 +146,8 @@ class InternalSensorFeature extends AbilityFeature {
 
   @override
   String get status {
-    if (!disabledReason.enabled)
-      return disabledReason.description;
+    if (!disabledReason.fullyActive)
+      return disabledReason.describe(null);
     return 'Ready';
   }
 

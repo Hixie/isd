@@ -13,36 +13,34 @@ class RefiningFeature extends AbilityFeature {
     required this.currentRate,
     required this.maxRate,
     required this.disabledReason,
-    required this.sourceLimiting,
-    required this.targetLimiting,
   });
 
   final int material;
   final double currentRate;
   final double maxRate;
   final DisabledReason disabledReason;
-  final bool sourceLimiting;
-  final bool targetLimiting;
 
   @override
   RendererType get rendererType => RendererType.none;
 
   @override
   String get status {
-    if (!disabledReason.enabled) {
-      return disabledReason.description;
-    }
-    if (sourceLimiting) {
-      if (currentRate > 0.0) {
+    if (currentRate > 0.0) {
+      if (disabledReason.sourceLimited) {
         return 'Shortage of ore to refine. Refining throttled to ${prettyFraction(currentRate / maxRate)}.';
       }
-      return 'Shortage of ore to refine. Add more holes to restart refining.';
-    }
-    if (targetLimiting) {
-      if (currentRate > 0.0) {
+      if (disabledReason.targetLimited) {
         return 'Storage full. Refining throttled to ${prettyFraction(currentRate / maxRate)}.';
       }
+    }
+    if (disabledReason.targetLimited) {
       return 'Storage full. Add more piles to restart refining.';
+    }
+    if (disabledReason.sourceLimited) {
+      return 'Shortage of ore to refine. Add more holes to restart refining.';
+    }
+    if (!disabledReason.fullyActive) {
+      return disabledReason.describe(currentRate);
     }
     assert(currentRate == maxRate, 'currentRate = $currentRate, maxRate = $maxRate');
     return 'Refining at full rate.';
@@ -74,8 +72,8 @@ class RefiningFeature extends AbilityFeature {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
               Text('Status: $status'),
-              Text('Current refining rate: ${prettyMass(currentRate * 1000.0 * 60.0 * 60.0)} per hour.'),
-              Text('Maximum refining rate: ${prettyMass(maxRate * 1000.0 * 60.0 * 60.0)} per hour.'),
+              Text('Current refining rate: ${prettyRate(currentRate, const Mass())}'),
+              Text('Maximum refining rate: ${prettyRate(maxRate, const Mass())}'),
             ],
           ),
         ),
