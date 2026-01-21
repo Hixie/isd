@@ -5,9 +5,12 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:isd/assets.dart';
+import 'package:isd/dynasty.dart';
 import 'package:isd/nodes/galaxy.dart';
+import 'package:isd/nodes/system.dart';
 import 'package:isd/root.dart';
+import 'package:isd/spacetime.dart';
+import 'package:isd/world.dart';
 
 const double lightYearInM = 9460730472580800.0;
 const double galaxyDiameter = 1e21;
@@ -197,6 +200,9 @@ class _GalaxyPaneState extends State<GalaxyPane> {
   GalaxyStats? _stats;
   final GalaxyNode _galaxyNode = GalaxyNode();
   int? _home;
+
+  final SpaceTime spaceTime = SpaceTime(SystemClock(), 0, 1);
+  final DynastyManager _dynastyManager = DynastyManager();
 
   bool _generating = false;
   bool _dirty = true;
@@ -426,12 +432,12 @@ class _GalaxyPaneState extends State<GalaxyPane> {
   }
 
   void _save() {
-    // TODO: chose filename
+    // TODO: let user choose filename
     File('stars.dat').writeAsBytesSync(_encodedStars.buffer.asUint8List());
   }
 
   void _saveStats() {
-    // TODO: chose filename
+    // TODO: let user choose filename
     final List<int> groups = _stats!.groups.keys.where(
       (int star) => (_stats!.groups[star]!.toList()..sort()).first != star,
     ).toList()..sort();
@@ -446,7 +452,7 @@ class _GalaxyPaneState extends State<GalaxyPane> {
   }
 
   void _load() {
-    // TODO: chose filename
+    // TODO: let user choose filename
     final Uint8List buffer = File('stars.dat').readAsBytesSync();
     setState(() {
       _encodedStars = buffer.buffer.asUint32List();
@@ -481,7 +487,11 @@ class _GalaxyPaneState extends State<GalaxyPane> {
     _home = null;
     final (int category, int index) = Galaxy.decodeStarId(match);
     if (category <= 1) {
-      _galaxyNode.addSystem(SystemNode(id: match));
+      _galaxyNode.addSystem(SystemNode(
+        id: match,
+        sendCallback: (List<Object> messageParts) => throw UnsupportedError('tried to send message to server'),
+        spaceTime: spaceTime,
+      ));
     } else {
       if (_stats!.groups[match]!.length == 1 && category >= 2) {
         setState(() {
@@ -490,7 +500,11 @@ class _GalaxyPaneState extends State<GalaxyPane> {
       }
       for (int star in _stats!.groups[match]!) {
         // final (int category, int index) = Galaxy.decodeStarId(star);
-        _galaxyNode.addSystem(SystemNode(id: star));
+        _galaxyNode.addSystem(SystemNode(
+          id: star,
+          sendCallback: (List<Object> messageParts) => throw UnsupportedError('tried to send message to server'),
+          spaceTime: spaceTime,
+        ));
       }
     }
   }
@@ -649,7 +663,11 @@ class _GalaxyPaneState extends State<GalaxyPane> {
               child: ColoredBox(
                 color: Colors.black,
                 child: SizedBox.expand(
-                  child: WorldRoot(rootNode: _galaxyNode),
+                  child: WorldRoot(
+                    rootNode: _galaxyNode,
+                    recommendedFocus: ValueNotifier<WorldNode?>(null),
+                    dynastyManager: _dynastyManager,
+                  ),
                 ),
               ),
             ),

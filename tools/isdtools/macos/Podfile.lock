@@ -3,8 +3,6 @@ PODS:
     - Flutter
     - FlutterMacOS
   - FlutterMacOS (1.0.0)
-  - objective_c (0.0.1):
-    - FlutterMacOS
   - shared_preferences_foundation (0.0.1):
     - Flutter
     - FlutterMacOS
@@ -12,7 +10,6 @@ PODS:
 DEPENDENCIES:
   - cupertino_http (from `Flutter/ephemeral/.symlinks/plugins/cupertino_http/darwin`)
   - FlutterMacOS (from `Flutter/ephemeral`)
-  - objective_c (from `Flutter/ephemeral/.symlinks/plugins/objective_c/macos`)
   - shared_preferences_foundation (from `Flutter/ephemeral/.symlinks/plugins/shared_preferences_foundation/darwin`)
 
 EXTERNAL SOURCES:
@@ -20,15 +17,12 @@ EXTERNAL SOURCES:
     :path: Flutter/ephemeral/.symlinks/plugins/cupertino_http/darwin
   FlutterMacOS:
     :path: Flutter/ephemeral
-  objective_c:
-    :path: Flutter/ephemeral/.symlinks/plugins/objective_c/macos
   shared_preferences_foundation:
     :path: Flutter/ephemeral/.symlinks/plugins/shared_preferences_foundation/darwin
 
 SPEC CHECKSUMS:
   cupertino_http: 947a233f40cfea55167a49f2facc18434ea117ba
   FlutterMacOS: d0db08ddef1a9af05a5ec4b724367152bb0500b1
-  objective_c: e5f8194456e8fc943e034d1af00510a1bc29c067
   shared_preferences_foundation: fcdcbc04712aee1108ac7fda236f363274528f78
 
 PODFILE CHECKSUM: 54d867c82ac51cbd61b565781b9fada492027009
