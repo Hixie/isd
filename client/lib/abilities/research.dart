@@ -13,10 +13,12 @@ class ResearchFeature extends AbilityFeature {
   ResearchFeature({
     required this.disabledReason,
     required this.current,
+    required this.progress,
   });
 
   final DisabledReason disabledReason;
   final String current;
+  final int progress;
 
   @override
   String get status {
@@ -32,29 +34,48 @@ class ResearchFeature extends AbilityFeature {
   Widget buildRenderer(BuildContext context) {
     final DefaultTextStyle parentTextStyles = DefaultTextStyle.of(context);
     final SystemNode system = SystemNode.of(parent);
-    return Column(
-      children: <Widget>[
-        current.isEmpty ? const Text('No research topic selected.', style: bold, textAlign: TextAlign.center)
-                        : const Text('Current research topic:', style: bold, textAlign: TextAlign.center),
-        Expanded(
-          child: DefaultTextStyle(
-            // all these shennanigans are to reset maxLines to null
-            style: parentTextStyles.style,
-            textWidthBasis: parentTextStyles.textWidthBasis,
-            textHeightBehavior: parentTextStyles.textHeightBehavior,
-            child: Text(
-              current,
-              textAlign: TextAlign.center,
-              softWrap: true,
-              // overflow: TextOverflow.ellipsis, // TODO: figure out why this prevents it from wrapping at all, even when there's vertical room.
+    return DecoratedBox(
+      decoration: ShapeDecoration(
+        color: const Color(0x10000000),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20.0),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(8.0),
+        child: Column(
+          children: <Widget>[
+            current.isEmpty ? const Text('No research topic selected.', style: bold, textAlign: TextAlign.center)
+                            : const Text('Current research topic:', style: bold, textAlign: TextAlign.center),
+            Expanded(
+              child: DefaultTextStyle(
+                // all these shennanigans are to reset maxLines to null
+                style: parentTextStyles.style,
+                textWidthBasis: parentTextStyles.textWidthBasis,
+                textHeightBehavior: parentTextStyles.textHeightBehavior,
+                child: Center(
+                  child: Text(
+                    current,
+                    textAlign: TextAlign.center,
+                    softWrap: true,
+                    // overflow: TextOverflow.ellipsis, // TODO: figure out why this prevents it from wrapping at all, even when there's vertical room.
+                  ),
+                ),
+              ),
             ),
-          ),
+            switch (progress) {
+              0 => const Text('No progress is being made.'),
+              1 => const Text('Progress is slow.'),
+              2 => const Text('Researching in progress!'),
+              _ => throw const FormatException('Unknown progress!'),
+            },
+            Padding(
+              padding: const EdgeInsets.only(top: 8.0),
+              child: _ResearchState.build(context, system, this),
+            ),
+          ],
         ),
-        Padding(
-          padding: const EdgeInsets.only(top: 8.0),
-          child: _ResearchState.build(context, system, this),
-        ),
-      ],
+      ),
     );
   }
 

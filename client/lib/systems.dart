@@ -17,6 +17,7 @@ import 'abilities/refining.dart';
 import 'abilities/region.dart';
 import 'abilities/research.dart';
 import 'abilities/rubble.dart';
+import 'abilities/sample.dart';
 import 'abilities/sensors.dart';
 import 'abilities/staffing.dart';
 import 'abilities/stars.dart';
@@ -96,7 +97,8 @@ class SystemServer {
   static const int fcStaffing = 0x1E;
   static const int fcAssetPile = 0x1F;
   static const int fcFactory = 0x20;
-  static const int expectedVersion = fcFactory;
+  static const int fcSample = 0x21;
+  static const int expectedVersion = fcSample;
 
   final SystemSingletons _singletons = SystemSingletons();
 
@@ -434,9 +436,11 @@ class SystemServer {
             case fcResearch:
               final DisabledReason disabledReason = DisabledReason(reader.readUInt32());
               final String research = reader.readString();
+              final int progress = reader.readUInt8();
               features.add(ResearchFeature(
                 disabledReason: disabledReason,
                 current: research,
+                progress: progress,
               ));
   
             case fcMining:
@@ -603,7 +607,35 @@ class SystemServer {
                 currentRate: currentRate,
                 disabledReason: disabledReason,
               ));
-              
+
+            case fcSample:
+              final int mode = reader.readUInt8();
+              final double size = reader.readDouble();
+              final double mass = reader.readDouble();
+              final double massFlowRate = reader.readDouble();
+              switch (mode) {
+                case 0: 
+                case 1:
+                case 2:
+                  final int material = reader.readInt32();
+                  assert(massFlowRate == 0.0);
+                  features.add(SampleMaterialFeature(
+                    isOre: mode == 1,
+                    size: size,
+                    mass: mass,
+                    material: material,
+                  ));
+                case 3:
+                  final AssetNode child = _readAsset(reader)!;
+                  assert(false, 'SampleAssetFeature not yet implemented');
+                  // features.add(SampleAssetFeature(
+                  //   size: size,
+                  //   mass: mass,
+                  //   massFlowRate: massFlowRate,
+                  //   child: child,
+                  // ));
+                default: assert(false);
+              }
             default:
               throw NetworkError(
                 'Client does not support feature code 0x${featureCode.toRadixString(16).padLeft(8, "0")}, '

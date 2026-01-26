@@ -330,7 +330,7 @@ class StructureFeature extends AbilityFeature {
                     }
                   }
                 },
-                child: Text('${parent.mass > 0 ? "Dismantle" : "Remove"} ${parent.nameOrClassName}'),
+                child: Text('${materialsCurrent > 0 || materialsRate > 0.0 ? "Dismantle" : "Decommission"} ${parent.nameOrClassName}'),
               ),
             ],
           ),

@@ -53,6 +53,7 @@ class _AnalysisUiState extends State<AnalysisUi> {
 
   late final int _time;
   late final double _total;
+  late final String _message;
   final Map<Material, int> _analysis = <Material, int>{};
   late final List<Material> _materials;
 
@@ -68,6 +69,7 @@ class _AnalysisUiState extends State<AnalysisUi> {
           setState(() {
             _time = reader.readInt();
             _total = reader.readDouble();
+            _message = reader.readString();
             while (!reader.eof) {
               final int materialId = reader.readInt();
               final int quantity = reader.readInt();
@@ -110,14 +112,32 @@ class _AnalysisUiState extends State<AnalysisUi> {
           child: ConstrainedBox(
             constraints: BoxConstraints(minHeight: viewportConstraints.maxHeight),
             child: IntrinsicHeight(
-              child: Center(
-                child: PieChart(
-                  node: widget.node,
-                  time: _time,
-                  total: _total,
-                  analysis: _analysis,
-                  materials: _materials,
-                ),
+              child: Column(
+                children: <Widget>[
+                  PieChart(
+                    node: widget.node,
+                    time: _time,
+                    total: _total,
+                    analysis: _analysis,
+                    materials: _materials,
+                  ),
+                  if (_message.isNotEmpty)
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: Center(
+                          child: Text(
+                            switch (_message) {
+                              'not enough materials' => 'Pile has insufficient quantities of any one material for an analysis.',
+                              'pile empty' => 'Pile is empty.',
+                              _ => _message,
+                            },
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
           ),
@@ -185,7 +205,7 @@ class PieChart extends StatelessWidget {
     final IconsManager icons = IconsManagerProvider.of(context);
     final List<Widget> legend = <Widget>[];
     if (materials.isEmpty) {
-      legend.add(const Text('Empty.'));
+      legend.add(const Text('No materials found.'));
     } else {
       double accountedTotal = 0.0;
       for (int index = 0; index < materials.length; index += 1) {
