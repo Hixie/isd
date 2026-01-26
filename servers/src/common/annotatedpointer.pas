@@ -12,9 +12,10 @@ type
       function GetAssigned(): Boolean; inline;
    public
       class operator := (Value: PType): specialize TAnnotatedPointer<PType, TFlags>; inline; // also clears flags
-      procedure Clear(); inline;
+      procedure Clear(); inline; // clears value and flags
       procedure Wrap(Value: PType); inline;
-      function Unwrap(): PType; inline;
+      function Unwrap(): PType; inline; // always provides a non-nil value (asserts otherwise)
+      function UnwrapOrNil(): PType; inline; // can provide nil
       procedure ConfigureFlag(Flag: TFlags; Value: Boolean); inline;
       procedure SetFlag(Flag: TFlags); inline;
       procedure ClearFlag(Flag: TFlags); inline;
@@ -47,6 +48,11 @@ function TAnnotatedPointer.Unwrap(): PType;
 begin
    Result := PType(FValue and not $07);
    Assert(system.Assigned(Result));
+end;
+
+function TAnnotatedPointer.UnwrapOrNil(): PType;
+begin
+   Result := PType(FValue and not $07);
 end;
 
 function TAnnotatedPointer.GetAssigned(): Boolean;

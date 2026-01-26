@@ -18,6 +18,7 @@ const
    {$IFDEF TESTSUITE}
    icAdvanceClock = 'advance-clock';
    icAwaitScores = 'await-scores';
+   icResetRNG = 'reset-rng';
    {$ENDIF}
 
 const
@@ -37,6 +38,8 @@ const
    ccGetTopics = 'get-topics';
    ccSetTopic = 'set-topic';
    ccRate = 'set-rate';
+   ccSampleOre = 'sample-ore';
+   ccClearSamples = 'clear-sample';
 
 const
    ieInvalidMessage = 'invalid message';
@@ -50,6 +53,7 @@ const
    ieUnknownDynasty = 'unknown dynasty';
    ieNoDestructors = 'no destructors';
    ieRangeError = 'range error';
+   ieNotOwner = 'not owner';
 
 const
    // These must increment monotonically and their values must never change
@@ -87,7 +91,8 @@ const
    fcStaffing = $1E;
    fcAssetPile = $1F;
    fcFactory = $20;
-   fcHighestKnownFeatureCode = fcFactory;
+   fcSample = $21;
+   fcHighestKnownFeatureCode = fcSample;
 
 type
    TAssetClassID = LongInt; // signed because negative values are built-in, and positive values are in tech tree

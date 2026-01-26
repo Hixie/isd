@@ -18,6 +18,7 @@ type
       class function GetZero(): TQuantity64; inline; static;
       class function GetOne(): TQuantity64; inline; static;
       class function GetMax(): TQuantity64; inline; static;
+      class function GetUnits(): UTF8String; inline; static;
    public
       constructor FromUnits(A: Int64);
       function TruncatedMultiply(B: Double): TQuantity64; inline;
@@ -30,6 +31,7 @@ type
       class property Zero: TQuantity64 read GetZero;
       class property One: TQuantity64 read GetOne;
       class property Max: TQuantity64 read GetMax;
+      class property Units: UTF8String read GetUnits;
    end;
 
    TQuantity32 = record
@@ -42,6 +44,7 @@ type
       class function GetZero(): TQuantity32; inline; static;
       class function GetOne(): TQuantity32; inline; static;
       class function GetMax(): TQuantity32; inline; static;
+      class function GetUnits(): UTF8String; inline; static;
    public
       constructor FromUnits(A: Cardinal);
       constructor FromQuantity64(A: TQuantity64);
@@ -54,6 +57,7 @@ type
       class property Zero: TQuantity32 read GetZero;
       class property One: TQuantity32 read GetOne;
       class property Max: TQuantity32 read GetMax;
+      class property Units: UTF8String read GetUnits;
    end;
 
    TMass = record
@@ -67,6 +71,7 @@ type
       function GetIsPositive(): Boolean; inline;
       class function GetZero(): TMass; inline; static;
       class function GetInfinity(): TMass; inline; static;
+      class function GetUnits(): UTF8String; inline; static;
    public
       constructor FromKg(A: Double); overload; // Kilograms
       constructor FromKg(A: Int256); overload; // Kilograms
@@ -83,6 +88,7 @@ type
       property AsDouble: Double read Value; // for storage, restore with FromKg(Double)
       class property Zero: TMass read GetZero;
       class property Infinity: TMass read GetInfinity;
+      class property Units: UTF8String read GetUnits;
    end;
 
    TMassPerUnit = record
@@ -216,6 +222,11 @@ begin
    Result.Value := High(Result.Value);
 end;
 
+class function TQuantity64.GetUnits(): UTF8String;
+begin
+   Result := 'units';
+end;
+
 
 
 constructor TQuantity32.FromUnits(A: UInt32);
@@ -267,6 +278,11 @@ end;
 class function TQuantity32.GetMax(): TQuantity32;
 begin
    Result.Value := High(Result.Value);
+end;
+
+class function TQuantity32.GetUnits(): UTF8String;
+begin
+   Result := 'units';
 end;
 
 
@@ -345,6 +361,11 @@ begin
    {$IEEEERRORS OFF}
    Result.Value := math.Infinity;
    {$POP}
+end;
+
+class function TMass.GetUnits(): UTF8String;
+begin
+   Result := 'kg';
 end;
 
 

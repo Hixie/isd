@@ -105,7 +105,7 @@ begin
       Result := FChild.MassFlowRate;
    end
    else
-      Result := TMassRate.MZero;
+      Result := TMassRate.Zero;
 end;
 
 function TProxyFeatureNode.GetSize(): Double;

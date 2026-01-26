@@ -8,6 +8,12 @@ uses
    systems, serverstream, materials, techtree, tttokenizer, basenetwork, masses, systemdynasty;
 
 type
+   // This is sent just before an asset is demolished. The feature
+   // should account for all of its mass; if there's any specific
+   // materials for which handling should be deferred to the asset
+   // doing the demolition, it can use AddMaterial (this is only
+   // available for materials, not other sources of mass like people,
+   // unsorted ore, etc).
    TRubbleCollectionMessage = class(TBusMessage)
    private
       FCount: Cardinal;

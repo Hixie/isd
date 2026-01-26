@@ -57,6 +57,7 @@ type
       function SendControlMessage(const Data: RawByteString): Boolean;
       procedure AdvanceClock(Milliseconds: Int64);
       procedure AwaitScores(Count: Cardinal);
+      procedure ResetRNG(SystemID: Cardinal; State: UInt64);
       procedure CloseSocket();
    end;
 
@@ -546,6 +547,18 @@ begin
    FreeAndNil(BinaryWriter);
 end;
 
+procedure TServerIPCSocket.ResetRNG(SystemID: Cardinal; State: UInt64);
+var
+   BinaryWriter: TBinaryStreamWriter;
+begin
+   BinaryWriter := TBinaryStreamWriter.Create();
+   BinaryWriter.WriteStringByPointer(icResetRNG);
+   BinaryWriter.WriteCardinal(SystemID);
+   BinaryWriter.WriteUInt64(State);
+   Verify(SendControlMessage(BinaryWriter.Serialize(True)));
+   FreeAndNil(BinaryWriter);
+end;
+
 procedure TServerIPCSocket.CloseSocket();
 var
    Error: Integer;
@@ -737,10 +750,10 @@ begin
          raise;
       end;
    finally
-      Writeln('Shutting down...');
-      CloseServers(Success);
       if (not Success) then
          Writeln('FAILED');
+      Writeln('Shutting down...');
+      CloseServers(Success);
    end;
 end;
 
@@ -844,22 +857,38 @@ end;
 
 procedure TIsdServerTest.CloseServers(const Success: Boolean);
 var
+   Failed: Boolean;
+   
+   procedure SafelyShutdown(Server: TServerProcess);
+   begin
+      try
+         Server.Shutdown(not Success);
+      except
+         ReportCurrentException();
+         Failed := True;
+      end;
+   end;
+
+var
    Server: TServerProcess;
 begin
-   FLoginServer.Shutdown(not Success);
+   Failed := False;
+   SafelyShutdown(FLoginServer);
    FreeAndNil(FLoginServer);
    for Server in FDynastiesServers do
    begin
-      Server.Shutdown(not Success);
+      SafelyShutdown(Server);
       FreeAndNil(Server);
    end;
    SetLength(FDynastiesServers, 0);
    for Server in FSystemsServers do
    begin
-      Server.Shutdown(not Success);
+      SafelyShutdown(Server);
       FreeAndNil(Server);
    end;
    SetLength(FSystemsServers, 0);
+   if (Failed) then
+      raise Exception.Create('test failed during shutdown');
 end;
 
 destructor TIsdServerTest.Destroy();

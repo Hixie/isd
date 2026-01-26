@@ -177,7 +177,6 @@ begin
    else
    if (Message is TDismantleMessage) then
    begin
-      Writeln(DebugName, ' received ', Message.ClassName);
       if (not Assigned(Parent.Owner)) then
       begin
          // TODO: once we support frozen piles, transfer the contents to the region's material piles on behalf of the Messsage.Owner
@@ -188,7 +187,6 @@ begin
          Assert((Message as TDismantleMessage).Owner = Parent.Owner);
          if (FRegion.Assigned) then
          begin
-            Writeln('  calling region to rehome pile contents');
             Quantity := FRegion.Unwrap().RehomeMaterialPile(Self); // this also disconnects the pile
             FRegion.Clear();
             if (Quantity.IsPositive) then
@@ -237,7 +235,7 @@ begin
    end
    else
    begin
-      Result := TMassRate.MZero;
+      Result := TMassRate.Zero;
    end;
 end;
 

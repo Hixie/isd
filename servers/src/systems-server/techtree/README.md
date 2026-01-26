@@ -34,10 +34,15 @@ Lengths are numbers followed by "AU", "km", "m", "cm", or "mm" to specify the un
 The values you can pick from a research building.
 
 ```
-topic "Topic Name" requires a, b, c;
+topic "Topic Name" for "a", for "b", requires c, requires d, obsoletes "e", obsoletes "f";
 ```
 
-These are identified by the string. They unlock when the specified researches are unlocked.
+These are identified by the string. They unlock when the specified
+"requires" researches are unlocked. They are only shown in research
+facilities that have the facilities specified with the "for" keywords.
+
+If a topic says it "obsoletes" another, then the other topic stops
+being available when this one becomes available.
 
 
 # Researches

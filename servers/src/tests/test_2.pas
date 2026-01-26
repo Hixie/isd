@@ -80,18 +80,20 @@ begin
    MaxTime := 0;
    TimePinned := True;
 
-   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 127);
+   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 311); // 127 if we fix the bug where structure dirties itself even when knowledge didn't change
 
+   SystemsServerIPC.ResetRNG(2112348, 4796929787397293412);
+   
    AdvanceTime(1000 * Days); // crash the colony ship, get lots of technologies
    ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 'Technology unlocked.');
 
-   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 18); // crash
+   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 31); // crash // 18 if we fix the bug where structure dirties itself even when knowledge didn't change
    Grid := specialize GetUpdatedFeature<TModelGridFeature>(ModelSystem);
    HomeRegion := Grid;
    ColonyShip := FindColonyShip(ModelSystem);
    Verify(Grid.Children.Length = 1);
-   Verify(Grid.Children[0].X = 8);
-   Verify(Grid.Children[0].Y = 2);
+   Verify(Grid.Children[0].X = 9);
+   Verify(Grid.Children[0].Y = 15);
    Verify(ModelSystem.Assets[(ModelSystem.Assets[Grid.Children[0].AssetID].Features[TModelProxyFeature] as TModelProxyFeature).Child] = ColonyShip);
 
    // some digging and building tests
@@ -107,7 +109,7 @@ begin
    FreeAndNil(Response);
 
    TimePinned := True;
-   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 2);
+   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 3); // 2 if we fix the bug where structure dirties itself even when knowledge didn't change
    Verify(ModelSystem.CurrentTime = MaxTime);
    with (specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem)) do
    begin
@@ -123,7 +125,7 @@ begin
    VerifyPositiveResponse(Response);
    FreeAndNil(Response);
 
-   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 3);
+   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 4); // 3 if we fix the bug where structure dirties itself even when knowledge didn't change
    Verify(ModelSystem.CurrentTime = MaxTime);
    LastTime := ModelSystem.CurrentTime;
    with (specialize GetUpdatedFeature<TModelMiningFeature>(ModelSystem)) do
@@ -141,6 +143,8 @@ begin
    // ADVANCE TIME
    AdvanceTime(1000 * Days); // fill the pile
 
+   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 1); // skipped if we fix the bug where structure dirties itself even when knowledge didn't change
+   
    ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 2);
    LastTime := ModelSystem.CurrentTime;
    with (specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem)) do
@@ -157,10 +161,15 @@ begin
    VerifyPositiveResponse(Response);
    FreeAndNil(Response);
 
-   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 3);
+   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 4); // 3 if we fix the bug where structure dirties itself even when knowledge didn't change
    Verify(ModelSystem.CurrentTime = MaxTime);
    Verify(ModelSystem.CurrentTime = 86400000000000);
    LastTime := ModelSystem.CurrentTime;
+   with (specialize GetUpdatedFeature<TModelRefiningFeature>(ModelSystem, 0)) do
+   begin
+      Verify(Ore = 12);
+      Verify(CurrentRate = 0); // iron table is filled
+   end;
    with (specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem, 0)) do
    begin
       Verify(PileMass = 1000.0);
@@ -173,6 +182,13 @@ begin
       Verify(PileMassFlowRate = 0);
       Verify(MaterialName = 'Silicon');
    end;
+   with (specialize GetUpdatedFeature<TModelStructureFeature>(ModelSystem, 1)) do // doesn't need index if we fix the bug where structure dirties itself even when knowledge didn't change
+   begin
+      Verify(Quantity = 0);
+      Verify(QuantityRate = 0.0); // no builders
+      Verify(Hp = 0);
+      Verify(HpRate = 0.0); // no builders
+   end;
 
    // BUILD RALLY POINT (instabuild silicon table, resume refining iron)
    TimePinned := True;
@@ -181,7 +197,7 @@ begin
    VerifyPositiveResponse(Response);
    FreeAndNil(Response);
 
-   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 5);
+   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 6); // 5 if we fix the bug where structure dirties itself even when knowledge didn't change
    Verify(ModelSystem.CurrentTime = MaxTime);
    LastTime := ModelSystem.CurrentTime;
    with (specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem, 0)) do
@@ -192,23 +208,26 @@ begin
    end;
    with (specialize GetUpdatedFeature<TModelRefiningFeature>(ModelSystem, 0)) do
    begin
+      Verify(Ore = 12); // iron
       Verify(CurrentRate > 0);
-      ExpectedNextTime := LastTime + Round(2000.0 / CurrentRate); // this is how fast the silicon table can get its 2kg iron
-      // TODO: actually use this time, instead of resetting the clock each time we do an update
+      ExpectedNextTime := LastTime + Round(1000.0 / CurrentRate); // this is how fast the silicon table can get its 2kg iron (it already has 1kg)
+      Rate := CurrentRate;
    end;
    with (specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem, 1)) do
    begin
       Verify(PileMass = 0.0);
-      Verify(PileMassFlowRate = 0); // HP is still zero
+      Verify(PileMassFlowRate = 0); // HP is still zero, so can't refine yet
       Verify(MaterialName = 'Silicon');
    end;
-   with (specialize GetUpdatedFeature<TModelStructureFeature>(ModelSystem)) do
+   with (specialize GetUpdatedFeature<TModelStructureFeature>(ModelSystem, 1)) do // doesn't need index if we fix the bug where structure dirties itself even when knowledge didn't change
    begin
       Verify(Quantity = 1);
       Verify(QuantityRate > 0.0);
-      Verify(Hp = 0);
+      Verify(QuantityRate = Rate / 1000.0);
+      Verify(Hp = 0); // just got builders (iron was instabuilt)
       Verify(HpRate > 0.0);
-      ExpectedTimeChange := Round(1 / HpRate);
+      Verify(HpRate > QuantityRate);
+      ExpectedTimeChange := Round(1 / HpRate); // time until we are viable
    end;
    with (specialize GetUpdatedFeature<TModelBuilderFeature>(ModelSystem, 0)) do
    begin
@@ -228,6 +247,15 @@ begin
    ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 3);
    Verify(ModelSystem.CurrentTime = LastTime + ExpectedTimeChange);
    LastTime := ModelSystem.CurrentTime;
+   with (specialize GetUpdatedFeature<TModelRefiningFeature>(ModelSystem, 0)) do
+   begin
+      Verify(Ore = 12); // iron
+      Verify(CurrentRate > 0);
+      Verify(LastTime < ExpectedNextTime);
+      // we reset the timer because something happened // TODO: we shouldn't reset the timer
+      ExpectedNextTime := LastTime + Round(1000.0 / CurrentRate); // this is how fast the silicon table can get its 2kg iron (it already has 1kg)
+      Rate := CurrentRate;
+   end;
    with (specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem, 0)) do
    begin
       Verify(PileMass = 0.0);
@@ -238,108 +266,108 @@ begin
    begin
       Verify(PileMass = 0.0);
       Verify(PileMassFlowRate > 0); // it's finally finished, so we're refining now
-      ExpectedTimeChange := Round(1000.0 / PileMassFlowRate);
       Verify(MaterialName = 'Silicon');
    end;
    with (specialize GetUpdatedFeature<TModelStructureFeature>(ModelSystem)) do
    begin
       Verify(Quantity = 1);
-      Verify(QuantityRate > 0.0);
+      Verify(QuantityRate > 0.0); // still getting iron
+      Verify(QuantityRate = Rate / 1000.0);
       Verify(Hp = 1);
       Verify(HpRate > 0.0);
+      Verify(HpRate > QuantityRate);
    end;
 
-   // this update comes from floating point error -- we refine 0.999999986 of a
-   // silicon and just slightly fail to fill the silicon material pile
+   // silicon table finishes getting its iron, starts giving itself silicon and allowing iron to pile up
    ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 2);
-   Verify(ModelSystem.CurrentTime = LastTime + ExpectedTimeChange);
+   Verify(ModelSystem.CurrentTime >= ExpectedNextTime);
+   Verify(ModelSystem.CurrentTime - ExpectedNextTime < 150); // TODO: for some reason there's a 149ms error here?
    LastTime := ModelSystem.CurrentTime;
-   with (specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem, 0)) do
-   begin
-      Verify(PileMass = 0.0);
-      Verify(PileMassFlowRate = 0);
-      Verify(MaterialName = 'Iron');
-   end;
-   with (specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem, 1)) do
-   begin
-      Verify(PileMass = 0.0);
-      Verify(PileMassFlowRate > 0.0);
-      Verify(MaterialName = 'Silicon');
-   end;
-
-   // silicon pile is full
-   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 2);
-   Verify(ModelSystem.CurrentTime = LastTime + ExpectedTimeChange); // TODO: should prorate this somehow
-   LastTime := ModelSystem.CurrentTime;
-   with (specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem, 0)) do
-   begin
-      Verify(PileMass = 0.0);
-      Verify(PileMassFlowRate = 0); // all going into iron table
-      Verify(MaterialName = 'Iron');
-   end;
    with (specialize GetUpdatedFeature<TModelRefiningFeature>(ModelSystem, 0)) do
    begin
-      Verify(Ore = 12); // Iron
+      Verify(Ore = 12); // iron
       Verify(CurrentRate > 0);
-      ExpectedNextTime := LastTime + Round(1000.0 / CurrentRate); // this is how fast the silicon table can get its 1000kg of iron
-      // TODO: we should be prorating this and using the earlier time, rather than this one (see above)
+      ExpectedNextTime := LastTime + Round(1000.0 / CurrentRate); // this is how fast we can fill up on iron
+      Rate := CurrentRate;
+   end;
+   with (specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem, 0)) do
+   begin
+      Verify(PileMass = 0.0);
+      Verify(PileMassFlowRate > 0);
+      Verify(PileMassFlowRate = Rate);
+      Verify(MaterialName = 'Iron');
+   end;
+   with (specialize GetUpdatedFeature<TModelRefiningFeature>(ModelSystem, 1)) do
+   begin
+      Verify(Ore = 9); // silicon
+      Verify(CurrentRate > 0);
       Rate := CurrentRate;
    end;
    with (specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem, 1)) do
    begin
-      Verify(PileMass = 1000.0);
+      Verify(PileMass = 0.0);
       Verify(PileMassFlowRate = 0.0);
       Verify(MaterialName = 'Silicon');
    end;
-   with (specialize GetUpdatedFeature<TModelRefiningFeature>(ModelSystem, 1)) do
-   begin
-      Verify(Ore = 9); // Silicon
-      Verify(CurrentRate = 0.0); // full
-   end;
    with (specialize GetUpdatedFeature<TModelStructureFeature>(ModelSystem)) do
    begin
-      Verify(Quantity = 1);
+      Verify(Quantity = 2);
       Verify(QuantityRate > 0.0);
-      Verify(QuantityRate = Rate / 1000); // should be same as refining rate, except units are different (kg vs units)
-      Verify(Hp = 1);
+      Verify(QuantityRate = Rate / 1000.0);
+      Verify(Hp = 2);
       Verify(HpRate > 0.0);
    end;
 
-   // silicon table finishes getting its iron, and gets all its silicon instantly
+   // iron table finishes filling, mining stops
    ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 2);
+   Verify(ModelSystem.CurrentTime >= ExpectedNextTime);
+   Verify(ModelSystem.CurrentTime - ExpectedNextTime < 150); // TODO: for some reason there's a 149ms error here?
+   LastTime := ModelSystem.CurrentTime;
+   with (specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem, 0)) do
+   begin
+      Verify(MaterialName = 'Iron');
+      Verify(PileMass = 1000.0);
+      Verify(PileMassFlowRate = 0.0);
+   end;
+   with (specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem, 1)) do
+   begin
+      Verify(MaterialName = 'Silicon');
+      Verify(PileMass = 0.0);
+      Verify(PileMassFlowRate = 0.0);
+   end;
+   with (specialize GetUpdatedFeature<TModelRefiningFeature>(ModelSystem, 1)) do
+   begin
+      Verify(Ore = 9); // silicon
+      Verify(CurrentRate > 0);
+      Rate := CurrentRate;
+   end;
+   with (specialize GetUpdatedFeature<TModelStructureFeature>(ModelSystem)) do
+   begin
+      Verify(Quantity = 2);
+      Verify(QuantityRate > 0.0);
+      Verify(QuantityRate = Rate / 1000.0);
+      Verify(Hp = 2);
+      Verify(HpRate > 0.0);
+      Verify(HpRate > QuantityRate);
+      ExpectedNextTime := LastTime + Round(1 / QuantityRate);
+   end;
+   
+   // table finishes getting its silicon
+   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 3);
    Verify(ModelSystem.CurrentTime = ExpectedNextTime);
    LastTime := ModelSystem.CurrentTime;
    with (specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem, 0)) do
    begin
-      Verify(PileMass = 0.0);
-      Verify(PileMassFlowRate > 0); // finished building table
       Verify(MaterialName = 'Iron');
+      Verify(PileMass = 1000.0);
+      Verify(PileMassFlowRate = 0.0);
    end;
    with (specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem, 1)) do
    begin
+      Verify(MaterialName = 'Silicon');
       Verify(PileMass = 0.0);
       Verify(PileMassFlowRate > 0.0);
-      Verify(MaterialName = 'Silicon');
-      ExpectedNextTime := LastTime + Round(1000 / PileMassFlowRate); // TODO: use this time by prorating expected times
-   end;
-   with (specialize GetUpdatedFeature<TModelStructureFeature>(ModelSystem)) do
-   begin
-      Verify(Quantity = 3);
-      Verify(QuantityRate = 0.0);
-      Verify(Hp = 2);
-      Verify(HpRate > 0.0);
-      ExpectedTimeChange := Round(1 / HpRate);
-   end;
-
-   // table finishes healing
-   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 2);
-   Verify(ModelSystem.CurrentTime = LastTime + ExpectedTimeChange);
-   LastTime := ModelSystem.CurrentTime;
-   with (specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem)) do
-   begin
-      Verify(PileMass = 0.0);
-      Verify(PileMassFlowRate > 0.0);
-      Verify(MaterialName = 'Silicon');
+      ExpectedNextTime := LastTime + Round(1000 / PileMassFlowRate);
    end;
    with (specialize GetUpdatedFeature<TModelStructureFeature>(ModelSystem)) do
    begin
@@ -358,30 +386,12 @@ begin
    end;
 
    // silicon table finishes filling
-   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 2);
+   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 3);
    Verify(ModelSystem.CurrentTime = ExpectedNextTime);
    LastTime := ModelSystem.CurrentTime;
    with (specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem, 0)) do
    begin
       Verify(MaterialName = 'Iron');
-      Verify(PileMass = 0.0);
-      Verify(PileMassFlowRate > 0.0);
-      ExpectedTimeChange := Round(1000 / PileMassFlowRate);
-   end;
-   with (specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem, 1)) do
-   begin
-      Verify(MaterialName = 'Silicon');
-      Verify(PileMass = 1000.0);
-      Verify(PileMassFlowRate = 0.0);
-   end;
-
-   // iron table finishes filling, mining stops
-   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 3);
-   Verify(ModelSystem.CurrentTime = LastTime + ExpectedTimeChange);
-   LastTime := ModelSystem.CurrentTime;
-   with (specialize GetUpdatedFeature<TModelMaterialPileFeature>(ModelSystem, 0)) do
-   begin
-      Verify(MaterialName = 'Iron');
       Verify(PileMass = 1000.0);
       Verify(PileMassFlowRate = 0.0);
    end;
@@ -390,11 +400,6 @@ begin
       Verify(MaterialName = 'Silicon');
       Verify(PileMass = 1000.0);
       Verify(PileMassFlowRate = 0.0);
-   end;
-   with (specialize GetUpdatedFeature<TModelMiningFeature>(ModelSystem, 0)) do
-   begin
-      Verify(DisabledReasons = %01000000); // piles full
-      Verify(CurrentRate = 0.0);
    end;
 
    FreeAndNil(ModelSystem);

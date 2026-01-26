@@ -69,8 +69,8 @@ uses
    assetpile, builders, factory, grid, gridsensor, internalsensor,
    knowledge, materialpile, messages, mining, name, onoff, orbit,
    orepile, peoplebus, planetary, plot, population, proxy, refining,
-   region, research, rubble, size, spacesensor, staffing, stellar,
-   structure, surface;
+   region, research, rubble, sample, size, spacesensor, staffing,
+   stellar, structure, surface;
 
 var
    // TODO: find a way to get this to the client
@@ -85,6 +85,9 @@ var
       'From all of us here at Interstellar Dynasties, we wish you a pleasant ' +
       'settlement and a wonderful new life!';
 
+const
+   ColonyShipFacilityName = '@facility colony-ship';
+   
 function RoundAboveZero(Value: Double): Cardinal;
 begin
    Assert(Value < High(Result));
@@ -105,6 +108,7 @@ constructor TEncyclopedia.Create(Settings: PSettings; const AMaterials: TMateria
 var
    AssetClass: TAssetClass;
    Ore: TOres;
+   ColonyShipResearchFacilities: TTopic.TArray;
 begin
    inherited Create();
 
@@ -114,7 +118,7 @@ begin
    FMinMassPerOreUnit := TMassPerUnit.Infinity;
    for Ore in TOres do
    begin
-      Assert(FMaterials.Has(Ore));
+      Assert(FMaterials.Has(Ore), HexStr(FMaterials) + ' does not have ore ' + IntToStr(Ore));
       if (FMaterials[Ore].MassPerUnit < FMinMassPerOreUnit) then
          FMinMassPerOreUnit := FMaterials[Ore].MassPerUnit;
    end;
@@ -276,6 +280,12 @@ begin
    );
    RegisterAssetClass(FMessage);
 
+   SetLength(ColonyShipResearchFacilities, 0);
+   if (FTopics.Has(ColonyShipFacilityName)) then
+   begin
+      SetLength(ColonyShipResearchFacilities, 1);
+      ColonyShipResearchFacilities[0] := FTopics[ColonyShipFacilityName];
+   end;
    FPlaceholderShip := TAssetClass.Create(
       idPlaceholderShip,
       'Colony Ship', 'Unidentified Flying Object',
@@ -289,7 +299,8 @@ begin
          TMessageBoardFeatureClass.Create(FMessage),
          TKnowledgeBusFeatureClass.Create(),
          TPeopleBusFeatureClass.Create(),
-         TResearchFeatureClass.Create(),
+         TSampleFeatureClass.Create(2 { diameter of sample chamber, meters }),
+         TResearchFeatureClass.Create(ColonyShipResearchFacilities),
          TInternalSensorFeatureClass.Create([dmVisibleSpectrum]),
          TKnowledgeFeatureClass.Create(), // the instruction manual, ziptied to the ship
          TOnOffFeatureClass.Create()
@@ -303,6 +314,7 @@ begin
       idPlaceholderShipInstructionManualResearch,
       TMillisecondsDuration.Zero,
       0,
+      [],
       [],
       [],
       [
@@ -704,8 +716,9 @@ begin
             TMessageBoardFeatureNode.Create(System, PlaceholderShip.Features[5] as TMessageBoardFeatureClass),
             TKnowledgeBusFeatureNode.Create(System),
             TPeopleBusFeatureNode.Create(System),
-            TResearchFeatureNode.Create(System, PlaceholderShip.Features[8] as TResearchFeatureClass),
-            TInternalSensorFeatureNode.Create(System, PlaceholderShip.Features[9] as TInternalSensorFeatureClass),
+            TSampleFeatureNode.Create(System, PlaceholderShip.Features[8] as TSampleFeatureClass),
+            TResearchFeatureNode.Create(System, PlaceholderShip.Features[9] as TResearchFeatureClass),
+            TInternalSensorFeatureNode.Create(System, PlaceholderShip.Features[10] as TInternalSensorFeatureClass),
             TKnowledgeFeatureNode.Create(System, PlaceholderShipInstructionManual),
             TOnOffFeatureNode.Create(System)
          ]
@@ -758,7 +771,7 @@ begin
    finally
       FreeAndNil(CompositionTable);
    end;
-   for OldAsset in OldASsets do
+   for OldAsset in OldAssets do
    begin
       OldAsset.ReportPermanentlyGone();
       OldAsset.Parent.DropChild(OldAsset);
@@ -829,7 +842,7 @@ begin
       PlayerDynasty := (Message.Connection as TConnection).PlayerDynasty;
       if (Assigned(Asset.Owner) and (PlayerDynasty <> Asset.Owner)) then
       begin
-         Message.Error(ieInvalidMessage);
+         Message.Error(ieNotOwner);
       end
       else
       begin

@@ -126,7 +126,6 @@ var
    RateLimit: Double; // ignored
 begin
    CheckDisabled(Parent, RateLimit, False, Self);
-   Writeln(DebugName, ' has ignored disabled reasons and rate limit ', RateLimit:0:3);
    if (RateLimit = 0.0) then
    begin
       if (FPriority <> 0) then

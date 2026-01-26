@@ -107,6 +107,7 @@ end;
 
 procedure TMiningFeatureNode.StartMiner(Rate: TMassRate; SourceLimiting, TargetLimiting: Boolean); // kg per second
 begin
+   Assert((Rate = FFeatureClass.FBandwidth) or SourceLimiting or TargetLimiting, 'unexpectedly running at non-maximum rate without reason');
    if (FStatus.Update(Rate, SourceLimiting, TargetLimiting)) then
       MarkAsDirty([dkUpdateClients]);
 end;

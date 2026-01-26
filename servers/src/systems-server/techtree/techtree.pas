@@ -39,7 +39,7 @@ function ReadAssetClass(Reader: TTechTreeReader): TAssetClass;
 function ReadMaterial(Reader: TTechTreeReader): TMaterial;
 function ReadTopic(Reader: TTechTreeReader): TTopic;
 function ReadNumber(Tokens: TTokenizer; Min, Max: Int64): Int64; // integer only
-function ReadPerTime(Tokens: TTokenizer): TRate;
+function ReadPerTime(Tokens: TTokenizer): TIterationsRate;
 function ReadLength(Tokens: TTokenizer): Double;
 function ReadMass(Tokens: TTokenizer): TMass;
 function ReadMassPerTime(Tokens: TTokenizer): TMassRate;
@@ -248,9 +248,8 @@ var
 
    procedure ParseResearch();
    type
-      TComponent = (rcID, rcTakes, rcWeight, rcRequires, rcWith, rcRewards);
+      TComponent = (rcID, rcTakes, rcWeight, rcMootedBy, rcRequires, rcWith, rcRewards);
       TComponents = set of TComponent;
-
 
       procedure ParseBonus(out Bonus: TBonus; const Components: TComponents; const BaseTime: TMillisecondsDuration; const BaseWeight: TWeight; const Negate: Boolean);
       var
@@ -358,7 +357,7 @@ var
       DefaultTime: TMillisecondsDuration;
       DefaultWeight: TWeight;
       Node: TNode;
-      Requirements: TNode.TNodeArray; // these get back-propagated as "unlocks" when the TResearch or TTopic constructor is called
+      Prohibitions, Requirements: TNode.TNodeArray; // these get back-propagated as "unlocks" when the TResearch or TTopic constructor is called
       Bonuses: TBonus.TArray;
       Rewards: TReward.TArray;
       Components: TComponents;
@@ -386,6 +385,8 @@ var
 
    var
       WasString: Boolean;
+      Found: Boolean;
+      Requirement: TNode;
    begin
       Name := Tokens.ReadIdentifier();
       if (Researches.Has(Name)) then
@@ -395,6 +396,7 @@ var
       SeenStringReward := False;
       DefaultTime := TMillisecondsDuration.FromMilliseconds(0);
       DefaultWeight := 1;
+      SetLength(Prohibitions, 0);
       SetLength(Requirements, 0);
       SetLength(Bonuses, 0);
       SetLength(Rewards, 0);
@@ -440,6 +442,14 @@ var
                   Node := ParseNodeReference();
                   SetLength(Requirements, Length(Requirements) + 1); // TODO: potentially expensive allocation and copy
                   Requirements[High(Requirements)] := Node;
+                  Tokens.ReadSemicolon();
+               end;
+            'mooted-by':
+               begin
+                  Include(Components, rcMootedBy);
+                  Node := ParseNodeReference();
+                  SetLength(Prohibitions, Length(Prohibitions) + 1); // TODO: potentially expensive allocation and copy
+                  Prohibitions[High(Prohibitions)] := Node;
                   Tokens.ReadSemicolon();
                end;
             'with':
@@ -492,11 +502,20 @@ var
       else
       begin
          if (Length(Requirements) = 0) then
-            Tokens.Error('Missing requirement in non-root research block', [Length(Requirements), PluralS(Length(Requirements))]);
+            Tokens.Error('Missing requirement in research block', [Length(Requirements), PluralS(Length(Requirements))]);
+         Found := False;
+         for Requirement in Requirements do
+            if (Requirement is TResearch) then
+            begin
+               Found := True;
+               break;
+            end;
+         if (not Found) then
+            Tokens.Error('Missing research requirement in research black; every research must require at least one other research (in addition to any required topics), even if it''s just the root research', []);
          if (not SeenStringReward) then
-            Tokens.Error('Missing message reward in non-root research block', []);
+            Tokens.Error('Missing message reward in research block', []);
       end;
-      Research := TResearch.Create(ID, DefaultTime, DefaultWeight, Requirements, Bonuses, Rewards);
+      Research := TResearch.Create(ID, DefaultTime, DefaultWeight, Prohibitions, Requirements, Bonuses, Rewards);
       Researches[Name] := Research;
       Result.AddResearch(Research);
    end;
@@ -505,7 +524,7 @@ var
    var
       Name: UTF8String;
       Researches: TResearch.TArray;
-      Obsoletes: TTopic.TArray;
+      Obsoletes, Facilities: TTopic.TArray;
       Topic: TTopic;
       Keyword: UTF8String;
    begin
@@ -518,22 +537,29 @@ var
          Name := '';
       end;
       SetLength(Researches, 0);
+      SetLength(Facilities, 0);
       SetLength(Obsoletes, 0);
       while (not Tokens.IsSemicolon()) do
       begin
          Keyword := Tokens.ReadIdentifier();
          case Keyword of
-            'requires':
-               begin
-                  SetLength(Researches, Length(Researches) + 1);
-                  Researches[High(Researches)] := ParseResearchReference();
-               end;
-            'obsoletes':
-               begin
-                  SetLength(Obsoletes, Length(Obsoletes) + 1);
-                  Obsoletes[High(Obsoletes)] := ReadTopic(GetTechTreeReader());
-               end;
+          'requires':
+             begin
+                SetLength(Researches, Length(Researches) + 1);
+                Researches[High(Researches)] := ParseResearchReference();
+             end;
+          'for':
+             begin
+                SetLength(Facilities, Length(Facilities) + 1);
+                Facilities[High(Facilities)] := ReadTopic(GetTechTreeReader());
+             end;
+          'obsoletes':
+             begin
+                SetLength(Obsoletes, Length(Obsoletes) + 1);
+                Obsoletes[High(Obsoletes)] := ReadTopic(GetTechTreeReader());
+             end;
          else
+            Tokens.Error('Unknown keyword "%s" in topic description', [Keyword]);
          end;
          if (not Tokens.IsSemicolon()) then
             Tokens.ReadComma();
@@ -541,9 +567,13 @@ var
       Tokens.ReadSemicolon();
       if (Selectable and (Length(Researches) = 0)) then
          Tokens.Error('Topic does not specify any requirements and is not marked implicit', []);
-      Topic := TTopic.Create(Name, Selectable, Researches, Obsoletes);
+      Topic := TTopic.Create(Name, Selectable, Researches, Facilities, Obsoletes);
       if (Name <> '') then
+      begin
+         if (Topics.Has(Name)) then
+            Tokens.Error('Duplicate topic "%s"', [Name]);
          Topics[Name] := Topic;
+      end;
       Result.AddTopic(Topic);
    end;
 
@@ -983,22 +1013,24 @@ begin
    end;
 end;
 
-function ReadPerTime(Tokens: TTokenizer): TRate;
+function ReadPerTime(Tokens: TTokenizer): TIterationsRate;
 var
    Value: Double;
 begin
    Value := Tokens.ReadDouble();
-   Result := Value / ReadTimeDenominator(Tokens);
+   Result := TIterationsRate.FromPeriod(ReadTimeDenominator(Tokens), Value);
 end;
 
 function ReadMassPerTime(Tokens: TTokenizer): TMassRate;
 var
    Value: TMass;
+   Period: TMillisecondsDuration;
 begin
    Value := ReadMass(Tokens);
    if (Value.IsNegative) then
       Tokens.Error('Invalid throughput "%s"; must be positive', [Value.ToString()]);
-   Result := Value / ReadTimeDenominator(Tokens);
+   Period := ReadTimeDenominator(Tokens);
+   Result := Value / Period;
 end;
 
 function ReadQuantityPerTime(Tokens: TTokenizer; Material: TMaterial): TQuantityRate;

@@ -223,3 +223,18 @@ Response is one of:
 
  * 0x01 byte indicating success
  * disconnection indicating failure
+
+
+## `await-scores` (`icAwaitScores`)
+
+Only available in test mode.
+
+Fields:
+
+ * number of scores messages (4-byte integer)
+
+Response is one of:
+
+ * 0x01 byte indicating that the server has received that many score
+   messages. The message will be delayed until it is true.
+ * disconnection indicating failure

@@ -466,7 +466,7 @@ function TOrbitFeatureNode.GetMassFlowRate(): TMassRate;
 var
    Child: TAssetNode;
 begin
-   Result := TMassRate.MZero;
+   Result := TMassRate.Zero;
    if (Assigned(FPrimaryChild)) then
    begin
       Result := Result + FPrimaryChild.MassFlowRate;
@@ -476,7 +476,7 @@ begin
       Assert(Assigned(Child));
       Result := Result + Child.MassFlowRate;
    end;
-   Assert(Result.IsNearZero, 'unexpected total mass flow rate for ' + Parent.DebugName + ' orbit feature: ' + Result.ToString('kg'));
+   Assert(Result.IsNearZero, 'unexpected total mass flow rate for ' + Parent.DebugName + ' orbit feature: ' + Result.ToString());
 end;
 
 function TOrbitFeatureNode.GetSize(): Double;

@@ -437,9 +437,11 @@ type
    strict private
       FDisabledReasons: Cardinal;
       FTopic: UTF8String;
+      FProgress: Byte;
    published
       property DisabledReasons: Cardinal read FDisabledReasons write FDisabledReasons;
       property Topic: UTF8String read FTopic write FTopic;
+      property Progress: Byte read FProgress write FProgress;
    end;
 
    TModelMiningFeature = class (TModelFeature)
@@ -631,6 +633,21 @@ type
       property DisabledReasons: Cardinal read FDisabledReasons write FDisabledReasons;
    end;
 
+   TModelSampleFeature = class (TModelFeature)
+   public
+      procedure UpdateFrom(Stream: TServerStreamReader); override;
+   strict private
+      FMode: Byte; // 0, 1, 2, 3
+      FSize, FMass, FMassFlowRate: Double; // (1, 2, 3)
+      FData: Int32; // material id (1, 2) or child asset id (3)
+   published
+      property Mode: Byte read FMode write FMode;
+      property Size: Double read FSize write FSize;
+      property Mass: Double read FMass write FMass;
+      property MassFlowRate: Double read FMassFlowRate write FMassFlowRate;
+      property Data: Int32 read FData write FData;
+   end;
+
 const
    ModelFeatureClasses: array[1..fcHighestKnownFeatureCode] of TModelFeatureClass = (
      TModelStarFeature,
@@ -664,7 +681,8 @@ const
      TModelOnOffFeature,
      TModelStaffingFeature,
      TModelAssetPileFeature,
-     TModelFactoryFeature
+     TModelFactoryFeature,
+     TModelSampleFeature
   );
 
 implementation
@@ -1588,6 +1606,7 @@ procedure TModelResearchFeature.UpdateFrom(Stream: TServerStreamReader);
 begin
    DisabledReasons := Stream.ReadCardinal();
    Topic := Stream.ReadStringReference();
+   Progress := Stream.ReadByte();
 end;
 
 
@@ -1768,6 +1787,16 @@ begin
    FConfiguredRate := Stream.ReadDouble();
    FCurrentRate := Stream.ReadDouble();
    FDisabledReasons := Stream.ReadCardinal();
+end;
+
+
+procedure TModelSampleFeature.UpdateFrom(Stream: TServerStreamReader);
+begin
+   FMode := Stream.ReadByte();
+   FSize := Stream.ReadDouble();
+   FMass := Stream.ReadDouble();
+   FMassFlowRate := Stream.ReadDouble();
+   FData := Stream.ReadInt32();
 end;
 
 end.

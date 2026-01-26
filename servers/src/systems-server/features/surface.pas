@@ -232,7 +232,7 @@ function TSurfaceFeatureNode.GetMassFlowRate(): TMassRate;
 var
    Child: TAssetNode;
 begin
-   Result := TMassRate.MZero;
+   Result := TMassRate.Zero;
    for Child in FChildren do
       Result := Result + Child.MassFlowRate;
 end;

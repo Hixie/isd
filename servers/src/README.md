@@ -49,9 +49,10 @@ extra data specific to the command, or an `F` indicating failure,
 followed by an error code from this list:
 
    'invalid message': message was incorrect in some way. For example,
-   sending a `play` message to an asset that is not owned by the
+   sending a `play` message to an asset that is owned by another
    player, with a command that is only valid for player-owned assets,
-   will return this (see [systems-server/README.md]).
+   will return this (see [systems-server/README.md]). (See also 'not
+   owner'.)
    
    'inadequate password': the password did not fulfill the
    requirements described in [login-server/README.md].
@@ -74,8 +75,12 @@ followed by an error code from this list:
    
    'not logged in': a command was sent that expects the connection to
    be authenticated, before the `login` command was successfully sent.
+
+   'not owner': a command was sent to an unowned asset, but the
+   command is only valid if the asset is owned. See also 'invalid
+   message'.
    
-   'range error': A command was sent with an argument outside the
+   'range error': a command was sent with an argument outside the
    valid range of values (e.g. `set-state` to an `fcFactory` with a
    rate above the maximum rate or below zero).
    
@@ -128,6 +133,23 @@ For example, a simple message with one command "x" could be sent as:
 
 The server responds to each command by either sending a single 0x01
 byte, or disconnecting.
+
+
+## `advance-clock` (`icAdvanceClock`)
+
+Only available in test mode.
+
+Fields:
+
+ * time delta (64-bit integer)
+
+Response is one of:
+
+ * 0x01 byte indicating success
+ * disconnection indicating failure
+
+The server's internal clock is advanced by the time delta.
+In test mode, the server clock otherwise does not advance.
 
 
 # TLS configuration

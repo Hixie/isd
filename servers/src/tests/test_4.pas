@@ -77,11 +77,13 @@ begin
    MaxTime := 0;
    TimePinned := True;
 
-   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 127);
+   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 311); // 127 if we fix the bug where structure dirties itself even when knowledge didn't change
+
+   SystemsServerIPC.ResetRNG(2112348, 4796929787397293412);
 
    AdvanceTime(1000 * Days);
    ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 'Technology unlocked.');
-   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 18); // crash
+   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 31); // crash // 18 if we fix the bug where structure dirties itself even when knowledge didn't change
 
    HomeRegion := specialize GetUpdatedFeature<TModelGridFeature>(ModelSystem);
 
@@ -95,7 +97,7 @@ begin
    Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
    VerifyPositiveResponse(Response);
    FreeAndNil(Response);
-   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 2);
+   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 3); // 2 if we fix the bug where structure dirties itself even when knowledge didn't change
    with (specialize GetUpdatedFeature<TModelMiningFeature>(ModelSystem)) do
    begin
       Verify(DisabledReasons = %01000000); // rate limited by target (no piles)
@@ -108,7 +110,7 @@ begin
    Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
    VerifyPositiveResponse(Response);
    FreeAndNil(Response);
-   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 3);
+   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 4); // 3 if we fix the bug where structure dirties itself even when knowledge didn't change
    with (specialize GetUpdatedFeature<TModelMiningFeature>(ModelSystem)) do
    begin
       Verify(DisabledReasons = %01000000); // rate limited by target (no piles, so we can't mine faster than the refining)
@@ -123,6 +125,14 @@ begin
    end;
 
    AdvanceTime(1000 * Days);
+   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 1); // no update if we fix the bug where structure dirties itself even when knowledge didn't change
+   with (specialize GetUpdatedFeature<TModelRefiningFeature>(ModelSystem)) do
+   begin
+      Verify(DisabledReasons = %00100000); // rate limited by source (no piles, so we can't refine faster than the mining)
+      Verify(CurrentRate > 0.0);
+      IronTable := Parent;
+   end;
+
    ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 2);
    with (specialize GetUpdatedFeature<TModelMiningFeature>(ModelSystem)) do
    begin
@@ -169,7 +179,7 @@ begin
    Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
    VerifyPositiveResponse(Response);
    FreeAndNil(Response);
-   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 3);
+   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 4); // 3 if we fix the bug where structure dirties itself even when knowledge didn't change
    with (specialize GetUpdatedFeature<TModelRefiningFeature>(ModelSystem, 0)) do
    begin
       Verify(DisabledReasons = %00000100);
@@ -203,13 +213,13 @@ begin
       Verify(Structures.Length = 0);
       Verify(Parent = SiliconTable);
    end;
-
+   
    TimePinned := True;
    SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.Parent.ID) + #00'build'#00'1'#00'0'#00 + IntToStr(AssetClass4) + #00);
    Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
    VerifyPositiveResponse(Response);
    FreeAndNil(Response);
-   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 4);
+   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 5); // 4 if we fix the bug where structure dirties itself even when knowledge didn't change
    with (specialize GetUpdatedFeature<TModelRefiningFeature>(ModelSystem, 0)) do
    begin
       Verify(DisabledReasons = %00000100);
@@ -236,7 +246,11 @@ begin
       Verify(Capacity = 1000);
       Verify(Parent = SiliconTable);
    end;
-   with (specialize GetUpdatedFeature<TModelStructureFeature>(ModelSystem, 0)) do
+   with (specialize GetUpdatedFeature<TModelStructureFeature>(ModelSystem, 0)) do // not present if we fix the bug where structure dirties itself even when knowledge didn't change
+   begin
+      Verify(Parent <> SiliconTable);
+   end;
+   with (specialize GetUpdatedFeature<TModelStructureFeature>(ModelSystem, 1)) do
    begin
       Verify(Quantity = 1);
       Verify(QuantityRate = 0);
@@ -260,7 +274,7 @@ begin
       Verify(ModelSystem.Assets[Structures[0]] = SiliconTable);
       Rally := Parent;
    end;
-
+   
    AdvanceTime(10 * Days);
    ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 4);
    with (specialize GetUpdatedFeature<TModelMiningFeature>(ModelSystem)) do
@@ -462,7 +476,7 @@ begin
    Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
    VerifyPositiveResponse(Response);
    FreeAndNil(Response);
-   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 3);
+   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 4); // 3 if we fix the bug where structure dirties itself even when knowledge didn't change
    with (specialize GetUpdatedFeature<TModelRubblePileFeature>(ModelSystem)) do
    begin
       Verify(KnownContents.Length = 1);

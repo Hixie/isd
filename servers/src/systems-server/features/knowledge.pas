@@ -159,6 +159,8 @@ type
    public
       constructor Create(ASystem: TSystem; AResearch: TResearch);
       procedure SetKnowledge(AResearch: TResearch);
+      procedure Attaching(); override;
+      procedure Detaching(); override;
       procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader); override;
       procedure DescribeExistentiality(var IsDefinitelyReal, IsDefinitelyGhost: Boolean); override;
@@ -535,6 +537,16 @@ procedure TKnowledgeFeatureNode.SetKnowledge(AResearch: TResearch);
 begin
    FResearch := AResearch;
    MarkAsDirty([dkUpdateClients, dkUpdateJournal, dkAffectsKnowledge]);
+end;
+
+procedure TKnowledgeFeatureNode.Attaching();
+begin
+   MarkAsDirty([dkAffectsKnowledge]);
+end;
+
+procedure TKnowledgeFeatureNode.Detaching();
+begin
+   MarkAsDirty([dkAffectsKnowledge]);
 end;
 
 function TKnowledgeFeatureNode.HandleBusMessage(Message: TBusMessage): THandleBusMessageResult;

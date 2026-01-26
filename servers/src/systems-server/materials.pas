@@ -24,6 +24,11 @@ type
       constructor Create(ACount: THashTableSizeInt = 8);
    end;
 
+   TOreQuantity64 = record
+      Ore: TOres;
+      Quantity: TQuantity64;
+   end;
+
    TMaterialQuantity64 = record
       Material: TMaterial;
       Quantity: TQuantity64;

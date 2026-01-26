@@ -643,7 +643,7 @@ begin
       Clock := FServer.Clock;
       while (Clock is TComposedClock) do
          Clock := (Clock as TComposedClock).Parent;
-      ASsert(Clock is TRootClock);
+      Assert(Clock is TRootClock);
       if (Clock is TMockClock) then
       begin
          Delta := Arguments.ReadInt64();

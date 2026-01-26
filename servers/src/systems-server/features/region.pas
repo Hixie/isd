@@ -97,7 +97,7 @@ type
    IFactory = interface ['IFactory']
       function GetFactoryInputs(): TMaterialQuantity32Array;
       function GetFactoryOutputs(): TMaterialQuantity32Array;
-      function GetFactoryRate(): TRate; // instances (not units!) per second; starts returning zero if stalled
+      function GetFactoryRate(): TIterationsRate; // instances (not units!) per second; starts returning zero if stalled
       procedure SetFactoryRegion(Region: TRegionFeatureNode);
       procedure StartFactory();
       procedure StallFactory(Reason: TFactoryDisabledReason);
@@ -168,6 +168,44 @@ type
       property TransferredManifest: TMaterialQuantity64 read GetTransferredManifest;
    end;
 
+   TSampleOreBusMessage = class(TPhysicalConnectionBusMessage)
+   strict private
+      FDynasty: TDynasty;
+      FSize: Double;
+      FMaterial: TMaterial;
+      FQuantity: TQuantity64;
+   public
+      constructor Create(ADynasty: TDynasty; ASize: Double);
+      destructor Destroy(); override;
+      property Dynasty: TDynasty read FDynasty;
+      property Size: Double read FSize;
+      procedure Provide(AMaterial: TMaterial; AQuantity: TQuantity64);
+      function Accept(): TMaterialQuantity64;
+   end;
+
+   TStoreOreBusMessage = class(TPhysicalConnectionBusMessage)
+   strict private
+      FDynasty: TDynasty;
+      FOre: TOres;
+      FQuantity: TQuantity64;
+   public
+      constructor Create(ADynasty: TDynasty; AOre: TOres; AQuantity: TQuantity64);
+      destructor Destroy(); override;
+      property Dynasty: TDynasty read FDynasty;
+      function Accept(): TOreQuantity64;
+   end;
+
+   TDumpOreBusMessage = class(TPhysicalConnectionBusMessage)
+   strict private
+      FOre: TOres;
+      FQuantity: TQuantity64;
+   public
+      constructor Create(AOre: TOres; AQuantity: TQuantity64);
+      destructor Destroy(); override;
+      function Accept(): TOreQuantity64;
+   end;
+
+type
    TRegionFeatureClass = class(TFeatureClass)
    strict private
       FDepth: Cardinal;
@@ -314,7 +352,7 @@ type
 implementation
 
 uses
-   sysutils, planetary, exceptions, hashfunctions, rubble;
+   sysutils, planetary, exceptions, hashfunctions, rubble, knowledge;
 
 function FactoryHash32(const Key: IFactory): DWord;
 begin
@@ -512,6 +550,86 @@ procedure TStoreMaterialBusMessage.Store(ADelivery: TQuantity64);
 begin
    Assert(FStored + ADelivery <= FRequest.Quantity);
    FStored := FStored + ADelivery;
+end;
+
+
+constructor TSampleOreBusMessage.Create(ADynasty: TDynasty; ASize: Double);
+begin
+   inherited Create();
+   Assert(Assigned(ADynasty));
+   FDynasty := ADynasty;
+   FSize := ASize;
+end;
+
+destructor TSampleOreBusMessage.Destroy();
+begin
+   Assert(not Assigned(FMaterial));
+   Assert(FQuantity.IsZero);
+   inherited;
+end;
+
+procedure TSampleOreBusMessage.Provide(AMaterial: TMaterial; AQuantity: TQuantity64);
+begin
+   Assert(not Assigned(FMaterial));
+   Assert(FQuantity.IsZero);
+   Assert(Assigned(AMaterial));
+   FMaterial := AMaterial;
+   Assert(AQuantity <= TMass.FromKg(Size * Size * Size * FMaterial.Density) div FMaterial.MassPerUnit);
+   FQuantity := AQuantity;
+end;
+   
+function TSampleOreBusMessage.Accept(): TMaterialQuantity64;
+begin
+   Assert(Assigned(FMaterial));
+   Assert(FQuantity.IsNotZero);
+   Result.Material := FMaterial;
+   Result.Quantity := FQuantity;
+   FMaterial := nil;
+   FQuantity := TQuantity64.Zero;
+end;
+
+
+constructor TStoreOreBusMessage.Create(ADynasty: TDynasty; AOre: TOres; AQuantity: TQuantity64);
+begin
+   inherited Create();
+   Assert(Assigned(ADynasty));
+   FDynasty := ADynasty;
+   FOre := AOre;
+   FQuantity := AQuantity;
+end;
+
+destructor TStoreOreBusMessage.Destroy();
+begin
+   Assert(FQuantity.IsZero);
+end;
+      
+function TStoreOreBusMessage.Accept(): TOreQuantity64;
+begin
+   Assert(FQuantity.IsNotZero);
+   Result.Ore := FOre;
+   Result.Quantity := FQuantity;
+   FQuantity := TQuantity64.Zero;
+end;
+
+
+constructor TDumpOreBusMessage.Create(AOre: TOres; AQuantity: TQuantity64);
+begin
+   inherited Create();
+   FOre := AOre;
+   FQuantity := AQuantity;
+end;
+
+destructor TDumpOreBusMessage.Destroy();
+begin
+   Assert(FQuantity.IsZero);
+end;
+      
+function TDumpOreBusMessage.Accept(): TOreQuantity64;
+begin
+   Assert(FQuantity.IsNotZero);
+   Result.Ore := FOre;
+   Result.Quantity := FQuantity;
+   FQuantity := TQuantity64.Zero;
 end;
 
 
@@ -937,7 +1055,7 @@ begin
    if (FDynamic) then
    begin
       Result := Result + (System.Now - FAnchorTime) * GetTotalMaterialPileQuantityFlowRate(Dynasty, Material);
-      Assert(Result <= GetTotalMaterialPileCapacity(Dynasty, Material), 'dynasty ' + IntToStr(Dynasty.DynastyID) + ': dynamic pile composition (' + Result.ToString() + ') exceeds pile capacity (' + GetTotalMaterialPileCapacity(Dynasty, Material).ToString() + ') for ' + Material.Name + ' which has flow rate ' + GetTotalMaterialPileQuantityFlowRate(Dynasty, Material).ToString('units') + ' over ' + (System.Now - FAnchorTime).ToString());
+      Assert(Result <= GetTotalMaterialPileCapacity(Dynasty, Material), 'dynasty ' + IntToStr(Dynasty.DynastyID) + ': dynamic pile composition (' + Result.ToString() + ') exceeds pile capacity (' + GetTotalMaterialPileCapacity(Dynasty, Material).ToString() + ') for ' + Material.Name + ' which has flow rate ' + GetTotalMaterialPileQuantityFlowRate(Dynasty, Material).ToString() + ' over ' + (System.Now - FAnchorTime).ToString());
    end;
 end;
 
@@ -951,7 +1069,7 @@ var
 begin
    Assert(FData.HasDynasty(Dynasty));
    DynastyData := FData[Dynasty];
-   Result := TQuantityRate.QZero;
+   Result := TQuantityRate.Zero;
    if (DynastyData^.FRefineries.IsNotEmpty and Material.IsOre) then
    begin
       for Refinery in DynastyData^.FRefineries.Without(nil) do
@@ -986,7 +1104,7 @@ begin
       begin
          if (Consumer.GetMaterialConsumerMaterial() = Material) then
          begin
-            Result := TQuantityRate.QZero;
+            Result := TQuantityRate.Zero;
             exit;
          end;
       end;
@@ -1046,7 +1164,10 @@ begin
        (Message is TRegisterMaterialConsumerBusMessage) or
        (Message is TObtainMaterialBusMessage) or
        (Message is TStoreMaterialBusMessage) or
-       (Message is TFindDestructorsMessage)) then
+       (Message is TFindDestructorsMessage) or
+       (Message is TSampleOreBusMessage) or
+       (Message is TStoreOreBusMessage) or
+       (Message is TDumpOreBusMessage)) then
    begin
       Result := DeferOrHandleBusMessage(Message);
    end
@@ -1064,12 +1185,20 @@ var
    MaterialConsumerMessage: TRegisterMaterialConsumerBusMessage;
    Obtain: TObtainMaterialBusMessage;
    Store: TStoreMaterialBusMessage;
-   Capacity, CandidateDeliverySize, Usage: TQuantity64;
+   Sample: TSampleOreBusMessage;
+   StoreOre: TStoreOreBusMessage;
+   DumpOre: TDumpOreBusMessage;
+   Capacity, CandidateDeliverySize, Usage, ForPiles, ForGround, Quantity, SelectedQuantity: TQuantity64;
    DeliverySize: TQuantity32;
    MaterialPile: IMaterialPile;
    DynastyData: PPerDynastyData;
    Consumer: IMaterialConsumer;
    Material: TMaterial;
+   Ore, SelectedOre: TOres;
+   KnownMaterials: TGetKnownMaterialsMessage;
+   Handled: Boolean;
+   Manifest: TOreQuantity64;
+   ContainerVolume, Volume, SelectedVolume: Double;
 begin
    {$IFOPT C+} Assert(not Busy); {$ENDIF}
    Assert(not ((Message is TRubbleCollectionMessage) or (Message is TDismantleMessage)), ClassName + ' should never see ' + Message.ClassName);
@@ -1084,6 +1213,7 @@ begin
       Result := hrHandled;
    end
    else
+
    if (Message is TRegisterOrePileBusMessage) then
    begin
       SyncAndReconsider();
@@ -1095,6 +1225,7 @@ begin
       Result := hrHandled;
    end
    else
+
    if (Message is TRegisterRefineryBusMessage) then
    begin
       SyncAndReconsider();
@@ -1106,6 +1237,7 @@ begin
       Result := hrHandled;
    end
    else
+
    if (Message is TRegisterMaterialPileBusMessage) then
    begin
       SyncAndReconsider();
@@ -1117,6 +1249,7 @@ begin
       Result := hrHandled;
    end
    else
+
    if (Message is TRegisterFactoryBusMessage) then
    begin
       SyncAndReconsider();
@@ -1128,6 +1261,7 @@ begin
       Result := hrHandled;
    end
    else
+
    if (Message is TRegisterMaterialConsumerBusMessage) then
    begin
       SyncAndReconsider();
@@ -1144,6 +1278,7 @@ begin
              (DynastyData^.FMaterialPileComposition[Material].IsZero));
    end
    else
+
    if (Message is TObtainMaterialBusMessage) then
    begin
       Writeln(DebugName, ' received ', Message.ClassName);
@@ -1179,6 +1314,7 @@ begin
          Result := inherited;
    end
    else
+
    if (Message is TStoreMaterialBusMessage) then
    begin
       Store := Message as TStoreMaterialBusMessage;
@@ -1256,6 +1392,111 @@ begin
          Result := inherited;
    end
    else
+
+   if (Message is TSampleOreBusMessage) then
+   begin
+      Sample := Message as TSampleOreBusMessage;
+      Writeln('Sampling ore for ', Sample.Dynasty.DynastyID);
+      Handled := False;
+      if (FData.HasDynasty(Sample.Dynasty)) then
+      begin
+         DynastyData := FData[Sample.Dynasty];
+         Assert(Sample.Size > 0);
+         SyncAndReconsider();
+         KnownMaterials := TGetKnownMaterialsMessage.Create(Sample.Dynasty);
+         InjectBusMessage(KnownMaterials); // we ignore the result - it doesn't matter if it wasn't handled
+         Writeln('continuing to sample ore');
+         ContainerVolume := Sample.Size * Sample.Size * Sample.Size;
+         Writeln('  container volume: ', ContainerVolume:0:3, 'm^3');
+         SelectedVolume := 0.0;
+         SelectedQuantity := TQuantity64.Zero;
+         for Ore in TOres do
+         begin
+            Material := System.Encyclopedia.Materials[Ore];
+            if (not KnownMaterials.Knows(Material)) then
+            begin
+               Writeln('    considering ', Material.Name);
+               Volume := (DynastyData^.FOrePileComposition[Ore] * Material.MassPerUnit).AsDouble / Material.Density;
+               Writeln('      available volume: ', Volume:0:3, 'm^3');
+               if (Volume > ContainerVolume) then
+                  Volume := ContainerVolume;
+               Writeln('      clamped volume: ', Volume:0:3, 'm^3');
+               Quantity := TMass.FromKg(Volume * Material.Density) div Material.MassPerUnit;
+               Writeln('      corresponding quantity: ', Quantity.ToString());
+               if (Quantity > DynastyData^.FOrePileComposition[Ore]) then
+                  Quantity := DynastyData^.FOrePileComposition[Ore];
+               Writeln('      clamped quantity: ', Quantity.ToString());
+               if (Quantity.IsPositive and ((Volume > SelectedVolume) or ((Volume = SelectedVolume) and (Quantity < SelectedQuantity)))) then
+               begin
+                  Writeln('        selected as possible candidate...');
+                  SelectedOre := Ore;
+                  SelectedQuantity := Quantity;
+                  SelectedVolume := Volume;
+               end;
+            end;
+         end;
+         if (SelectedQuantity.IsNotZero) then
+         begin
+            Material := System.Encyclopedia.Materials[SelectedOre];
+            Writeln('    selected ', Material.Name);
+            Assert(SelectedQuantity <= DynastyData^.FOrePileComposition[SelectedOre]);
+            Sample.Provide(Material, SelectedQuantity);
+            DynastyData^.FOrePileComposition[SelectedOre] := DynastyData^.FOrePileComposition[SelectedOre] - SelectedQuantity;
+            Assert(not DynastyData^.FOrePileComposition[SelectedOre].IsNegative, 'NEGATIVE ORE COMPOSITION DETECTED');
+            Result := hrHandled;
+            Handled := True;
+         end;
+         FreeAndNil(KnownMaterials);
+      end;
+      if (Handled) then
+         Result := hrHandled
+      else
+         Result := inherited;
+   end
+   else
+
+   if (Message is TStoreOreBusMessage) then
+   begin
+      StoreOre := Message as TStoreOreBusMessage;
+      if (FData.HasDynasty(StoreOre.Dynasty)) then
+      begin
+         DynastyData := FData[StoreOre.Dynasty];
+         SyncAndReconsider();
+         Manifest := StoreOre.Accept();
+         Capacity := (GetTotalOrePileCapacity(StoreOre.Dynasty) - GetTotalOrePileMass(StoreOre.Dynasty)) div System.Encyclopedia.Materials[Manifest.Ore].MassPerUnit;
+         Assert(not Capacity.IsNegative);
+         ForPiles := Manifest.Quantity;
+         if (ForPiles > Capacity) then
+         begin
+            ForGround := ForPiles - Capacity;
+            ForPiles := Capacity;
+         end
+         else
+         begin
+            ForGround := TQuantity64.Zero;
+         end;
+         Assert(not ForPiles.IsNegative);
+         Assert(not ForGround.IsNegative);
+         DynastyData^.FOrePileComposition[Manifest.Ore] := DynastyData^.FOrePileComposition[Manifest.Ore] + ForPiles;
+         Assert(not DynastyData^.FOrePileComposition[Manifest.Ore].IsNegative);
+         if (ForGround.IsPositive) then
+            FGroundComposition[Manifest.Ore] := FGroundComposition[Manifest.Ore] + ForGround; // TODO: handle overflow
+         Result := hrHandled;
+      end
+      else
+         Result := inherited;
+   end
+   else
+
+   if (Message is TDumpOreBusMessage) then
+   begin
+      DumpOre := Message as TDumpOreBusMessage;
+      SyncAndReconsider();
+      Manifest := DumpOre.Accept();
+      FGroundComposition[Manifest.Ore] := FGroundComposition[Manifest.Ore] + Manifest.Quantity; // TODO: handle overflow
+      Result := hrHandled;
+   end
+   else
       Result := inherited;
 end;
 
@@ -1306,7 +1547,7 @@ var
    Factory: IFactory;
    Consumer: IMaterialConsumer;
    MaterialPile: IMaterialPile;
-   Rate: TRate;
+   Rate: TIterationsRate;
    MassRate: TMassRate;
    QuantityRate: TQuantityRate;
    ActualTransfer, TotalCompositionMass, TotalTransferMass, TotalOrePileMass, OrePileCapacity: TMass;
@@ -1429,9 +1670,10 @@ begin
                Assert(TransferQuantity <= Quantity, 'region composition underflow');
                FGroundComposition[Ore] := FGroundComposition[Ore] - TransferQuantity;
                GroundChanged := True;
+               Assert(not DynastyData^.FOrePileComposition[Ore].IsNegative, 'NEGATIVE ORE COMPOSITION DETECTED');
                Assert(TQuantity64.Max - DynastyData^.FOrePileComposition[Ore] >= TransferQuantity);
                ActualTransfer := ActualTransfer + TransferQuantity * Encyclopedia.Materials[Ore].MassPerUnit;
-               DynastyData^.FOrePileComposition[Ore] := DynastyData^.FOrePileComposition[Ore] + TransferQuantity;
+               DynastyData^.FOrePileComposition[Ore] := DynastyData^.FOrePileComposition[Ore] + TransferQuantity; // TODO: handle overflow
                OrePilesAffected := True;
             end;
          end;
@@ -1454,7 +1696,7 @@ begin
             FGroundComposition[Ore] := FGroundComposition[Ore] - TransferQuantity;
             GroundChanged := True;
             ActualTransfer := ActualTransfer + TransferQuantity * Encyclopedia.Materials[Ore].MassPerUnit;
-            DynastyData^.FOrePileComposition[Ore] := DynastyData^.FOrePileComposition[Ore] + TransferQuantity;
+            DynastyData^.FOrePileComposition[Ore] := DynastyData^.FOrePileComposition[Ore] + TransferQuantity; // TODO: handle overflow
             OrePilesAffected := True;
          end;
          DynastyData^.FPendingMiningFraction := TotalTransferMass - ActualTransfer;
@@ -1478,10 +1720,10 @@ begin
                if (TransferQuantity.IsPositive) then
                begin
                   RefinedOreQuantities[Ore] := RefinedOreQuantities[Ore] + TransferQuantity;
-                  Writeln('    refined ', TransferQuantity.ToString(), ' of ', Encyclopedia.Materials[Ore].Name, ' (at ', QuantityRate.ToString('units'), ' over ', SyncDuration.ToString(), ')');
+                  Writeln('    refined ', TransferQuantity.ToString(), ' of ', Encyclopedia.Materials[Ore].Name, ' (at ', QuantityRate.ToString(), ' over ', SyncDuration.ToString(), ')');
                end
                else
-                  Writeln('    refined no ', Encyclopedia.Materials[Ore].Name, ' (at ', QuantityRate.ToString('units'), ' over ', SyncDuration.ToString(), ')');
+                  Writeln('    refined no ', Encyclopedia.Materials[Ore].Name, ' (at ', QuantityRate.ToString(), ' over ', SyncDuration.ToString(), ')');
             end;
          end;
          for Ore in TOres do
@@ -1519,7 +1761,7 @@ begin
             if (Rate.IsNotExactZero) then
             begin
                Iterations := ApplyIncrementally(Rate, SyncDuration, Factory.GetPendingFraction()^) + Factory.GetBacklog(); // $R-
-               Writeln('  - ', Factory.GetFactoryOutputs()[0].Material.Name, ' factory with rate ', Rate.ToString('iterations'), ' pending fraction ', Factory.GetPendingFraction()^.ToString(), ' and backlog ', Factory.GetBacklog(), ' computed iterations ', Iterations);
+               Writeln('  - ', Factory.GetFactoryOutputs()[0].Material.Name, ' factory with rate ', Rate.ToString(), ' pending fraction ', Factory.GetPendingFraction()^.ToString(), ' and backlog ', Factory.GetBacklog(), ' computed iterations ', Iterations);
                Assert(Iterations <= High(Cardinal)); // is this safe to assume?
                Assert(Iterations >= 0, 'Negative factory iterations! ' + IntToStr(Iterations));
                if (Iterations > 0) then
@@ -1630,7 +1872,7 @@ begin
                   QuantityRate := Consumer.GetMaterialConsumerCurrentRate();
                   DesiredTransferQuantity := Consumer.GetMaterialConsumerMaxDelivery();
                   Assert(DesiredTransferQuantity.IsNotZero);
-                  Writeln('    feeding ', Material.Name, ' to consumer at ', QuantityRate.ToString('units'));
+                  Writeln('    feeding ', Material.Name, ' to consumer at ', QuantityRate.ToString());
                   TransferQuantity := ApplyIncrementally(QuantityRate, SyncDuration, Consumer.GetPendingFraction()^);
                   Writeln('      total available to transfer: ', TransferQuantity.ToString(), ' out of ', DesiredTransferQuantity.ToString(), ' desired');
                   if (TransferQuantity > DesiredTransferQuantity) then
@@ -1689,7 +1931,7 @@ begin
             begin
                TransferQuantity := Quantity - Capacity;
                Writeln('dumping ', TransferQuantity.ToString(), ' of ', Material.Name, ', back into ore piles');
-               DynastyData^.FOrePileComposition[Material.ID] := DynastyData^.FOrePileComposition[Material.ID] + TransferQuantity;
+               DynastyData^.FOrePileComposition[Material.ID] := DynastyData^.FOrePileComposition[Material.ID] + TransferQuantity; // TODO: handle overflow
                DynastyData^.FMaterialPileComposition[Material] := Quantity - TransferQuantity;
             end;
          end;
@@ -1706,10 +1948,13 @@ begin
          end;
       if (TotalOrePileMass > OrePileCapacity) then
       begin
+         Writeln('  ore piles contain ', TotalOrePileMass.ToString(), ' which is more than the pile capacity of ', OrePileCapacity.ToString());
          ReturnOreToGround(DynastyData, TotalOrePileMass, TotalOrePileMass - OrePileCapacity);
          OrePilesAffected := True;
          GroundChanged := True;
-      end;
+      end
+      else
+         Writeln('  ore piles contain ', TotalOrePileMass.ToString(), ' which fits inside pile capacity of ', OrePileCapacity.ToString());
 
       if (OrePilesAffected and DynastyData^.FOrePiles.IsNotEmpty) then
       begin
@@ -1757,7 +2002,7 @@ begin
       end;
       FActive := False;
       FDynamic := False;
-      FNetMiningRate := TMassRate.MZero;
+      FNetMiningRate := TMassRate.Zero;
    end;
    MarkAsDirty([dkNeedsHandleChanges]);
 end;
@@ -1778,12 +2023,13 @@ begin
       if (TransferQuantity.IsPositive) then
       begin
          DynastyData^.FOrePileComposition[Ore] := DynastyData^.FOrePileComposition[Ore] - TransferQuantity;
-         FGroundComposition[Ore] := FGroundComposition[Ore] + TransferQuantity;
+         FGroundComposition[Ore] := FGroundComposition[Ore] + TransferQuantity; // TODO: handle overflow
          ActualTransfer := ActualTransfer + TransferQuantity * System.Encyclopedia.Materials[Ore].MassPerUnit;
       end;
    end;
    if (ActualTransfer < TotalTransferMass) then
    begin
+      // Handle the rounding error by randomly chosing an ore to return.
       Fraction32.InitArray(@Distribution[Low(TOres)], Length(Distribution));
       for Ore in TOres do
       begin
@@ -1796,7 +2042,7 @@ begin
       TransferQuantity := (TotalTransferMass - ActualTransfer) / System.Encyclopedia.Materials[Ore].MassPerUnit;
       DynastyData^.FOrePileComposition[Ore] := DynastyData^.FOrePileComposition[Ore] - TransferQuantity;
       ActualTransfer := ActualTransfer + TransferQuantity * System.Encyclopedia.Materials[Ore].MassPerUnit;
-      FGroundComposition[Ore] := FGroundComposition[Ore] + TransferQuantity;
+      FGroundComposition[Ore] := FGroundComposition[Ore] + TransferQuantity; // TODO: handle overflow
    end;
 end;
 
@@ -1809,7 +2055,7 @@ begin
    Sync();
    FActive := False;
    FDynamic := False;
-   FNetMiningRate := TMassRate.MZero;
+   FNetMiningRate := TMassRate.Zero;
    FAnchorTime := TTimeInMilliseconds.NegInfinity;
    MarkAsDirty([dkNeedsHandleChanges]);
 end;
@@ -1869,7 +2115,7 @@ begin
    end;
    FActive := False;
    FDynamic := False;
-   FNetMiningRate := TMassRate.MZero;
+   FNetMiningRate := TMassRate.Zero;
    FAnchorTime := TTimeInMilliseconds.NegInfinity;
 end;
 
@@ -1892,8 +2138,10 @@ type
    
 var
    OrePileCapacity, RemainingOrePileCapacity, CurrentGroundMass, TotalOrePileMass: TMass;
-   Rate: TRate;
-   TotalNetOrePileGrowthRate, MiningRate, AllDynastyMiningRate, TotalMinerMaxRate, FinalRate: TMassRate;
+   Rate: TIterationsRate;
+   TotalNetOrePileGrowthRate, FinalRate, MiningRate: TMassRate;
+   AllDynastyMiningRate, TotalMinerMaxRate: TMassRateSum;
+   TotalMinerMaxRateApproximation: TMassRate;
    NetOrePileGrowthRate, RefiningRate, MaterialConsumptionRate: TQuantityRate;
    TimeUntilGroundEmpty, TimeUntilOrePilesFull, TimeUntilOrePilesEmpty, TimeUntilThisOrePileEmpty,
    TimeUntilAnyMaterialPileFull, TimeUntilThisMaterialPileFull, TimeUntilAnyMaterialPileEmpty, TimeUntilThisMaterialPileEmpty, TimeUntilNextEvent: TMillisecondsDuration;
@@ -1932,7 +2180,7 @@ begin
       Assert(not FDynamic); // so all the "get current mass" etc getters won't be affected by mass flow
       CurrentGroundMass := Mass;
       TimeUntilNextEvent := TMillisecondsDuration.Infinity;
-      AllDynastyMiningRate := TMassRate.MZero;
+      AllDynastyMiningRate.Reset();
       for Dynasty in FData.Dynasties do
       begin
          DynastyData := FData[Dynasty];
@@ -1944,15 +2192,19 @@ begin
          DynastyData^.FMaterialPiles.RemoveAll(nil);
          DynastyData^.FFactories.RemoveAll(nil);
          DynastyData^.FMaterialConsumers.RemoveAll(nil);
-         DynastyData^.FOrePileMassFlowRate := TMassRate.MZero;
+         DynastyData^.FOrePileMassFlowRate := TMassRate.Zero;
          TotalOrePileMass := GetTotalOrePileMass(Dynasty);
          MaterialCapacities := nil;
          MaterialFlowRates := nil;
          MaterialConsumerCounts := nil;
          RemainingMaterials := nil;
+
+         // COMPUTE MAX RATES AND CAPACITIES
+
+         // Ore storage
          for Ore in TOres do
          begin
-            OreMiningRates[Ore] := TQuantityRate.QZero;
+            OreMiningRates[Ore] := TQuantityRate.Zero;
             Assert(OreRefiningRates[Ore].IsZero); {BOGUS Warning: Local variable "OreRefiningRates" of a managed type does not seem to be initialized}
             Assert(OreRefiningMaxRates[Ore].IsZero); {BOGUS Warning: Local variable "OreRefiningMaxRates" of a managed type does not seem to be initialized}
             RefiningLimits[Ore] := [];
@@ -1962,37 +2214,6 @@ begin
          end;
 
          Writeln('  total ore pile mass: ', TotalOrePileMass.ToString());
-
-         // COMPUTE MAX RATES AND CAPACITIES
-
-         // Total mining rate
-         TotalMinerMaxRate := TMassRate.MZero;
-         if (DynastyData^.FMiners.IsNotEmpty) then
-         begin
-            for Miner in DynastyData^.FMiners do
-               TotalMinerMaxRate := TotalMinerMaxRate + Miner.GetMinerMaxRate();
-            Assert(DynastyData^.FMiners.IsEmpty or TotalMinerMaxRate.IsPositive);
-         end;
-         Writeln('  max mining rate: ', TotalMinerMaxRate.ToString('kg'));
-         
-         // Per-ore mining rates
-         if ((CurrentGroundMass.IsPositive) and (TotalMinerMaxRate.IsNotExactZero)) then
-         begin
-            for Ore in TOres do
-            begin
-               if (FGroundComposition[Ore].IsPositive) then
-               begin
-                  // the ore mining rate (R, units/h) is the total mining rate (T, kg/h) times the fraction of the ground that is this ore (F), divided by the mass per unit for that ore (K, kg/units)
-                  // the fraction of the ground that is this ore (F) is the ground composition of that ore (G, units) times the mass per unit for that ore (K, kg/units), divided by the total ground mass (M, kg)
-                  // i.e. R=T*F/K, F=G*K/M
-                  // R = T * (G * K/M) /K
-                  // R = T * G * K / (M * K)
-                  // R = T * G / M
-                  OreMiningRates[Ore] := FGroundComposition[Ore] * (TotalMinerMaxRate / CurrentGroundMass);
-                  Writeln('    max mining rate for ', System.Encyclopedia.Materials[Ore].Name, ': ', OreMiningRates[Ore].ToString('units'));
-               end;
-            end;
-         end;
          
          // Ore pile capacities
          OrePileCapacity := TMass.Zero;
@@ -2006,6 +2227,54 @@ begin
          end;
          OrePileCapacity := OrePileCapacity - OrePileCapacity mod GetMinOreMassTransfer(); // $R-
          Writeln('  total ore pile capacity: ', OrePileCapacity.ToString());
+
+         // Sanity-check ore piles
+         Assert(TotalOrePileMass <= OrePileCapacity, 'ORE PILE OVERFLOW');
+         {$IFOPT C+}
+         if (TotalOrePileMass > OrePileCapacity) then
+         begin
+            Writeln('  ore piles contain ', TotalOrePileMass.ToString(), ' which is more than the pile capacity of ', OrePileCapacity.ToString());
+            ReturnOreToGround(DynastyData, TotalOrePileMass, TotalOrePileMass - OrePileCapacity);
+            TotalOrePileMass := TotalOrePileMass - OrePileCapacity;
+         end
+         else
+            Writeln('  ore piles contain ', TotalOrePileMass.ToString(), ' which fits inside pile capacity of ', OrePileCapacity.ToString());
+         {$ENDIF}
+         
+         // Total mining rate
+         TotalMinerMaxRate.Reset();
+         Writeln('  total miner max rate');
+         Writeln('      ', TotalMinerMaxRate.ToString());
+         if (DynastyData^.FMiners.IsNotEmpty) then
+         begin
+            for Miner in DynastyData^.FMiners do
+            begin
+               TotalMinerMaxRate.Inc(Miner.GetMinerMaxRate());
+               Writeln('    + ', Miner.GetMinerMaxRate().ToString(), ' = ', TotalMinerMaxRate.ToString());
+            end;
+            Assert(DynastyData^.FMiners.IsEmpty or TotalMinerMaxRate.IsPositive);
+         end;
+         TotalMinerMaxRateApproximation := TotalMinerMaxRate.ToRate();
+         Writeln('  max mining rate: ', TotalMinerMaxRate.ToString(), ' (approx ', TotalMinerMaxRateApproximation.ToString(), ')');
+         
+         // Per-ore mining rates
+         if ((CurrentGroundMass.IsPositive) and (TotalMinerMaxRateApproximation.IsNotNearZero)) then
+         begin
+            for Ore in TOres do
+            begin
+               if (FGroundComposition[Ore].IsPositive) then
+               begin
+                  // the ore mining rate (R, units/h) is the total mining rate (T, kg/h) times the fraction of the ground that is this ore (F), divided by the mass per unit for that ore (K, kg/units)
+                  // the fraction of the ground that is this ore (F) is the ground composition of that ore (G, units) times the mass per unit for that ore (K, kg/units), divided by the total ground mass (M, kg)
+                  // i.e. R=T*F/K, F=G*K/M
+                  // R = T * (G * K/M) /K
+                  // R = T * G * K / (M * K)
+                  // R = T * G / M
+                  OreMiningRates[Ore] := FGroundComposition[Ore] * (TotalMinerMaxRateApproximation / CurrentGroundMass);
+                  Writeln('    max mining rate for ', System.Encyclopedia.Materials[Ore].Name, ': ', OreMiningRates[Ore].ToString());
+               end;
+            end;
+         end;
 
          // Refinery rates
          if (DynastyData^.FRefineries.IsNotEmpty) then
@@ -2023,7 +2292,7 @@ begin
             for Ore in TOres do
             begin
                Material := System.Encyclopedia.Materials[Ore];
-               Writeln('    ', Material.Name, ' max refining rate: ', OreRefiningMaxRates[Ore].ToString(), ', ore pile composition: ', DynastyData^.FOrePileComposition[Ore].ToString(), ', max mining rate: ', OreMiningRates[Ore].ToString('units'));
+               Writeln('    ', Material.Name, ' max refining rate: ', OreRefiningMaxRates[Ore].ToString(), ', ore pile composition: ', DynastyData^.FOrePileComposition[Ore].ToString(), ', max mining rate: ', OreMiningRates[Ore].ToString());
                if (DynastyData^.FOrePileComposition[Ore].IsZero and (OreRefiningMaxRates[Ore].ToDouble() > OreMiningRates[Ore].AsDouble)) then
                begin
                   // none of this ore left in ore piles, so limit refining rate to mining rate
@@ -2103,7 +2372,7 @@ begin
             begin
                Factory.ResetFactory();
                Rate := Factory.GetFactoryRate();
-               Write('   - at ', Rate.ToString('iterations'), ' ');
+               Write('   - at ', Rate.ToString(), ' ');
                if (Rate.IsNotExactZero) then
                begin
                   for Entry in Factory.GetFactoryInputs() do
@@ -2199,21 +2468,21 @@ begin
                               //if (Found) then
                               begin
                                  if (Found) then
-                                    Write('    - removing ', Rate.ToString('iterations'), ' factory turning ')
+                                    Write('    - removing ', Rate.ToString(), ' factory turning ')
                                  else
-                                    Write('    - not removing ', Rate.ToString('iterations'), ' factory turning ');
+                                    Write('    - not removing ', Rate.ToString(), ' factory turning ');
                                  for Entry in Factory.GetFactoryInputs() do
                                  begin
                                     if (Found) then
                                        MaterialFlowRates.Inc(Entry.Material, Entry.Quantity * Rate);
-                                    Write(Entry.Material.Name, ' (', (Entry.Quantity * Rate).ToString('units'), '); ');
+                                    Write(Entry.Material.Name, ' (', (Entry.Quantity * Rate).ToString(), '); ');
                                  end;
                                  Write('-> ');
                                  for Entry in Factory.GetFactoryOutputs() do
                                  begin
                                     if (Found) then
                                        MaterialFlowRates.Dec(Entry.Material, Entry.Quantity * Rate);
-                                    Write(Entry.Material.Name, ' (', (Entry.Quantity * Rate).ToString('units'), '); ');
+                                    Write(Entry.Material.Name, ' (', (Entry.Quantity * Rate).ToString(), '); ');
                                  end;
                                  if (Found and Rate.IsNotExactZero) then
                                     Factory.StallFactory(fdCannotStoreOutput);
@@ -2254,9 +2523,9 @@ begin
                               //if (Found) then
                               begin
                                  if (Found) then
-                                    Write('    - removing ', Rate.ToString('iterations'), ' factory turning ')
+                                    Write('    - removing ', Rate.ToString(), ' factory turning ')
                                  else
-                                    Write('    - not removing ', Rate.ToString('iterations'), ' factory turning ');
+                                    Write('    - not removing ', Rate.ToString(), ' factory turning ');
                                  for Entry in Factory.GetFactoryInputs() do
                                  begin
                                     if (Found) then
@@ -2298,7 +2567,7 @@ begin
          for Factory in DynastyData^.FFactories do
          begin
             Rate := Factory.GetFactoryRate();
-            Write('   - at ', Rate.ToString('iterations'), ' ');
+            Write('   - at ', Rate.ToString(), ' ');
             for Entry in Factory.GetFactoryInputs() do
                Write(Entry.Material.Name, ' ');
             Write('-> ');
@@ -2348,12 +2617,12 @@ begin
                Assert(MaterialConsumerCounts[Material] > 0);
                if (Assigned(MaterialFlowRates)) then
                begin
-                  MaterialConsumptionRate := MaterialFlowRates[Material].ToQuantityRate();
+                  MaterialConsumptionRate := MaterialFlowRates[Material].ToRate();
                   if (MaterialConsumptionRate.IsNegative) then
-                     MaterialConsumptionRate := TQuantityRate.QZero;
+                     MaterialConsumptionRate := TQuantityRate.Zero;
                end
                else
-                  MaterialConsumptionRate := TQuantityRate.QZero;
+                  MaterialConsumptionRate := TQuantityRate.Zero;
                // If we have consumers who want this, then by definition there's none of that material in
                // our piles (because they would have taken that first before calling us).
                Assert((not Assigned(DynastyData^.FMaterialPileComposition)) or
@@ -2388,7 +2657,7 @@ begin
                   // we will eventually fill the piles, but we know they're not full yet
                   Assert(Assigned(MaterialCapacities));
                   Assert(MaterialCapacities[Material].IsPositive);
-                  TimeUntilThisMaterialPileFull := MaterialCapacities[Material] / MaterialFlowRates[Material].ToQuantityRate();
+                  TimeUntilThisMaterialPileFull := MaterialCapacities[Material] / MaterialFlowRates[Material].ToRate();
                   if (TimeUntilThisMaterialPileFull < TimeUntilAnyMaterialPileFull) then
                      TimeUntilAnyMaterialPileFull := TimeUntilThisMaterialPileFull;
                   Writeln('    ', Material.Name, ' (with ', MaterialCapacities[Material].ToString(), ' room left, filling at ', MaterialFlowRates[Material].ToString(), ') will fill in ', TimeUntilThisMaterialPileFull.ToString());
@@ -2400,7 +2669,7 @@ begin
                   Assert(Assigned(DynastyData^.FMaterialPileComposition));
                   Assert(DynastyData^.FMaterialPileComposition.Has(Material));
                   Assert(DynastyData^.FMaterialPileComposition[Material].IsPositive);
-                  TimeUntilThisMaterialPileEmpty := DynastyData^.FMaterialPileComposition[Material] / -MaterialFlowRates[Material].ToQuantityRate();
+                  TimeUntilThisMaterialPileEmpty := DynastyData^.FMaterialPileComposition[Material] / -MaterialFlowRates[Material].ToRate();
                   if (TimeUntilThisMaterialPileEmpty < TimeUntilAnyMaterialPileEmpty) then
                      TimeUntilAnyMaterialPileEmpty := TimeUntilThisMaterialPileEmpty;
                   Writeln('    ', Material.Name, ' will empty in ', TimeUntilThisMaterialPileEmpty.ToString());
@@ -2413,11 +2682,11 @@ begin
          // Ore Piles
          TimeUntilOrePilesEmpty := TMillisecondsDuration.Infinity;
          TimeUntilOrePilesFull := TMillisecondsDuration.Infinity;
-         TotalNetOrePileGrowthRate := TMassRate.MZero;
+         TotalNetOrePileGrowthRate := TMassRate.Zero;
          for Ore in TOres do
          begin
             Material := System.Encyclopedia.Materials[Ore];
-            NetOrePileGrowthRate := OreMiningRates[Ore] - OreRefiningRates[Ore].ToQuantityRate();
+            NetOrePileGrowthRate := OreMiningRates[Ore] - OreRefiningRates[Ore].ToRate();
             TotalNetOrePileGrowthRate := TotalNetOrePileGrowthRate + NetOrePileGrowthRate * Material.MassPerUnit;
             if (NetOrePileGrowthRate.IsNegative) then
             begin
@@ -2439,7 +2708,7 @@ begin
             end
             else
             begin
-               TotalNetOrePileGrowthRate := TMassRate.MZero;
+               TotalNetOrePileGrowthRate := TMassRate.Zero;
                Writeln('  ore piles will remain full');
             end;
          end
@@ -2454,13 +2723,13 @@ begin
             for Refinery in DynastyData^.FRefineries do
             begin
                Ore := Refinery.GetRefineryOre();
-               Ratio := Refinery.GetRefineryMaxRate() / OreRefiningMaxRates[Ore].ToQuantityRate();
-               Refinery.StartRefinery(OreRefiningRates[Ore].ToQuantityRate() * Ratio, SourceLimited in RefiningLimits[Ore], TargetLimited in RefiningLimits[Ore]);
+               Ratio := Refinery.GetRefineryMaxRate() / OreRefiningMaxRates[Ore].ToRate();
+               Refinery.StartRefinery(OreRefiningRates[Ore].ToRate() * Ratio, SourceLimited in RefiningLimits[Ore], TargetLimited in RefiningLimits[Ore]);
                Material := System.Encyclopedia.Materials[Ore];
                if ((OreRefiningRates[Ore].IsPositive) and (Ratio > 0.0)) then
                begin
                   Refining := True;
-                  Writeln('  starting ', Material.Name, ' refinery with rate ', (OreRefiningRates[Ore].ToQuantityRate() * Ratio).ToString('units'), ' (limits: ', SourceLimited in RefiningLimits[Ore], '/' , TargetLimited in RefiningLimits[Ore], ') -- Ratio=', Ratio:0:3);
+                  Writeln('  starting ', Material.Name, ' refinery with rate ', (OreRefiningRates[Ore].ToRate() * Ratio).ToString(), ' (limits: ', SourceLimited in RefiningLimits[Ore], '/' , TargetLimited in RefiningLimits[Ore], ') -- Ratio=', Ratio:0:3);
                end
                else
                begin
@@ -2478,12 +2747,12 @@ begin
             else
                Ratio := 0.0;
             SourceLimiting := CurrentGroundMass.IsZero;
-            TargetLimiting := (RemainingOrePileCapacity.IsZero) and (not SourceLimiting);
+            TargetLimiting := (not RemainingOrePileCapacity.IsPositive) and (not SourceLimiting);
             for Miner in DynastyData^.FMiners do
             begin
                MiningRate := Miner.GetMinerMaxRate() * Ratio;
+               Writeln('  starting miner with rate ', MiningRate.ToString(), ' (limits: ', SourceLimiting, '/' , TargetLimiting, ')');
                Miner.StartMiner(MiningRate, SourceLimiting, TargetLimiting);
-               Writeln('  starting miner with rate ', MiningRate.ToString('kg'), ' (limits: ', SourceLimiting, '/' , TargetLimiting, ')');
             end;
             if (TargetLimiting) then
             begin
@@ -2491,13 +2760,13 @@ begin
                for Ore in TOres do
                begin
                   Material := System.Encyclopedia.Materials[Ore];
-                  AllDynastyMiningRate := AllDynastyMiningRate + OreRefiningRates[Ore].ToQuantityRate() * Material.MassPerUnit;
+                  AllDynastyMiningRate.Inc(OreRefiningRates[Ore].ToRate() * Material.MassPerUnit);
                end;
             end
             else
             begin
                // otherwise we're net-mining at the max rate
-               AllDynastyMiningRate := AllDynastyMiningRate + TotalMinerMaxRate;
+               AllDynastyMiningRate.Inc(TotalMinerMaxRate);
             end;
          end;
 
@@ -2524,10 +2793,10 @@ begin
          // FDynamic to true below, which means we'd never actually do a real Sync when
          // the consumer decides it's got enough materials.
          FDynamic := True;
-         FNetMiningRate := AllDynastyMiningRate;
+         FNetMiningRate := AllDynastyMiningRate.ToRate();
          Writeln('  ground mass: ', CurrentGroundMass.ToString());
-         Writeln('  total dynasty mining rate: ', AllDynastyMiningRate.ToString('kg'));
-         TimeUntilGroundEmpty := CurrentGroundMass / AllDynastyMiningRate;
+         Writeln('  total dynasty mining rate: ', AllDynastyMiningRate.ToString());
+         TimeUntilGroundEmpty := CurrentGroundMass / AllDynastyMiningRate.ToRate();
          Writeln('  ground empty in ', TimeUntilGroundEmpty.ToString());
          Assert(TimeUntilGroundEmpty.IsPositive);
          if (TimeUntilNextEvent > TimeUntilGroundEmpty) then
@@ -2537,8 +2806,8 @@ begin
       end
       else
       begin
-         Assert(AllDynastyMiningRate.IsNearZero, 'unexpectedly negative AllDynastyMiningRate: ' + AllDynastyMiningRate.ToString('kg'));
-         Assert(FNetMiningRate.IsNearZero, 'unexpectedly non-zero FNetMiningRate: ' + FNetMiningRate.ToString('kg'));
+         Assert(AllDynastyMiningRate.IsZero, 'unexpectedly negative AllDynastyMiningRate: ' + AllDynastyMiningRate.ToString());
+         Assert(FNetMiningRate.IsNearZero, 'unexpectedly non-zero FNetMiningRate: ' + FNetMiningRate.ToString());
       end;
 
       if (not TimeUntilNextEvent.IsInfinite) then
@@ -2570,8 +2839,8 @@ begin
       end;
    end;
    FinalRate := Parent.MassFlowRate;
-   Writeln('  after handling region, net mass flow rate is ', FinalRate.ToString('kg'));
-   Assert(FinalRate.IsNearZero, '  ended with non-zero mass flow rate: ' + FinalRate.ToString('kg'));
+   Writeln('  after handling region, net mass flow rate is ', FinalRate.ToString());
+   Assert(FinalRate.IsNearZero, 'ended with non-zero mass flow rate: ' + FinalRate.ToString());
    {$IFOPT C+} Assert(Busy); Busy := False; {$ENDIF}
    Assert(FDynamic = not FAnchorTime.IsInfinite);
 end;

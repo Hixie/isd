@@ -7,11 +7,13 @@ uses
    exceptions, intutils, encyclopedia, systemnetwork, strutils, isdprotocol
    {$IFDEF DEBUG}, debug {$ENDIF};
 
+{$IFNDEF TESTSUITE}
 procedure AssertHandler(const Message: ShortString; const FileName: ShortString; LineNumber: LongInt; ErrorAddr: Pointer);
 begin
    Writeln('Assertion: ', Message);
    Writeln(GetStackTrace());
 end;
+{$ENDIF}
 
 var
    Server: TServer;
@@ -28,7 +30,9 @@ var
 begin
    try
       try
+         {$IFNDEF TESTSUITE}
          AssertErrorProc := @AssertHandler;
+         {$ENDIF}
          if (ParamCount() <> 2) then
          begin
             Writeln('Usage: systems-server <configuration-path> <id>');

@@ -115,6 +115,7 @@ type
       property IsNotZero: Boolean read GetIsNotZero;
       property IsNegative: Boolean read GetIsNegative; // < 0
       property IsPositive: Boolean read GetIsPositive; // > 0 (excludes zero!)
+      function ToString(): UTF8String; // as hex, for debugging
       function ToDouble(): Double; inline;
       class operator < (A, B: TSum): Boolean;
       class operator <= (A, B: TSum): Boolean;
@@ -130,7 +131,7 @@ function CeilUInt64(Value: Double): UInt64;
 implementation
 
 uses
-   exceptions, stringutils;
+   exceptions, stringutils {$IFDEF TESTS}, math{$ENDIF};
 
 // IEEE binary64 format
 const
@@ -552,33 +553,65 @@ begin
    UnshiftedBits := kQuadWidth - ShiftedBits; // $R-
    Assert(ShiftedQuads >= 0);
    Assert(ShiftedQuads < 4);
-   case ShiftedQuads of
-      0: begin
-            FQuad4 := (FQuad4 << ShiftedBits) or (FQuad3 >> UnshiftedBits);
-            FQuad3 := (FQuad3 << ShiftedBits) or (FQuad2 >> UnshiftedBits);
-            FQuad2 := (FQuad2 << ShiftedBits) or (FQuad1 >> UnshiftedBits);
-            FQuad1 := (FQuad1 << ShiftedBits);
-         end;
-      1: begin
-            FQuad4 := (FQuad3 << ShiftedBits) or (FQuad2 >> UnshiftedBits);
-            FQuad3 := (FQuad2 << ShiftedBits) or (FQuad1 >> UnshiftedBits);
-            FQuad2 := (FQuad1 << ShiftedBits);
-            FQuad1 := 0;
-         end;
-      2: begin
-            FQuad4 := (FQuad2 << ShiftedBits) or (FQuad1 >> UnshiftedBits);
-            FQuad3 := (FQuad1 << ShiftedBits);
-            FQuad2 := 0;
-            FQuad1 := 0;
-         end;
-      3: begin
-            FQuad4 := (FQuad1 << ShiftedBits);
-            FQuad3 := 0;
-            FQuad2 := 0;
-            FQuad1 := 0;
-         end;
-      else
-         Assert(False);
+   if (ShiftedBits > 0) then
+   begin
+      case ShiftedQuads of
+         0: begin
+               FQuad4 := (FQuad4 << ShiftedBits) or (FQuad3 >> UnshiftedBits);
+               FQuad3 := (FQuad3 << ShiftedBits) or (FQuad2 >> UnshiftedBits);
+               FQuad2 := (FQuad2 << ShiftedBits) or (FQuad1 >> UnshiftedBits);
+               FQuad1 := (FQuad1 << ShiftedBits);
+            end;
+         1: begin
+               FQuad4 := (FQuad3 << ShiftedBits) or (FQuad2 >> UnshiftedBits);
+               FQuad3 := (FQuad2 << ShiftedBits) or (FQuad1 >> UnshiftedBits);
+               FQuad2 := (FQuad1 << ShiftedBits);
+               FQuad1 := 0;
+            end;
+         2: begin
+               FQuad4 := (FQuad2 << ShiftedBits) or (FQuad1 >> UnshiftedBits);
+               FQuad3 := (FQuad1 << ShiftedBits);
+               FQuad2 := 0;
+               FQuad1 := 0;
+            end;
+         3: begin
+               FQuad4 := (FQuad1 << ShiftedBits);
+               FQuad3 := 0;
+               FQuad2 := 0;
+               FQuad1 := 0;
+            end;
+         else
+            Assert(False);
+      end;
+   end
+   else
+   begin
+      Assert(UnshiftedBits = 64);
+      case ShiftedQuads of
+         0: begin
+               Assert(Operand = 0); // unreachable
+            end;
+         1: begin
+               FQuad4 := FQuad3;
+               FQuad3 := FQuad2;
+               FQuad2 := FQuad1;
+               FQuad1 := 0;
+            end;
+         2: begin
+               FQuad4 := FQuad2;
+               FQuad3 := FQuad1;
+               FQuad2 := 0;
+               FQuad1 := 0;
+            end;
+         3: begin
+               FQuad4 := FQuad1;
+               FQuad3 := 0;
+               FQuad2 := 0;
+               FQuad1 := 0;
+            end;
+         else
+            Assert(False);
+      end;
    end;
 end;
 
@@ -1116,6 +1149,11 @@ begin
    Value.Negate();
 end;
 
+function TSum.ToString(): UTF8String;
+begin
+   Result := Value.ToString();
+end;
+
 function TSum.ToDouble(): Double;
 begin
    Result := Value.ToDouble(Scale);
@@ -1163,6 +1201,21 @@ begin
    A.ShiftLeft(9);
    Assert(A.ToString() = '0000000000000000000000000000000000000000000000000000000000000200');
    Assert(A.ToDouble() = 1 << 9);
+
+   A.AssignQuad1($01);
+   A.ShiftLeft(63);
+   Assert(A.ToString() = '0000000000000000000000000000000000000000000000008000000000000000');
+   Assert(A.ToDouble() = Double(Power(2, 63)));
+
+   A.AssignQuad1($01);
+   A.ShiftLeft(64);
+   Assert(A.ToString() = '0000000000000000000000000000000000000000000000010000000000000000');
+   Assert(A.ToDouble() = Double(Power(2, 64)));
+
+   A.AssignQuad1($01);
+   A.ShiftLeft(65);
+   Assert(A.ToString() = '0000000000000000000000000000000000000000000000020000000000000000');
+   Assert(A.ToDouble() = Double(Power(2, 65)));
 
    A.AssignQuad1($01);
    A.ShiftLeft(100);
@@ -1391,6 +1444,10 @@ begin
    Assert(S.ToDouble() = Double(1e30));
    S.Dec(Double(1e30));
    Assert(S.ToDouble() = Double(1));
+
+   S.Reset();
+   S.Inc(1000 / (60 * 60 * 1000));
+   Assert(S.ToDouble() = Double(1000 / (60 * 60 * 1000)));
 
    S.Reset();
    S.Inc(Double(1.000000005));

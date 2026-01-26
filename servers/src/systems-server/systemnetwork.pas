@@ -165,6 +165,7 @@ var
    Salt: TSalt;
    Hash: THash;
    SolarSystem: TSolarSystemFeatureNode;
+   {$IFDEF TESTSUITE} NewState: UInt64; {$ENDIF}
 begin
    if (Command = icCreateSystem) then // from login server
    begin
@@ -254,6 +255,24 @@ begin
       Dynasty.ResetTokens();
       Write(#$01);
    end
+   {$IFDEF TESTSUITE}
+   else
+   if (Command = icResetRNG) then
+   begin
+      SystemID := Arguments.ReadCardinal();
+      System := FServer.Systems[SystemID];
+      if (not Assigned(System)) then
+      begin
+         Writeln('Received an invalid system ID for ', icResetRNG, ' command: System ', SystemID, ' does not exist.');
+         Disconnect();
+         exit;
+      end;
+      NewState := Arguments.ReadUInt64();
+      Writeln('Resetting system ', SystemID, ' RNG from state ', System.RandomNumberGenerator.State, ' to state ', NewState);
+      System.RandomNumberGenerator.Reset(NewState);
+      Write(#$01);
+   end
+   {$ENDIF}
    else
       inherited;
 end;

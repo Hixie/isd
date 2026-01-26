@@ -891,16 +891,41 @@ redundantly. Clients are encouraged to hide duplicate entries.
 #### `fcResearch` (0x11)
 
 ```bnf
-<featuredata>       ::= <disabled> <topic>
+<featuredata>       ::= <disabled> <topic> <progress>
 <topic>             ::= <string>
+<progress>          ::= <byte>
 ```
 
 For the `<disabled>` field, see below.
 
-The `<topic>` is the currently selected area of research for the
-research facility. It defaults to the empty string (undirected
-research). It can be changed using the `set-topic` command (see
-below).
+The `<topic>` provides guidance regarding the currently selected area
+of research for the research facility. It defaults to the empty string
+(undirected research). It can be changed using the `set-topic` command
+(see below). A topic does not guarantee the subject of research
+(sometimes, science makes unexpected leaps), but it does provide a
+push towards a particular outcome.
+
+The `<progress>` gives a very brief summary of ongoing research; it
+has a value from the following:
+
+  0: No useful progress is being made. Maybe the current guidance
+     (topic) is something this research feature is ill-equiped to
+     handle, or the topic has already been exhastively researched and
+     no further progress can be made in that direction. It could also
+     indicate a server-side problem.
+
+  1: The research feature is making progress towards something, but
+     progress is very slow. Maybe a more specialized research facility
+     would make faster progress, or providing the facility with some
+     relevant samples might help, or maybe the research being pursued
+     is at cross-purposes with the currently selected guidance and
+     this is causing difficulties among the staff.
+
+  2: The research feature is making active progress towards something.
+
+(In practice, 0 means no research will happen, 1 means research is
+happening but it will take a real-world day or more to complete, and 2
+means the research will take less than a real-world day.)
 
 This feature supports the following commands (only allowed from the
 asset owner):
@@ -979,12 +1004,22 @@ This feature supports the following command:
 
  * `analyze`: No fields. Returns the time of the analysis (int64),
    followed by an approximation of the total quantity of material in
-   the pile (double), followed by a list of pairs of material IDs
-   (int64) and quantities (int64, though negative numbers indicate a
-   server error) giving the known ores and how much of each there is.
-   (The difference between the sum of these quantities and the given
-   total quantity is the number of unknown ores.) These numbers are
-   quantities, not masses.
+   the pile (double), followed by a string (see below), followed by a
+   list of pairs of material IDs (int64) and quantities (int64, though
+   negative numbers indicate a server error) giving the known ores and
+   how much of each there is. (The difference between the sum of these
+   quantities and the given total quantity is the number of unknown
+   ores.) These numbers are quantities, not masses.
+
+The string provided in the analysis is one of the following:
+
+   ``: the empty string, indicates nothing special to report.
+   
+   `pile empty`: indicates that the pile is empty, so there is nothing
+   to analyze.
+   
+   `not enough materials`: indicates that the analysis is incomplete
+   because the quantities of materials being analyzed are too small.
 
 > TODO: change this to use a binary response
 > TODO: consider if other dynasties should be allowed to do this
@@ -1288,6 +1323,70 @@ A factory shuts down automatically if it cannot sustain its
 for outputs); it does not automatically throttle itself.
 
 
+#### `fcSample` (0x21)
+
+```bnf
+<featuredata>       ::= <mode> <size> <mass> <massflowrate> <contents>
+<mode>              ::= <byte>
+<size>              ::= <double>
+<mass>              ::= <double>
+<massflowrate>      ::= <double>
+<contents>          ::= <zero32> | <materialid> | <child>
+<child>             ::= <assetid>
+```
+
+This feature represents a research sample container, and is typically
+found on assets with an `fcResearch` feature.
+
+The `<mode>` specifies what is currently held in the sample container.
+The values are as follows:
+
+   0: Nothing.
+   1: Some unrefined ore.
+   2: Some material.
+   3: Some asset.
+
+Modes 1 and 2 are essentially identical but allow clients to
+distinguish where the sample originated.
+
+The `<size>` gives the diameter of the sample container, in meters.
+The sample container can hold items whose density allow one unit to
+fit in this value cubed, in cubic meters.
+
+The `<mass>` and `<massflowrate>` give the mass of the sample. They
+are in kg and kg/ms respectively. The mass flow rate will always be
+zero unless the mode is 3 and the child asset itself has a mass flow
+rate, in which case it will match the child asset's mass flow rate.
+
+The `<contents>` depend on the mode.
+
+If the sample is an asset (mode 3), the `<contents>` is the `<child>`
+that is that asset.
+
+If the sample is unrefined ore (mode 1) or a material (mode 2), and it
+has been identifed (e.g. after a successful research based on this
+sample), the `<contents>` is the `<materialid>` that specifies the
+exact material being stored in the sample container.
+
+Otherwise, the sample is not identified or if the mode is zero, and
+the `<contents>` value is zero.
+
+This feature supports the following commands (only allowed from the
+asset owner):
+
+ * `sample-ore`: Only valid if `<mode>` is 0 (zero). No fields.
+   Attempts to fill the sample container from the nearest ancestor
+   `fcRegion`'s ore piles. Returns a boolean; true indicates a sample
+   was collected, false indicates it was not.
+
+ * `clear-sample`: Only valid if `<mode>` is 1 or 2. Attempts to
+   return the sample to the appropriate pile. Returns a boolean; true
+   indicates the sample was entirely discarded, false indicates that
+   some amount of the sample remains.
+
+> TODO: Support ways to add unknown materials or assets to the sample container.
+
+
 ### `<disabled>`
 
 Some features can be disabled, either manually or because they're out
@@ -1399,10 +1498,18 @@ Fields:
  * dynasty ID (4-byte integer)
 
 
-## `trigger-scenario-new-dynasty` (`icTriggerNewDynastyScenario`)
+## `reset-rng` (`icResetRNG`)
+
+Only available in test mode.
 
 Fields:
 
- * dynasty ID (4-byte integer)
- * dynasty server ID (4-byte integer)
  * system ID (4-byte integer)
+ * state (64-bit integer)
+
+Response is one of:
+
+ * 0x01 byte indicating success
+ * disconnection indicating failure
+
+Resets the system's RNG to the given state.

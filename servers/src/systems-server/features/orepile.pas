@@ -396,7 +396,7 @@ begin
    end
    else
    begin
-      Result := TMassRate.MZero;
+      Result := TMassRate.Zero;
    end;
 end;
 
@@ -479,6 +479,15 @@ begin
             end;
             Message.Output.WriteInt64(System.Now.AsInt64);
             Message.Output.WriteInt64(Total.AsInt64);
+            if (Total.IsZero) then
+            begin
+               if (FRegion.Unwrap().GetOrePileMass(Self).IsPositive) then
+                  Message.Output.WriteString('not enough materials')
+               else
+                  Message.Output.WriteString('pile empty');
+            end
+            else
+               Message.Output.WriteString('');
             for Ore in TOres do
             begin
                if (OreKnowledge[Ore] and (OreQuantities[Ore].IsPositive)) then

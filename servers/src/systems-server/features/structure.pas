@@ -408,7 +408,7 @@ end;
 
 function TStructureFeatureNode.GetMassFlowRate(): TMassRate;
 begin
-   Result := TMassRate.MZero;
+   Result := TMassRate.Zero;
    if (Assigned(FBuildingState) and FBuildingState^.MaterialsQuantityRate.IsNotExactZero) then
    begin
       Assert(Assigned(FBuildingState^.PendingMaterial));
@@ -479,7 +479,7 @@ begin
          begin
             FBuildingState^.Region.RemoveMaterialConsumer(Self);
             FBuildingState^.Region := nil;
-            FBuildingState^.MaterialsQuantityRate := TQuantityRate.QZero;
+            FBuildingState^.MaterialsQuantityRate := TQuantityRate.Zero;
          end;
          if (Assigned(FBuildingState^.Builder)) then
          begin
@@ -544,6 +544,7 @@ begin
    Assert(FFeatureClass.BillOfMaterialsLength > 0);
    for Index := 0 to FFeatureClass.BillOfMaterialsLength - 1 do // $R-
       FDynastyKnowledge[Index].Init(Length(NewDynasties)); // $R-
+   MarkAsDirty([dkUpdateClients]);
 end;
 
 procedure TStructureFeatureNode.ResetVisibility();
@@ -553,6 +554,7 @@ begin
    Assert(FFeatureClass.BillOfMaterialsLength > 0);
    for Index := 0 to FFeatureClass.BillOfMaterialsLength - 1 do // $R-
       FDynastyKnowledge[Index].Reset();
+   MarkAsDirty([dkUpdateClients]); // TODO: would be good if we could avoid dirtying in cases where the knowledge doesn't actually change
 end;
 
 procedure TStructureFeatureNode.HandleKnowledge(const DynastyIndex: Cardinal; const Sensors: ISensorsProvider);
@@ -565,6 +567,7 @@ begin
       if (Sensors.Knows(FFeatureClass.BillOfMaterials[Index].Material)) then
          FDynastyKnowledge[Index].SetEntry(DynastyIndex, True);
    end;
+   MarkAsDirty([dkUpdateClients]); // TODO: would be good if we could avoid dirtying in cases where the knowledge doesn't actually change
 end;
 
 procedure TStructureFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);
@@ -779,7 +782,6 @@ var
    Injected: TInjectBusMessageResult;
    Message: TRegisterMaterialConsumerBusMessage;
 begin
-   Writeln(DebugName, ' :: TriggerBuilding');
    Assert(Assigned(Parent.Owner));
    Assert(not (bsTriggered in FBuildingState^.Flags));
    FetchMaterials();
@@ -805,7 +807,7 @@ begin
       begin
          FBuildingState^.Region.RemoveMaterialConsumer(Self);
          FBuildingState^.Region := nil;
-         FBuildingState^.MaterialsQuantityRate := TQuantityRate.QZero;
+         FBuildingState^.MaterialsQuantityRate := TQuantityRate.Zero;
       end;
       Assert(Assigned(FBuildingState^.Builder));
       FBuildingState^.Builder.StopBuilding(Self);
@@ -830,7 +832,7 @@ begin
       begin
          FBuildingState^.Region.RemoveMaterialConsumer(Self);
          FBuildingState^.Region := nil;
-         FBuildingState^.MaterialsQuantityRate := TQuantityRate.QZero;
+         FBuildingState^.MaterialsQuantityRate := TQuantityRate.Zero;
       end;
       Assert(not Assigned(FBuildingState^.NextEvent));
       Assert(FBuildingState^.AnchorTime.IsInfinite);
@@ -852,7 +854,6 @@ var
    Obtain: TObtainMaterialBusMessage;
    ObtainedMaterial: TMaterialQuantity64;
 begin
-   Writeln(DebugName, ' :: FetchMaterials');
    Assert(Assigned(Parent.Owner));
    Changes := [];
    Assert(Assigned(FBuildingState));
@@ -921,7 +922,7 @@ begin
       end;
       FBuildingState^.Region.RemoveMaterialConsumer(Self);
       FBuildingState^.Region := nil;
-      FBuildingState^.MaterialsQuantityRate := TQuantityRate.QZero;
+      FBuildingState^.MaterialsQuantityRate := TQuantityRate.Zero;
    end
    else
    begin
@@ -1030,7 +1031,7 @@ begin
       if (FBuildingState^.PendingQuantity.IsZero) then
       begin
          FBuildingState^.PendingMaterial := nil;
-         FBuildingState^.MaterialsQuantityRate := TQuantityRate.QZero;
+         FBuildingState^.MaterialsQuantityRate := TQuantityRate.Zero;
          if (Assigned(FBuildingState^.NextEvent)) then
          begin
             CancelEvent(FBuildingState^.NextEvent);
@@ -1058,7 +1059,7 @@ begin
    Assert(Assigned(FBuildingState));
    Assert(Assigned(FBuildingState^.Region));
    FBuildingState^.Region := nil;
-   FBuildingState^.MaterialsQuantityRate := TQuantityRate.QZero;
+   FBuildingState^.MaterialsQuantityRate := TQuantityRate.Zero;
    if (Assigned(FBuildingState^.NextEvent)) then
    begin
       CancelEvent(FBuildingState^.NextEvent);
@@ -1146,7 +1147,6 @@ var
    Duration: TMillisecondsDuration;
    Changes: TDirtyKinds;
 begin
-   Writeln(DebugName, ' :: HandleEvent');
    // if we get here, we're in one of these states:
    //   - we were hoping to build ourselves, and we have waited long enough that we should have all the materials we need
    //       - and that worked out and we are entirely done
@@ -1192,7 +1192,7 @@ begin
          // we're done with materials, not structural integrity
          FBuildingState^.Region.RemoveMaterialConsumer(Self);
          FBuildingState^.Region := nil;
-         FBuildingState^.MaterialsQuantityRate := TQuantityRate.QZero;
+         FBuildingState^.MaterialsQuantityRate := TQuantityRate.Zero;
          Assert(not Assigned(FBuildingState^.PendingMaterial)); // reset by DeliverMaterialConsumer
          Assert(FBuildingState^.PendingQuantity.IsZero); // reset by DeliverMaterialConsumer
          Assert(FBuildingState^.StructuralIntegrity < FFeatureClass.TotalQuantity.AsCardinal);

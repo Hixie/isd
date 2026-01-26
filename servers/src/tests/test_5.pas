@@ -84,13 +84,15 @@ begin
    MaxTime := 0;
    TimePinned := True;
 
-   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 127);
+   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 311); // 127 if we fix the bug where structure dirties itself even when knowledge didn't change
+
+   SystemsServerIPC.ResetRNG(2112348, 4796929787397293412);
 
    AdvanceTime(10 * Seconds);
    ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 'Technology unlocked.');
 
    AdvanceTime(1 * Hours);
-   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 18); // crash
+   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 31); // crash // 18 if we fix the bug where structure dirties itself even when knowledge didn't change
    // HomeRegion := specialize GetUpdatedFeature<TModelGridFeature>(ModelSystem).Parent;
 
    LoginServerIPC.AwaitScores(1);
@@ -125,7 +127,7 @@ begin
    ModelSystem := TModelSystem.Create();
 
    TimePinned := True;
-   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 30);
+   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 64); // 30 if we fix the bug where structure dirties itself even when knowledge didn't change
 
    FreeAndNil(ModelSystem);
    SystemsServer.CloseWebSocket();

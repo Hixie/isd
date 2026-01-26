@@ -11,7 +11,7 @@ uses
 type
    TFactoryFeatureClass = class(TFeatureClass)
    private
-      FMaxRate: TRate;
+      FMaxRate: TIterationsRate;
       FInputs, FOutputs: TMaterialQuantity32Array;
    strict protected
       function GetFeatureNodeClass(): FeatureNodeReference; override;
@@ -29,8 +29,8 @@ type
    strict private
       FFeatureClass: TFactoryFeatureClass;
       FRegion: specialize TAnnotatedPointer<TRegionFeatureNode, TBusStatus>;
-      FConfiguredMaxRate: TRate; // the rate set by the player
-      FCurrentRate: TRate; // FFeatureClass.FMaxRate * RateLimit, limited to FConfiguredMaxRate; FLocalDisabledReason overrides this
+      FConfiguredMaxRate: TIterationsRate; // the rate set by the player
+      FCurrentRate: TIterationsRate; // FFeatureClass.FMaxRate * RateLimit, limited to FConfiguredMaxRate; FLocalDisabledReason overrides this
       FDisabledReasons: TDisabledReasons;
       FLocalDisabledReason: TFactoryDisabledReason; // if not fdActive, actual rate is currently zero, and FDisabledReasons should be considered to also have this one when telling client
       FPendingFraction: Fraction32;
@@ -38,7 +38,7 @@ type
    private // IFactory
       function GetFactoryInputs(): TMaterialQuantity32Array;
       function GetFactoryOutputs(): TMaterialQuantity32Array;
-      function GetFactoryRate(): TRate; // instances (not units!) per second; zero if stalled
+      function GetFactoryRate(): TIterationsRate; // instances (not units!) per second; zero if stalled
       procedure SetFactoryRegion(Region: TRegionFeatureNode);
       procedure StartFactory();
       procedure StallFactory(Reason: TFactoryDisabledReason);
@@ -195,13 +195,13 @@ begin
    Assert(Length(Result) > 0);
 end;
 
-function TFactoryFeatureNode.GetFactoryRate(): TRate; // instances (not units!) per second
+function TFactoryFeatureNode.GetFactoryRate(): TIterationsRate; // instances (not units!) per second
 begin
    Assert(FLocalDisabledReason <> fdNotYetActive);
    if (FLocalDisabledReason = fdActive) then
       Result := FCurrentRate
    else
-      Result := TRate.Zero;
+      Result := TIterationsRate.Zero;
 end;
 
 procedure TFactoryFeatureNode.SetFactoryRegion(Region: TRegionFeatureNode);
@@ -270,7 +270,7 @@ var
    DisabledReasons: TDisabledReasons;
    Message: TRegisterFactoryBusMessage;
    RateLimit: Double;
-   PoweredLimit: TRate;
+   PoweredLimit: TIterationsRate;
 begin
    Writeln(DebugName, ' :: HandleChanges');
    FLocalDisabledReason := fdActive;
@@ -285,7 +285,7 @@ begin
       FDisabledReasons := DisabledReasons;
       MarkAsDirty([dkUpdateClients]);
    end;
-   Writeln('  PoweredLimit=', PoweredLimit.ToString('iterations'), '; FCurrentRate=', FCurrentRate.ToString('iterations'));
+   Writeln('  PoweredLimit=', PoweredLimit.ToString(), '; FCurrentRate=', FCurrentRate.ToString());
    if (PoweredLimit <> FCurrentRate) then
    begin
       FCurrentRate := PoweredLimit;
@@ -351,9 +351,6 @@ begin
          Assert(FRegion.Assigned);
          Writer.WriteDouble(0.0);
       end;
-      Writeln(DebugName, ' FDisabledReasons: [', specialize SetToString<TDisabledReasons>(FDisabledReasons), ']');
-      Writeln(DebugName, ' FLocalDisabledReason: ', specialize EnumToString<TFactoryDisabledReason>(FLocalDisabledReason));
-      Writeln(DebugName, ' sending: [', specialize SetToString<TDisabledReasons>(FDisabledReasons + [TDisabledReason(FLocalDisabledReason)] - [drActive]), ']');
       Writer.WriteCardinal(Cardinal(FDisabledReasons + [TDisabledReason(FLocalDisabledReason)] - [drActive]));
    end;
 end;
@@ -362,15 +359,13 @@ procedure TFactoryFeatureNode.UpdateJournal(Journal: TJournalWriter);
 begin
    Journal.WriteDouble(FConfiguredMaxRate.AsDouble);
    Journal.WriteCardinal(FPendingFraction.AsCardinal);
-   Writeln(DebugName, ' wrote ', FPendingFraction.AsCardinal, ' to the journal.');
    Journal.WriteCardinal(FBacklog);
 end;
 
 procedure TFactoryFeatureNode.ApplyJournal(Journal: TJournalReader);
 begin
-   FConfiguredMaxRate := TRate.FromPerMillisecond(Journal.ReadDouble());
+   FConfiguredMaxRate := TIterationsRate.FromPerMillisecond(Journal.ReadDouble());
    FPendingFraction := Fraction32.FromCardinal(Journal.ReadCardinal());
-   Writeln(DebugName, ' read ', FPendingFraction.AsCardinal, ' from the journal.');
    FBacklog := Journal.ReadCardinal();
 end;
 
@@ -392,7 +387,7 @@ begin
          end
          else
          begin
-            FConfiguredMaxRate := TRate.FromPerMillisecond(RequestedValue);
+            FConfiguredMaxRate := TIterationsRate.FromPerMillisecond(RequestedValue);
             MarkAsDirty([dkUpdateClients, dkUpdateJournal, dkNeedsHandleChanges]);
             Message.CloseOutput();
          end;

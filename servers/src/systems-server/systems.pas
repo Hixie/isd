@@ -389,17 +389,18 @@ type
       FID: TResearchID;
       FDefaultTime: TMillisecondsDuration;
       FDefaultWeight: TWeight;
-      FRequirements: TNode.TNodeArray;
+      FProhibitions, FRequirements: TNode.TNodeArray;
       FBonuses: TBonus.TArray;
       FRewards: TReward.TArray;
    strict protected
       function GetIsRoot(): Boolean; override;
    public
-      constructor Create(AID: TResearchID; ADefaultTime: TMillisecondsDuration; ADefaultWeight: TWeight; ARequirements: TNode.TNodeArray; ABonuses: TBonus.TArray; ARewards: TReward.TArray);
+      constructor Create(AID: TResearchID; ADefaultTime: TMillisecondsDuration; ADefaultWeight: TWeight; AProhibitions, ARequirements: TNode.TNodeArray; ABonuses: TBonus.TArray; ARewards: TReward.TArray);
       destructor Destroy(); override;
       property ID: TResearchID read FID;
       property DefaultTime: TMillisecondsDuration read FDefaultTime;
       property DefaultWeight: TWeight read FDefaultWeight;
+      property Prohibitions: TNode.TNodeArray read FProhibitions; // do not mutate the array through this accessor
       property Requirements: TNode.TNodeArray read FRequirements; // do not mutate the array through this accessor
       property Bonuses: TBonus.TArray read FBonuses; // do not mutate the array through this accessor
       property Rewards: TReward.TArray read FRewards; // do not mutate the array through this accessor
@@ -424,14 +425,16 @@ type
       FValue: UTF8String;
       FSelectable: Boolean;
       FRequirements: TResearch.TArray;
+      FFacilities: TTopic.TArray; // facilities a research feature should have before offering this topic
       FObsoletes: TTopic.TArray;
    strict protected
       function GetIsRoot(): Boolean; override;
    public
-      constructor Create(AValue: UTF8String; ASelectable: Boolean; ARequirements: TResearch.TArray; AObsoletes: TTopic.TArray);
+      constructor Create(AValue: UTF8String; ASelectable: Boolean; ARequirements: TResearch.TArray; AFacilities: TTopic.TArray; AObsoletes: TTopic.TArray);
       property Value: UTF8String read FValue;
       property Selectable: Boolean read FSelectable;
       property Requirements: TResearch.TArray read FRequirements;
+      property Facilities: TTopic.TArray read FFacilities;
       property Obsoletes: TTopic.TArray read FObsoletes;
    end;
 
@@ -504,17 +507,17 @@ const
    dkNewNode = [ // initial dirty flags used on creation
       dkJournalNew, dkVisibilityNew,
       dkUpdateClients, dkUpdateJournal, dkNeedsHandleChanges,
-      dkVisibilityDidChange, dkAffectsVisibility, dkAffectsKnowledge,
+      dkVisibilityDidChange, dkAffectsVisibility,
       dkDescendantNeedsHandleChanges, dkDescendantUpdateClients, dkDescendantUpdateJournal
       // dkAffectsDynastyCount is set conditionally
    ];
    dkIdentityChanged = [
       dkUpdateClients, dkUpdateJournal, dkNeedsHandleChanges,
-      dkAffectsNames, dkVisibilityDidChange, dkAffectsVisibility, dkAffectsKnowledge
+      dkAffectsNames, dkVisibilityDidChange, dkAffectsVisibility
    ];
    dkAffectsTreeStructure = [ // set on old/new parents when child's parent changes
       dkUpdateClients, dkUpdateJournal,
-      dkAffectsVisibility, dkAffectsKnowledge,
+      dkAffectsVisibility,
       dkChildren, dkChildAffectsNames,
       dkMassChanged
       // assets that affect happiness should set dkHappinessChanged when attaching and detaching
@@ -1053,12 +1056,13 @@ begin
 end;
 
 
-constructor TResearch.Create(AID: TResearchID; ADefaultTime: TMillisecondsDuration; ADefaultWeight: TWeight; ARequirements: TNode.TNodeArray; ABonuses: TBonus.TArray; ARewards: TReward.TArray);
+constructor TResearch.Create(AID: TResearchID; ADefaultTime: TMillisecondsDuration; ADefaultWeight: TWeight; AProhibitions, ARequirements: TNode.TNodeArray; ABonuses: TBonus.TArray; ARewards: TReward.TArray);
 begin
    inherited Create();
    FID := AID;
    FDefaultTime := ADefaultTime;
    FDefaultWeight := ADefaultWeight;
+   FProhibitions := AProhibitions;
    FRequirements := ARequirements;
    FBonuses := ABonuses;
    FRewards := ARewards;
@@ -1113,13 +1117,14 @@ begin
 end;
 
 
-constructor TTopic.Create(AValue: UTF8String; ASelectable: Boolean; ARequirements: TResearch.TArray; AObsoletes: TTopic.TArray);
+constructor TTopic.Create(AValue: UTF8String; ASelectable: Boolean; ARequirements: TResearch.TArray; AFacilities: TTopic.TArray; AObsoletes: TTopic.TArray);
 begin
    inherited Create();
    Assert((not ASelectable) or (AValue <> ''), 'Unnamed topics cannot be selectable.');
    FValue := AValue;
    FSelectable := ASelectable;
    FRequirements := ARequirements;
+   FFacilities := AFacilities;
    FObsoletes := AObsoletes;
    PropagateRequirements(TNode.TNodeArray(FRequirements));
 end;
@@ -1503,10 +1508,18 @@ end;
 
 procedure TFeatureNode.Attaching();
 begin
+   Assert(
+      TMethod(@Self.Attaching).Code = Pointer(@TFeatureNode.Attaching),
+      'If you override Attaching, there''s no need to call the inherited method.'
+   );
 end;
 
 procedure TFeatureNode.Detaching();
 begin
+   Assert(
+      TMethod(@Self.Detaching).Code = Pointer(@TFeatureNode.Detaching),
+      'If you override Detaching, there''s no need to call the inherited method.'
+   );
 end;
 
 procedure TFeatureNode.AdoptChild(Child: TAssetNode);
@@ -1553,7 +1566,7 @@ end;
 
 function TFeatureNode.GetMassFlowRate(): TMassRate; // kg/s
 begin
-   Result := TMassRate.MZero;
+   Result := TMassRate.Zero;
 end;
 
 function TFeatureNode.GetSize(): Double; // m
@@ -2089,7 +2102,7 @@ var
    Line: UTF8String;
    {$ENDIF}
 begin
-   Result := TMassRate.MZero;
+   Result := TMassRate.Zero;
    {$IFOPT C+} DebugFeatures := []; {$ENDIF}
    for Feature in FFeatures do
    begin
@@ -2099,7 +2112,7 @@ begin
       //if (Rate.IsNotZero) then
       begin
          SetLength(DebugFeatures, Length(DebugFeatures) + 1);
-         DebugFeatures[High(DebugFeatures)] := Feature.ClassName + ': ' + Rate.ToString('kg');
+         DebugFeatures[High(DebugFeatures)] := Feature.ClassName + ': ' + Rate.ToString();
       end;
       {$ENDIF}
    end;
@@ -2108,7 +2121,7 @@ begin
    begin
       if (Length(DebugFeatures) > 1) then
       begin
-         Writeln('! ', DebugName, ' has mass flow rate ', Result.ToString('kg'), ' coming from:');
+         Writeln('! ', DebugName, ' has mass flow rate ', Result.ToString(), ' coming from:');
          for Line in DebugFeatures do
          begin
             Writeln('!    ', Line);
@@ -2117,7 +2130,7 @@ begin
       else
       if (Length(DebugFeatures) > 0) then
       begin
-         Writeln('! ', DebugName, ' has mass flow rate ', Result.ToString('kg'), ' coming from ', DebugFeatures[0]);
+         Writeln('! ', DebugName, ' has mass flow rate ', Result.ToString(), ' coming from ', DebugFeatures[0]);
       end;
    end;
    {$ENDIF}
@@ -3294,7 +3307,7 @@ var
 begin
    if (not Dirty) then
       exit;
-   Writeln('== Processing changes for system ', FSystemID, ' (', HexStr(FSystemID, 6), ') ==');
+   Writeln('== Processing changes for system ', FSystemID, ' (', HexStr(FSystemID, 6), ') with RNG ', RandomNumberGenerator.State, ' ==');
    Assert((dkAffectsVisibility in FChanges) or not (dkAffectsDynastyCount in FChanges)); // dkAffectsDynastyCount requires dkAffectsVisibility
    AllChanges := [];
    repeat

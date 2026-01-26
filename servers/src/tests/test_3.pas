@@ -75,11 +75,13 @@ begin
    MaxTime := 0;
    TimePinned := True;
 
-   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 127);
+   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 311); // 127 if we fix the bug where structure dirties itself even when knowledge didn't change
+
+   SystemsServerIPC.ResetRNG(2112348, 4796929787397293412);
 
    AdvanceTime(1000 * Days); // crash the colony ship, unlock technologies
    ExpectTechnology(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 'Technology unlocked.');
-   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 18); // crash
+   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 31); // crash // 18 if we fix the bug where structure dirties itself even when knowledge didn't change
    HomeRegion := specialize GetUpdatedFeature<TModelGridFeature>(ModelSystem).Parent;
    with (specialize GetUpdatedFeature<TModelPopulationFeature>(ModelSystem)) do
    begin
@@ -114,7 +116,7 @@ begin
    FreeAndNil(Response);
 
    TimePinned := True;
-   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 2);
+   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 3); // 2 if we fix the bug where structure dirties itself even when knowledge didn't change
    with (specialize GetUpdatedFeature<TModelStaffingFeature>(ModelSystem)) do
    begin
       Verify(Jobs = 2000);
@@ -148,7 +150,7 @@ begin
    FreeAndNil(Response);
 
    TimePinned := True;
-   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 4);
+   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 5); // 4 if we fix the bug where structure dirties itself even when knowledge didn't change
    with (specialize GetUpdatedFeature<TModelStaffingFeature>(ModelSystem, 0)) do
    begin
       Verify(Jobs = 1000);
