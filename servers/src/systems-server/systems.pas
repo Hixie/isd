@@ -312,36 +312,6 @@ type
    TWeight = Cardinal;
    TWeightDelta = Integer;
 
-   TReward = record
-   public
-      type
-         TArray = array of TReward;
-         {$PUSH}
-         {$PACKENUM 1}
-         TRewardKind = (rkMessage = $00, rkAssetClass = $01, rkMaterial = $02);
-         {$POP}
-   strict private
-      const
-         TypeMask = $07;
-         {$IF (High(TRewardKind) and not TypeMask) <> 0)} {$FATAL Reward kinds don't fit in alignment bits.} {$ENDIF}
-      var
-         FData: PtrUInt;
-      function GetKind(): TRewardKind; inline;
-      function GetMessage(): UTF8String; inline;
-      function GetAssetClass(): TAssetClass; inline;
-      function GetMaterial(): TMaterial; inline;
-   public
-      constructor CreateForMessage(var Message: UTF8String);
-      constructor CreateForAssetClass(AssetClass: TAssetClass);
-      constructor CreateForMaterial(Material: TMaterial);
-      procedure Free();
-      property Message: UTF8String read GetMessage;
-      property AssetClass: TAssetClass read GetAssetClass;
-      property Material: TMaterial read GetMaterial;
-      property Kind: TRewardKind read GetKind;
-   end;
-   {$IF SizeOf(TReward) <> 8} {$FATAL TReward has an unexpected size} {$ENDIF}
-
    TNode = class(TDebugObject)
    public
       type
@@ -351,9 +321,7 @@ type
    private
       procedure PropagateRequirements(Requirements: TNodeArray);
    strict protected
-      function GetIsRoot(): Boolean; virtual; abstract;
    public
-      property IsRoot: Boolean read GetIsRoot;
       property Unlocks: TNodeArray read FUnlocks;
       function ToString(): UTF8String; override;
    end;
@@ -377,6 +345,35 @@ type
    end;
    {$IF SizeOf(TBonus) <> 24} {$FATAL TBonus has an unexpected size} {$ENDIF}
 
+   TReward = record
+   public
+      type
+         TArray = array of TReward;
+         {$PUSH}
+         {$PACKENUM 1}
+         TRewardKind = (rkMessage = $00, rkAssetClass = $01, rkMaterial = $02);
+         {$POP}
+   strict private
+      const
+         TypeMask = $07;
+      var
+         FData: PtrUInt;
+      function GetKind(): TRewardKind; inline;
+      function GetMessage(): UTF8String; inline;
+      function GetAssetClass(): TAssetClass; inline;
+      function GetMaterial(): TMaterial; inline;
+   public
+      constructor CreateForMessage(var Message: UTF8String);
+      constructor CreateForAssetClass(AssetClass: TAssetClass);
+      constructor CreateForMaterial(Material: TMaterial);
+      procedure Free();
+      property Message: UTF8String read GetMessage;
+      property AssetClass: TAssetClass read GetAssetClass;
+      property Material: TMaterial read GetMaterial;
+      property Kind: TRewardKind read GetKind;
+   end;
+   {$IF SizeOf(TReward) <> 8} {$FATAL TReward has an unexpected size} {$ENDIF}
+
    TResearchID = Integer; // Negative values are internal. Positive values are from the tech tree. Integer range means we can use A-B to compare IDs, and use $FFFFFFFF as a sentinel.
 
    TResearch = class(TNode)
@@ -392,8 +389,6 @@ type
       FProhibitions, FRequirements: TNode.TNodeArray;
       FBonuses: TBonus.TArray;
       FRewards: TReward.TArray;
-   strict protected
-      function GetIsRoot(): Boolean; override;
    public
       constructor Create(AID: TResearchID; ADefaultTime: TMillisecondsDuration; ADefaultWeight: TWeight; AProhibitions, ARequirements: TNode.TNodeArray; ABonuses: TBonus.TArray; ARewards: TReward.TArray);
       destructor Destroy(); override;
@@ -427,8 +422,6 @@ type
       FRequirements: TResearch.TArray;
       FFacilities: TTopic.TArray; // facilities a research feature should have before offering this topic
       FObsoletes: TTopic.TArray;
-   strict protected
-      function GetIsRoot(): Boolean; override;
    public
       constructor Create(AValue: UTF8String; ASelectable: Boolean; ARequirements: TResearch.TArray; AFacilities: TTopic.TArray; AObsoletes: TTopic.TArray);
       property Value: UTF8String read FValue;
@@ -1078,11 +1071,6 @@ begin
    inherited;
 end;
 
-function TResearch.GetIsRoot(): Boolean;
-begin
-   Result := Length(FRequirements) = 0;
-end;
-
 function TResearch.ToString(): UTF8String;
 var
    Bonus: TBonus;
@@ -1127,11 +1115,6 @@ begin
    FFacilities := AFacilities;
    FObsoletes := AObsoletes;
    PropagateRequirements(TNode.TNodeArray(FRequirements));
-end;
-
-function TTopic.GetIsRoot(): Boolean;
-begin
-   Result := Length(FRequirements) = 0;
 end;
 
 
