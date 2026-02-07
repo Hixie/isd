@@ -121,30 +121,7 @@ type
    TIcon = String[32];
 
 const
-   // Asset icons
-   ColonyShipIcon: TIcon = 'colony-ship';
-   CraterIcon: TIcon = 'crater';
-   MessageIcon: TIcon = 'message';
-   OrbitIcon: TIcon = 'orbit';
-   PlaceholderIcon: TIcon = 'placeholder';
-   PlanetIcon: TIcon = 'planet-thin-continents';
-   PlanetRegionIcon: TIcon = 'region';
-   RubblePileIcon: TIcon = 'rubble';
-   SpaceIcon: TIcon = 'outer-space';
-   Star10Icon: TIcon = 'star10';
-   Star2Icon: TIcon = 'star2';
-   Star3Icon: TIcon = 'star3';
-   Star4Icon: TIcon = 'star4';
-   Star5Icon: TIcon = 'star5';
-   Star6Icon: TIcon = 'star6';
-   Star7Icon: TIcon = 'star7';
-   Star8Icon: TIcon = 'star8';
-   Star9Icon: TIcon = 'star9';
-   UnknownIcon: TIcon = 'unknown';
-
-const
-   // Material icons
-   DarkMatterIcon: TIcon = 'material-dark-matter';
+   UnknownIcon = 'unknown';
 
 {$IFOPT C+}
 // Stdout control codes for tests.

@@ -5,7 +5,7 @@ unit sample;
 interface
 
 uses
-   basenetwork, systems, serverstream, materials, techtree,
+   basenetwork, systems, internals, serverstream, materials,
    messageport, region, time, systemdynasty, masses, annotatedpointer;
 
 type
@@ -16,7 +16,7 @@ type
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
       constructor Create(ASize: Double);
-      constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
+      constructor CreateFromTechnologyTree(const Reader: TTechTreeReader); override;
       function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
    end;
 
@@ -58,7 +58,10 @@ type
 implementation
 
 uses
-   exceptions, sysutils, knowledge, messages, isdprotocol, rubble, commonbuses, research;
+   exceptions, sysutils, knowledge, messages, isdprotocol, rubble, commonbuses, research, ttparser;
+
+var
+   SampleEmpty, SamplePresent: TSituation;
 
 
 constructor TSampleFeatureClass.Create(ASize: Double);
@@ -67,7 +70,7 @@ begin
    FSize := ASize;
 end;
 
-constructor TSampleFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
+constructor TSampleFeatureClass.CreateFromTechnologyTree(const Reader: TTechTreeReader);
 begin
    inherited Create();
    Reader.Tokens.ReadIdentifier('size');
@@ -130,8 +133,7 @@ function TSampleFeatureNode.HandleBusMessage(Message: TBusMessage): THandleBusMe
 var
    DumpOre: TDumpOreBusMessage;
    Handled: TInjectBusMessageResult;
-   TopicName: UTF8String;
-   Topic: TTopic;
+   Situation: TSituation;
 begin
    if (Message is TRubbleCollectionMessage) then
    begin
@@ -187,24 +189,15 @@ begin
    if (Message is TFindResearchFacilitiesBusMessage) then
    begin
       case (FContents.Mode) of
-         smEmpty: TopicName := '@empty';
-         smOre: TopicName := FContents.Ore.Name;
-         smMaterial: TopicName := FContents.Material.Name;
-         smAsset: TopicName := FContents.Child.AssetClass.Name;
+         smEmpty: Situation := SampleEmpty;
+         smOre: Situation := FContents.Ore.SampleSituation;
+         smMaterial: Situation := FContents.Material.SampleSituation;
+         smAsset: Situation := FContents.Child.AssetClass.SampleSituation;
       end;
-      Topic := System.Encyclopedia.Topics['@sample ' + TopicName];
-      if (Assigned(Topic)) then
-      begin
-         Writeln(DebugName, ' was asked to report facilities; found "', '@sample ' + TopicName, '"');
-         (Message as TFindResearchFacilitiesBusMessage).AddTopic(Topic);
-      end
-      else
-         Writeln(DebugName, ' was asked to report facilities; but "', '@sample ' + TopicName, '" does not exist');
+      if (Situation <> 0) then
+         (Message as TFindResearchFacilitiesBusMessage).AddFacility(Situation);
       if (FContents.Mode <> smEmpty) then
-      begin
-         Topic := System.Encyclopedia.Topics['@sample @present'];
-         (Message as TFindResearchFacilitiesBusMessage).AddTopic(Topic);
-      end;
+         (Message as TFindResearchFacilitiesBusMessage).AddFacility(SamplePresent);
       Result := hrActive;
    end
    else
@@ -494,4 +487,6 @@ end;
 
 initialization
    RegisterFeatureClass(TSampleFeatureClass);
+   SampleEmpty := RegisterSituation('@sample @empty');
+   SamplePresent := RegisterSituation('@sample @present');
 end.

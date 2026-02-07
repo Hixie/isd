@@ -7,7 +7,7 @@ interface
 // TODO: refactor to avoid code duplication with refining.pas
 
 uses
-   basenetwork, systems, serverstream, materials, techtree,
+   basenetwork, systems, internals, serverstream, materials,
    messageport, region, time, systemdynasty;
 
 type
@@ -17,7 +17,7 @@ type
    strict protected
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
-      constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
+      constructor CreateFromTechnologyTree(const Reader: TTechTreeReader); override;
       function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
    end;
 
@@ -48,9 +48,9 @@ type
 implementation
 
 uses
-   exceptions, sysutils, isdprotocol, knowledge, messages, typedump, commonbuses;
+   exceptions, sysutils, isdprotocol, knowledge, messages, typedump, commonbuses, ttparser;
 
-constructor TMiningFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
+constructor TMiningFeatureClass.CreateFromTechnologyTree(const Reader: TTechTreeReader);
 begin
    inherited Create();
    Reader.Tokens.ReadIdentifier('max');
@@ -147,7 +147,10 @@ begin
    begin
       Message := TRegisterMinerBusMessage.Create(Self);
       if (InjectBusMessage(Message) <> irHandled) then
+      begin
          FStatus.SetNoRegion();
+         Writeln(DebugName, ' could not find region');
+      end;
       FreeAndNil(Message);
    end;
    inherited;

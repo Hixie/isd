@@ -5,7 +5,7 @@ unit sensors;
 interface
 
 uses
-   systems, materials, knowledge, techtree, tttokenizer, commonbuses;
+   systems, internals, materials, knowledge, tttokenizer, commonbuses;
 
 type
    TSensorFeatureClass = class abstract (TFeatureClass)
@@ -13,7 +13,7 @@ type
       FSensorKind: TVisibility;
    public
       constructor Create(ASensorKind: TVisibility);
-      constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
+      constructor CreateFromTechnologyTree(const Reader: TTechTreeReader); override;
    end;
 
    TSensorFeatureNode = class abstract (TFeatureNode, ISensorsProvider)
@@ -48,7 +48,7 @@ type
 implementation
 
 uses
-   sysutils, orbit, typedump, exceptions;
+   sysutils, orbit, typedump, exceptions, ttparser;
 
 constructor TSensorFeatureClass.Create(ASensorKind: TVisibility);
 begin
@@ -56,7 +56,7 @@ begin
    FSensorKind := ASensorKind;
 end;
 
-constructor TSensorFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
+constructor TSensorFeatureClass.CreateFromTechnologyTree(const Reader: TTechTreeReader);
 var
    Keyword: UTF8String;
 

@@ -7,7 +7,7 @@ interface
 {$DEFINE VERBOSE}
 
 uses
-   systems, serverstream, techtree, materials, time, providers,
+   systems, internals, serverstream, materials, time, providers,
    hashtable, genericutils, isdprotocol, plasticarrays,
    commonbuses, systemdynasty, masses, isdnumbers, annotatedpointer;
 
@@ -215,7 +215,7 @@ type
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
       constructor Create(ADepth: Cardinal; ATargetCount: Cardinal; ATargetQuantity: TQuantity64);
-      constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
+      constructor CreateFromTechnologyTree(const Reader: TTechTreeReader); override;
       function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
       property Depth: Cardinal read FDepth;
       property TargetCount: Cardinal read FTargetCount;
@@ -352,7 +352,7 @@ type
 implementation
 
 uses
-   sysutils, planetary, exceptions, hashfunctions, rubble, knowledge;
+   sysutils, planetary, exceptions, hashfunctions, rubble, knowledge, ttparser;
 
 function FactoryHash32(const Key: IFactory): DWord;
 begin
@@ -641,12 +641,12 @@ begin
    FTargetQuantity := ATargetQuantity;
 end;
 
-constructor TRegionFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
+constructor TRegionFeatureClass.CreateFromTechnologyTree(const Reader: TTechTreeReader);
 begin
    inherited Create();
    Reader.Tokens.ReadIdentifier('at');
    Reader.Tokens.ReadIdentifier('depth');
-   FDepth := ReadNumber(Reader.Tokens, Low(FDepth), High(FDepth)); // $R-
+   FDepth := ReadNumber(Reader.Tokens, 1, 3); // $R- // hard-coded, assumes existence of mtDepth2 and mtDepth3 and no other depths
    Reader.Tokens.ReadComma();
    FTargetCount := ReadNumber(Reader.Tokens, 1, 63); // $R-
    if (FTargetCount = 1) then
@@ -670,8 +670,7 @@ end;
 
 function TRegionFeatureClass.InitFeatureNode(ASystem: TSystem): TFeatureNode;
 begin
-   Result := nil;
-   raise Exception.Create('Cannot create a TRegionFeatureNode from a prototype, it must have an ore composition from an ancestor TPlanetaryBodyFeatureNode.');
+   Result := TRegionFeatureNode.Create(ASystem, Self);
 end;
 
 
@@ -991,7 +990,7 @@ begin
    PileRatio := Pile.GetOrePileCapacity() / GetTotalOrePileCapacity(Dynasty);
    Assert(PileRatio <= 1.0);
    Result := GetTotalOrePileMass(Dynasty) * PileRatio;
-   Assert(Result <= Pile.GetOrePileCapacity(), DebugName + ' computed an ore pile mass of ' + Result.ToString() + ' for a pile with capacity ' + Pile.GetOrePileCapacity().ToString() + ' (this was ' + FloatToStr(PileRatio) + 'x the total ore pile capacity of ' + GetTotalOrePileCapacity(Dynasty).ToString() + ')');
+   Assert(Result.AsDouble <= Pile.GetOrePileCapacity().AsDouble + Epsilon, DebugName + ' computed an ore pile mass of ' + Result.ToString() + ' for a pile with capacity ' + Pile.GetOrePileCapacity().ToString() + ' (this was ' + FloatToStr(PileRatio) + 'x the total ore pile capacity of ' + GetTotalOrePileCapacity(Dynasty).ToString() + ')');
 end;
 
 function TRegionFeatureNode.GetOrePileMassFlowRate(Pile: IOrePile): TMassRate; // kg/s
@@ -2179,12 +2178,13 @@ begin
       Assert(not Assigned(FNextEvent));
       Assert(not FDynamic); // so all the "get current mass" etc getters won't be affected by mass flow
       CurrentGroundMass := Mass;
+      Writeln('  current ground mass: ', Mass.ToString());
       TimeUntilNextEvent := TMillisecondsDuration.Infinity;
       AllDynastyMiningRate.Reset();
       for Dynasty in FData.Dynasties do
       begin
          DynastyData := FData[Dynasty];
-         Writeln('  dynasty ', Dynasty.DynastyID);
+         Writeln('- dynasty ', Dynasty.DynastyID);
 
          DynastyData^.FMiners.RemoveAll(nil);
          DynastyData^.FOrePiles.RemoveAll(nil);

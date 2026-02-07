@@ -5,7 +5,7 @@ unit messages;
 interface
 
 uses
-   systems, serverstream, time, knowledge, basenetwork, techtree, systemdynasty;
+   systems, internals, serverstream, time, knowledge, basenetwork, systemdynasty;
 
 type
    TNotificationMessage = class(TKnowledgeBusMessage)
@@ -15,8 +15,8 @@ type
       FResearch: TResearch;
    public
       constructor Create(ASource: TAssetNode; ABody: UTF8String; AResearch: TResearch = nil);
-      property Source: TAssetNode read FSource;
       property Body: UTF8String read FBody;
+      property Source: TAssetNode read FSource;
       property Research: TResearch read FResearch;
    end;
 
@@ -28,7 +28,7 @@ type
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
       constructor Create(AMessageAssetClass: TAssetClass);
-      constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
+      constructor CreateFromTechnologyTree(const Reader: TTechTreeReader); override;
       function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
    end;
 
@@ -53,9 +53,12 @@ type
 type
    TMessageFeatureClass = class(TFeatureClass)
    strict protected
+      FSourceSystemID: Cardinal;
+      FTimestamp: TTimeInMilliseconds;
+      FBody: UTF8String;
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
-      constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
+      constructor CreateFromTechnologyTree(const Reader: TTechTreeReader); override;
       function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
    end;
 
@@ -68,8 +71,7 @@ type
    protected
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
-      constructor Create(ASystem: TSystem);
-      constructor Create(ASystem: TSystem; ASourceSystemID: Cardinal; ATimestamp: TTimeInMilliseconds; AIsRead: Boolean; ABody: UTF8String);
+      constructor Create(ASystem: TSystem; ASourceSystemID: Cardinal; ATimestamp: TTimeInMilliseconds; ABody: UTF8String);
       procedure SetMessage(ASourceSystemID: Cardinal; ATimestamp: TTimeInMilliseconds; ABody: UTF8String);
       procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader); override;
@@ -80,7 +82,7 @@ type
 implementation
 
 uses
-   isdprotocol, sysutils, exceptions;
+   isdprotocol, sysutils, exceptions, ttparser;
 
 type
    PMessageBoardData = ^TMessageBoardData;
@@ -99,7 +101,7 @@ begin
 end;
 
 
-constructor TMessageBoardFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
+constructor TMessageBoardFeatureClass.CreateFromTechnologyTree(const Reader: TTechTreeReader);
 begin
    inherited Create();
    Reader.Tokens.ReadIdentifier('spawns');
@@ -285,9 +287,18 @@ begin
 end;
 
 
-constructor TMessageFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
+constructor TMessageFeatureClass.CreateFromTechnologyTree(const Reader: TTechTreeReader);
 begin
    inherited Create();
+   if (Reader.Tokens.IsIdentifier()) then
+   begin
+      Reader.Tokens.ReadIdentifier('from');
+      FSourceSystemID := ReadNumber(Reader.Tokens, Low(FSourceSystemID), High(FSourceSystemID)); // $R-
+      Reader.Tokens.ReadIdentifier('at');
+      FTimestamp := ReadTime(Reader.Tokens);
+      Reader.Tokens.ReadColon();
+      FBody := Reader.Tokens.ReadString();
+   end;
 end;
 
 function TMessageFeatureClass.GetFeatureNodeClass(): FeatureNodeReference;
@@ -297,21 +308,15 @@ end;
 
 function TMessageFeatureClass.InitFeatureNode(ASystem: TSystem): TFeatureNode;
 begin
-   Result := TMessageFeatureNode.Create(ASystem);
+   Result := TMessageFeatureNode.Create(ASystem, FSourceSystemID, FTimestamp, FBody);
 end;
 
 
-constructor TMessageFeatureNode.Create(ASystem: TSystem);
-begin
-   inherited Create(ASystem);
-end;
-
-constructor TMessageFeatureNode.Create(ASystem: TSystem; ASourceSystemID: Cardinal; ATimestamp: TTimeInMilliseconds; AIsRead: Boolean; ABody: UTF8String);
+constructor TMessageFeatureNode.Create(ASystem: TSystem; ASourceSystemID: Cardinal; ATimestamp: TTimeInMilliseconds; ABody: UTF8String);
 begin
    inherited Create(ASystem);
    FSourceSystemID := ASourceSystemID;
    FTimestamp := ATimestamp;
-   FIsRead := AIsRead;
    FBody := ABody;
 end;
 
@@ -389,6 +394,7 @@ procedure TMessageFeatureNode.DescribeExistentiality(var IsDefinitelyReal, IsDef
 begin
    IsDefinitelyReal := True;
 end;
+
 
 initialization
    RegisterFeatureClass(TMessageBoardFeatureClass);

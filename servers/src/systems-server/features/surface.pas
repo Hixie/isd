@@ -5,31 +5,27 @@ unit surface;
 interface
 
 uses
-   systems, serverstream, techtree, time, masses;
+   systems, internals, serverstream, time, masses;
 
 type
-   TCreateRegionCallback = function (CellSize: Double; Dimension: Cardinal; System: TSystem): TAssetNode of object;
-
    TSurfaceFeatureClass = class(TFeatureClass)
    private
       FCellSize: Double;
       FMinRegionSize, FMaxRegionSize: Cardinal; // preferred number of cells per side - must be odd, greater than 1
-      FCreateRegionCallback: TCreateRegionCallback;
    strict protected
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
-      constructor Create(ACellSize: Double; AMinRegionSize, AMaxRegionSize: Cardinal; ACreateRegionCallback: TCreateRegionCallback);
-      constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
+      constructor Create(ACellSize: Double; AMinRegionSize, AMaxRegionSize: Cardinal);
+      constructor CreateFromTechnologyTree(const Reader: TTechTreeReader); override;
       function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
    end;
 
    TSurfaceFeatureNode = class(TFeatureNode)
    private
       FFeatureClass: TSurfaceFeatureClass;
-      FSize: Double;
       FChildren: TAssetNode.TArray; // TODO: replace this with a region quadtree
       // X,Y coordinates are in FCellSize units with 0,0 being the center cell
-      // X,Y must be within circle with radius FSize/2-Sqrt(2)*FCellSize*FMaxRegionSize/2
+      // X,Y must be within circle with radius Size/2-Sqrt(2)*FCellSize*FMaxRegionSize/2
       procedure AdoptRegionChild(Child: TAssetNode; X, Y: Integer; Dimension: Cardinal);
       function GetRegionAt(X, Y: Integer): TAssetNode;
       function GetOrCreateRegionAt(X, Y: Integer; Dimension: Cardinal = 0): TAssetNode; // X,Y constrained as above
@@ -37,12 +33,11 @@ type
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
       function GetMass(): TMass; override;
       function GetMassFlowRate(): TMassRate; override;
-      function GetSize(): Double; override;
       procedure Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback); override;
       function HandleBusMessage(Message: TBusMessage): THandleBusMessageResult; override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
-      constructor Create(ASystem: TSystem; AFeatureClass: TSurfaceFeatureClass; ASize: Double);
+      constructor Create(ASystem: TSystem; AFeatureClass: TSurfaceFeatureClass);
       destructor Destroy(); override;
       procedure DropChild(Child: TAssetNode); override;
       procedure UpdateJournal(Journal: TJournalWriter); override;
@@ -53,7 +48,7 @@ type
 implementation
 
 uses
-   sysutils, isdprotocol, orbit, random;
+   sysutils, isdprotocol, orbit, random, ttparser;
 
 type
    PSurfaceData = ^TSurfaceData;
@@ -68,7 +63,7 @@ type
 const
    RootTwo = Sqrt(2.0);
 
-constructor TSurfaceFeatureClass.Create(ACellSize: Double; AMinRegionSize, AMaxRegionSize: Cardinal; ACreateRegionCallback: TCreateRegionCallback);
+constructor TSurfaceFeatureClass.Create(ACellSize: Double; AMinRegionSize, AMaxRegionSize: Cardinal);
 begin
    inherited Create();
    FCellSize := ACellSize;
@@ -78,12 +73,24 @@ begin
    Assert(AMaxRegionSize mod 2 = 1, 'region sizes must be odd');
    FMinRegionSize := AMinRegionSize;
    FMaxRegionSize := AMaxRegionSize;
-   FCreateRegionCallback := ACreateRegionCallback;
 end;
 
-constructor TSurfaceFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
+constructor TSurfaceFeatureClass.CreateFromTechnologyTree(const Reader: TTechTreeReader);
 begin
-   Reader.Tokens.Error('Feature class %s is reserved for internal asset classes', [ClassName]);
+   inherited Create();
+   Reader.Tokens.ReadIdentifier('cell');
+   Reader.Tokens.ReadIdentifier('size');
+   FCellSize := ReadLength(Reader.Tokens);
+   Reader.Tokens.ReadComma();
+   Reader.Tokens.ReadIdentifier('region');
+   Reader.Tokens.ReadIdentifier('size');
+   FMinRegionSize := ReadNumber(Reader.Tokens, 3, High(FMinRegionSize)); // $R-
+   if (FMinRegionSize mod 2 <> 1) then
+      Reader.Tokens.Error('Minimum region dimension must be odd', []);
+   Reader.Tokens.ReadIdentifier('to');
+   FMaxRegionSize := ReadNumber(Reader.Tokens, FMinRegionSize, High(FMaxRegionSize)); // $R-
+   if (FMaxRegionSize mod 2 <> 1) then
+      Reader.Tokens.Error('Maximum region dimension must be odd and bigger than minimum dimension', []);
 end;
 
 function TSurfaceFeatureClass.GetFeatureNodeClass(): FeatureNodeReference;
@@ -93,17 +100,14 @@ end;
 
 function TSurfaceFeatureClass.InitFeatureNode(ASystem: TSystem): TFeatureNode;
 begin
-   Result := nil;
-   raise Exception.Create('Cannot create a TSurfaceFeatureNode from a prototype, it must have a size.');
+   Result := TSurfaceFeatureNode.Create(ASystem, Self);
 end;
 
 
-constructor TSurfaceFeatureNode.Create(ASystem: TSystem; AFeatureClass: TSurfaceFeatureClass; ASize: Double);
+constructor TSurfaceFeatureNode.Create(ASystem: TSystem; AFeatureClass: TSurfaceFeatureClass);
 begin
    inherited Create(ASystem);
    FFeatureClass := AFeatureClass;
-   Assert(ASize > 0);
-   FSize := ASize;
 end;
 
 constructor TSurfaceFeatureNode.CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem);
@@ -127,9 +131,9 @@ var
    Index, HalfDimension: Cardinal;
    ChildData: PSurfaceData;
 begin
-   Assert(FSize > 0.0);
-   Assert(FSize / 2.0 > RootTwo * FFeatureClass.FCellSize * FFeatureClass.FMaxRegionSize / 2.0);
-   Assert(X * X + Y * Y < Sqr(FSize / 2.0 - RootTwo * FFeatureClass.FCellSize * FFeatureClass.FMaxRegionSize / 2.0));
+   Assert(Parent.Size > 0.0);
+   Assert(Parent.Size / 2.0 > RootTwo * FFeatureClass.FCellSize * FFeatureClass.FMaxRegionSize / 2.0);
+   Assert(X * X + Y * Y < Sqr(Parent.Size / 2.0 - RootTwo * FFeatureClass.FCellSize * FFeatureClass.FMaxRegionSize / 2.0));
    // TODO: use a region quadtree instead
    if (Length(FChildren) > 0) then
       for Index := Low(FChildren) to High(FChildren) do
@@ -153,9 +157,9 @@ var
    Index: Cardinal;
    XA, YA: Integer;
 begin
-   Assert(FSize > 0.0);
-   Assert(RootTwo * FSize > FFeatureClass.FCellSize * FFeatureClass.FMaxRegionSize);
-   Assert(X * X + Y * Y < Sqr(FSize - RootTwo * FFeatureClass.FCellSize * FFeatureClass.FMaxRegionSize / 2.0));
+   Assert(Parent.Size > 0.0);
+   Assert(RootTwo * Parent.Size > FFeatureClass.FCellSize * FFeatureClass.FMaxRegionSize);
+   Assert(X * X + Y * Y < Sqr(Parent.Size - RootTwo * FFeatureClass.FCellSize * FFeatureClass.FMaxRegionSize / 2.0));
    Result := GetRegionAt(X, Y);
    if (not Assigned(Result)) then
    begin
@@ -187,7 +191,7 @@ begin
             end;
          end;
       end;
-      Result := FFeatureClass.FCreateRegionCallback(FFeatureClass.FCellSize, Dimension, System);
+      Result := System.Encyclopedia.CreateRegion(FFeatureClass.FCellSize, Dimension, System);
       AdoptRegionChild(Result, X, Y, Dimension);
    end;
 end;
@@ -237,11 +241,6 @@ begin
       Result := Result + Child.MassFlowRate;
 end;
 
-function TSurfaceFeatureNode.GetSize(): Double;
-begin
-   Result := FSize;
-end;
-
 procedure TSurfaceFeatureNode.Walk(PreCallback: TPreWalkCallback; PostCallback: TPostWalkCallback);
 var
    Child: TAssetNode;
@@ -260,11 +259,11 @@ begin
    begin
       RandomNumberGenerator := System.RandomNumberGenerator;
       // hat tip to Andreas Lundblad for the algorithm for picking a point from a uniform distribution of points on a circle
-      Assert(FSize > 0.0);
+      Assert(Parent.Size > 0.0);
       Assert(FFeatureClass.FCellSize > 0.0);
       Assert(FFeatureClass.FMaxRegionSize > 0);
       Theta := RandomNumberGenerator.GetDouble(0, Pi * 2.0); // $R-
-      Radius := SqRt(RandomNumberGenerator.GetDouble(0.0, 1.0)) * (FSize / 2.0 - RootTwo * FFeatureClass.FCellSize * FFeatureClass.FMaxRegionSize / 2.0); // $R-
+      Radius := SqRt(RandomNumberGenerator.GetDouble(0.0, 1.0)) * (Parent.Size / 2.0 - RootTwo * FFeatureClass.FCellSize * FFeatureClass.FMaxRegionSize / 2.0); // $R-
       X := (Radius * Cos(Theta)) / FFeatureClass.FCellSize; // $R-
       Y := (Radius * Sin(Theta)) / FFeatureClass.FCellSize; // $R-
       Child := GetOrCreateRegionAt(Trunc(X), Trunc(Y), TReceiveCrashingAssetMessage(Message).RegionDimension); // $R-
@@ -311,7 +310,6 @@ var
    Child: TAssetNode;
    SurfaceData: PSurfaceData;
 begin
-   Journal.WriteDouble(FSize);
    if (Length(FChildren) > 0) then
    begin
       for Child in FChildren do
@@ -373,7 +371,6 @@ procedure TSurfaceFeatureNode.ApplyJournal(Journal: TJournalReader);
 var
    AssetChangeKind: TAssetChangeKind;
 begin
-   FSize := Journal.ReadDouble();
    repeat
       AssetChangeKind := Journal.ReadAssetChangeKind();
       case AssetChangeKind of

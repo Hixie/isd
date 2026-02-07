@@ -5,7 +5,7 @@ unit onoff;
 interface
 
 uses
-   basenetwork, systems, serverstream, materials, techtree,
+   basenetwork, systems, internals, serverstream, materials,
    messageport, isdprotocol, systemdynasty;
 
 type
@@ -13,7 +13,7 @@ type
    strict protected
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
-      constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
+      constructor CreateFromTechnologyTree(const Reader: TTechTreeReader); override;
       function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
    end;
 
@@ -33,9 +33,9 @@ type
 implementation
 
 uses
-   exceptions, sysutils, knowledge, messages, typedump, commonbuses;
+   exceptions, sysutils, knowledge, messages, typedump, commonbuses, ttparser;
 
-constructor TOnOffFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
+constructor TOnOffFeatureClass.CreateFromTechnologyTree(const Reader: TTechTreeReader);
 begin
    inherited Create();
 end;

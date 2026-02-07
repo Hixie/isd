@@ -5,7 +5,7 @@ unit providers;
 interface
 
 uses
-   systems, masses;
+   internals, systems, masses;
 
 type
    IHillDiameterProvider = interface ['IHillDiameterProvider']

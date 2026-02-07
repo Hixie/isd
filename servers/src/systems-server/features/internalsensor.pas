@@ -5,7 +5,7 @@ unit internalsensor;
 interface
 
 uses
-   systems, serverstream, materials, knowledge, techtree, sensors;
+   systems, internals, serverstream, materials, knowledge, sensors;
 
 type
    TInternalSensorFeatureClass = class(TSensorFeatureClass)
@@ -29,7 +29,7 @@ type
 implementation
 
 uses
-   sysutils, orbit, isdprotocol, typedump;
+   sysutils, orbit, isdprotocol, typedump, ttparser;
 
 function TInternalSensorFeatureClass.GetFeatureNodeClass(): FeatureNodeReference;
 begin

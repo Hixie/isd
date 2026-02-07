@@ -7,24 +7,25 @@ unit techtree;
 interface
 
 uses
-   sysutils, time, systems, plasticarrays, genericutils, tttokenizer, materials, masses;
+   sysutils, internals, time, systems, plasticarrays, genericutils,
+   tttokenizer, materials, masses, conditions;
 
 type
    TTechnologyTree = class
    strict private
-      FResearches: specialize PlasticArray<TResearch, TObjectUtils>;
-      FTopics: specialize PlasticArray<TTopic, TObjectUtils>;
+      FResearches: specialize PlasticArray<TResearch, specialize IncomparableUtils<TResearch>>;
+      FTopics: specialize PlasticArray<TTopic, specialize IncomparableUtils<TTopic>>;
       FAssetClasses: TAssetClass.TPlasticArray;
       FMaterials: specialize PlasticArray<TMaterial, TObjectUtils>;
    private
-      procedure AddResearch(Research: TResearch);
-      procedure AddTopic(Topic: TTopic);
+      function AddResearch(AID: TResearchID; ADefaultTime: TMillisecondsDuration; ADefaultWeight: TWeight; ACondition: TConditionAST; ABonuses: TBonus.TArray; AUnlockedKnowledge: TUnlockedKnowledge.TArray): TResearch;
+      function AddTopic(Name: UTF8String; Condition: TRootConditionAST): TTopic;
       procedure AddAssetClass(AssetClass: TAssetClass);
       procedure AddMaterial(Material: TMaterial);
+      procedure Compile();
    public
       constructor Create();
       destructor Destroy(); override;
-      function GetRootResearch(): TResearch;
       function ExtractResearches(): TResearch.TArray;
       function ExtractTopics(): TTopic.TArray;
       function ExtractAssetClasses(): TAssetClass.TArray;
@@ -32,45 +33,28 @@ type
    end;
 
 function LoadTechnologyTree(Filename: RawByteString; Materials: TMaterial.TArray): TTechnologyTree;
-procedure RegisterFeatureClass(FeatureClass: FeatureClassReference);
-
-function ReadBuildEnvironment(Tokens: TTokenizer): TBuildEnvironment;
-function ReadAssetClass(Reader: TTechTreeReader): TAssetClass;
-function ReadMaterial(Reader: TTechTreeReader): TMaterial;
-function ReadTopic(Reader: TTechTreeReader): TTopic;
-function ReadNumber(Tokens: TTokenizer; Min, Max: Int64): Int64; // integer only
-function ReadPerTime(Tokens: TTokenizer): TIterationsRate;
-function ReadLength(Tokens: TTokenizer): Double;
-function ReadMass(Tokens: TTokenizer): TMass;
-function ReadMassPerTime(Tokens: TTokenizer): TMassRate;
-function ReadQuantity(Tokens: TTokenizer; Material: TMaterial): TQuantity64;
-function ReadQuantityPerTime(Tokens: TTokenizer; Material: TMaterial): TQuantityRate;
-function ReadKeywordPerTime(Tokens: TTokenizer; Keyword: UTF8String): TRate;
-function ReadComma(Tokens: TTokenizer): Boolean;
 
 implementation
 
 uses
-   {$IFDEF VERBOSE} unicode, {$ENDIF}
-   typedump, exceptions, fileutils, rtlutils, stringutils, hashtable,
-   hashfunctions, astronomy, isdprotocol;
+   typedump, exceptions, fileutils, rtlutils, stringutils,
+   isdprotocol, ttparser;
+
+// OUTPUT  
 
 constructor TTechnologyTree.Create();
 begin
-   inherited;
+   inherited Create();
 end;
 
 destructor TTechnologyTree.Destroy();
 var
    Research: TResearch;
-   Topic: TTopic;
    AssetClass: TAssetClass;
    Material: TMaterial;
 begin
    for Research in FResearches do
       Research.Free();
-   for Topic in FTopics do
-      Topic.Free();
    for AssetClass in FAssetClasses do
       AssetClass.Free();
    for Material in FMaterials do
@@ -78,14 +62,24 @@ begin
    inherited;
 end;
 
-procedure TTechnologyTree.AddResearch(Research: TResearch);
+function TTechnologyTree.AddResearch(AID: TResearchID; ADefaultTime: TMillisecondsDuration; ADefaultWeight: TWeight; ACondition: TConditionAST; ABonuses: TBonus.TArray; AUnlockedKnowledge: TUnlockedKnowledge.TArray): TResearch;
+var
+   Index: TResearchIndex;
 begin
-   FResearches.Push(Research);
+   Assert(FResearches.Length <= High(TResearchIndex));
+   Index := FResearches.Length; // $R-
+   Result := TResearch.Create(AID, Index, ADefaultTime, ADefaultWeight, ACondition, ABonuses, AUnlockedKnowledge);
+   FResearches.Push(Result);
 end;
 
-procedure TTechnologyTree.AddTopic(Topic: TTopic);
+function TTechnologyTree.AddTopic(Name: UTF8String; Condition: TRootConditionAST): TTopic;
+var
+   Index: TTopic.TIndex;
 begin
-   FTopics.Push(Topic);
+   Assert(FTopics.Length < High(TTopic.TIndex));
+   Index := FTopics.Length + 1; // $R-
+   Result := TTopic.Create(Name, Index, Condition);
+   FTopics.Push(Result);
 end;
 
 procedure TTechnologyTree.AddAssetClass(AssetClass: TAssetClass);
@@ -98,10 +92,51 @@ begin
    FMaterials.Push(Material);
 end;
 
-function TTechnologyTree.GetRootResearch(): TResearch;
+procedure TTechnologyTree.Compile();
+var
+   Research: TResearch;
+   Topic: TTopic;
+   UnlockedResearches: array of TResearch.TIndexPlasticArray;
+   UnlockedTopics: array of TTopic.TIndexPlasticArray;
+   Collection: TResearchHashSet;
+   Index, SubIndex: TResearchIndex;
 begin
-   Assert(FResearches.Length > 0);
-   Result := FResearches[0];
+   Writeln('Compiling tech tree... ', FResearches.Length, ' researches, ', FTopics.Length, ' topics');
+   SetLength(UnlockedResearches, FResearches.Length);
+   SetLength(UnlockedTopics, FResearches.Length);
+   if (FResearches.IsNotEmpty) then
+      for Index := 0 to FResearches.Length - 1 do // $R-
+      begin
+         Research := FResearches[Index];
+         Research.Condition.Compile(@Collection);
+         if (Collection.IsEmpty) then
+            Collection.Add(0); // we need something to hook the search to, otherwise we never consider it unlocked
+         Assert(Research.Index = Index);
+         for SubIndex in Collection do
+            UnlockedResearches[SubIndex].Push(Index);
+         Collection.Reset();
+         if (Length(Research.Bonuses) > 0) then
+            for SubIndex := Low(Research.Bonuses) to High(Research.Bonuses) do
+               Research.Bonuses[SubIndex].Compile();
+      end;
+   if (FTopics.IsNotEmpty) then
+      for Index := 0 to FTopics.Length - 1 do // $R-
+      begin
+         Topic := FTopics[Index];
+         Assert(Topic.Index = Index + 1);
+         Topic.Condition.Compile(@Collection);
+         if (Collection.IsEmpty) then
+            Collection.Add(0); // as above
+         for SubIndex in Collection do
+            UnlockedTopics[SubIndex].Push(Topic.Index);
+         Collection.Reset();
+      end;
+   if (FResearches.IsNotEmpty) then
+      for Index := 0 to FResearches.Length - 1 do // $R-
+      begin
+         Research := FResearches[Index];
+         Research.UpdateUnlocks(UnlockedResearches[Index].Distill(), UnlockedTopics[Index].Distill());
+      end;
 end;
 
 function TTechnologyTree.ExtractResearches(): TResearch.TArray;
@@ -125,68 +160,133 @@ begin
 end;
 
 
-type
-   TSegment = record
-      Start: Pointer;
-      Size: QWord;
-      class function From(AString: UTF8String): TSegment; inline; overload; static;
-      class function From(AStart, AEnd: Pointer): TSegment; inline; overload; static;
-   end;
-
-
-class function TSegment.From(AString: UTF8String): TSegment;
-begin
-   {$IFOPT C+} AssertStringIsConstant(AString); {$ENDIF}
-   Assert(AString <> '');
-   Result.Start := @AString[1];
-   Result.Size := Length(AString); // $R-
-end;
-
-class function TSegment.From(AStart, AEnd: Pointer): TSegment;
-begin
-   Assert(AEnd > AStart);
-   Result.Start := AStart;
-   Result.Size := AEnd - AStart; // $R-
-end;
-
-
-type
-   TFeatureClassHashTable = class(specialize THashTable<UTF8String, FeatureClassReference, UTF8StringUtils>)
-      constructor Create();
-   end;
-
-   constructor TFeatureClassHashTable.Create();
-   begin
-      inherited Create(@UTF8StringHash32);
-   end;
-
-type
-   TResearchHashTable = class(specialize THashTable<UTF8String, TResearch, UTF8StringUtils>)
-      constructor Create();
-   end;
-
-   constructor TResearchHashTable.Create();
-   begin
-      inherited Create(@UTF8StringHash32);
-   end;
-
+// PARSER
+   
+function Parse(Tokens: TTokenizer; Ores: TMaterial.TArray): TTechnologyTree;
 var
-   FeatureClasses: TFeatureClassHashTable = nil;
-
-function Parse(Tokens: TTokenizer; Materials: TMaterial.TArray): TTechnologyTree;
-var
-   Researches: TResearchHashTable;
-   Topics: TTopicHashTable;
-   AssetClasses: TAssetClassIdentifierHashTable;
-   MaterialNames: TMaterialNameHashTable;
-   MaterialIDs: TMaterialIDHashTable;
-   NewMaterials: specialize PlasticArray<TMaterial, specialize IncomparableUtils<TMaterial>>;
+   ResearchesByID: TResearchHashTable;
+   StorybeatResearches, MaterialResearches, AssetClassResearches: TResearchListHashTable;
+   SituationsByIdentifier: TSituationHashTable;
+   TopicsByName: TTopicHashTable;
+   AssetClassesByName: TAssetClassIdentifierHashTable;
+   MaterialsByName: TMaterialNameHashTable;
+   AssetClassesByID: TAssetClassIDHashTable; // only used to catch duplicate IDs
+   MaterialsByID: TMaterialIDHashTable; // only used to catch duplicate IDs
 
    function GetTechTreeReader(): TTechTreeReader; inline;
    begin
-      Result := TTechTreeReader.Create(Tokens, AssetClasses, MaterialNames, Topics);
+      Result := TTechTreeReader.Create(Tokens, SituationsByIdentifier, AssetClassesByName, MaterialsByName);
    end;
 
+   function ParseCondition(): TRootConditionAST;
+
+      function ParseConditionExpression(): TConditionAST; forward;
+
+      function ParseLeafConditionExpression(const LastWasNegation = False): TConditionAST;
+      var
+         Identifier: UTF8String;
+      begin
+         if (Tokens.IsOpenParenthesis()) then
+         begin
+            Tokens.ReadOpenParenthesis();
+            Result := TGroupConditionAST(ParseConditionExpression());
+            Tokens.ReadCloseParenthesis();
+         end
+         else
+         begin
+            Identifier := Tokens.ReadIdentifier();
+            if (Identifier = 'storybeat') then
+            begin
+               Identifier := Tokens.ReadIdentifier();
+               if (not StorybeatResearches.Has(Identifier)) then
+                  Tokens.Error('Unknown storybeat "%s" in condition', [Identifier]);
+               Result := TResearchListConditionAST.Create(StorybeatResearches.ItemsPtr[Identifier]);
+            end
+            else
+            if (Identifier = 'material') then
+            begin
+               Identifier := Tokens.ReadString();
+               if (not MaterialResearches.Has(Identifier)) then
+                  Tokens.Error('Unknown material "%s" in condition', [Identifier]);
+               Result := TResearchListConditionAST.Create(MaterialResearches.ItemsPtr[Identifier]);
+            end
+            else
+            if (Identifier = 'asset') then
+            begin
+               Identifier := Tokens.ReadString();
+               if (not AssetClassResearches.Has(Identifier)) then
+                  Tokens.Error('Unknown asset class "%s" in condition', [Identifier]);
+               Result := TResearchListConditionAST.Create(AssetClassResearches.ItemsPtr[Identifier]);
+            end
+            else
+            if (Identifier = 'situation') then
+            begin
+               Identifier := ReadSituationName(GetTechTreeReader());
+               if (not SituationsByIdentifier.Has(Identifier)) then
+                  Tokens.Error('Unknown situation "%s" in condition', [Identifier]);
+               Result := TSituationConditionAST.Create(SituationsByIdentifier[Identifier]);
+            end
+            else
+            if (Identifier = 'topic') then
+            begin
+               Identifier := Tokens.ReadString();
+               if (not TopicsByName.Has(Identifier)) then
+                  Tokens.Error('Unknown topic "%s" in condition', [Identifier]);
+               Result := TTopicConditionAST.Create(TopicsByName[Identifier].Index);
+            end
+            else
+            if (Identifier = 'no') then
+            begin
+               if (LastWasNegation) then
+                  Tokens.Error('The "no" keyword was used twice in a row.', []);
+               Result := TNotConditionAST.Create(ParseLeafConditionExpression(True));
+            end
+            else
+               Tokens.Error('Unknown condition directive "%s", expected one of "nothing", "storybeat", "material", "asset", "situation", "topic", "no", or an open parenthesis', [Identifier]);
+         end;
+      end;
+
+      function ParseConditionExpression(): TConditionAST;
+      begin
+         Result := ParseLeafConditionExpression();
+         if (Tokens.IsIdentifier('or')) then
+         begin
+            repeat
+               Tokens.ReadIdentifier('or');
+               Result := TOrConditionAST.Create(Result, ParseLeafConditionExpression());
+            until not Tokens.IsIdentifier('or');
+         end
+         else
+         if (Tokens.IsComma()) then
+         begin
+            Tokens.ReadComma();
+            repeat
+               Result := TAndConditionAST.Create(Result, ParseLeafConditionExpression());
+            until not ReadComma(Tokens);
+         end;
+      end;
+
+   begin
+      if (Tokens.IsIdentifier('nothing')) then
+      begin
+         Tokens.ReadIdentifier('nothing');
+         Result := TRootConditionAST.Create(TNothingConditionAST.Create());
+      end
+      else
+      begin
+         Result := TRootConditionAST.Create(ParseConditionExpression());
+      end;
+   end;
+   
+   function RegisterSituation(Name: UTF8String): TSituation;
+   begin
+      Assert(Assigned(SituationsByIdentifier));
+      Assert(not SituationsByIdentifier.Has(Name));
+      Assert(SituationsByIdentifier.Count < High(TSituation));
+      SituationsByIdentifier[Name] := SituationsByIdentifier.Count + 1; // $R-
+      Result := SituationsByIdentifier.Count; // $R-
+   end;
+   
    function ParseTime(): TMillisecondsDuration;
    var
       Number: Int64;
@@ -214,74 +314,47 @@ var
       Value: Int64;
    begin
       Value := Tokens.ReadNumber();
-      if (Value < 0) then
-         Tokens.Error('Unexpected negative weight', []);
+      if (Value <= 0) then
+         Tokens.Error('Weight must be greater than zero', []);
       Result := Value; // $R-
-   end;
-
-   function ParseResearchReference(): TResearch;
-   var
-      Value: UTF8String;
-   begin
-      Value := Tokens.ReadIdentifier();
-      Result := Researches[Value];
-      if (not Assigned(Result)) then
-      begin
-         Tokens.Error('Unknown research "%s" for node reference', [Value]);
-      end;
-   end;
-
-   function ParseNodeReference(): TNode;
-   begin
-      if (Tokens.IsIdentifier()) then
-      begin
-         Result := ParseResearchReference();
-      end
-      else
-      if (Tokens.IsString()) then
-      begin
-         Result := ReadTopic(GetTechTreeReader());
-      end
-      else
-         Tokens.Error('Expected identifier or string for node reference', []);
    end;
 
    procedure ParseResearch();
    type
-      TComponent = (rcID, rcTakes, rcWeight, rcMootedBy, rcRequires, rcWith, rcRewards);
+      TComponent = (rcID, rcTakes, rcWeight, rcRequires, rcWith, rcStory, rcUnlocks);
       TComponents = set of TComponent;
-
-      procedure ParseBonus(out Bonus: TBonus; const Components: TComponents; const BaseTime: TMillisecondsDuration; const BaseWeight: TWeight; const Negate: Boolean);
+      
+      function ParseBonus(const Components: TComponents; const BaseTime: TMillisecondsDuration; const BaseWeight: TWeight): TBonus;
       var
-         Node: TNode;
-         TimeDelta: TMillisecondsDuration;
+         Condition: TRootConditionAST;
+         TimeFactor: Double;
          WeightDelta: TWeightDelta;
          Keyword: UTF8String;
          Value: Int64;
          Temp: Double;
-         SeenTime, SeenWeight: Boolean;
+         SeenSpeed, SeenWeight: Boolean;
       begin
-         SeenTime := False;
+         SeenSpeed := False;
          SeenWeight := False;
-         Node := ParseNodeReference();
-         TimeDelta := TMillisecondsDuration.FromMilliseconds(0);
+         Condition := ParseCondition();
+         TimeFactor := 1.0;
          WeightDelta := 0;
          Tokens.ReadColon();
          repeat
-            if (SeenTime or SeenWeight) then
+            if (SeenSpeed or SeenWeight) then
                Tokens.ReadComma();
             Keyword := Tokens.ReadIdentifier();
             case Keyword of
-               'time':
+               'speed':
                   begin
                      if (not (rcTakes in Components)) then
-                        Tokens.Error('Cannot provide time bonus when no default time is provided; unexpected "time" bonus', []);
-                     if (SeenTime) then
-                        Tokens.Error('Duplicate "time" bonus', []);
-                     SeenTime := True;
-                     Value := Tokens.ReadNumber();
-                     Tokens.ReadPercentage();
-                     TimeDelta := BaseTime.Scale(Value / 100.0);
+                        Tokens.Error('Cannot provide speed bonus when no default time is provided; unexpected "speed" bonus', []);
+                     if (SeenSpeed) then
+                        Tokens.Error('Duplicate "speed" bonus', []);
+                     SeenSpeed := True;
+                     TimeFactor := Tokens.ReadMultiplier();
+                     if (TimeFactor <= 0.0) then
+                        Tokens.Error('Invalid time factor, must be greater than zero', []);
                   end;
                'weight':
                   begin
@@ -293,7 +366,7 @@ var
                      Temp := BaseWeight * (Value / 100.0);
                      if (Temp <= Low(WeightDelta)) then
                      begin
-                        WeightDelta := 0;
+                        WeightDelta := Low(WeightDelta);
                      end
                      else
                      if (Temp >= High(WeightDelta)) then
@@ -309,63 +382,38 @@ var
                   Tokens.Error('Unknown bonus kind "%s"', [Keyword]);
             end;
          until Tokens.IsSemicolon();
-         Bonus := TBonus.Create(Node, TimeDelta, WeightDelta, Negate);
+         Assert(TimeFactor > 0.0);
+         Result := TBonus.Create(Condition, Single(TimeFactor), WeightDelta);
       end;
 
-      // returns whether the reward was string or not
-      function ParseReward(out Reward: TReward): Boolean;
+      function ParseUnlock(): TUnlockedKnowledge;
       var
-         Keyword, Value: UTF8String;
+         Keyword: UTF8String;
          AssetClass: TAssetClass;
          Material: TMaterial;
       begin
-         if (Tokens.IsIdentifier()) then
-         begin
-            Keyword := Tokens.ReadIdentifier();
-            case Keyword of
-               'asset':
-                  begin
-                     AssetClass := ReadAssetClass(GetTechTreeReader());
-                     Reward := TReward.CreateForAssetClass(AssetClass);
-                  end;
-               'material':
-                  begin
-                     Material := ReadMaterial(GetTechTreeReader());
-                     Reward := TReward.CreateForMaterial(Material);
-                  end;
-            else
-               Tokens.Error('Expected "asset", "material", or string for reward, but got "%s"', [Keyword]);
-            end;
-            Result := False;
-         end
+         Keyword := Tokens.ReadIdentifier();
+         case Keyword of
+            'asset':
+               begin
+                  AssetClass := ReadAssetClass(GetTechTreeReader());
+                  Result := TUnlockedKnowledge.CreateForAssetClass(AssetClass);
+               end;
+            'material':
+               begin
+                  Material := ReadMaterial(GetTechTreeReader());
+                  Result := TUnlockedKnowledge.CreateForMaterial(Material);
+               end;
          else
-         if (Tokens.IsString()) then
-         begin
-            Value := Tokens.ReadString();
-            Reward := TReward.CreateForMessage(Value);
-            Result := True;
-         end
-         else
-            Tokens.Error('Expected "asset", "material", or string for reward', []);
+            Tokens.Error('Expected "asset" or "material" after "unlock", but got "%s"', [Keyword]);
+         end;
       end;
 
    var
-      ID: TResearchID;
-      Name: UTF8String;
-      Keyword: UTF8String;
-      Research: TResearch;
-      DefaultTime: TMillisecondsDuration;
-      DefaultWeight: TWeight;
-      Node: TNode;
-      Prohibitions, Requirements: TNode.TNodeArray; // these get back-propagated as "unlocks" when the TResearch or TTopic constructor is called
-      Bonuses: TBonus.TArray;
-      Rewards: TReward.TArray;
       Components: TComponents;
-      SeenStringReward: Boolean;
-
-      procedure MarkSeen(Component: TComponent);
+      
+      procedure MarkSeen(Component: TComponent; Keyword: UTF8String);
       begin
-         Assert(not (Component in [rcRequires, rcWith, rcRewards]));
          if (Component in Components) then
             Tokens.Error('Duplicate directive "%s" in research', [Keyword]);
          Include(Components, Component);
@@ -384,45 +432,63 @@ var
       end;
 
    var
-      WasString: Boolean;
-      Found: Boolean;
-      Requirement: TNode;
+      Package, Root: Boolean;
+      ID: TResearchID;
+      Keyword, Identifier, Message: UTF8String;
+      Research: TResearch;
+      DefaultTime: TMillisecondsDuration;
+      DefaultWeight: TWeight;
+      Bonuses: TBonusPlasticArray;
+      Unlock: TUnlockedKnowledge;
+      Unlocks: TUnlockedKnowledge.TPlasticArray;
+      ResearchStorybeats: specialize PlasticArray<UTF8String, UTF8StringUtils>;
+      Condition: TRootConditionAST;
+      Collection: TResearchHashSet;
    begin
-      Name := Tokens.ReadIdentifier();
-      if (Researches.Has(Name)) then
-         Tokens.Error('Duplicate research name "%s"', [Name]);
+      if (Tokens.IsIdentifier()) then
+      begin
+         Keyword := Tokens.ReadIdentifier();
+         Package := Keyword = 'package';
+         Root := Keyword = 'root';
+         if (Root) then
+         begin
+            ID := 0;
+         end
+         else      
+         if (not Package) then
+            Tokens.Error('Unrecognized research type "%s"', [Keyword]);
+      end
+      else
+      begin
+         Package := False;
+         Root := False;
+      end;
       Tokens.ReadOpenBrace();
       Components := [];
-      SeenStringReward := False;
       DefaultTime := TMillisecondsDuration.FromMilliseconds(0);
       DefaultWeight := 1;
-      SetLength(Prohibitions, 0);
-      SetLength(Requirements, 0);
-      SetLength(Bonuses, 0);
-      SetLength(Rewards, 0);
+      Condition := nil;
       while (not Tokens.IsCloseBrace()) do
       begin
          Keyword := Tokens.ReadIdentifier();
          case Keyword of
             'id':
                begin
-                  MarkSeen(rcID);
+                  if (Root) then
+                     Tokens.Error('Root package ID is always zero and must not be given explicitly', []);
+                  MarkSeen(rcID, Keyword);
                   Tokens.ReadColon();
                   Assert(Low(TResearchID) <= 0);
-                  ID := ReadNumber(Tokens, 0, High(TResearchID)); // $R-
+                  ID := ReadNumber(Tokens, Low(TResearchID), High(TResearchID)); // $R-
                   if (ID = 0) then
-                  begin
-                     if (not Tokens.IsOpenParenthesis()) then
-                        Tokens.Error('Expected research with ID 0 to have the parenthetical "(root)" for clarity', []);
-                     Tokens.ReadOpenParenthesis();
-                     Tokens.ReadIdentifier('root');
-                     Tokens.ReadCloseParenthesis();
-                  end;
+                     Tokens.Error('Package ID zero is reserved for the root research', []);
                   Tokens.ReadSemicolon();
                end;
             'takes':
                begin
-                  MarkSeen(rcTakes);
+                  if (Root or Package) then
+                     Tokens.Error('Research block cannot be directly researched and therefore should not have "takes" directives', []);
+                  MarkSeen(rcTakes, Keyword);
                   if (rcWith in Components) then
                      Tokens.Error('The "takes" and "weight" directives must come before any "with" directives', []);
                   DefaultTime := ParseTime();
@@ -430,55 +496,55 @@ var
                end;
             'weight':
                begin
-                  MarkSeen(rcWeight);
+                  if (Root or Package) then
+                     Tokens.Error('Research block cannot be directly researched and therefore should not have "weight" directives', []);
+                  MarkSeen(rcWeight, Keyword);
                   if (rcWith in Components) then
                      Tokens.Error('The "takes" and "weight" directives must come before any "with" directives', []);
                   DefaultWeight := ParseWeight();
+                  if (DefaultWeight = 1.0) then
+                     Tokens.Error('Weight with value 1.0 is redundant and should be omitted', []);
                   Tokens.ReadSemicolon();
                end;
             'requires':
                begin
-                  Include(Components, rcRequires);
-                  Node := ParseNodeReference();
-                  SetLength(Requirements, Length(Requirements) + 1); // TODO: potentially expensive allocation and copy
-                  Requirements[High(Requirements)] := Node;
-                  Tokens.ReadSemicolon();
-               end;
-            'mooted-by':
-               begin
-                  Include(Components, rcMootedBy);
-                  Node := ParseNodeReference();
-                  SetLength(Prohibitions, Length(Prohibitions) + 1); // TODO: potentially expensive allocation and copy
-                  Prohibitions[High(Prohibitions)] := Node;
+                  if (Root or Package) then
+                     Tokens.Error('Research block cannot be directly researched and therefore should not have "requires" directives', []);
+                  MarkSeen(rcRequires, Keyword);
+                  Condition := ParseCondition();
                   Tokens.ReadSemicolon();
                end;
             'with':
                begin
+                  if (Root or Package) then
+                     Tokens.Error('Research block cannot be directly researched and therefore should not have "with" directives', []);
                   Include(Components, rcWith);
-                  SetLength(Bonuses, Length(Bonuses) + 1); // TODO: potentially expensive allocation and copy
-                  ParseBonus(Bonuses[High(Bonuses)], Components, DefaultTime, DefaultWeight, False);
+                  Bonuses.Push(ParseBonus(Components, DefaultTime, DefaultWeight));
                   Tokens.ReadSemicolon();
                end;
-            'without':
+            'story': 
                begin
-                  Include(Components, rcWith);
-                  SetLength(Bonuses, Length(Bonuses) + 1); // TODO: potentially expensive allocation and copy
-                  ParseBonus(Bonuses[High(Bonuses)], Components, DefaultTime, DefaultWeight, True);
-                  Tokens.ReadSemicolon();
-               end;
-            'rewards':
-               begin
-                  Include(Components, rcRewards);
-                  SetLength(Rewards, Length(Rewards) + 1);
-                  WasString := ParseReward(Rewards[High(Rewards)]);
-                  if (WasString) then
+                  MarkSeen(rcStory, Keyword);
+                  Tokens.ReadColon();
+                  while (Tokens.IsIdentifier()) do
                   begin
-                     if (SeenStringReward) then
-                     begin
-                        Tokens.Error('Extraneous message reward', []);
-                     end;
-                     SeenStringReward := True;
+                     Identifier := Tokens.ReadIdentifier();
+                     if (not StorybeatResearches.Has(Identifier)) then
+                        Tokens.Error('Unknown storybeat "%s" in research', [Identifier]);
+                     if (ResearchStorybeats.Contains(Identifier)) then // O(N) but N should be very short
+                        Tokens.Error('Duplicate storybeat "%s" in research', [Identifier]);
+                     ResearchStorybeats.Push(Identifier);
+                     if (not Tokens.IsString()) then
+                        Tokens.ReadComma();
                   end;
+                  Message := Tokens.ReadString();
+                  Unlocks.Push(TUnlockedKnowledge.CreateForMessage(Message));
+                  Tokens.ReadSemicolon();
+               end;
+            'unlocks':
+               begin
+                  Include(Components, rcUnlocks);
+                  Unlocks.Push(ParseUnlock());
                   Tokens.ReadSemicolon();
                end;
          else
@@ -486,100 +552,95 @@ var
          end;
       end;
       Tokens.ReadCloseBrace();
-      if (not (rcID in Components)) then
-         Tokens.Error('Missing "id" directive in research block', []);
-      if (ID = 0) then
+      if (Root) then
       begin
-         if (not DefaultTime.IsZero) then
-            Tokens.Error('Expected root research to take no time, but time specified was %1.1d second%s', [DefaultTime.ToSIUnits(), PluralS(DefaultTime.ToSIUnits())]);
-         if (Length(Requirements) > 0) then
-            Tokens.Error('Expected root research to have no requirements (by definition), but found %d requirement%s specified in research block', [Length(Requirements), PluralS(Length(Requirements))]);
-         if (Length(Bonuses) > 0) then
-            Tokens.Error('Expected root research to have no bonuses ("with" and "without" directives), but found %d bonus%s specified in research block', [Length(Requirements), PluralS(Length(Requirements), 'es')]);
-         if (Length(Rewards) > 0) then
-            Tokens.Error('Expected root research to have no rewards, but found %d reward%s specified in research block', [Length(Rewards), PluralS(Length(Rewards))]);
+         Assert(not Assigned(Condition));
+         Condition := TRootConditionAST.Create(TNothingConditionAST.Create());
       end
       else
       begin
-         if (Length(Requirements) = 0) then
-            Tokens.Error('Missing requirement in research block', [Length(Requirements), PluralS(Length(Requirements))]);
-         Found := False;
-         for Requirement in Requirements do
-            if (Requirement is TResearch) then
-            begin
-               Found := True;
-               break;
-            end;
-         if (not Found) then
-            Tokens.Error('Missing research requirement in research black; every research must require at least one other research (in addition to any required topics), even if it''s just the root research', []);
-         if (not SeenStringReward) then
-            Tokens.Error('Missing message reward in research block', []);
+         if (not (rcID in Components)) then
+            Tokens.Error('Missing "id" directive in research block', []);
+         if (Package) then
+         begin
+            Assert(not Assigned(Condition));
+            Condition := TRootConditionAST.Create(TPackageConditionAST.Create());
+         end
+         else
+         begin
+            if (not Assigned(Condition)) then
+               Tokens.Error('Missing "requires" directive in research block', []);
+            Condition.CollectResearches(Collection); {BOGUS Warning: Local variable "Collection" of a managed type does not seem to be initialized}
+            if (Unlocks.IsEmpty) then
+               Tokens.Error('Expected either a "story" directive or an "unlocks" directive (or both) in research block', []);
+         end;
       end;
-      Research := TResearch.Create(ID, DefaultTime, DefaultWeight, Prohibitions, Requirements, Bonuses, Rewards);
-      Researches[Name] := Research;
-      Result.AddResearch(Research);
+      Research := Result.AddResearch(ID, DefaultTime, DefaultWeight, Condition, Bonuses.Distill(), Unlocks.Distill());
+      {$IFDEF VERBOSE}
+      Writeln('Parsed research ', ID, ' (', Research.DebugDescription(), ') has default duration ', DefaultTime.ToString());
+      {$ENDIF}
+      ResearchesByID[Research.ID] := Research;
+      for Identifier in ResearchStorybeats do
+         StorybeatResearches.ItemsPtr[Identifier]^.Push(Research.Index);
+      for Unlock in Research.UnlockedKnowledge do
+      begin
+         case Unlock.Kind of
+            ukAssetClass:
+               begin
+                  AssetClassResearches.ItemsPtr[Unlock.AssetClass.Name]^.Push(Research.Index);
+               end;
+            ukMaterial:
+               begin
+                  MaterialResearches.ItemsPtr[Unlock.Material.Name]^.Push(Research.Index);
+               end;
+            ukMessage: ;
+         end;
+      end;
    end;
 
-   procedure ParseTopic(Selectable: Boolean);
+   procedure ParseStorybeat();
+   var
+      Identifier: UTF8String;
+   begin
+      Identifier := Tokens.ReadIdentifier();
+      if (StorybeatResearches.Has(Identifier)) then
+         Tokens.Error('Duplicate storybeat "%s"', [Identifier]);
+      Tokens.ReadSemicolon();
+      StorybeatResearches.AddDefault(Identifier);
+   end;
+
+   procedure ParseFacility();
    var
       Name: UTF8String;
-      Researches: TResearch.TArray;
-      Obsoletes, Facilities: TTopic.TArray;
-      Topic: TTopic;
-      Keyword: UTF8String;
    begin
-      if (Selectable or Tokens.IsString()) then
-      begin
-         Name := Tokens.ReadString();
-      end
-      else
-      begin
-         Name := '';
-      end;
-      SetLength(Researches, 0);
-      SetLength(Facilities, 0);
-      SetLength(Obsoletes, 0);
-      while (not Tokens.IsSemicolon()) do
-      begin
-         Keyword := Tokens.ReadIdentifier();
-         case Keyword of
-          'requires':
-             begin
-                SetLength(Researches, Length(Researches) + 1);
-                Researches[High(Researches)] := ParseResearchReference();
-             end;
-          'for':
-             begin
-                SetLength(Facilities, Length(Facilities) + 1);
-                Facilities[High(Facilities)] := ReadTopic(GetTechTreeReader());
-             end;
-          'obsoletes':
-             begin
-                SetLength(Obsoletes, Length(Obsoletes) + 1);
-                Obsoletes[High(Obsoletes)] := ReadTopic(GetTechTreeReader());
-             end;
-         else
-            Tokens.Error('Unknown keyword "%s" in topic description', [Keyword]);
-         end;
-         if (not Tokens.IsSemicolon()) then
-            Tokens.ReadComma();
-      end;
+      // We don't support _declaring_ our magic @sample etc facilities
+      Name := Tokens.ReadIdentifier();
+      if (SituationsByIdentifier.Has(Name)) then
+         Tokens.Error('Duplicate facility (situation) "%s"', [Name]);
       Tokens.ReadSemicolon();
-      if (Selectable and (Length(Researches) = 0)) then
-         Tokens.Error('Topic does not specify any requirements and is not marked implicit', []);
-      Topic := TTopic.Create(Name, Selectable, Researches, Facilities, Obsoletes);
-      if (Name <> '') then
-      begin
-         if (Topics.Has(Name)) then
-            Tokens.Error('Duplicate topic "%s"', [Name]);
-         Topics[Name] := Topic;
-      end;
-      Result.AddTopic(Topic);
+      RegisterSituation(Name);
    end;
 
-   procedure ParseClass();
+   procedure ParseTopic();
+   var
+      Name: UTF8String;
+      Condition: TRootConditionAST;
+   begin
+      Name := Tokens.ReadString();
+      if (TopicsByName.Has(Name)) then
+         Tokens.Error('Duplicate topic "%s"', [Name]);
+      if (not Tokens.IsSemicolon()) then
+      begin
+         Tokens.ReadIdentifier('requires');
+         Condition := ParseCondition();
+      end;
+      Tokens.ReadSemicolon();
+      TopicsByName[Name] := Result.AddTopic(Name, Condition);
+   end;
+
+   procedure ParseAssetClass();
    type
-      TClassComponent = (ccID, ccName, ccDescription, ccIcon, ccBuild, ccFeature);
+      TClassComponent = (ccID, ccVaguely, ccDescription, ccIcon, ccBuild, ccFeature);
       TClassComponents = set of TClassComponent;
    var
       Keyword: UTF8String;
@@ -587,37 +648,31 @@ var
 
       procedure MarkSeen(Component: TClassComponent);
       begin
-         Assert(not (Component in [ccFeature]));
          if (Component in Components) then
             Tokens.Error('Duplicate directive "%s" in asset class block', [Keyword]);
          Include(Components, Component);
       end;
 
-      procedure ParseFeature(var Feature: TFeatureClass);
-      var
-         FeatureClassName: UTF8String;
-      begin
-         FeatureClassName := Tokens.ReadIdentifier();
-         if (not FeatureClasses.Has(FeatureClassName)) then
-            Tokens.Error('Unknown feature class "%s" in asset class block', [FeatureClassName]);
-         Feature := FeatureClasses[FeatureClassName].CreateFromTechnologyTree(GetTechTreeReader());
-      end;
-
    var
       ID: TAssetClassID;
-      Identifier, Name, VagueName, Description, Icon: UTF8String;
+      Name, AmbiguousName, Description, Icon: UTF8String;
       ReadEnvironment: TBuildEnvironment;
       BuildEnvironments: TBuildEnvironments;
       Features: TFeatureClass.TArray;
       Feature: TFeatureClass;
       AssetClass: TAssetClass;
+      Situation: TSituation;
       First: Boolean;
    begin
       Components := [];
       BuildEnvironments := [];
       Assert(Length(Features) = 0); {BOGUS Warning: Local variable "Features" of a managed type does not seem to be initialized}
       try
-         Identifier := Tokens.ReadIdentifier();
+         Name := Tokens.ReadString();
+         if (AssetClassesByName.Has(Name)) then
+            Tokens.Error('Asset class name "%s" already used by another asset class (with ID %d)', [Name, AssetClassesByName[Name].ID]);
+         if (MaterialsByName.Has(Name)) then
+            Tokens.Error('Asset class name "%s" already used by a material (with ID %d)', [Name, MaterialsByName[Name].ID]);
          Tokens.ReadOpenBrace();
          repeat
             Keyword := Tokens.ReadIdentifier();
@@ -626,15 +681,14 @@ var
                'id':
                   begin
                      MarkSeen(ccID);
-                     ID := ReadNumber(Tokens, 1, High(TAssetClassID)); // $R-
+                     ID := ReadNumber(Tokens, Low(TAssetClassID), High(TAssetClassID)); // $R-
+                     if (AssetClassesByID.Has(ID)) then
+                        Tokens.Error('Asset class ID %d is already used by "%s"', [ID, AssetClassesByID[ID].Name]);
                   end;
-               'name':
+               'vaguely':
                   begin
-                     MarkSeen(ccName);
-                     Name := Tokens.ReadString;
-                     Tokens.ReadOpenParenthesis;
-                     VagueName := Tokens.ReadString;
-                     Tokens.ReadCloseParenthesis;
+                     MarkSeen(ccVaguely);
+                     AmbiguousName := Tokens.ReadString;
                   end;
                'description':
                   begin
@@ -663,7 +717,7 @@ var
                'feature':
                   begin
                      SetLength(Features, Length(Features) + 1);
-                     ParseFeature(Features[High(Features)]);
+                     Features[High(Features)] := ReadFeatureClass(GetTechTreeReader());
                   end;
             else
                Tokens.Error('Unknown keyword "%s" in asset class block', [Keyword]);
@@ -672,8 +726,8 @@ var
          until Tokens.IsCloseBrace();
          if (not (ccID in Components)) then
             Tokens.Error('Missing "id" directive in asset class block', []);
-         if (not (ccName in Components)) then
-            Tokens.Error('Missing "name" directive in asset class block', []);
+         if (not (ccVaguely in Components)) then
+            Tokens.Error('Missing "vague" directive in asset class block', []);
          if (not (ccDescription in Components)) then
             Tokens.Error('Missing "description" directive in asset class block', []);
          if (not (ccIcon in Components)) then
@@ -684,14 +738,17 @@ var
             Feature.Free();
          raise;
       end;
-      AssetClass := TAssetClass.Create(ID, Name, VagueName, Description, Features, Icon, BuildEnvironments);
-      AssetClasses[Identifier] := AssetClass;
+      Situation := RegisterSituation('@sample ' + Name);
+      AssetClass := TAssetClass.Create(ID, Name, AmbiguousName, Description, Features, Icon, BuildEnvironments, Situation);
       Result.AddAssetClass(AssetClass);
+      AssetClassesByName[AssetClass.Name] := AssetClass;
+      AssetClassesByID[AssetClass.ID] := AssetClass;
+      AssetClassResearches.AddDefault(AssetClass.Name);
    end;
 
    procedure ParseMaterial();
    type
-      TComponent = (mcID, mcName, mcDescription, mcIcon, mcMetrics);
+      TComponent = (mcID, mcVaguely, mcDescription, mcIcon, mcMetrics);
    var
       Components: set of TComponent;
       Keyword: UTF8String;
@@ -714,8 +771,14 @@ var
       MassPerUnit: TMassPerUnit;
       Tag: UTF8String;
       Tags: TMaterialTags;
+      Situation: TSituation;
    begin
       Components := [];
+      Name := Tokens.ReadString();
+      if (MaterialsByName.Has(Name)) then
+         Tokens.Error('Material name "%s" already used by another material (with ID %d)', [Name, MaterialsByName[Name].ID]);
+      if (AssetClassesByName.Has(Name)) then
+         Tokens.Error('Material name "%s" already used by an asset class (with ID %d)', [Name, AssetClassesByName[Name].ID]);
       Tokens.ReadOpenBrace();
       repeat
          Keyword := Tokens.ReadIdentifier();
@@ -724,19 +787,18 @@ var
             'id':
                begin
                   MarkSeen(mcID);
-                  ID := ReadNumber(Tokens, 65, High(TMaterialID)); // $R-
-                  if (MaterialIDs.Has(ID)) then
-                     Tokens.Error('Material ID %d is already used by "%s"', [ID, MaterialIDs[ID].Name]);
+                  ID := ReadNumber(Tokens, Low(TMaterialID), High(TMaterialID)); // $R-
+                  if (ID = 0) then
+                     Tokens.Error('Material ID zero is reserved to represent the lack of material or material knowledge', []);
+                  if (MaterialsByID.Has(ID)) then
+                     Tokens.Error('Material ID %d is already used by "%s"', [ID, MaterialsByID[ID].Name]);
+                  if ((ID >= Low(TOres)) and (ID <= High(TOres))) then
+                     Tokens.Error('Material ID %d is a reserved ore ID', []);
                end;
-            'name':
+            'vaguely':
                begin
-                  MarkSeen(mcName);
-                  Name := Tokens.ReadString();
-                  if (MaterialNames.Has(Name)) then
-                     Tokens.Error('Material name "%s" is already used', [Name]);
-                  Tokens.ReadOpenParenthesis();
+                  MarkSeen(mcVaguely);
                   AmbiguousName := Tokens.ReadString();
-                  Tokens.ReadCloseParenthesis();
                end;
             'description':
                begin
@@ -746,7 +808,7 @@ var
             'icon':
                begin
                   MarkSeen(mcIcon);
-                  Icon := Tokens.ReadString();
+                  Icon := Tokens.ReadString(High(TIcon));
                end;
             'metrics':
                begin
@@ -793,43 +855,47 @@ var
       Tokens.ReadCloseBrace();
       if (Components <> [Low(Components) .. High(Components)]) then
          Tokens.Error('Missing directive in material block, material blocks must have id, name, description, icon, and metrics directives', []);
-      Material := TMaterial.Create(ID, Name, AmbiguousName, Description, Icon, UnitKind, MassPerUnit, Density, 0.5, Tags, []);
+      Situation := RegisterSituation('@sample ' + Name);
+      Material := TMaterial.Create(ID, Name, AmbiguousName, Description, Icon, UnitKind, MassPerUnit, Density, 0.5 { Bond Albedo }, Tags, [], Situation);
       Result.AddMaterial(Material);
-      MaterialNames[Material.Name] := Material;
-      MaterialIDs[Material.ID] := Material;
+      MaterialsByName[Material.Name] := Material;
+      MaterialsByID[Material.ID] := Material;
+      MaterialResearches.AddDefault(Material.Name);
    end;
 
+// function Parse(Tokens: TTokenizer; Ores: TMaterial.TArray): TTechnologyTree;
 var
    Keyword: UTF8String;
    Material: TMaterial;
 begin
    try
       Result := TTechnologyTree.Create();
-      Researches := TResearchHashTable.Create();
-      Topics := TTopicHashTable.Create();
-      AssetClasses := TAssetClassIdentifierHashTable.Create();
-      MaterialNames := TMaterialNameHashTable.Create(Length(Materials)); // $R-
-      MaterialIDs := TMaterialIDHashTable.Create(Length(Materials)); // $R-
-      for Material in Materials do
+      ResearchesByID := TResearchHashTable.Create();
+      StorybeatResearches := TResearchListHashTable.Create();
+      MaterialResearches := TResearchListHashTable.Create();
+      AssetClassResearches := TResearchListHashTable.Create();
+      SituationsByIdentifier := ExtractSituationRegistry();
+      TopicsByName := TTopicHashTable.Create();
+      AssetClassesByName := TAssetClassIdentifierHashTable.Create();
+      AssetClassesByID := TAssetClassIDHashTable.Create();
+      MaterialsByName := TMaterialNameHashTable.Create(Length(Ores)); // $R-
+      MaterialsByID := TMaterialIDHashTable.Create(Length(Ores)); // $R-
+      for Material in Ores do
       begin
-         MaterialNames[Material.Name] := Material;
-         MaterialIDs[Material.ID] := Material;
-         // XXX create implicit topics for each material
+         MaterialsByName[Material.Name] := Material;
+         MaterialsByID[Material.ID] := Material;
+         MaterialResearches.AddDefault(Material.Name);
       end;
-      NewMaterials.Prepare(16);
       try
          while (not Tokens.IsEOF()) do
          begin
             Keyword := Tokens.ReadIdentifier();
             case Keyword of
                'research': ParseResearch();
-               'implicit':
-                  begin
-                     Tokens.ReadIdentifier('topic');
-                     ParseTopic(False);
-                  end;
-               'topic': ParseTopic(True);
-               'class': ParseClass();
+               'storybeat': ParseStorybeat();
+               'facility': ParseFacility();
+               'topic': ParseTopic();
+               'asset': ParseAssetClass();
                'material': ParseMaterial();
             else
                Tokens.Error('Unknown keyword "%s" at top level', [Keyword]);
@@ -837,24 +903,30 @@ begin
          end;
       except
          FreeAndNil(Result);
-         for Material in NewMaterials do
-            Material.Free();
          raise;
       end;
+      Result.Compile();
    finally
-      FreeAndNil(Researches);
-      FreeAndNil(Topics);
-      FreeAndNil(AssetClasses);
-      FreeAndNil(MaterialNames);
-      FreeAndNil(MaterialIDs);
+      FreeAndNil(ResearchesByID);
+      FreeAndNil(StorybeatResearches);
+      FreeAndNil(MaterialResearches);
+      FreeAndNil(AssetClassResearches);
+      FreeAndNil(SituationsByIdentifier);
+      FreeAndNil(TopicsByName);
+      FreeAndNil(AssetClassesByName);
+      FreeAndNil(AssetClassesByID);
+      FreeAndNil(MaterialsByName);
+      FreeAndNil(MaterialsByID);
    end;
 end;
+
 
 function LoadTechnologyTree(Filename: RawByteString; Materials: TMaterial.TArray): TTechnologyTree;
 var
    Data: TFileData;
    Tokens: TTokenizer;
 begin
+   Writeln('Loading technology tree from ', Filename);
    Data := ReadFile(Filename);
    try
       Tokens := TTokenizer.Create(Data.Start, Data.Length);
@@ -877,188 +949,4 @@ begin
    end;
 end;
 
-
-procedure RegisterFeatureClass(FeatureClass: FeatureClassReference);
-begin
-   if (not Assigned(FeatureClasses)) then
-      FeatureClasses := TFeatureClassHashTable.Create();
-   Assert(not FeatureClasses.Has(FeatureClass.ClassName));
-   FeatureClasses[FeatureClass.ClassName] := FeatureClass;
-end;
-
-function ReadBuildEnvironment(Tokens: TTokenizer): TBuildEnvironment;
-var
-   Keyword: UTF8String;
-begin
-   Keyword := Tokens.ReadIdentifier();
-   case Keyword of
-      'land': Result := bePlanetRegion;
-      'spacedock': Result := beSpaceDock;
-   else
-      Tokens.Error('Unknown build environment "%s"', [Keyword]);
-   end;
-end;
-
-function ReadAssetClass(Reader: TTechTreeReader): TAssetClass;
-var
-   Value: UTF8String;
-begin
-   Value := Reader.Tokens.ReadIdentifier();
-   Result := Reader.AssetClasses[Value];
-   if (not Assigned(Result)) then
-      Reader.Tokens.Error('Unknown asset class "%s"', [Value]);
-end;
-
-function ReadMaterial(Reader: TTechTreeReader): TMaterial;
-var
-   Value: UTF8String;
-begin
-   Value := Reader.Tokens.ReadString();
-   Result := Reader.Materials[Value];
-   if (not Assigned(Result)) then
-      Reader.Tokens.Error('Unknown material "%s"', [Value]);
-end;
-
-function ReadTopic(Reader: TTechTreeReader): TTopic;
-var
-   Value: UTF8String;
-begin
-   Value := Reader.Tokens.ReadString();
-   Result := Reader.Topics[Value];
-   if (not Assigned(Result)) then
-      Reader.Tokens.Error('Unknown topic "%s"', [Value]);
-end;
-
-function ReadNumber(Tokens: TTokenizer; Min, Max: Int64): Int64;
-begin
-   Result := Tokens.ReadNumber();
-   if (Result < Min) then
-      Tokens.Error('Invalid value %d; must be greater than or equal to %d', [Result, Min]);
-   if (Result > Max) then
-      Tokens.Error('Invalid value %d; must be less than or equal to %d', [Result, Max]);
-end;
-
-function ReadLength(Tokens: TTokenizer): Double;
-var
-   Value: Double;
-   Keyword: UTF8String;
-begin
-   Value := Tokens.ReadDouble();
-   if (Value <= 0) then
-      Tokens.Error('Invalid length "%d"; must be greater than zero', [Value]);
-   Keyword := Tokens.ReadIdentifier();
-   case Keyword of
-      'AU': Result := Value * AU;
-      'km': Result := Value * 1000.0;
-      'm': Result := Value;
-      'cm': Result := Value / 100.0;
-      'mm': Result := Value / 1000.0;
-   else
-      Tokens.Error('Unknown unit for length "%s"', [Keyword]);
-   end;
-end;
-
-function ReadMass(Tokens: TTokenizer): TMass;
-var
-   Value: Double;
-   Keyword: UTF8String;
-begin
-   Value := Tokens.ReadDouble();
-   if (Value <= 0) then
-      Tokens.Error('Invalid mass "%d"; must be greater than zero', [Value]);
-   Keyword := Tokens.ReadIdentifier();
-   case Keyword of
-      'kg': Result := TMass.FromKg(Value);
-      'g': Result := TMass.FromG(Value);
-      'mg': Result := TMass.FromMg(Value);
-   else
-      Tokens.Error('Unknown unit for mass "%s"', [Keyword]);
-   end;
-end;
-
-function ReadQuantity(Tokens: TTokenizer; Material: TMaterial): TQuantity64;
-var
-   Value: Int64;
-   Keyword: UTF8String;
-begin
-   Value := Tokens.ReadNumber();
-   if (Value <= 0) then
-      Tokens.Error('Invalid quantity "%d"; must be greater than zero', [Value]);
-   Keyword := Tokens.ReadIdentifier();
-   case Keyword of
-      'kg': Result := TMass.FromKg(Value) / Material.MassPerUnit;
-      'g': Result := TMass.FromG(Value) / Material.MassPerUnit;
-      'mg': Result := TMass.FromMg(Value) / Material.MassPerUnit;
-      'units': Result := TQuantity64.FromUnits(Value); // $R-
-   else
-      Tokens.Error('Unknown unit for quantity "%s"', [Keyword]);
-   end;
-end;
-
-function ReadTimeDenominator(Tokens: TTokenizer): TMillisecondsDuration;
-var
-   Keyword: UTF8String;
-begin
-   Tokens.ReadSlash();
-   Keyword := Tokens.ReadIdentifier();
-   case Keyword of
-      'w': Result := TMillisecondsDuration.FromMilliseconds(7.0 * 24.0 * 60.0 * 60.0 * 1000.0);
-      'd': Result := TMillisecondsDuration.FromMilliseconds(24.0 * 60.0 * 60.0 * 1000.0);
-      'h': Result := TMillisecondsDuration.FromMilliseconds(60.0 * 60.0 * 1000.0);
-      'min': Result := TMillisecondsDuration.FromMilliseconds(60.0 * 1000.0);
-      's': Result := TMillisecondsDuration.FromMilliseconds(1000.0);
-      'ms': Result := TMillisecondsDuration.FromMilliseconds(1.0);
-   else
-      Tokens.Error('Unknown unit for time "%s"', [Keyword]);
-   end;
-end;
-
-function ReadPerTime(Tokens: TTokenizer): TIterationsRate;
-var
-   Value: Double;
-begin
-   Value := Tokens.ReadDouble();
-   Result := TIterationsRate.FromPeriod(ReadTimeDenominator(Tokens), Value);
-end;
-
-function ReadMassPerTime(Tokens: TTokenizer): TMassRate;
-var
-   Value: TMass;
-   Period: TMillisecondsDuration;
-begin
-   Value := ReadMass(Tokens);
-   if (Value.IsNegative) then
-      Tokens.Error('Invalid throughput "%s"; must be positive', [Value.ToString()]);
-   Period := ReadTimeDenominator(Tokens);
-   Result := Value / Period;
-end;
-
-function ReadQuantityPerTime(Tokens: TTokenizer; Material: TMaterial): TQuantityRate;
-var
-   Value: TQuantity64;
-begin
-   Value := ReadQuantity(Tokens, Material);
-   if (Value.IsNegative) then
-      Tokens.Error('Invalid throughput "%s"; must be positive', [Value.ToString()]);
-   Result := Value / ReadTimeDenominator(Tokens);
-end;
-
-function ReadKeywordPerTime(Tokens: TTokenizer; Keyword: UTF8String): TRate;
-var
-   Value: Double;
-begin
-   Value := Tokens.ReadDouble();
-   Tokens.ReadIdentifier(Keyword);
-   Result := Value / ReadTimeDenominator(Tokens);
-end;
-
-function ReadComma(Tokens: TTokenizer): Boolean;
-begin
-   Result := Tokens.IsComma();
-   if (Result) then
-      Tokens.ReadComma();
-end;
-
-finalization
-   FeatureClasses.Free();
 end.

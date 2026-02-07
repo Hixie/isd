@@ -5,14 +5,14 @@ unit proxy;
 interface
 
 uses
-   systems, serverstream, techtree, time, masses;
+   systems, serverstream, time, masses;
 
 type
    TProxyFeatureClass = class(TFeatureClass)
    strict protected
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
-      constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
+      constructor CreateFromTechnologyTree(const Reader: TTechTreeReader); override;
       function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
    end;
 
@@ -38,10 +38,10 @@ type
 implementation
 
 uses
-   sysutils, isdprotocol, exceptions;
+   sysutils, isdprotocol, exceptions, ttparser;
 
 
-constructor TProxyFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
+constructor TProxyFeatureClass.CreateFromTechnologyTree(const Reader: TTechTreeReader);
 begin
    inherited Create();
 end;

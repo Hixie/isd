@@ -5,7 +5,7 @@ unit gridsensor;
 interface
 
 uses
-   systems, serverstream, materials, knowledge, techtree, sensors;
+   systems, internals, serverstream, materials, knowledge, sensors;
 
 type
    TGridSensorFeatureClass = class(TSensorFeatureClass)
@@ -30,7 +30,7 @@ type
 implementation
 
 uses
-   sysutils, orbit, isdprotocol, typedump, grid;
+   sysutils, orbit, isdprotocol, typedump, grid, ttparser;
 
 function TGridSensorFeatureClass.GetFeatureNodeClass(): FeatureNodeReference;
 begin

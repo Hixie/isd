@@ -5,7 +5,7 @@ unit gossip;
 interface
 
 uses
-   systems, materials, time, hashtable, serverstream;
+   systems, materials, time, hashtable, serverstream, internals;
 
 type
    TGossipKind = (gkCrash);

@@ -105,7 +105,7 @@ implementation
 uses
    sysutils, hashfunctions, isdprotocol, passwords, exceptions, orbit,
    spacesensor, structure, errors, plot, planetary, population,
-   messages, knowledge, research, space;
+   messages, knowledge, research, space, internals;
 
 constructor TSystemHashTable.Create();
 begin

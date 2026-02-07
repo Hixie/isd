@@ -5,14 +5,14 @@ unit assetpile;
 interface
 
 uses
-   systems, serverstream, knowledge, basenetwork, techtree;
+   systems, internals, serverstream, knowledge, basenetwork;
 
 type
    TAssetPileFeatureClass = class(TFeatureClass)
    strict protected
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
-      constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
+      constructor CreateFromTechnologyTree(const Reader: TTechTreeReader); override;
       function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
    end;
 
@@ -33,7 +33,7 @@ type
 implementation
 
 uses
-   isdprotocol, sysutils;
+   isdprotocol, sysutils, ttparser;
 
 type
    PAssetPileData = ^TAssetPileData;
@@ -43,7 +43,7 @@ type
    end;
 
 
-constructor TAssetPileFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
+constructor TAssetPileFeatureClass.CreateFromTechnologyTree(const Reader: TTechTreeReader);
 begin
    inherited Create();
 end;
@@ -64,7 +64,7 @@ var
    Child: TAssetNode;
 begin
    for Child in FChildren do
-      Child.Free();
+      Child.Free(); // this calls DropChild, which frees the ParentData
    inherited;
 end;
 

@@ -5,7 +5,7 @@ unit rubble;
 interface
 
 uses
-   systems, serverstream, materials, techtree, tttokenizer, basenetwork, masses, systemdynasty;
+   systems, internals, serverstream, materials, basenetwork, masses, systemdynasty;
 
 type
    // This is sent just before an asset is demolished. The feature
@@ -30,7 +30,7 @@ type
    strict protected
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
-      constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
+      constructor CreateFromTechnologyTree(const Reader: TTechTreeReader); override;
       function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
    end;
 
@@ -56,7 +56,7 @@ type
 implementation
 
 uses
-   isdprotocol, sysutils, exceptions, knowledge, commonbuses, region;
+   isdprotocol, sysutils, exceptions, knowledge, commonbuses, region, ttparser;
 
 procedure TRubbleCollectionMessage.Grow(Count: Cardinal);
 begin
@@ -79,10 +79,9 @@ begin
 end;
 
 
-constructor TRubblePileFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
+constructor TRubblePileFeatureClass.CreateFromTechnologyTree(const Reader: TTechTreeReader);
 begin
    inherited Create();
-   Reader.Tokens.Error('Feature class %s is reserved for internal asset classes', [ClassName]);
 end;
 
 function TRubblePileFeatureClass.GetFeatureNodeClass(): FeatureNodeReference;

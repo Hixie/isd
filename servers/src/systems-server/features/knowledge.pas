@@ -5,8 +5,8 @@ unit knowledge;
 interface
 
 uses
-   systems, systemdynasty, serverstream, materials, hashtable,
-   genericutils, techtree, plasticarrays;
+   systems, internals, systemdynasty, serverstream, materials, hashtable,
+   genericutils, plasticarrays;
 
 type
    TKnowledgeBusFeatureNode = class;
@@ -15,38 +15,13 @@ type
    TTargetedKnowledgeBusMessage = class abstract(TKnowledgeBusMessage) end;
    TGlobalKnowledgeBusMessage = class abstract(TKnowledgeBusMessage) end;
 
-   TCollectKnownMaterialsMessage = class(TGlobalKnowledgeBusMessage)
-   private
-      FKnownMaterials: TMaterialHashSet;
-      // TODO: add a separate 64 bit field tracking the ores specifically
-      FOwner: TDynasty;
-      FSystem: TSystem;
-   public
-      constructor Create(AKnownMaterials: TMaterialHashSet; AOwner: TDynasty; ASystem: TSystem);
-      procedure AddKnownMaterial(Material: TMaterial); inline;
-      property Owner: TDynasty read FOwner;
-      property System: TSystem read FSystem;
-   end;
-
-   TCollectKnownAssetClassesMessage = class(TGlobalKnowledgeBusMessage)
-   private
-      FKnownAssetClasses: TAssetClassHashSet;
-      FOwner: TDynasty;
-      FSystem: TSystem;
-   public
-      constructor Create(AKnownAssetClasses: TAssetClassHashSet; AOwner: TDynasty; ASystem: TSystem);
-      procedure AddKnownAssetClass(AssetClass: TAssetClass); inline;
-      property Owner: TDynasty read FOwner;
-      property System: TSystem read FSystem;
-   end;
-
    TCollectKnownResearchesMessage = class(TGlobalKnowledgeBusMessage)
    private
-      FKnownResearches: TResearchHashSet;
+      FKnownResearches: PResearchHashSet;
       FOwner: TDynasty;
       FSystem: TSystem;
    public
-      constructor Create(AKnownResearches: TResearchHashSet; AOwner: TDynasty; ASystem: TSystem);
+      constructor Create(AKnownResearches: PResearchHashSet; AOwner: TDynasty; ASystem: TSystem);
       procedure AddKnownResearch(Research: TResearch); inline;
       property Owner: TDynasty read FOwner;
       property System: TSystem read FSystem;
@@ -55,11 +30,12 @@ type
    TCallback = procedure of object;
 
    TKnowledgeSubscription = record
+   strict private
+      class operator Initialize(var Rec: TKnowledgeSubscription);
+      function GetSubscribed(): Boolean; inline;
    private
       FBus: TKnowledgeBusFeatureNode;
       FIndex: Cardinal;
-      class operator Initialize(var Rec: TKnowledgeSubscription);
-      function GetSubscribed(): Boolean; inline;
    public
       procedure Unsubscribe();
       procedure Reset();
@@ -76,9 +52,10 @@ type
    end;
 
    TGetKnownMaterialsMessage = class(TSubscribableKnowledgeBusMessage)
-   private
+   strict private
       FOwner: TDynasty;
       FKnownMaterials: TMaterialHashSet;
+   private
       procedure SetKnownMaterials(ABus: TKnowledgeBusFeatureNode; AKnownMaterials: TMaterialHashSet); inline;
    public
       constructor Create(AOwner: TDynasty);
@@ -88,9 +65,10 @@ type
    end;
 
    TGetKnownAssetClassesMessage = class(TSubscribableKnowledgeBusMessage)
-   private
+   strict private
       FOwner: TDynasty;
       FKnownAssetClasses: TAssetClassHashSet;
+   private
       procedure SetKnownAssetClasses(ABus: TKnowledgeBusFeatureNode; AKnownAssetClasses: TAssetClassHashSet); inline;
    public
       constructor Create(AOwner: TDynasty);
@@ -100,22 +78,26 @@ type
    end;
 
    TGetKnownResearchesMessage = class(TSubscribableKnowledgeBusMessage)
-   private
+   strict private
       FOwner: TDynasty;
-      FKnownResearches: TResearchHashSet;
-      procedure SetKnownResearches(ABus: TKnowledgeBusFeatureNode; AKnownResearches: TResearchHashSet); inline;
+      FKnownResearches: PResearchHashSet;
+   private
+      procedure SetKnownResearches(ABus: TKnowledgeBusFeatureNode; AKnownResearches: PResearchHashSet); inline;
    public
       constructor Create(AOwner: TDynasty);
       property Owner: TDynasty read FOwner;
       function Knows(Research: TResearch): Boolean; inline;
       function GetEnumerator(): TResearchHashSet.TEnumerator; inline;
+      procedure CopyTo(var Target: TResearchHashSet);
    end;
+
+   // TODO: mechanism for active situations to be reported to the entire bus
 
    TKnowledgeBusFeatureClass = class(TFeatureClass)
    strict protected
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
-      constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
+      constructor CreateFromTechnologyTree(const Reader: TTechTreeReader); override;
       function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
    end;
 
@@ -144,9 +126,10 @@ type
 
    TKnowledgeFeatureClass = class(TFeatureClass)
    strict protected
+      FResearchID: TResearchID;
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
-      constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
+      constructor CreateFromTechnologyTree(const Reader: TTechTreeReader); override;
       function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
    end;
 
@@ -169,52 +152,23 @@ type
 implementation
 
 uses
-   sysutils, isdprotocol, typedump;
+   sysutils, isdprotocol, typedump, ttparser;
 
-constructor TCollectKnownMaterialsMessage.Create(AKnownMaterials: TMaterialHashSet; AOwner: TDynasty; ASystem: TSystem);
+constructor TCollectKnownResearchesMessage.Create(AKnownResearches: PResearchHashSet; AOwner: TDynasty; ASystem: TSystem);
 begin
    inherited Create();
-   FKnownMaterials := AKnownMaterials;
-   FOwner := AOwner;
-   FSystem := ASystem;
-end;
-
-procedure TCollectKnownMaterialsMessage.AddKnownMaterial(Material: TMaterial);
-begin
-   if (not FKnownMaterials.Has(Material)) then
-      FKnownMaterials.Add(Material);
-end;
-
-
-constructor TCollectKnownAssetClassesMessage.Create(AKnownAssetClasses: TAssetClassHashSet; AOwner: TDynasty; ASystem: TSystem);
-begin
-   inherited Create();
-   FKnownAssetClasses := AKnownAssetClasses;
-   FOwner := AOwner;
-   FSystem := ASystem;
-end;
-
-procedure TCollectKnownAssetClassesMessage.AddKnownAssetClass(AssetClass: TAssetClass);
-begin
-   if (not FKnownAssetClasses.Has(AssetClass)) then
-      FKnownAssetClasses.Add(AssetClass);
-end;
-
-
-constructor TCollectKnownResearchesMessage.Create(AKnownResearches: TResearchHashSet; AOwner: TDynasty; ASystem: TSystem);
-begin
-   inherited Create();
+   Assert(Assigned(AKnownResearches));
    FKnownResearches := AKnownResearches;
    FOwner := AOwner;
    FSystem := ASystem;
-   Assert(FKnownResearches.IsEmpty);
-   FKnownResearches.Add(FSystem.Encyclopedia.Researches[0]);
+   Assert(FKnownResearches^.IsEmpty);
+   FKnownResearches^.Add(0);
 end;
 
 procedure TCollectKnownResearchesMessage.AddKnownResearch(Research: TResearch);
 begin
-   if (not FKnownResearches.Has(Research)) then
-      FKnownResearches.Add(Research);
+   if (not FKnownResearches^.Has(Research.Index)) then
+      FKnownResearches^.Add(Research.Index);
 end;
 
 
@@ -315,7 +269,7 @@ begin
    FOwner := AOwner;
 end;
 
-procedure TGetKnownResearchesMessage.SetKnownResearches(ABus: TKnowledgeBusFeatureNode; AKnownResearches: TResearchHashSet);
+procedure TGetKnownResearchesMessage.SetKnownResearches(ABus: TKnowledgeBusFeatureNode; AKnownResearches: PResearchHashSet);
 begin
    FBus := ABus;
    FKnownResearches := AKnownResearches;
@@ -323,24 +277,21 @@ end;
 
 function TGetKnownResearchesMessage.Knows(Research: TResearch): Boolean;
 begin
-   Result := Assigned(FKnownResearches) and FKnownResearches.Has(Research);
+   Result := FKnownResearches^.Has(Research.Index);
 end;
 
 function TGetKnownResearchesMessage.GetEnumerator(): TResearchHashSet.TEnumerator;
 begin
-   if (Assigned(FKnownResearches)) then
-   begin
-      Result := FKnownResearches.GetEnumerator();
-   end
-   else
-   begin
-      Result := nil;
-   end;
+   Result := FKnownResearches^.GetEnumerator();
+end;
+
+procedure TGetKnownResearchesMessage.CopyTo(var Target: TResearchHashSet);
+begin
+   FKnownResearches^.CloneTo(Target);
 end;
 
 
-
-constructor TKnowledgeBusFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
+constructor TKnowledgeBusFeatureClass.CreateFromTechnologyTree(const Reader: TTechTreeReader);
 begin
    inherited Create();
 end;
@@ -355,11 +306,11 @@ begin
    Result := TKnowledgeBusFeatureNode.Create(ASystem);
 end;
 
+
 procedure TKnowledgeBusFeatureNode.FreeCaches();
 var
    Materials: TMaterialHashSet;
    AssetClasses: TAssetClassHashSet;
-   Researches: TResearchHashSet;
 begin
    if (Assigned(FKnownMaterials)) then
    begin
@@ -373,12 +324,7 @@ begin
          AssetClasses.Free();
       FreeAndNil(FKnownAssetClasses);
    end;
-   if (Assigned(FKnownResearches)) then
-   begin
-      for Researches in FKnownResearches.Values do
-         Researches.Free();
-      FreeAndNil(FKnownResearches);
-   end;
+   FreeAndNil(FKnownResearches);
 end;
 
 destructor TKnowledgeBusFeatureNode.Destroy();
@@ -425,19 +371,39 @@ begin
 end;
 
 function TKnowledgeBusFeatureNode.HandleBusMessage(Message: TBusMessage): THandleBusMessageResult;
+
+   procedure PrimeKnownResearches(Dynasty: TDynasty);
+   var
+      CollectResearchesMessage: TCollectKnownResearchesMessage;
+      Injected: TInjectBusMessageResult;
+   begin
+      if (not Assigned(FKnownResearches)) then
+      begin
+         FKnownResearches := TCachedKnownResearchesHashMap.Create(@DynastyHash32);
+      end;
+      if (not FKnownResearches.Has(Dynasty)) then
+      begin
+         FKnownResearches.AddDefault(Dynasty);
+         CollectResearchesMessage := TCollectKnownResearchesMessage.Create(FKnownResearches.ItemsPtr[Dynasty], Dynasty, System);
+         Injected := InjectBusMessage(CollectResearchesMessage);
+         Assert(Injected = irInjected); // we are a bus for this message!
+         FreeAndNil(CollectResearchesMessage);
+      end;
+   end;
+
 var
    KnownMaterialsForDynasty: TMaterialHashSet;
    KnownAssetClassesForDynasty: TAssetClassHashSet;
-   KnownResearchesForDynasty: TResearchHashSet;
-   CollectMaterialsMessage: TCollectKnownMaterialsMessage;
-   CollectAssetClassesMessage: TCollectKnownAssetClassesMessage;
-   CollectResearchesMessage: TCollectKnownResearchesMessage;
-   Injected: TInjectBusMessageResult;
+   ResearchIndex: TResearchIndex;
+   Research: TResearch;
    Dynasty: TDynasty;
+   Unlock: TUnlockedKnowledge;
 begin
+   // TODO: support a message for getting active situations
    if (Message is TGetKnownMaterialsMessage) then
    begin
       Dynasty := (Message as TGetKnownMaterialsMessage).Owner;
+      PrimeKnownResearches(Dynasty);
       if (not Assigned(FKnownMaterials)) then
       begin
          FKnownMaterials := TCachedKnownMaterialsHashMap.Create(@DynastyHash32);
@@ -445,11 +411,19 @@ begin
       if (not FKnownMaterials.Has(Dynasty)) then
       begin
          KnownMaterialsForDynasty := TMaterialHashSet.Create();
-         CollectMaterialsMessage := TCollectKnownMaterialsMessage.Create(KnownMaterialsForDynasty, Dynasty, System);
-         Injected := InjectBusMessage(CollectMaterialsMessage);
-         Assert(Injected = irInjected); // we are a bus for this message!
+         for ResearchIndex in FKnownResearches.ItemsPtr[Dynasty]^ do
+         begin
+            Research := System.Encyclopedia.ResearchesByIndex[ResearchIndex];
+            for Unlock in Research.UnlockedKnowledge do
+            begin
+               if (Unlock.Kind = ukMaterial) then
+               begin
+                  if (not KnownMaterialsForDynasty.Has(Unlock.Material)) then
+                     KnownMaterialsForDynasty.Add(Unlock.Material);
+               end;
+            end;
+         end;
          FKnownMaterials[Dynasty] := KnownMaterialsForDynasty;
-         FreeAndNil(CollectMaterialsMessage);
       end;
       (Message as TGetKnownMaterialsMessage).SetKnownMaterials(Self, FKnownMaterials[Dynasty]);
       Result := hrHandled;
@@ -465,11 +439,19 @@ begin
       if (not FKnownAssetClasses.Has(Dynasty)) then
       begin
          KnownAssetClassesForDynasty := TAssetClassHashSet.Create();
-         CollectAssetClassesMessage := TCollectKnownAssetClassesMessage.Create(KnownAssetClassesForDynasty, Dynasty, System);
-         Injected := InjectBusMessage(CollectAssetClassesMessage);
-         Assert(Injected = irInjected); // we are a bus for this message!
+         for ResearchIndex in FKnownResearches.ItemsPtr[Dynasty]^ do
+         begin
+            Research := System.Encyclopedia.ResearchesByIndex[ResearchIndex];
+            for Unlock in Research.UnlockedKnowledge do
+            begin
+               if (Unlock.Kind = ukAssetClass) then
+               begin
+                  if (not KnownAssetClassesForDynasty.Has(Unlock.AssetClass)) then
+                     KnownAssetClassesForDynasty.Add(Unlock.AssetClass);
+               end;
+            end;
+         end;
          FKnownAssetClasses[Dynasty] := KnownAssetClassesForDynasty;
-         FreeAndNil(CollectAssetClassesMessage);
       end;
       (Message as TGetKnownAssetClassesMessage).SetKnownAssetClasses(Self, FKnownAssetClasses[Dynasty]);
       Result := hrHandled;
@@ -478,20 +460,8 @@ begin
    if (Message is TGetKnownResearchesMessage) then
    begin
       Dynasty := (Message as TGetKnownResearchesMessage).Owner;
-      if (not Assigned(FKnownResearches)) then
-      begin
-         FKnownResearches := TCachedKnownResearchesHashMap.Create(@DynastyHash32);
-      end;
-      if (not FKnownResearches.Has(Dynasty)) then
-      begin
-         KnownResearchesForDynasty := TResearchHashSet.Create();
-         CollectResearchesMessage := TCollectKnownResearchesMessage.Create(KnownResearchesForDynasty, Dynasty, System);
-         Injected := InjectBusMessage(CollectResearchesMessage);
-         Assert(Injected = irInjected); // we are a bus for this message!
-         FKnownResearches[Dynasty] := KnownResearchesForDynasty;
-         FreeAndNil(CollectResearchesMessage);
-      end;
-      (Message as TGetKnownResearchesMessage).SetKnownResearches(Self, FKnownResearches[Dynasty]);
+      PrimeKnownResearches(Dynasty);
+      (Message as TGetKnownResearchesMessage).SetKnownResearches(Self, FKnownResearches.ItemsPtr[Dynasty]);
       Result := hrHandled;
    end
    else
@@ -511,9 +481,17 @@ begin
 end;
 
 
-constructor TKnowledgeFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
+constructor TKnowledgeFeatureClass.CreateFromTechnologyTree(const Reader: TTechTreeReader);
 begin
    inherited Create();
+   if (Reader.Tokens.IsIdentifier()) then
+   begin
+      Reader.Tokens.ReadIdentifier('research');
+      Reader.Tokens.ReadIdentifier('id');
+      FResearchID := ReadNumber(Reader.Tokens, Low(FResearchID), High(FResearchID)); // $R-
+      if (FResearchID = 0) then
+         Reader.Tokens.Error('Cannot create a knowledge feature that represents the root research.', []);
+   end;
 end;
 
 function TKnowledgeFeatureClass.GetFeatureNodeClass(): FeatureNodeReference;
@@ -522,8 +500,14 @@ begin
 end;
 
 function TKnowledgeFeatureClass.InitFeatureNode(ASystem: TSystem): TFeatureNode;
+var
+   Research: TResearch;
 begin
-   Result := TKnowledgeFeatureNode.Create(ASystem, nil);
+   if (FResearchID <> 0) then
+      Research := ASystem.Encyclopedia.ResearchesByID[FResearchID]
+   else
+      Research := nil;
+   Result := TKnowledgeFeatureNode.Create(ASystem, Research);
 end;
 
 
@@ -564,33 +548,7 @@ function TKnowledgeFeatureNode.HandleBusMessage(Message: TBusMessage): THandleBu
       Result := dmInternals in Visibility;
    end;
 
-var
-   Reward: TReward;
 begin
-   if (Message is TCollectKnownMaterialsMessage) then
-   begin
-      if (CanSeeKnowledge((Message as TCollectKnownMaterialsMessage).Owner)) then
-      begin
-         for Reward in FResearch.Rewards do
-         begin
-            if (Reward.Kind = rkMaterial) then
-               (Message as TCollectKnownMaterialsMessage).AddKnownMaterial(Reward.Material);
-         end;
-      end;
-   end
-   else
-   if (Message is TCollectKnownAssetClassesMessage) then
-   begin
-      if (CanSeeKnowledge((Message as TCollectKnownAssetClassesMessage).Owner)) then
-      begin
-         for Reward in FResearch.Rewards do
-         begin
-            if (Reward.Kind = rkAssetClass) then
-               (Message as TCollectKnownAssetClassesMessage).AddKnownAssetClass(Reward.AssetClass);
-         end;
-      end;
-   end
-   else
    if (Message is TCollectKnownResearchesMessage) then
    begin
       if (CanSeeKnowledge((Message as TCollectKnownResearchesMessage).Owner)) then
@@ -625,10 +583,10 @@ procedure TKnowledgeFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServe
       Writer.WriteDouble(Material.MassPerUnit.AsDouble);
       Writer.WriteDouble(Material.Density);
    end;
-   
+
 var
    Visibility: TVisibility;
-   Reward: TReward;
+   Unlock: TUnlockedKnowledge;
    Material: TMaterial;
 begin
    Visibility := Parent.ReadVisibilityFor(DynastyIndex);
@@ -637,21 +595,24 @@ begin
       Writer.WriteCardinal(fcKnowledge);
       if (Assigned(FResearch) and (dmInternals in Visibility)) then
       begin
-         for Reward in FResearch.Rewards do
+         for Unlock in FResearch.UnlockedKnowledge do
          begin
-            case Reward.Kind of
-               rkAssetClass:
+            case Unlock.Kind of
+               ukAssetClass:
                   begin
                      Writer.WriteByte($01);
-                     Reward.AssetClass.Serialize(Writer);
-                     for Material in Reward.AssetClass.GetRelatedMaterials(System) do
+                     Unlock.AssetClass.Serialize(Writer);
+                     for Material in Unlock.AssetClass.GetRelatedMaterials(System) do
                         SendMaterial(Material);
                   end;
-               rkMaterial:
+               ukMaterial:
                   begin
-                     SendMaterial(Reward.Material);
+                     SendMaterial(Unlock.Material);
                   end;
-               rkMessage: ;
+               ukMessage:
+                  begin
+                     // messages are sent with fcMessage features
+                  end;
             end;
          end;
       end;
@@ -667,7 +628,7 @@ begin
    end
    else
    begin
-      Journal.WriteInt32(TResearch.kNil);
+      Journal.WriteInt32(TResearch.kNilID);
    end;
 end;
 
@@ -676,11 +637,11 @@ var
    ID: TResearchID;
 begin
    ID := Journal.ReadInt32();
-   if (ID <> TResearch.kNil) then
+   if (ID <> TResearch.kNilID) then
    begin
       Assert(ID >= Low(TResearchID));
       Assert(ID <= High(TResearchID));
-      FResearch := System.Encyclopedia.Researches[ID]; // $R-
+      FResearch := System.Encyclopedia.ResearchesByID[ID]; // $R-
    end;
 end;
 

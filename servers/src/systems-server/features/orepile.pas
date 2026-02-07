@@ -5,7 +5,7 @@ unit orepile;
 interface
 
 uses
-   basenetwork, systems, serverstream, materials, techtree,
+   basenetwork, systems, internals, serverstream, materials,
    messageport, region, time, annotatedpointer, systemdynasty, masses;
 
 type
@@ -36,7 +36,7 @@ type
    strict protected
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
-      constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
+      constructor CreateFromTechnologyTree(const Reader: TTechTreeReader); override;
       function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
    end;
 
@@ -78,7 +78,7 @@ type
 implementation
 
 uses
-   exceptions, sysutils, knowledge, messages, isdprotocol, rubble, commonbuses;
+   exceptions, sysutils, knowledge, messages, isdprotocol, rubble, commonbuses, ttparser;
 
 function TOreMaterialKnowledgePackage.GetIsPointer(): Boolean;
 begin
@@ -219,7 +219,7 @@ begin
 end;
 
 
-constructor TOrePileFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
+constructor TOrePileFeatureClass.CreateFromTechnologyTree(const Reader: TTechTreeReader);
 var
    Keyword: UTF8String;
    SeenMaxMass: Boolean;

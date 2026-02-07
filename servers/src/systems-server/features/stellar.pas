@@ -5,14 +5,15 @@ unit stellar;
 interface
 
 uses
-   sysutils, systems, astronomy, providers, serverstream, techtree, tttokenizer, masses;
+   sysutils, systems, internals, astronomy, providers, serverstream, tttokenizer, masses;
 
 type
    TStarFeatureClass = class(TFeatureClass)
    strict protected
+      FCategory: TStarCategory;
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
-      constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
+      constructor CreateFromTechnologyTree(const Reader: TTechTreeReader); override;
       function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
    end;
 
@@ -41,16 +42,18 @@ type
 implementation
 
 uses
-   isdprotocol, rubble, commonbuses;
+   isdprotocol, rubble, commonbuses, ttparser;
 
 const
    MassSalt = $04551455;
    SizeSalt = $51535153;
 
 
-constructor TStarFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
+constructor TStarFeatureClass.CreateFromTechnologyTree(const Reader: TTechTreeReader);
 begin
-   Reader.Tokens.Error('Feature class %s is reserved for internal asset classes', [ClassName]);
+   inherited Create();
+   Reader.Tokens.ReadIdentifier('category');
+   FCategory := ReadNumber(Reader.Tokens, Low(FCategory), High(FCategory)); // $R-
 end;
 
 function TStarFeatureClass.GetFeatureNodeClass(): FeatureNodeReference;
@@ -60,9 +63,7 @@ end;
 
 function TStarFeatureClass.InitFeatureNode(ASystem: TSystem): TFeatureNode;
 begin
-   Result := nil;
-   // TODO: create a technology that knows how to create a star and generate a new ID for it.
-   raise Exception.Create('Cannot create a TStarFeatureNode from a prototype; it must have a unique ID.');
+   Result := TStarFeatureNode.Create(ASystem, EncodeStarID(FCategory, High(TStarIndex)));
 end;
 
 

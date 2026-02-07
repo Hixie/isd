@@ -5,7 +5,7 @@ unit systemdynasty;
 interface
 
 uses
-   sysutils, passwords, basedynasty, hashset, genericutils;
+   sysutils, passwords, basedynasty, hashtable, hashset, hashsettight, genericutils;
 
 type
    TDynasty = class(TBaseDynasty)
@@ -44,6 +44,14 @@ type
       function GetDynastyFromDisk(DynastyID: Cardinal): TDynasty; virtual; abstract;
    end;
 
+   TDynastyIndexHashTable = class(specialize THashTable<TDynasty, Cardinal, TObjectUtils>)
+      constructor Create();
+   end;
+
+   TDynastyHashSet = specialize TObjectSet<TDynasty>;
+
+   TScoreDirtyCallback = procedure(Dynasty: TDynasty) of object;
+
 function DynastyHash32(const Key: TDynasty): DWord;
 
 type
@@ -57,9 +65,15 @@ implementation
 uses
    exceptions, configuration, hashfunctions;
 
+
 function DynastyHash32(const Key: TDynasty): DWord;
 begin
    Result := ObjectHash32(Key);
+end;
+
+constructor TDynastyIndexHashTable.Create();
+begin
+   inherited Create(@DynastyHash32);
 end;
 
 constructor TDynastySet.Create();

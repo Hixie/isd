@@ -5,7 +5,8 @@ unit materials;
 interface
 
 uses
-   hashtable, hashfunctions, hashsettight, genericutils, stringutils, isdnumbers, time, isdprotocol, masses, plasticarrays;
+   hashtable, hashfunctions, hashsettight, genericutils, stringutils,
+   isdnumbers, time, isdprotocol, masses, plasticarrays, internals;
 
 type
    TMaterial = class;
@@ -120,7 +121,7 @@ type
       type
          TArray = array of TMaterial;
          TPlasticArray = specialize PlasticArray<TMaterial, MaterialUtils>;
-   protected
+   strict private
       FID: TMaterialID;
       FName, FAmbiguousName, FDescription: UTF8String;
       FIcon: TIcon;
@@ -130,10 +131,10 @@ type
       FBondAlbedo: Double;
       FTags: TMaterialTags;
       FAbundance: TMaterialAbundance;
-   private
+      FSituation: TSituation;
       function GetIsOre(): Boolean; inline;
    public
-      constructor Create(AID: TMaterialID; AName, AAmbiguousName, ADescription: UTF8String; AIcon: TIcon; AUnitKind: TUnitKind; AMassPerUnit: TMassPerUnit; ADensity, ABondAlbedo: Double; ATags: TMaterialTags; AAbundance: TMaterialAbundance);
+      constructor Create(AID: TMaterialID; AName, AAmbiguousName, ADescription: UTF8String; AIcon: TIcon; AUnitKind: TUnitKind; AMassPerUnit: TMassPerUnit; ADensity, ABondAlbedo: Double; ATags: TMaterialTags; AAbundance: TMaterialAbundance; ASituation: TSituation);
       property ID: TMaterialID read FID; // negative numbers for built-in materials, TOres range for ores, positive numbers above TOres for tech tree components. Never zero.
       property AmbiguousName: UTF8String read FAmbiguousName;
       property Name: UTF8String read FName;
@@ -146,6 +147,7 @@ type
       property Tags: TMaterialTags read FTags;
       property Abundance: TMaterialAbundance read FAbundance;
       property IsOre: Boolean read GetIsOre;
+      property SampleSituation: TSituation read FSituation;
    end;
 
    TMaterialEncyclopedia = class
@@ -200,7 +202,7 @@ function MaterialHash32(const Key: TMaterial): DWord;
 implementation
 
 uses
-   sysutils, strutils, intutils, math;
+   sysutils, strutils, intutils, math, ttparser;
 
 function MaterialHash32(const Key: TMaterial): DWord;
 begin
@@ -412,7 +414,7 @@ begin
 end;
 
 
-constructor TMaterial.Create(AID: TMaterialID; AName, AAmbiguousName, ADescription: UTF8String; AIcon: TIcon; AUnitKind: TUnitKind; AMassPerUnit: TMassPerUnit; ADensity, ABondAlbedo: Double; ATags: TMaterialTags; AAbundance: TMaterialAbundance);
+constructor TMaterial.Create(AID: TMaterialID; AName, AAmbiguousName, ADescription: UTF8String; AIcon: TIcon; AUnitKind: TUnitKind; AMassPerUnit: TMassPerUnit; ADensity, ABondAlbedo: Double; ATags: TMaterialTags; AAbundance: TMaterialAbundance; ASituation: TSituation);
 begin
    inherited Create();
    Assert(AID <> 0); // zero means "not recognized"
@@ -431,6 +433,7 @@ begin
    FBondAlbedo := ABondAlbedo;
    FTags := ATags;
    FAbundance := AAbundance;
+   FSituation := ASituation;
 end;
 
 function TMaterial.GetIsOre(): Boolean;
@@ -639,7 +642,8 @@ begin
          MaterialDensity,
          MaterialBondAlbedo,
          MaterialTags,
-         MaterialAbundances
+         MaterialAbundances,
+         RegisterSituation('@sample ' + MaterialName)
       );
       MaterialList.Push(Material);
    end;

@@ -5,20 +5,10 @@ unit grid;
 interface
 
 uses
-   systems, serverstream, basenetwork, systemdynasty, techtree, tttokenizer, time, masses;
+   systems, internals, serverstream, basenetwork, systemdynasty, tttokenizer, time, masses;
 
 type
-   TGridFeatureClass = class abstract (TFeatureClass) end;
-
-   TGenericGridFeatureClass = class(TGridFeatureClass)
-   strict protected
-      function GetFeatureNodeClass(): FeatureNodeReference; override;
-   public
-      constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
-      function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
-   end;
-
-   TParameterizedGridFeatureClass = class(TGridFeatureClass)
+   TGridFeatureClass = class(TFeatureClass)
    strict private
       FBuildEnvironment: TBuildEnvironment;
       FCellSize: Double;
@@ -28,7 +18,7 @@ type
       function GetDefaultSize(): Double; override;
    public
       constructor Create(ABuildEnvironment: TBuildEnvironment; ACellSize: Double; ADimension: Cardinal);
-      constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
+      constructor CreateFromTechnologyTree(const Reader: TTechTreeReader); override;
       function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
    end;
 
@@ -85,7 +75,7 @@ type
 implementation
 
 uses
-   sysutils, isdprotocol, orbit, exceptions, knowledge, math;
+   sysutils, isdprotocol, orbit, exceptions, knowledge, math, ttparser;
 
 type
    PGridData = ^TGridData;
@@ -97,25 +87,7 @@ type
    end;
 
 
-constructor TGenericGridFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
-begin
-   inherited Create();
-   Reader.Tokens.Error('Feature class %s is reserved for internal asset classes', [ClassName]);
-end;
-
-function TGenericGridFeatureClass.GetFeatureNodeClass(): FeatureNodeReference;
-begin
-   Result := TGridFeatureNode;
-end;
-
-function TGenericGridFeatureClass.InitFeatureNode(ASystem: TSystem): TFeatureNode;
-begin
-   Result := nil;
-   Assert(False, 'Generic grid features cannot spawn feature nodes.');
-end;
-
-
-constructor TParameterizedGridFeatureClass.Create(ABuildEnvironment: TBuildEnvironment; ACellSize: Double; ADimension: Cardinal);
+constructor TGridFeatureClass.Create(ABuildEnvironment: TBuildEnvironment; ACellSize: Double; ADimension: Cardinal);
 begin
    inherited Create();
    FBuildEnvironment := ABuildEnvironment;
@@ -123,7 +95,7 @@ begin
    FDimension := ADimension;
 end;
 
-constructor TParameterizedGridFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
+constructor TGridFeatureClass.CreateFromTechnologyTree(const Reader: TTechTreeReader);
 var
    Value: Int64;
 begin
@@ -139,17 +111,17 @@ begin
    FBuildEnvironment := ReadBuildEnvironment(Reader.Tokens);
 end;
 
-function TParameterizedGridFeatureClass.GetDefaultSize(): Double;
+function TGridFeatureClass.GetDefaultSize(): Double;
 begin
    Result := FCellSize * FDimension;
 end;
 
-function TParameterizedGridFeatureClass.GetFeatureNodeClass(): FeatureNodeReference;
+function TGridFeatureClass.GetFeatureNodeClass(): FeatureNodeReference;
 begin
    Result := TGridFeatureNode;
 end;
 
-function TParameterizedGridFeatureClass.InitFeatureNode(ASystem: TSystem): TFeatureNode;
+function TGridFeatureClass.InitFeatureNode(ASystem: TSystem): TFeatureNode;
 begin
    Result := TGridFeatureNode.Create(ASystem, FBuildEnvironment, FCellSize, FDimension);
 end;
@@ -677,6 +649,5 @@ begin
 end;
 
 initialization
-   RegisterFeatureClass(TGenericGridFeatureClass);
-   RegisterFeatureClass(TParameterizedGridFeatureClass);
+   RegisterFeatureClass(TGridFeatureClass);
 end.

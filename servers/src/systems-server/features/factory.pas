@@ -5,7 +5,7 @@ unit factory;
 interface
 
 uses
-   basenetwork, systems, serverstream, materials, techtree, commonbuses,
+   basenetwork, systems, internals, serverstream, materials, commonbuses,
    messageport, region, time, systemdynasty, annotatedpointer, isdnumbers;
 
 type
@@ -18,7 +18,7 @@ type
    protected
       procedure CollectRelatedMaterials(var Materials: TMaterial.TPlasticArray; const Encyclopedia: TMaterialEncyclopedia); override;
    public
-      constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
+      constructor CreateFromTechnologyTree(const Reader: TTechTreeReader); override;
       function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
    end;
 
@@ -66,9 +66,9 @@ type
 implementation
 
 uses
-   exceptions, sysutils, isdprotocol, knowledge, masses, typedump;
+   exceptions, sysutils, isdprotocol, knowledge, masses, typedump, ttparser;
 
-constructor TFactoryFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
+constructor TFactoryFeatureClass.CreateFromTechnologyTree(const Reader: TTechTreeReader);
 
    function ReadManifest(const Section: UTF8String; var Manifest: TMaterialQuantity32Array): TMass;
    var

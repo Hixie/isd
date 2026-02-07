@@ -5,7 +5,7 @@ unit materialpile;
 interface
 
 uses
-   basenetwork, systems, serverstream, materials, techtree,
+   basenetwork, systems, internals, serverstream, materials,
    messageport, region, time, systemdynasty, masses, annotatedpointer;
 
 type
@@ -18,7 +18,7 @@ type
    protected
       procedure CollectRelatedMaterials(var Materials: TMaterial.TPlasticArray; const Encyclopedia: TMaterialEncyclopedia); override;
    public
-      constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
+      constructor CreateFromTechnologyTree(const Reader: TTechTreeReader); override;
       function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
    end;
 
@@ -61,9 +61,9 @@ type
 implementation
 
 uses
-   exceptions, sysutils, knowledge, messages, isdprotocol, rubble, commonbuses;
+   exceptions, sysutils, knowledge, messages, isdprotocol, rubble, commonbuses, ttparser;
 
-constructor TMaterialPileFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
+constructor TMaterialPileFeatureClass.CreateFromTechnologyTree(const Reader: TTechTreeReader);
 begin
    inherited Create();
    Reader.Tokens.ReadIdentifier('for');

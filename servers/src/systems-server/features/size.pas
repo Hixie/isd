@@ -5,7 +5,7 @@ unit size;
 interface
 
 uses
-   systems, techtree;
+   systems;
 
 type
    TSizeFeatureClass = class(TFeatureClass)
@@ -16,7 +16,7 @@ type
       function GetDefaultSize(): Double; override;
    public
       constructor Create(ASize: Double);
-      constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
+      constructor CreateFromTechnologyTree(const Reader: TTechTreeReader); override;
       function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
       property Size: Double read FSize;
    end;
@@ -33,7 +33,7 @@ type
 implementation
 
 uses
-   exceptions;
+   exceptions, ttparser;
 
 constructor TSizeFeatureClass.Create(ASize: Double);
 begin
@@ -41,7 +41,7 @@ begin
    FSize := ASize;
 end;
 
-constructor TSizeFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
+constructor TSizeFeatureClass.CreateFromTechnologyTree(const Reader: TTechTreeReader);
 begin
    inherited Create();
    // feature: TSizeFeatureClass 20m;

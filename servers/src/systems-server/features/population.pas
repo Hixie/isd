@@ -5,7 +5,7 @@ unit population;
 interface
 
 uses
-   systems, serverstream, materials, systemdynasty, techtree,
+   systems, internals, serverstream, materials, systemdynasty,
    peoplebus, commonbuses, gossip, masses;
 
 // TODO: people try to move to the "best" houses
@@ -16,12 +16,12 @@ uses
 type
    TPopulationFeatureClass = class(TFeatureClass)
    strict protected
-      FHiddenIfEmpty: Boolean;
       FMaxPopulation: Cardinal;
+      FHiddenIfEmpty: Boolean;
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
       constructor Create(AHiddenIfEmpty: Boolean; AMaxPopulation: Cardinal);
-      constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
+      constructor CreateFromTechnologyTree(const Reader: TTechTreeReader); override;
       function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
       property HiddenIfEmpty: Boolean read FHiddenIfEmpty;
       property MaxPopulation: Cardinal read FMaxPopulation;
@@ -49,8 +49,7 @@ type
       function HandleBusMessage(Message: TBusMessage): THandleBusMessageResult; override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
-      constructor Create(ASystem: TSystem; AFeatureClass: TPopulationFeatureClass);
-      constructor CreatePopulated(ASystem: TSystem; AFeatureClass: TPopulationFeatureClass; APopulation: Cardinal); // only for use in plot-generated population centers
+      constructor Create(ASystem: TSystem; AFeatureClass: TPopulationFeatureClass; APopulation: Cardinal);
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
       destructor Destroy(); override;
       procedure HandleChanges(); override;
@@ -71,7 +70,7 @@ type
 implementation
 
 uses
-   exceptions, isdprotocol, messages, orbit, sysutils, rubble, time;
+   exceptions, isdprotocol, messages, orbit, sysutils, rubble, time, ttparser;
 
 const
    MeanIndividualMass = 70; // kg // TODO: allow species to diverge and such, with different demographics, etc
@@ -84,7 +83,7 @@ begin
    FMaxPopulation := AMaxPopulation;
 end;
 
-constructor TPopulationFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
+constructor TPopulationFeatureClass.CreateFromTechnologyTree(const Reader: TTechTreeReader);
 type
    TPopulationKeyword = (pkMax, pkHidden);
 var
@@ -129,18 +128,11 @@ end;
 
 function TPopulationFeatureClass.InitFeatureNode(ASystem: TSystem): TFeatureNode;
 begin
-   Result := TPopulationFeatureNode.Create(ASystem, Self);
+   Result := TPopulationFeatureNode.Create(ASystem, Self, 0);
 end;
 
 
-constructor TPopulationFeatureNode.Create(ASystem: TSystem; AFeatureClass: TPopulationFeatureClass);
-begin
-   inherited Create(ASystem);
-   Assert(Assigned(AFeatureClass));
-   FFeatureClass := AFeatureClass;
-end;
-
-constructor TPopulationFeatureNode.CreatePopulated(ASystem: TSystem; AFeatureClass: TPopulationFeatureClass; APopulation: Cardinal);
+constructor TPopulationFeatureNode.Create(ASystem: TSystem; AFeatureClass: TPopulationFeatureClass; APopulation: Cardinal);
 begin
    inherited Create(ASystem);
    Assert(Assigned(AFeatureClass));
@@ -199,7 +191,7 @@ var
    HelpMessage: TNotificationMessage;
    DismantleMessage: TDismantleMessage;
    Injected: TInjectBusMessageResult;
-   Rehome: TRehomePopulation;
+   Rehome: TRehomePopulationBusMessage;
    Capacity: Cardinal;
    OrbitMessage: TGetNearestOrbitMessage;
    Ship: TAssetNode;
@@ -235,8 +227,7 @@ begin
          Parent,
          'Urgent Query Regarding Recent Events Aboard ' + Ship.AssetOrClassName + #$0A +
          'From: Passengers'#$0A +
-         'WHAT THE HECK WHY DID WE JUST CRASH WHAT IS HAPPENING',
-         nil
+         'WHAT THE HECK WHY DID WE JUST CRASH WHAT IS HAPPENING'
       );
       Injected := InjectBusMessage(HelpMessage);
       if (Injected <> irHandled) then
@@ -272,11 +263,11 @@ begin
       end;
    end
    else
-   if (Message is TRehomePopulation) then
+   if (Message is TRehomePopulationBusMessage) then
    begin
       if (FPopulation < FFeatureClass.MaxPopulation) then
       begin
-         Rehome := Message as TRehomePopulation;
+         Rehome := Message as TRehomePopulationBusMessage;
          Assert(FFeatureClass.MaxPopulation >= FPopulation);
          Capacity := FFeatureClass.MaxPopulation - FPopulation; // $R-
          if (Rehome.RemainingPopulation < Capacity) then
@@ -317,7 +308,7 @@ begin
          Assert(DismantleMessage.Owner = Parent.Owner);
          if (FPopulation > 0) then
          begin
-            Rehome := TRehomePopulation.Create(DismantleMessage.Target, FPopulation, 0, FGossip);
+            Rehome := TRehomePopulationBusMessage.Create(DismantleMessage.Target, FPopulation, 0, FGossip);
             DismantleMessage.Target.Parent.Parent.InjectBusMessage(Rehome);
             FPopulation := 0;
             if (Rehome.RemainingPopulation > 0) then
@@ -344,6 +335,12 @@ begin
             MarkAsDirty([dkHappinessChanged, dkUpdateClients, dkUpdateJournal]);
          end;
       end;
+   end
+   else
+   if (Message is TInstabuildBusMessage) then
+   begin
+      FPopulation := FFeatureClass.MaxPopulation;
+      MarkAsDirty([dkHappinessChanged, dkUpdateClients, dkUpdateJournal]);
    end;
    Result := inherited;
 end;

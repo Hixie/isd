@@ -5,8 +5,8 @@ unit builders;
 interface
 
 uses
-   sysutils, systems, systemdynasty, serverstream, materials,
-   techtree, tttokenizer, time, hashsettight, hashtable, genericutils,
+   sysutils, systems, internals, systemdynasty, serverstream, materials,
+   tttokenizer, time, hashsettight, hashtable, genericutils,
    commonbuses;
 
 type
@@ -136,7 +136,7 @@ type
    strict protected
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
-      constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
+      constructor CreateFromTechnologyTree(const Reader: TTechTreeReader); override;
       function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
    end;
 
@@ -166,7 +166,7 @@ type
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
       constructor Create(ACapacity: Cardinal; ABuildRate: TRate);
-      constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
+      constructor CreateFromTechnologyTree(const Reader: TTechTreeReader); override;
       function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
       property Capacity: Cardinal read FCapacity;
       property BuildRate: TRate read FBuildRate;
@@ -207,7 +207,7 @@ type
 implementation
 
 uses
-   exceptions, isdprotocol, typedump, arrayutils;
+   exceptions, isdprotocol, typedump, arrayutils, ttparser;
 
 procedure TBuilderBusRecords.Init();
 begin
@@ -776,7 +776,7 @@ begin
 end;
 
 
-constructor TBuilderBusFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
+constructor TBuilderBusFeatureClass.CreateFromTechnologyTree(const Reader: TTechTreeReader);
 begin
    inherited Create();
 end;
@@ -942,7 +942,7 @@ begin
    FBuildRate := ABuildRate;
 end;
 
-constructor TBuilderFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
+constructor TBuilderFeatureClass.CreateFromTechnologyTree(const Reader: TTechTreeReader);
 type
    TBuilderKeyword = (bkCapacity, bkBuildRate);
 var

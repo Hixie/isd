@@ -5,7 +5,7 @@ unit commonbuses;
 interface
 
 uses
-   systems, systemdynasty, materials, gossip, time, masses;
+   systems, systemdynasty, materials, gossip, time, masses, internals;
 
 type
    TPriority = 0..2147483647;
@@ -103,7 +103,7 @@ type
       property Asset: TAssetNode read FAsset; // TAssetNode will not propagate this message into this asset
    end;
 
-   TRehomePopulation = class(TPhysicalConnectionWithExclusionBusMessage)
+   TRehomePopulationBusMessage = class(TPhysicalConnectionWithExclusionBusMessage)
    private
       FMovingPopulation, FStayingPopulation: Cardinal;
       FSourceGossip: TGossipHashTable;
@@ -112,6 +112,11 @@ type
       property RemainingPopulation: Cardinal read FMovingPopulation; // population left to move
       procedure Rehome(Amount: Cardinal; TargetGossip: TGossipHashTable; Now: TTimeInMilliseconds);
    end;
+
+   // Sent during startup to fill the colony ship.
+   // Should never be used during gameplay; does not conserve mass!
+   // Warning! This will usually be sent when the asset is not in the tree.
+   TInstabuildBusMessage = class(TBusMessage) end;
    
 implementation
 
@@ -258,7 +263,7 @@ begin
 end;
 
 
-constructor TRehomePopulation.Create(AAsset: TAssetNode; AMovingPopulation, AStayingPopulation: Cardinal; ASourceGossip: TGossipHashTable);
+constructor TRehomePopulationBusMessage.Create(AAsset: TAssetNode; AMovingPopulation, AStayingPopulation: Cardinal; ASourceGossip: TGossipHashTable);
 begin
    inherited Create(AAsset);
    FMovingPopulation := AMovingPopulation;
@@ -266,7 +271,7 @@ begin
    FSourceGossip := ASourceGossip;
 end;
 
-procedure TRehomePopulation.Rehome(Amount: Cardinal; TargetGossip: TGossipHashTable; Now: TTimeInMilliseconds);
+procedure TRehomePopulationBusMessage.Rehome(Amount: Cardinal; TargetGossip: TGossipHashTable; Now: TTimeInMilliseconds);
 begin
    Assert(Amount <= FMovingPopulation);
    if (FSourceGossip.Allocated and TargetGossip.Allocated) then

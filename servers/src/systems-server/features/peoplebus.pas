@@ -5,9 +5,9 @@ unit peoplebus;
 interface
 
 uses
-   sysutils, systems, systemdynasty, serverstream, materials,
-   techtree, hashsettight, hashtable, genericutils,
-   commonbuses, plasticarrays;
+   sysutils, systems, internals, systemdynasty, serverstream,
+   materials, hashsettight, hashtable, genericutils, commonbuses,
+   plasticarrays;
 
 type
    TPeopleBusFeatureNode = class;
@@ -65,7 +65,7 @@ type
    strict protected
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
-      constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
+      constructor CreateFromTechnologyTree(const Reader: TTechTreeReader); override;
       function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
    end;
 
@@ -160,7 +160,7 @@ type
 implementation
 
 uses
-   exceptions, typedump, arrayutils;
+   exceptions, typedump, arrayutils, ttparser;
 
 constructor TRegisterEmployerMessage.Create(AEmployer: IEmployer);
 begin
@@ -484,7 +484,7 @@ begin
 end;
 
 
-constructor TPeopleBusFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
+constructor TPeopleBusFeatureClass.CreateFromTechnologyTree(const Reader: TTechTreeReader);
 begin
    inherited Create();
 end;

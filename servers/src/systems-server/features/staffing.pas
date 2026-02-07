@@ -5,7 +5,7 @@ unit staffing;
 interface
 
 uses
-   basenetwork, systems, serverstream, materials, techtree,
+   basenetwork, systems, internals, serverstream, materials,
    messageport, isdprotocol, peoplebus, commonbuses;
 
 type
@@ -14,7 +14,7 @@ type
       FJobs: Cardinal;
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
-      constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
+      constructor CreateFromTechnologyTree(const Reader: TTechTreeReader); override;
       function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
       property Jobs: Cardinal read FJobs;
    end;
@@ -51,9 +51,9 @@ type
 implementation
 
 uses
-   exceptions, sysutils, knowledge, typedump;
+   exceptions, sysutils, knowledge, typedump, ttparser;
 
-constructor TStaffingFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
+constructor TStaffingFeatureClass.CreateFromTechnologyTree(const Reader: TTechTreeReader);
 begin
    inherited Create();
    FJobs := ReadNumber(Reader.Tokens, 1, High(FJobs)); // $R-
@@ -171,7 +171,10 @@ begin
          exit;
       end;
       if (FPriority = NoPriority) then
+      begin
+         Writeln(DebugName, ' has no priority -- adding drNoBus');
          (Message as TCheckDisabledBusMessage).AddReason(drNoBus);
+      end;
       if (FWorkers < FFeatureClass.Jobs) then
          (Message as TCheckDisabledBusMessage).AddReason(drUnderstaffed, FWorkers / FFeatureClass.Jobs);
    end;

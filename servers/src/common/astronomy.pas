@@ -22,6 +22,7 @@ type
 const
    CategoryShift = 20;
    StarIndexMask = $FFFFF;
+   LY = 9460730472580800; // meters
    AU = 149597870700; // meters
    G = 6.67430E-11; // N.m^2.kg^-2
 

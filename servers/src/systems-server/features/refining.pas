@@ -7,7 +7,7 @@ interface
 // TODO: refactor to avoid code duplication with mining.pas
 
 uses
-   basenetwork, systems, serverstream, materials, techtree,
+   basenetwork, systems, internals, serverstream, materials,
    messageport, region, time, systemdynasty, isdnumbers;
 
 type
@@ -20,7 +20,7 @@ type
    protected
       procedure CollectRelatedMaterials(var Materials: TMaterial.TPlasticArray; const Encyclopedia: TMaterialEncyclopedia); override;
    public
-      constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
+      constructor CreateFromTechnologyTree(const Reader: TTechTreeReader); override;
       function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
    end;
 
@@ -59,9 +59,9 @@ type
 implementation
 
 uses
-   exceptions, sysutils, isdprotocol, knowledge, typedump, commonbuses;
+   exceptions, sysutils, isdprotocol, knowledge, typedump, commonbuses, ttparser;
 
-constructor TRefiningFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
+constructor TRefiningFeatureClass.CreateFromTechnologyTree(const Reader: TTechTreeReader);
 var
    Material: TMaterial;
 begin

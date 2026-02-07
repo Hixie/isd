@@ -5,7 +5,7 @@ unit planetary;
 interface
 
 uses
-   systems, serverstream, materials, techtree, tttokenizer, isdnumbers, masses;
+   systems, internals, serverstream, materials, tttokenizer, isdnumbers, masses;
 
 type
    TAllocateOresBusMessage = class(TPhysicalConnectionBusMessage)
@@ -23,9 +23,15 @@ type
 
    TPlanetaryBodyFeatureClass = class(TFeatureClass)
    strict protected
+      FSeed: Cardinal;
+      FDiameter: Double; // m
+      FTemperature: Double; // K
+      FComposition: TOreFractions;
+      FMass: Int256; // kg
+      FConsiderForDynastyStart: Boolean;
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
-      constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
+      constructor CreateFromTechnologyTree(const Reader: TTechTreeReader); override;
       function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
    end;
 
@@ -46,7 +52,8 @@ type
       function HandleBusMessage(Message: TBusMessage): THandleBusMessageResult; override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
-      constructor Create(ASystem: TSystem; ASeed: Cardinal; ADiameter, ATemperature: Double; AComposition: TOreFractions; AMass: TMass; AConsiderForDynastyStart: Boolean);
+      constructor Create(ASystem: TSystem; ASeed: Cardinal; ADiameter, ATemperature: Double; AComposition: TOreFractions; AMass: TMass; AConsiderForDynastyStart: Boolean); overload;
+      constructor Create(ASystem: TSystem; ASeed: Cardinal; ADiameter, ATemperature: Double; AComposition: TOreFractions; AMass: Int256; AConsiderForDynastyStart: Boolean); overload;
       destructor Destroy(); override;
       procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader); override;
@@ -60,7 +67,7 @@ type
 implementation
 
 uses
-   isdprotocol, sysutils, exceptions, math, rubble, commonbuses;
+   isdprotocol, sysutils, exceptions, math, rubble, commonbuses, ttparser;
 
 constructor TAllocateOresBusMessage.Create(ADepth: Cardinal; ATargetCount: Cardinal; ATargetQuantity: TQuantity64);
 begin
@@ -70,10 +77,52 @@ begin
    FTargetQuantity := ATargetQuantity;
 end;
 
-
-constructor TPlanetaryBodyFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
+constructor TPlanetaryBodyFeatureClass.CreateFromTechnologyTree(const Reader: TTechTreeReader);
+var
+   Material: TMaterial;
+   WeightValue: Cardinal;
+   PlanetMass: TMass;
 begin
-   Reader.Tokens.Error('Feature class %s is reserved for internal asset classes', [ClassName]);
+   inherited Create();
+   if (Reader.Tokens.IsIdentifier()) then
+   begin
+      Reader.Tokens.ReadIdentifier('seed');
+      FSeed := ReadNumber(Reader.Tokens, Low(Cardinal), High(Cardinal)); // $R-
+      Reader.Tokens.ReadComma();
+      Reader.Tokens.ReadIdentifier('diameter');
+      FDiameter := ReadLength(Reader.Tokens);
+      if (FDiameter <= 0.0) then
+         Reader.Tokens.Error('Diameter must be greater than zero', []);
+      Reader.Tokens.ReadComma();
+      Reader.Tokens.ReadIdentifier('temperature');
+      FTemperature := ReadNumber(Reader.Tokens, 0, High(Int64));
+      Reader.Tokens.ReadIdentifier('K');
+      Reader.Tokens.ReadComma();
+      Reader.Tokens.ReadIdentifier('mass');
+      PlanetMass := ReadMass(Reader.Tokens);
+      FMass := Int256.FromDouble(PlanetMass.AsDouble);
+      Reader.Tokens.ReadOpenParenthesis();
+      repeat
+         Material := ReadMaterial(Reader);
+         if ((Material.ID < Low(TOres)) or (Material.ID > High(TOres))) then
+            Reader.Tokens.Error('Material "%s" is not an ore and cannot be used in a planetary body composition', [Material.Name]);
+         WeightValue := ReadNumber(Reader.Tokens, Low(Cardinal), High(Cardinal)); // $R-
+         if (WeightValue <= 0) then
+            Reader.Tokens.Error('Composition weights must be greater than zero', []);
+         FComposition[Material.ID] := Fraction32.FromCardinal(WeightValue);
+         if (Reader.Tokens.IsCloseParenthesis()) then
+            break;
+         Reader.Tokens.ReadComma();
+      until False;
+      Reader.Tokens.ReadCloseParenthesis();
+      Fraction32.NormalizeArray(@FComposition[Low(FComposition)], Length(FComposition));
+      if (Reader.Tokens.IsComma()) then
+      begin
+         Reader.Tokens.ReadComma();
+         Reader.Tokens.ReadIdentifier('can-be-dynasty-start');
+         FConsiderForDynastyStart := True;
+      end;
+   end;
 end;
 
 function TPlanetaryBodyFeatureClass.GetFeatureNodeClass(): FeatureNodeReference;
@@ -83,9 +132,7 @@ end;
 
 function TPlanetaryBodyFeatureClass.InitFeatureNode(ASystem: TSystem): TFeatureNode;
 begin
-   Result := nil;
-   // TODO: create a technology that knows how to create a planet from a mass of material
-   raise Exception.Create('Cannot create a TPlanetaryBodyFeatureNode from a prototype; it must have a unique composition.');
+   Result := TPlanetaryBodyFeatureNode.Create(ASystem, FSeed, FDiameter, FTemperature, FComposition, FMass, FConsiderForDynastyStart);
 end;
 
 
@@ -97,6 +144,17 @@ begin
    FTemperature := ATemperature;
    FComposition := AComposition;
    FMass := Int256.FromDouble(AMass.AsDouble);
+   FConsiderForDynastyStart := AConsiderForDynastyStart;
+end;
+
+constructor TPlanetaryBodyFeatureNode.Create(ASystem: TSystem; ASeed: Cardinal; ADiameter, ATemperature: Double; AComposition: TOreFractions; AMass: Int256; AConsiderForDynastyStart: Boolean);
+begin
+   inherited Create(ASystem);
+   FSeed := ASeed;
+   FDiameter := ADiameter;
+   FTemperature := ATemperature;
+   FComposition := AComposition;
+   FMass := AMass;
    FConsiderForDynastyStart := AConsiderForDynastyStart;
 end;
 

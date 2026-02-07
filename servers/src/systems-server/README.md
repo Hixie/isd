@@ -181,10 +181,10 @@ repeatedly sending data from the server to the client, the server will
 report a non-zero mass flow rate.
 
 Some assets are considered _physical_, and some are considered
-_virtual_. Physical assets will have a non-zero mass, mass flow rate,
-or size. Virtual assets will have a zero value for all three. Physical
-assets represent objects in the game world, while virtual assets
-represent data, e.g. messages in a message board.
+_virtual_. Physical assets have a non-zero size, virtual assets will
+have a zero size, as well as zero mass and zero mass flow rate.
+Physical assets represent objects in the game world, while virtual
+assets represent data, e.g. messages in a message board.
 
 The root asset will always be a physical asset. All descendants of
 virtual assets will be virtual. Unless otherwise specified, the
@@ -754,28 +754,29 @@ The `<flags>` bit field has eight bits interpreted as follows:
    6      : reserved, always zero
    7 (MSB): reserved, always zero
 
-The message contains a `<body>`, which is a string representing the
-message. Currently this is plain text. The first line of the body
-(everything up to the first newline) is the _subject_. The next line
-should start with the string "From: ", everything from character
-following that space, up to the next newline, is considered the
-_sender_.
+The `<body>` is the message.
 
-The _subject_ is the heading for the message.
+The first line of the body (everything up to the first newline) is the
+heading for the message, referred to as the _subject_.
 
-The _sender_ is a string that somehow identifies (to the player) the
+If the second line starts with the six characters `From: ` ("From"
+followed by a colon and a space) then the remainder of that line is
+the _sender_, a string that somehow identifies (to the player) the
 source of the message. This might be a character in the story, or a
 specific asset, or something else. For example, "Dr Blank" or
 "Stockpile #3 in Geneva on Earth in the Sol system". Clients are
 advised against attempting to map this string to actual assets in the
 game world, as the strings are not unambiguous.
 
-The remainder of the string is the _text_ of the message. Newlines
-separate paragraphs in the _text_.
+The rest of the string is the _text_ of the message. Newlines separate
+paragraphs in the _text_.
 
 > TODO: A future version of this protocol will change _text_ (and
 > possibly _subject_ and _sender_) to support formatting, images,
 > links to assets, etc.
+
+This feature is usually paired with an `fcKnowledge` feature.
+
 
 This feature supports the following commands:
 
@@ -844,19 +845,26 @@ proxy feature.
                         <double>  ; mass (kg) per cubic meter (density)
 ```
 
-A list of pieces of knowledge (asset classes and materials).
+A list of pieces of knowledge (asset classes, materials).
+
+##### Asset classes
 
 Asset classes are prefixed by the code 0x01, and consist of an asset
 class id (a _signed_ non-zero 32 bit integer; may be negative), an
 icon, name, and description.
+
+Names never end with punctuation, descriptions always do.
+
+##### Materials
 
 Materials are prefixed by the code 0x02, and consist of a material ID
 (a _signed_ non-zero 32 bit integer; may be negative), an icon, a
 name, a description, and then material-specific properties. Material
 IDs in the range 1..64 are ores, which can be found in assets with
 `fcRegion` features and mined using assets using `fcMining` features.
+Names never end with punctuation, descriptions always do.
 
-The first property is a 64 bit bit field, whose bits have the
+The first property (`<flags>`) is a 64 bit bit field, whose bits have the
 following meanings:
 
    0 (LSB): if unset, material is solid; otherwise, material is fluid
@@ -881,8 +889,8 @@ Fluids are never components (So bits 0-2 can also be read as a three
 bit integer with three defined values, 000=solid, 001=fluid,
 010=component).
 
-For asset classes and materials, names never end with punctuation,
-descriptions always do.
+The other two properties give the mass per unit and the mass per cubic
+meter respectively.
 
 Knowledge features may sometimes contain the same material
 redundantly. Clients are encouraged to hide duplicate entries.
@@ -891,22 +899,28 @@ redundantly. Clients are encouraged to hide duplicate entries.
 #### `fcResearch` (0x11)
 
 ```bnf
-<featuredata>       ::= <disabled> <topic> <progress>
+<featuredata>       ::= <disabled> <topics> <topic> <difficulty>
+<topics>            ::= <string>* <zero32>
 <topic>             ::= <string>
-<progress>          ::= <byte>
+<difficulty>        ::= <byte>
 ```
 
 For the `<disabled>` field, see below.
+
+The <topics> strings (all of which are non-empty) represent the topics
+that can be specified in `set-topic`. The topics are only given to the
+asset's owner; for other dynasties, the list is empty.
 
 The `<topic>` provides guidance regarding the currently selected area
 of research for the research facility. It defaults to the empty string
 (undirected research). It can be changed using the `set-topic` command
 (see below). A topic does not guarantee the subject of research
 (sometimes, science makes unexpected leaps), but it does provide a
-push towards a particular outcome.
+push towards a particular outcome. The topic is shared with any
+dynasty with internals access to the asset (and asset class knowledge).
 
-The `<progress>` gives a very brief summary of ongoing research; it
-has a value from the following:
+The `<difficulty>` gives a very brief summary of the difficulty of the
+ongoing research; it has a value from the following:
 
   0: No useful progress is being made. Maybe the current guidance
      (topic) is something this research feature is ill-equiped to
@@ -924,21 +938,23 @@ has a value from the following:
   2: The research feature is making active progress towards something.
 
 (In practice, 0 means no research will happen, 1 means research is
-happening but it will take a real-world day or more to complete, and 2
-means the research will take less than a real-world day.)
+happening but the total time it will have taken is at least one
+real-world day, and 2 means the research will have taken less than a
+real-world day.)
 
-This feature supports the following commands (only allowed from the
+The difficulty is shared with any dynasty that can see the asset and
+knows the asset class (whether or not it has internals access).
+
+This feature supports the following command (only allowed from the
 asset owner):
 
- * `get-topics`: No fields. Returns a list of pairs of strings and
-   booleans, each representing a topic that can be specified in
-   `set-topic`. The boolean is T if the topic is still active, and F
-   if the topic is obsolete. The last field is always the empty string
-   followed by an F boolean.
+ * `set-topic`: One field, a string, which must match one of the given
+   `<topics>`, or the empty string. The empty string selects nothing,
+   leaving research undirected.
 
- * `set-topic`: One field, a string, which must match a field in
-   `get-topics`. Setting one that is obsolete has no effect. The empty
-   string is a valid selection (that has no effect).
+Some researches will only trigger when a particular topic is selected;
+others will have their time reduced (or in some cases increased) based
+on the topic.
 
 It is an error if the server sends an `fcResearch` feature for an
 asset whose class is not known.

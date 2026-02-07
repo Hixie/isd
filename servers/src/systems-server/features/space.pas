@@ -5,7 +5,7 @@ unit space;
 interface
 
 uses
-   systems, providers, serverstream, techtree, time, masses;
+   systems, internals, providers, serverstream, time, masses;
 
 type
    TSolarSystemFeatureClass = class(TFeatureClass)
@@ -13,10 +13,10 @@ type
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    protected
       FStarGroupingThreshold: Double;
-      FGravitionalInfluenceConstant: Double;
+      FGravitationalInfluenceConstant: Double;
    public
-      constructor Create(AStarGroupingThreshold: Double; AGravitionalInfluenceConstant: Double);
-      constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
+      constructor Create(AStarGroupingThreshold: Double; AGravitationalInfluenceConstant: Double);
+      constructor CreateFromTechnologyTree(const Reader: TTechTreeReader); override;
       function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
    end;
 
@@ -69,7 +69,7 @@ type
 implementation
 
 uses
-   math, isdprotocol, exceptions;
+   math, isdprotocol, exceptions, ttparser;
 
 type
    TSolarSystemJournalState = (jsNew, jsChanged);
@@ -84,14 +84,14 @@ type
       Index: Cardinal;
    end;
 
-constructor TSolarSystemFeatureClass.Create(AStarGroupingThreshold: Double; AGravitionalInfluenceConstant: Double);
+constructor TSolarSystemFeatureClass.Create(AStarGroupingThreshold: Double; AGravitationalInfluenceConstant: Double);
 begin
    inherited Create();
    FStarGroupingThreshold := AStarGroupingThreshold;
-   FGravitionalInfluenceConstant := AGravitionalInfluenceConstant;
+   FGravitationalInfluenceConstant := AGravitationalInfluenceConstant;
 end;
 
-constructor TSolarSystemFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
+constructor TSolarSystemFeatureClass.CreateFromTechnologyTree(const Reader: TTechTreeReader);
 begin
    inherited Create();
    Reader.Tokens.ReadIdentifier('group');
@@ -100,7 +100,10 @@ begin
    Reader.Tokens.ReadComma();
    Reader.Tokens.ReadIdentifier('gravitational');
    Reader.Tokens.ReadIdentifier('influence');
-   FGravitionalInfluenceConstant := ReadNumber(Reader.Tokens, 0, High(Int64));
+   FGravitationalInfluenceConstant := Reader.Tokens.ReadDouble();
+   Reader.Tokens.ReadIdentifier('m');
+   Reader.Tokens.ReadSlash();
+   Reader.Tokens.ReadIdentifier('kg');
 end;
 
 function TSolarSystemFeatureClass.GetFeatureNodeClass(): FeatureNodeReference;
@@ -413,7 +416,7 @@ begin
    MaxRadius := FFeatureClass.FStarGroupingThreshold / 2.0;
    for Index := Low(FChildren) to High(FChildren) do // $R-
    begin
-      CandidateHillRadius := FChildren[Index].Mass.ToSIUnits() * FFeatureClass.FGravitionalInfluenceConstant / 2.0;
+      CandidateHillRadius := FChildren[Index].Mass.ToSIUnits() * FFeatureClass.FGravitationalInfluenceConstant / 2.0;
       if (CandidateHillRadius > MaxRadius) then
          CandidateHillRadius := MaxRadius;
       for SubIndex := Low(FChildren) to High(FChildren) do // $R-

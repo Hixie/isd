@@ -79,8 +79,10 @@ type
       function ToString(): UTF8String;
    end;
 
-   generic TRawRate<T> = record {BOGUS Note: Private type "<record type>.T" never used}
-   private {BOGUS Note: Private type "<record type>.T" never used}
+   generic TRawRate<T> = record
+   strict private
+      procedure UseT(const Ignored: T); // this exists only to silence the warning about T not being used
+   private
       Value: Double;
       function GetIsExactZero(): Boolean; inline;
       function GetIsNotExactZero(): Boolean; inline;
@@ -283,6 +285,9 @@ type
       function Now(): TDateTime; override;
    end;
 
+const
+   Epsilon = 0.00000001; // TODO: this is completely arbitrary;
+   
 implementation
 
 uses
@@ -845,6 +850,9 @@ begin
    Result.Value := Round(A.Value * B.Value);
 end;
 
+procedure TRawRate.UseT(const Ignored: T);
+begin
+end;
 
 constructor TRawRate.FromPerSecond(A: Double);
 begin
@@ -869,14 +877,14 @@ end;
 {$IFOPT C+}
 function TRawRate.GetIsNearZero(): Boolean;
 begin
-   Result := Abs(Value) < 0.00000001; // TODO: this is completely arbitrary
+   Result := Abs(Value) < Epsilon;
 end;
 {$ENDIF}
 
 {$IFOPT C+}
 function TRawRate.GetIsNotNearZero(): Boolean;
 begin
-   Result := Abs(Value) >= 0.00000001; // TODO: this is completely arbitrary
+   Result := Abs(Value) >= Epsilon;
 end;
 {$ENDIF}
 

@@ -4,12 +4,13 @@ unit research;
 
 interface
 
-//{$DEFINE VERBOSE}
+{$DEFINE VERBOSE}
+//{$DEFINE DEBUG_VERBOSE}
 
 uses
-   hashtable, genericutils, basenetwork, systems,
-   serverstream, systemdynasty, materials, techtree, time,
-   commonbuses, knowledge, plasticarrays, annotatedpointer;
+   hashtable, genericutils, basenetwork, systems, internals,
+   serverstream, systemdynasty, materials, time,
+   commonbuses, knowledge, annotatedpointer;
 
 type
    // Sent by a research feature to find other facilities.
@@ -17,12 +18,12 @@ type
    TFindResearchFacilitiesBusMessage = class(TPhysicalConnectionBusMessage)
    strict private
       FDynasty: TDynasty;
-      FTopics: specialize PlasticArray<TTopic, TObjectUtils>;
+      FSituations: TSituationHashSet;
    public
       constructor Create(ADynasty: TDynasty);
-      procedure AddTopic(Topic: TTopic);
+      procedure AddFacility(Situation: TSituation);
       property Dynasty: TDynasty read FDynasty;
-      function Accept(): TTopic.TArray;
+      procedure MoveTo(var Target: TSituationHashSet);
    end;
 
    // Injected by a facility to notify possible research features.
@@ -36,45 +37,46 @@ type
    end;
 
 type
-   TResearchTimeHashTable = class(specialize THashTable<TResearch, TMillisecondsDuration, TObjectUtils>)
+   TResearchTimeHashTable = class(specialize THashTable<TResearch, TMillisecondsDuration, specialize DefaultUnorderedUtils<TResearch>>)
+      constructor Create();
+   end;
+
+   TWeightedResearchHashTable = class(specialize THashTable<TResearch, TWeight, specialize DefaultUnorderedUtils<TResearch>>)
       constructor Create();
    end;
 
    TResearchFeatureClass = class(TFeatureClass)
    private
-      FFacilities: TTopic.TArray; // implicit topics provided by research feature, should be short
+      FFacilities: TSituationHashSet; // situations provided by research feature
    strict protected
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
-      constructor Create(AFacilities: TTopic.Tarray);
-      constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
+      constructor Create(AFacilities: TSituationHashSet);
+      constructor CreateFromTechnologyTree(const Reader: TTechTreeReader); override;
       function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
-      function Provides(Facility: TTopic): Boolean;
+      function Provides(Facility: TSituation): Boolean;
    end;
 
    TResearchFeatureNode = class(TFeatureNode)
-   private
-      type
-         TResearchFlags = (rfSlow);
    strict private
-      FUpdateResearchScheduled: Boolean;
-      FDisabledReasons: TDisabledReasons;
-      FRateLimit: Double;
       FFeatureClass: TResearchFeatureClass;
-      FSeed: Int64;
-      FTopic: TTopic;
-      FSpecialties: array of TResearch;
+      FSeed: Int64; // negative values indicate that the seed has not been established yet; once established, it is fixed
       FBankedResearch: TResearchTimeHashTable;
-      FCurrentResearch: specialize TAnnotatedPointer<TResearch, TResearchFlags>;
-      FResearchStartTime: TTimeInMilliseconds;
-      FResearchEvent: TSystemEvent;
       FSubscription: TKnowledgeSubscription;
+      FResearchEvent: TSystemEvent;
+      FResearchStartTime: TTimeInMilliseconds;
+      FRateLimit, FResearchTimeFactor: Double; // always bank research before changing these
+      FTopic: TTopic;
+      FCurrentResearch: TResearch;
+      FDisabledReasons: TDisabledReasons;
+      FUpdateResearchScheduled, FResearchSlow: Boolean; // TODO: move these into FCurrentResearch using TAnnotatedPointer
       procedure BankResearch();
       procedure UpdateResearch();
       procedure TriggerResearch(var Data);
       procedure HandleKnowledgeChanged();
       procedure ScheduleUpdateResearch();
-      function TopicMatches(Topic: TTopic; var FetchedFacilities: Boolean; var LocalFacilities: TTopic.TArray): Boolean;
+      procedure FillEvaluationContext(out EvaluationContext: TResearchConditionEvaluationContext; const IncludeTopic: Boolean);
+      procedure DetermineTopics(var Target: TTopicHashSet);
    protected
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
       function ManageBusMessage(Message: TBusMessage): TInjectBusMessageResult; override;
@@ -88,12 +90,13 @@ type
       function HandleCommand(PlayerDynasty: TDynasty; Command: UTF8String; var Message: TMessage): Boolean; override;
    end;
 
-   // TODO: unsubscribe when the ancestor chain changes
+   // TODO: unsubscribe from bus when detaching
+   // TODO: schedule update when attaching
 
 implementation
 
 uses
-   exceptions, sysutils, arrayutils, isdprotocol, messages, typedump;
+   exceptions, sysutils, arrayutils, isdprotocol, messages, typedump, ttparser, hashfunctions, conditions;
 
 
 constructor TFindResearchFacilitiesBusMessage.Create(ADynasty: TDynasty);
@@ -102,14 +105,14 @@ begin
    FDynasty := ADynasty;
 end;
 
-procedure TFindResearchFacilitiesBusMessage.AddTopic(Topic: TTopic);
+procedure TFindResearchFacilitiesBusMessage.AddFacility(Situation: TSituation);
 begin
-   FTopics.Push(Topic);
+   FSituations.Add(Situation);
 end;
 
-function TFindResearchFacilitiesBusMessage.Accept(): TTopic.TArray;
+procedure TFindResearchFacilitiesBusMessage.MoveTo(var Target: TSituationHashSet);
 begin
-   Result := FTopics.Distill();
+   FSituations.MoveTo(Target); {BOGUS Warning: Function result variable of a managed type does not seem to be initialized}
 end;
 
 
@@ -120,28 +123,38 @@ begin
 end;
 
 
+function ResearchHash32(const Key: TResearch): DWord;
+begin
+   Result := ObjectHash32(Key);
+end;
+
+
 constructor TResearchTimeHashTable.Create();
 begin
    inherited Create(@ResearchHash32);
 end;
 
 
-constructor TResearchFeatureClass.Create(AFacilities: TTopic.Tarray);
+constructor TWeightedResearchHashTable.Create();
 begin
-   inherited Create();
-   FFacilities := AFacilities;
+   inherited Create(@ResearchHash32);
 end;
 
-constructor TResearchFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
+
+constructor TResearchFeatureClass.Create(AFacilities: TSituationHashSet);
+begin
+   inherited Create();
+   AFacilities.MoveTo(FFacilities);
+end;
+
+constructor TResearchFeatureClass.CreateFromTechnologyTree(const Reader: TTechTreeReader);
 begin
    inherited Create();
    repeat
       if (Reader.Tokens.IsIdentifier('provides')) then
       begin
          Reader.Tokens.ReadIdentifier('provides');
-         SetLength(FFacilities, Length(FFacilities) + 1);
-         FFacilities[High(FFacilities)] := ReadTopic(Reader);
-         Assert(Length(FFacilities) < 4); // TODO: if we start having a lot of FFacilities, consider using a set instead, or a set/array adaptive hybrid...
+         FFacilities.Add(ReadSituation(Reader));
       end;
    until not ReadComma(Reader.Tokens);
 end;
@@ -156,17 +169,9 @@ begin
    Result := TResearchFeatureNode.Create(ASystem, Self);
 end;
 
-function TResearchFeatureClass.Provides(Facility: TTopic): Boolean;
-var
-   Candidate: TTopic;
+function TResearchFeatureClass.Provides(Facility: TSituation): Boolean;
 begin
-   for Candidate in FFacilities do
-      if (Candidate = Facility) then
-      begin
-         Result := True;
-         exit;
-      end;
-   Result := False;
+   Result := FFacilities.Has(Facility);
 end;
 
 
@@ -212,26 +217,38 @@ end;
 procedure TResearchFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);
 var
    Visibility: TVisibility;
+   Topics: TTopicHashSet;
+   Topic: TTopic.TIndex;
 begin
    Visibility := Parent.ReadVisibilityFor(DynastyIndex);
    if ((dmDetectable * Visibility <> []) and (dmClassKnown in Visibility)) then
    begin
       Writer.WriteCardinal(fcResearch);
       Writer.WriteCardinal(Cardinal(FDisabledReasons));
+      // Topics
+      if (System.DynastyByIndex[DynastyIndex] = Parent.Owner) then
+      begin
+         DetermineTopics(Topics);
+         for Topic in Topics do
+            Writer.WriteStringReference(System.Encyclopedia.TopicsByIndex[Topic].Name);
+      end;
+      Writer.WriteStringReference('');
+      // Topic
       if (Assigned(FTopic) and (dmInternals in Visibility)) then
       begin
-         Writer.WriteStringReference(FTopic.Value);
+         Writer.WriteStringReference(FTopic.Name);
       end
       else
       begin
          Writer.WriteStringReference('');
       end;
-      if (not FCurrentResearch.Assigned) then
+      // Difficulty
+      if (not Assigned(FCurrentResearch)) then
       begin
          Writer.WriteByte(0);
       end
       else
-      if (FCurrentResearch.IsFlagSet(rfSlow)) then
+      if (FResearchSlow) then
       begin
          Writer.WriteByte(1);
       end
@@ -288,24 +305,23 @@ begin
    Journal.WriteCardinal(FBankedResearch.Count);
    for Research in FBankedResearch do
    begin
-      Assert(Research <> FCurrentResearch.UnwrapOrNil());
+      Assert(Research <> FCurrentResearch);
       Journal.WriteInt32(Research.ID);
       Journal.WriteInt64(FBankedResearch[Research].AsInt64);
    end;
-   if (FCurrentResearch.Assigned) then
+   if (Assigned(FCurrentResearch)) then
    begin
       Assert(FRateLimit > 0.0);
-      Journal.WriteInt32(FCurrentResearch.Unwrap().ID);
+      Journal.WriteInt32(FCurrentResearch.ID);
       Journal.WriteInt64(FResearchStartTime.AsInt64);
+      Journal.WriteDouble(FResearchTimeFactor);
    end
    else
-      Journal.WriteInt32(TResearch.kNil);
+      Journal.WriteInt32(TResearch.kNilID);
    Journal.WriteDouble(FRateLimit);
-   Journal.WriteCardinal(Length(FSpecialties));
-   for Research in FSpecialties do
-      Journal.WriteInt32(Research.ID);
+   Journal.WriteCardinal(0);
    if (Assigned(FTopic)) then
-      Journal.WriteString(FTopic.Value)
+      Journal.WriteString(FTopic.Name)
    else
       Journal.WriteString('');
 end;
@@ -320,12 +336,12 @@ var
    TopicName: UTF8String;
 begin
    // Reset state
-   FCurrentResearch.Clear();
+   FCurrentResearch := nil;
    FResearchStartTime := TTimeInMilliseconds.FromMilliseconds(0);
    FBankedResearch.Empty();
    if (Assigned(FResearchEvent)) then
       CancelEvent(FResearchEvent);
-   FUpdateResearchScheduled := True; // in case the tech tree changed or something
+   FUpdateResearchScheduled := True;
    // Read journal
    FSeed := Journal.ReadInt64();
    Count := Journal.ReadCardinal();
@@ -334,161 +350,78 @@ begin
       for Index := 0 to Count - 1 do // $R-
       begin
          ResearchID := Journal.ReadInt32(); // $R-
-         Research := System.Encyclopedia.Researches[ResearchID];
+         Research := System.Encyclopedia.ResearchesByID[ResearchID];
          DurationAsInt64 := Journal.ReadInt64();
          Duration := TMillisecondsDuration(DurationAsInt64);
          FBankedResearch[Research] := Duration;
       end;
    end;
    ResearchID := Journal.ReadInt32();
-   if (ResearchID <> TResearch.kNil) then
+   if (ResearchID <> TResearch.kNilID) then
    begin
-      FCurrentResearch := System.Encyclopedia.Researches[ResearchID]; // $R-
+      FCurrentResearch := System.Encyclopedia.ResearchesByID[ResearchID]; // $R-
       FResearchStartTime := TTimeInMilliseconds.FromMilliseconds(Journal.ReadInt64());
+      FResearchTimeFactor := Journal.ReadDouble();
    end;
    FRateLimit := Journal.ReadDouble();
    Count := Journal.ReadCardinal();
-   SetLength(FSpecialties, Count);
-   if (Count > 0) then
-   begin
-      for Index := 0 to Count - 1 do // $R-
-      begin
-         ResearchID := Journal.ReadInt32(); // $R-
-         Assert(Assigned(System.Encyclopedia.Researches[ResearchID]), 'research ' + IntToStr(ResearchID) + ' found in journal no longer exists');
-         FSpecialties[Index] := System.Encyclopedia.Researches[ResearchID];
-      end;
-   end;
    TopicName := Journal.ReadString();
    if (TopicName <> '') then
    begin
-      FTopic := System.Encyclopedia.Topics[TopicName];
+      FTopic := System.Encyclopedia.TopicsByName[TopicName];
    end
    else
       FTopic := nil;
 end;
 
-function TResearchFeatureNode.TopicMatches(Topic: TTopic; var FetchedFacilities: Boolean; var LocalFacilities: TTopic.TArray): Boolean;
+procedure TResearchFeatureNode.FillEvaluationContext(out EvaluationContext: TResearchConditionEvaluationContext; const IncludeTopic: Boolean);
 var
-   CandidateTopic: TTopic;
    FetchFacilities: TFindResearchFacilitiesBusMessage;
+   KnowledgeBase: TGetKnownResearchesMessage;
 begin
-   if ((Topic = FTopic) or FFeatureClass.Provides(Topic)) then
-   begin
-      Result := True;
-      exit;
-   end;
-   if (not FetchedFacilities) then
-   begin
-      FetchFacilities := TFindResearchFacilitiesBusMessage.Create(Parent.Owner);
-      Parent.HandleBusMessage(FetchFacilities);
-      LocalFacilities := FetchFacilities.Accept();
-      FreeAndNil(FetchFacilities);
-      FetchedFacilities := True;
-   end;
-   Assert(Length(LocalFacilities) < 4, 'Consider using a hash set or something instead of an array; searching it is likely starting to get expensive');
-   for CandidateTopic in LocalFacilities do
-      if CandidateTopic = Topic then
+   KnowledgeBase := TGetKnownResearchesMessage.Create(Parent.Owner);
+   InjectBusMessage(KnowledgeBase);
+   if (not FSubscription.Subscribed) then
+      FSubscription := KnowledgeBase.Subscribe(@HandleKnowledgeChanged);
+   KnowledgeBase.CopyTo(EvaluationContext.KnownResearches); {BOGUS Hint: Variable "EvaluationContext" of a managed type does not seem to be initialized}
+   FreeAndNil(KnowledgeBase);
+
+   FetchFacilities := TFindResearchFacilitiesBusMessage.Create(Parent.Owner);
+   Parent.HandleBusMessage(FetchFacilities);
+   FetchFacilities.MoveTo(EvaluationContext.Situations);
+   FreeAndNil(FetchFacilities);
+
+   // TODO: situations from knowledge bus
+   // (will need to add to EvaluationContext.Situations, not just move into it, unless we pass a pointer in?)
+
+   if (IncludeTopic and Assigned(FTopic)) then
+      EvaluationContext.SelectedTopic := FTopic.Index
+   else
+      EvaluationContext.SelectedTopic := TTopic.kNilIndex;
+end;
+
+procedure TResearchFeatureNode.DetermineTopics(var Target: TTopicHashSet);
+var
+   Research: TResearchIndex;
+   Topic: TTopic.TIndex;
+   EvaluationContext: TResearchConditionEvaluationContext;
+begin
+   FillEvaluationContext(EvaluationContext, False); // False because current topic must not affect available topics
+   Target.Reset();
+   for Research in EvaluationContext.KnownResearches do
+      for Topic in System.Encyclopedia.ResearchesByIndex[Research].UnlockedTopics do
       begin
-         Result := True;
-         exit;
+         if ((not Target.Has(Topic)) and EvaluateCondition(System.Encyclopedia.TopicsByIndex[Topic].Condition.ConditionProgram, @EvaluationContext)) then
+            Target.Add(Topic);
       end;
-   Result := False;
 end;
 
 function TResearchFeatureNode.HandleCommand(PlayerDynasty: TDynasty; Command: UTF8String; var Message: TMessage): Boolean;
 var
-   FetchedFacilities: Boolean;
-   LocalFacilities: TTopic.TArray;
-                                                        
-   procedure DetermineTopics(Topics, ObsoleteTopics: TTopicHashSet);
-   var
-      KnowledgeBase: TGetKnownResearchesMessage;
-      Injected: TInjectBusMessageResult;
-      RequirementsMet: Boolean;
-      Research, Requirement: TResearch;
-      Node: TNode;
-      Candidate, Topic, Facility: TTopic;
-   begin
-      KnowledgeBase := TGetKnownResearchesMessage.Create(Parent.Owner);
-      try
-         Injected := InjectBusMessage(KnowledgeBase);
-         Assert(Injected = irHandled);
-         for Research in KnowledgeBase do
-         begin
-            for Node in Research.Unlocks do
-            begin
-               if (Node is TTopic) then
-               begin
-                  Candidate := Node as TTopic;
-                  if (Candidate.Selectable and not Topics.Has(Candidate)) then
-                  begin
-                     RequirementsMet := True;
-                     for Facility in Candidate.Facilities do
-                     begin
-                        if (not TopicMatches(Facility, FetchedFacilities, LocalFacilities)) then
-                        begin
-                           RequirementsMet := False;
-                           break;
-                        end;
-                     end;
-                     for Requirement in Candidate.Requirements do
-                     begin
-                        if (not KnowledgeBase.Knows(Requirement)) then
-                        begin
-                           RequirementsMet := False;
-                           break;
-                        end;
-                     end;
-                     if (RequirementsMet) then
-                     begin
-                        Topics.Add(Candidate);
-                        if (Assigned(ObsoleteTopics)) then
-                           for Topic in Candidate.Obsoletes do
-                           begin
-                              if (not ObsoleteTopics.Has(Topic)) then
-                                 ObsoleteTopics.Add(Topic);
-                           end;
-                     end;
-                  end;
-               end;
-            end;
-         end;
-      finally
-         FreeAndNil(KnowledgeBase);
-      end;
-   end;
-
-var
-   Topics, ObsoleteTopics: TTopicHashSet;
+   Topics: TTopicHashSet;
    Topic: TTopic;
    TopicName: UTF8String;
 begin
-   FetchedFacilities := False;
-   if (Command = ccGetTopics) then
-   begin
-      Result := True;
-      if (Message.CloseInput()) then
-      begin
-         Message.Reply();
-         Topics := TTopicHashSet.Create();
-         ObsoleteTopics := TTopicHashSet.Create();
-         try
-            DetermineTopics(Topics, ObsoleteTopics);
-            for Topic in Topics do
-            begin
-               Message.Output.WriteString(Topic.Value);
-               Message.Output.WriteBoolean(not ObsoleteTopics.Has(Topic)); // TODO: consider just not sending the topic at all
-            end;
-            Message.Output.WriteString('');
-            Message.Output.WriteBoolean(False);
-         finally
-            FreeAndNil(Topics);
-            FreeAndNil(ObsoleteTopics);
-         end;
-         Message.CloseOutput();
-      end;
-   end
-   else
    if (Command = ccSetTopic) then
    begin
       Result := True;
@@ -504,22 +437,18 @@ begin
       end
       else
       begin
-         Topic := System.Encyclopedia.Topics[TopicName];
+         Topic := System.Encyclopedia.TopicsByName[TopicName];
          if (not Assigned(Topic)) then
          begin
             Message.Error(ieInvalidMessage);
             exit;
          end;
-         Topics := TTopicHashSet.Create();
-         try
-            DetermineTopics(Topics, nil);
-            if (not Topics.Has(Topic)) then
-            begin
-               Message.Error(ieInvalidMessage);
-               exit;
-            end;
-         finally
-            FreeAndNil(Topics);
+         Assert(Topics.IsEmpty);
+         DetermineTopics(Topics);
+         if (not Topics.Has(Topic.Index)) then
+         begin
+            Message.Error(ieInvalidMessage);
+            exit;
          end;
       end;
       if (Message.CloseInput()) then
@@ -542,15 +471,15 @@ procedure TResearchFeatureNode.BankResearch();
 var
    Elapsed: TMillisecondsDuration;
 begin
-   if (FCurrentResearch.Assigned) then
+   if (Assigned(FCurrentResearch)) then
    begin
-      Assert(FRateLimit > 0.0, DebugName + ' has rate limit ' + FloatToStr(FRateLimit));
-      Assert(not FBankedResearch.Has(FCurrentResearch.Unwrap()));
+      Assert(FRateLimit > 0.0, DebugName + ' has rate limit ' + FloatToStr(FRateLimit) + ' while having an active research');
+      Assert(not FBankedResearch.Has(FCurrentResearch));
       if (Assigned(FResearchEvent)) then // it's nil, e.g., just after we load from the journal
          CancelEvent(FResearchEvent);
       Elapsed := System.Now - FResearchStartTime;
-      FBankedResearch[FCurrentResearch.Unwrap()] := Elapsed / FRateLimit;
-      FCurrentResearch.Clear();
+      FBankedResearch[FCurrentResearch] := Elapsed / (FRateLimit * FResearchTimeFactor);
+      FCurrentResearch := nil;
    end;
 end;
 
@@ -562,136 +491,68 @@ procedure TResearchFeatureNode.UpdateResearch();
    end;
 
 var
-   FetchedFacilities: Boolean;
-   LocalFacilities: TTopic.TArray;
    Candidates: TResearch.TArray;
-   KnowledgeBase: TGetKnownResearchesMessage;
    WeightedCandidates: TWeightedResearchHashTable;
-   Injected: TInjectBusMessageResult;
-   RequirementsMet: Boolean;
    Research, Candidate: TResearch;
-   Node, Requirement: TNode;
+   ResearchIndex, CandidateIndex: TResearchIndex;
    Weight: TWeight;
    TotalWeight, SelectedResearch: Int64;
-   Bonus: TBonus;
+   Bonus: TBonus; // TODO: see if there's a way we can avoid copying these around
    Index: Cardinal;
    Duration, BankedTime: TMillisecondsDuration;
+   EvaluationContext: TResearchConditionEvaluationContext;
+   {$IFDEF VERBOSE}
+   Message: UTF8String;
+   Found: Boolean;
+   {$ENDIF}
 begin
+   Writeln(DebugName, ' updating research agenda for dynasty ', Parent.Owner.DynastyID);
    BankResearch(); // see also comment in HandleChanges
 
    if (FRateLimit = 0.0) then
    begin
-      FCurrentResearch.Clear();
+      FCurrentResearch := nil;
       exit;
    end;
    
    while (FSeed < 0) do
       FSeed := System.RandomNumberGenerator.GetUInt32();
-   FetchedFacilities := False;
-   KnowledgeBase := TGetKnownResearchesMessage.Create(Parent.Owner);
+
+   FillEvaluationContext(EvaluationContext, True);
    WeightedCandidates := TWeightedResearchHashTable.Create();
    TotalWeight := 0;
-   {$IFDEF VERBOSE} Writeln(Parent.DebugName, ': Enumerating researches for dynasty ', Parent.Owner.DynastyID, '.'); {$ENDIF}
+   {$IFDEF DEBUG_VERBOSE} Writeln(Parent.DebugName, ': Enumerating researches for dynasty ', Parent.Owner.DynastyID, ' (found ', EvaluationContext.KnownResearches.Count, ' known researches).'); {$ENDIF}
    try
-      Injected := InjectBusMessage(KnowledgeBase);
-      Assert(Injected = irHandled);
-      if (not FSubscription.Subscribed) then
-         FSubscription := KnowledgeBase.Subscribe(@HandleKnowledgeChanged);
-      for Research in KnowledgeBase do
+      for ResearchIndex in EvaluationContext.KnownResearches do
       begin
-         {$IFDEF VERBOSE} Writeln(' - ', Research.ID, ' is known'); {$ENDIF}
-         for Node in Research.Unlocks do
+         Research := System.Encyclopedia.ResearchesByIndex[ResearchIndex];
+         {$IFDEF DEBUG_VERBOSE} Writeln('  known research: index ', ResearchIndex, ', ID ', Research.ID, ': ', Research.DebugDescription); {$ENDIF}
+         for CandidateIndex in Research.UnlockedResearches do
          begin
-            if (Node is TResearch) then // we don't care about which topics we unlock here, as we're just making a list of researches that have been unlocked
+            Candidate := System.Encyclopedia.ResearchesByIndex[CandidateIndex];
+            {$IFDEF DEBUG_VERBOSE} Writeln('    might unlock research index ', CandidateIndex, ', ID ', Candidate.ID, ': ', Candidate.DebugDescription); {$ENDIF}
+            if (not EvaluationContext.KnownResearches.Has(CandidateIndex)) then
             begin
-               Candidate := Node as TResearch;
-               {$IFDEF VERBOSE} Writeln('   - ', Candidate.ID, ' is unlocked by ', Research.ID); {$ENDIF}
-               {$IFDEF VERBOSE} Writeln('     already known = ', KnowledgeBase.Knows(Candidate)); {$ENDIF}
-               {$IFDEF VERBOSE} Writeln('     weighted = ', WeightedCandidates.Has(Candidate)); {$ENDIF}
-               if ((not KnowledgeBase.Knows(Candidate)) and
-                   (not WeightedCandidates.Has(Candidate))) then
+               {$IFDEF DEBUG_VERBOSE} Writeln('     + not yet known'); {$ENDIF}
+               if (not WeightedCandidates.Has(Candidate)) then
                begin
-                  RequirementsMet := True;
-                  for Requirement in Candidate.Prohibitions do
+                  {$IFDEF DEBUG_VERBOSE} Writeln('     + not yet considered'); {$ENDIF}
+                  if (EvaluateCondition(Candidate.Condition.ConditionProgram, @EvaluationContext)) then
                   begin
-                     if (Requirement is TResearch) then
-                     begin
-                        if (KnowledgeBase.Knows(Requirement as TResearch)) then
-                        begin
-                           RequirementsMet := False;
-                           break;
-                        end;
-                     end
-                     else
-                     if (Requirement is TTopic) then
-                     begin
-                        if (TopicMatches(Requirement as TTopic, FetchedFacilities, LocalFacilities)) then
-                        begin
-                           RequirementsMet := False;
-                           break;
-                        end;
-                     end
-                     else
-                     begin
-                        Assert(False);
-                     end;
-                  end;
-                  for Requirement in Candidate.Requirements do
-                  begin
-                     if (Requirement is TResearch) then
-                     begin
-                        if (not KnowledgeBase.Knows(Requirement as TResearch)) then
-                        begin
-                           RequirementsMet := False;
-                           break;
-                        end;
-                     end
-                     else
-                     if (Requirement is TTopic) then
-                     begin
-                        if (not TopicMatches(Requirement as TTopic, FetchedFacilities, LocalFacilities)) then
-                        begin
-                           RequirementsMet := False;
-                           break;
-                        end;
-                     end
-                     else
-                     begin
-                        Assert(False);
-                     end;
-                  end;
-                  {$IFDEF VERBOSE} Writeln('     requirements met = ', RequirementsMet); {$ENDIF}
-                  if (RequirementsMet) then
-                  begin
+                     {$IFDEF DEBUG_VERBOSE} Writeln('     + passes its condition'); {$ENDIF}
                      Weight := Candidate.DefaultWeight;
+                     {$IFDEF DEBUG_VERBOSE} Writeln('     default weight: ', Weight); {$ENDIF}
                      for Bonus in Candidate.Bonuses do
                      begin
-                        RequirementsMet := Bonus.Negate;
-                        if (Bonus.Node is TResearch) then
+                        if (EvaluateCondition(Bonus.Condition.ConditionProgram, @EvaluationContext)) then
                         begin
-                           if (KnowledgeBase.Knows(Bonus.Node as TResearch)) then
-                           begin
-                              RequirementsMet := not RequirementsMet;
-                           end;
-                        end
-                        else
-                        if (Bonus.Node is TTopic) then
-                        begin
-                           if (TopicMatches(Bonus.Node as TTopic, FetchedFacilities, LocalFacilities)) then
-                           begin
-                              RequirementsMet := not RequirementsMet;
-                           end;
-                        end
-                        else
-                        begin
-                           Assert(False, 'Unexpected node type: ' + Bonus.Node.ClassName);
-                        end;
-                        if (RequirementsMet) then
+                           {$IFDEF DEBUG_VERBOSE} Writeln('     + additional weight ', Bonus.WeightDelta); {$ENDIF}
                            Inc(Weight, Bonus.WeightDelta);
+                        end;
                      end;
-                     {$IFDEF VERBOSE} Writeln('     weight = ', Weight); {$ENDIF}
                      if (Weight > 0) then
                      begin
+                        {$IFDEF DEBUG_VERBOSE} Writeln('     => final weight ', Weight); {$ENDIF}
                         WeightedCandidates[Candidate] := Weight;
                         Inc(TotalWeight, Weight);
                      end;
@@ -703,14 +564,14 @@ begin
 
       if (TotalWeight = 0) then
       begin
-         Assert(not FCurrentResearch.Assigned);
+         Assert(not Assigned(FCurrentResearch));
          Assert(not Assigned(FResearchEvent));
          {$IFDEF VERBOSE} Writeln('  ', Parent.DebugName, ': No viable research detected for dynasty ', Parent.Owner.DynastyID, '.'); {$ENDIF}
          exit;
       end;
 
-      // We get the researches in a defined order so that changes to
-      // the hash table algorithm don't affect the results.
+      // We reorder the researches so that changes to the hash table
+      // algorithm don't affect the results.
       SetLength(Candidates, WeightedCandidates.Count);
       Index := 0;
       for Candidate in WeightedCandidates do
@@ -718,7 +579,6 @@ begin
          Candidates[Index] := Candidate;
          Inc(Index);
       end;
-
       specialize Sort<TResearch>(Candidates, @CompareCandidates);
       Assert(Length(Candidates) = WeightedCandidates.Count);
 
@@ -726,6 +586,24 @@ begin
       SelectedResearch := FSeed mod TotalWeight;
       Assert(SelectedResearch >= 0);
       Assert(SelectedResearch < TotalWeight);
+
+      {$IFDEF VERBOSE}
+      Writeln('  Candidate researches (selected research weight: ', SelectedResearch, '):');
+      Weight := 0;
+      Found := False;
+      for Research in Candidates do
+      begin
+         Message := Research.DebugDescription();
+         Write('    ', WeightedCandidates[Research]:9, ' ', Research.ID, ' (', Message, ')');
+         Inc(Weight, WeightedCandidates[Research]);
+         if (not Found and (SelectedResearch < Weight)) then
+         begin
+            Write('  <---- selected');
+            Found := True;
+         end;
+         Writeln();
+      end;
+      {$ENDIF}
 
       // Find the corresponding research
       Index := Low(Candidates);
@@ -737,121 +615,97 @@ begin
             break;
          Dec(SelectedResearch, Weight);
          Inc(Index);
-         {$IFOPT C+}
-         if (Index >= Length(Candidates)) then
-         begin
-            Writeln('  ', Parent.DebugName, ': Failed with index = ', Index, ', selected research = ', SelectedResearch);
-            Writeln('  Total weight = ', TotalWeight);
-            Writeln('  Selected research = ', FSeed mod TotalWeight);
-            Writeln(Length(Candidates), ' candidates:');
-            for Index := Low(Candidates) to High(Candidates) do // $R-
-               Writeln('    #', Index, ': research ', Candidates[Index].ID, ' has weight ', WeightedCandidates[Candidates[Index]]);
-            Assert(False);
-         end;
-         {$ENDIF}
          Assert(Index < Length(Candidates));
       until False;
-
       Assert(Index < Length(Candidates));
       FCurrentResearch := Candidates[Index];
 
-      Duration := FCurrentResearch.Unwrap().DefaultTime;
-      for Bonus in FCurrentResearch.Unwrap().Bonuses do
-      begin
-         RequirementsMet := Bonus.Negate;
-         if (Bonus.Node is TResearch) then
-         begin
-            if (KnowledgeBase.Knows(Bonus.Node as TResearch)) then
-            begin
-               RequirementsMet := not RequirementsMet;
-            end;
-         end
-         else
-         if (Bonus.Node is TTopic) then
-         begin
-            if (TopicMatches(Bonus.Node as TTopic, FetchedFacilities, LocalFacilities)) then
-            begin
-               RequirementsMet := not RequirementsMet;
-            end;
-         end
-         else
-         begin
-            Assert(False);
-         end;
-         if (RequirementsMet) then
-            Duration := Duration + Bonus.TimeDelta;
-      end;
+      FResearchTimeFactor := 1.0;
+      for Bonus in FCurrentResearch.Bonuses do
+         if (EvaluateCondition(Bonus.Condition.ConditionProgram, @EvaluationContext)) then
+            FResearchTimeFactor := FResearchTimeFactor * Bonus.TimeFactor;
+      Assert(FResearchTimeFactor > 0.0);
+      Duration := FCurrentResearch.DefaultTime;
 
-      if (Duration > TWallMillisecondsDuration.FromDays(1) * System.TimeFactor) then
-         FCurrentResearch.SetFlag(rfSlow);
+      {$IFDEF VERBOSE}
+      Writeln('  Research default time: ', Duration.ToString());
+      Writeln('  Bonus time factor: ', FResearchTimeFactor.ToString());
+      Writeln('  Rate limit: ', FRateLimit.ToString());
+      {$ENDIF}
+
+      FResearchSlow := (Duration / FResearchTimeFactor) > (TWallMillisecondsDuration.FromDays(1) * System.TimeFactor);
       
-      // TODO: apply FSpecialties
-
-      if (FBankedResearch.Has(FCurrentResearch.Unwrap())) then
+      if (FBankedResearch.Has(FCurrentResearch)) then
       begin
-         BankedTime := FBankedResearch[FCurrentResearch.Unwrap()];
-         Duration := Duration - FBankedResearch[FCurrentResearch.Unwrap()];
-         FBankedResearch.Remove(FCurrentResearch.Unwrap());
+         BankedTime := FBankedResearch[FCurrentResearch];
+         Duration := Duration - BankedTime;
+         FBankedResearch.Remove(FCurrentResearch);
       end
       else
          BankedTime := TMillisecondsDuration.FromMilliseconds(0);
 
-      FResearchStartTime := System.Now - (BankedTime * FRateLimit);
-      Duration := Duration * FRateLimit;
+      {$IFDEF VERBOSE}
+      Writeln('  Slow? ', FResearchSlow);
+      Writeln('  Banked time: ', BankedTime.ToString());
+      Writeln('  Remaining duration: ', Duration.ToString());
+      {$ENDIF}
+
+      FResearchStartTime := System.Now - (BankedTime * FRateLimit * FResearchTimeFactor);
+      Duration := Duration / (FRateLimit * FResearchTimeFactor);
+
+      {$IFDEF VERBOSE}
+      Writeln('  Computed duration with modifiers: ', Duration.ToString());
+      {$ENDIF}
+
       if (Duration.IsNegative) then
          Duration := TMillisecondsDuration.FromMilliseconds(0);
-      Writeln(Parent.DebugName, ': Scheduled research ', FCurrentResearch.Unwrap().ID, '; T-', Duration.ToString());
+      Writeln(Parent.DebugName, ': Scheduled research; T-', Duration.ToString());
 
       FResearchEvent := System.ScheduleEvent(Duration, @TriggerResearch, Self);
    finally
       WeightedCandidates.Free();
-      KnowledgeBase.Free();
    end;
-   MarkAsDirty([dkUpdateJournal]); // save new situation (but don't update research)
+   MarkAsDirty([dkUpdateJournal, dkUpdateClients]);
 end;
 
 procedure TResearchFeatureNode.TriggerResearch(var Data);
 var
-   Reward: TReward;
-   RewardMessage: TNotificationMessage;
+   Unlock: TUnlockedKnowledge;
+   UnlockMessage: TNotificationMessage;
    Injected: TInjectBusMessageResult;
    Body: UTF8String;
 begin
-   Writeln(Parent.DebugName, ': Triggering research ', FCurrentResearch.Unwrap().ID);
+   Writeln(Parent.DebugName, ': Triggering research ', FCurrentResearch.ID);
    Assert(FRateLimit > 0.0);
    FResearchEvent := nil;
-   Assert(not FBankedResearch.Has(FCurrentResearch.Unwrap()));
-   Assert(Length(FCurrentResearch.Unwrap().Rewards) > 0);
-   for Reward in FCurrentResearch.Unwrap().Rewards do
+   Assert(not FBankedResearch.Has(FCurrentResearch));
+   Assert(Length(FCurrentResearch.UnlockedKnowledge) > 0);
+   for Unlock in FCurrentResearch.UnlockedKnowledge do
    begin
-      if (Reward.Kind = rkMessage) then
+      if (Unlock.Kind = ukMessage) then
       begin
-         Body := Reward.Message;
+         Body := Unlock.Message;
          break;
       end;
    end;
    Assert(Body <> '');
-   RewardMessage := TNotificationMessage.Create(Parent, Body, FCurrentResearch.Unwrap());
-   Injected := InjectBusMessage(RewardMessage);
+   UnlockMessage := TNotificationMessage.Create(Parent, Body, FCurrentResearch);
+   Injected := InjectBusMessage(UnlockMessage);
    if (Injected <> irHandled) then
    begin
-      Writeln(Parent.DebugName, ': Discarding message from research feature ("', RewardMessage.Body, '")');
+      Writeln(Parent.DebugName, ': Discarding message from research feature ("', UnlockMessage.Body, '")');
       // TODO: now what? can we be notified when we would be able to send a message? can notification centers notify when they come online?
       FResearchEvent := System.ScheduleEvent(TMillisecondsDuration.FromMilliseconds(1000 * 60 * 60 * 24), @TriggerResearch, Self); // wait a day and try again
    end
    else
    begin
-      // TODO: check that we don't already have this in our speciaties (e.g. if someone keeps deleting the same research result)
-      // TODO: set a max limit to the number of things in our specialties
-      SetLength(FSpecialties, Length(FSpecialties) + 1);
-      FSpecialties[High(FSpecialties)] := FCurrentResearch.Unwrap();
-      FCurrentResearch.Clear();
+      FCurrentResearch := nil;
       FResearchStartTime := TTimeInMilliseconds.FromMilliseconds(0);
       FSeed := -1;
       MarkAsDirty([dkUpdateJournal]);
       ScheduleUpdateResearch();
    end;
-   FreeAndNil(RewardMessage);
+   FreeAndNil(UnlockMessage);
 end;
 
 initialization

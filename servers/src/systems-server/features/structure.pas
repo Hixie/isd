@@ -5,7 +5,7 @@ unit structure;
 interface
 
 uses
-   systems, serverstream, materials, techtree, builders, region, time,
+   systems, internals, serverstream, materials, builders, region, time,
    commonbuses, systemdynasty, basenetwork, masses, isdnumbers;
 
 type
@@ -37,7 +37,7 @@ type
       function ComputeMass(): TMass;
    public
       constructor Create(ABillOfMaterials: TMaterialLineItemArray; AMinimumFunctionalQuantity: TQuantity32; ADefaultSize: Double);
-      constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
+      constructor CreateFromTechnologyTree(const Reader: TTechTreeReader); override;
       function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
       property DefaultSize: Double read FDefaultSize;
       property BillOfMaterials[Index: Cardinal]: TMaterialLineItem read GetMaterialLineItem;
@@ -125,7 +125,7 @@ implementation
 
 uses
    sysutils, isdprotocol, exceptions, rubble, plasticarrays,
-   genericutils, assetpile;
+   genericutils, assetpile, ttparser;
 
 constructor TMaterialLineItem.Create(AComponentName: UTF8String; AMaterial: TMaterial; AQuantity: TQuantity32);
 begin
@@ -165,7 +165,7 @@ begin
    FDefaultSize := ADefaultSize;
 end;
 
-constructor TStructureFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
+constructor TStructureFeatureClass.CreateFromTechnologyTree(const Reader: TTechTreeReader);
 var
    MaterialsList: specialize PlasticArray<TMaterialLineItem, specialize IncomparableUtils<TMaterialLineItem>>;
    ComponentName: UTF8String;
@@ -532,6 +532,24 @@ begin
          end;
       end;
       MarkAsDirty([dkUpdateClients, dkUpdateJournal, dkNeedsHandleChanges]);
+   end
+   else
+   if (Message is TInstabuildBusMessage) then
+   begin
+      if (Assigned(FBuildingState)) then
+      begin
+         if (Assigned(FBuildingState^.Region)) then
+            FBuildingState^.Region.RemoveMaterialConsumer(Self);
+         if (Assigned(FBuildingState^.Builder)) then
+            FBuildingState^.Builder.StopBuilding(Self);
+         if (Assigned(FBuildingState^.BuilderBus)) then
+            FBuildingState^.BuilderBus.RemoveStructure(Self);
+         if (Assigned(FBuildingState^.NextEvent)) then
+            CancelEvent(FBuildingState^.NextEvent);
+         Dispose(FBuildingState);
+         FBuildingState := nil;
+         MarkAsDirty([dkUpdateClients, dkUpdateJournal]);
+      end;
    end;
    Result := inherited;
 end;

@@ -25,9 +25,9 @@ type
       type
          TTokenKind = (
             tkPending,
-            tkIdentifier, tkString, tkInteger, tkDouble,
+            tkIdentifier, tkString, tkInteger, tkDouble, tkMultiplier,
             tkOpenBrace, tkCloseBrace, tkOpenParenthesis, tkCloseParenthesis,
-            tkComma, tkColon, tkSemicolon, tkPercentage, tkAsterisk, tkSlash,
+            tkComma, tkColon, tkSemicolon, tkPercentage, tkAsterisk, tkSlash, tkAt,
             tkEOF
          );
       var
@@ -50,19 +50,21 @@ type
       destructor Destroy(); override;
       function ReadIdentifier(): UTF8String;
       procedure ReadIdentifier(Keyword: UTF8String);
-      function ReadString(): UTF8String;
+      function ReadString(const MaxLength: Int64 = High(SizeInt)): UTF8String;
       function ReadNumber(): Int64;
       function ReadDouble(): Double;
+      function ReadMultiplier(): Double;
       procedure ReadOpenBrace();
       procedure ReadCloseBrace();
       procedure ReadOpenParenthesis();
       procedure ReadCloseParenthesis();
-      procedure ReadComma(); // see also ReadComma in techtree.pas
+      procedure ReadComma(); // see also ReadComma in ttparser.pas
       procedure ReadColon();
       procedure ReadSemicolon();
       procedure ReadPercentage();
       procedure ReadAsterisk();
       procedure ReadSlash();
+      procedure ReadAt();
       function IsIdentifier(): Boolean;
       function IsIdentifier(Keyword: UTF8String): Boolean;
       function IsString(): Boolean;
@@ -73,6 +75,7 @@ type
       function IsCloseParenthesis(): Boolean;
       function IsComma(): Boolean;
       function IsSemicolon(): Boolean;
+      function IsAt(): Boolean;
       function IsEOF(): Boolean;
       procedure Error(const AMessage: UTF8String; const Arguments: array of const);
    end;
@@ -174,11 +177,13 @@ var
       Size := 0;
       for Segment in StringSegments do
       begin
+         Assert(Segment.Size > 0);
          if (Segment.Size > High(Integer)) then
             Error('Overlong string segment in string ending', []);
          Inc(Size, Segment.Size); // $R-
       end;
-      SetLength(FStringValue, Size - 1);
+      Assert(Size > 0);
+      SetLength(FStringValue, Size - 1); // SetLength allocates an extra byte for a trailing null; it's safe to write to that byte
       if (Size > 1) then
       begin
          Destination := @FStringValue[1];
@@ -202,14 +207,15 @@ const
    kNewline = #$0A;
    kSpace = #$20;
 type
-   TTokenMode = (tmTop, tmIdentifier, tmNumber, tmNumberFraction, tmString,
+   TTokenMode = (tmTop, tmIdentifier, tmX, tmNumber, tmNumberFraction, tmExponentStart, tmExponentStartDigit, tmExponent, tmString,
                  tmMultilineStringStart, tmMultilineStringFirstLinePrefix, tmMultilineStringPrefix, tmMultilineStringBodyStart, tmMultilineStringBody,
                  tmSlash, tmLineComment, tmBlockComment, tmBlockCommentEnd);
 var
    Mode: TTokenMode;
    Current, ExpectedIndent, CurrentIndent, NumberLength, NumberDecimalPosition: Cardinal;
-   Negative: Boolean;
+   Negative, ExponentNegative, HasXPrefix: Boolean;
    Number: UInt64;
+   Exponent: Integer;
    SegmentStart, SegmentCheckpoint: QWord;
 begin
    Mode := tmTop;
@@ -239,7 +245,7 @@ begin
                      begin
                         AdvanceLine();
                      end;
-                  $22:
+                  $22: // U+0022 QUOTATION MARK (")
                      begin
                         Advance();
                         SegmentStart := FPosition;
@@ -268,6 +274,7 @@ begin
                   $2B: // U+002B PLUS SIGN character (+)
                      begin
                         Negative := False;
+                        HasXPrefix := False;
                         Number := 0;
                         Advance();
                         Mode := tmNumber;
@@ -280,6 +287,7 @@ begin
                   $2D: // U+002D HYPHEN-MINUS character (-)
                      begin
                         Negative := True;
+                        HasXPrefix := False;
                         Number := 0;
                         Advance();
                         Mode := tmNumber;
@@ -292,10 +300,12 @@ begin
                   $30..$39: // digits 0..9
                      begin
                         Negative := False;
+                        HasXPrefix := False;
                         Number := 0;
                         NumberLength := 0;
                         Mode := tmNumber;
                         // we do not advance, so digit is reinterpreted again in tmNumber immediately
+                        continue; // reparse in new mode
                      end;
                   $3A: // U+003B COLON character (:)
                      begin
@@ -307,11 +317,22 @@ begin
                         FCurrentKind := tkSemicolon;
                         Advance();
                      end;
-                  $41..$5A, $61..$7A: // A-Z, a-z
+                  $40: // U+0040 COMMERCIAL AT character (@)
+                     begin
+                        FCurrentKind := tkAt;
+                        Advance();
+                     end;
+                  $78: // x
                      begin
                         SegmentStart := FPosition;
+                        Advance();
+                        Mode := tmX;
+                     end;
+                  $41..$5A, $61..$77, $79..$7A: // A-Z, a-w, y-z
+                     begin
+                        SegmentStart := FPosition;
+                        Advance();
                         Mode := tmIdentifier;
-                        continue;
                      end;
                   $5B: // LEFT SQUARE BRACKET character ([)
                      begin
@@ -331,6 +352,21 @@ begin
                else
                   Error('Unexpected character 0x%2x (''%s'')', [Current, Chr(Current)]);
                end;
+            tmX:
+               case (Current) of
+                  $30..$39: // 0-9
+                     begin
+                        Negative := False;
+                        HasXPrefix := True;
+                        Number := 0;
+                        NumberLength := 0;
+                        Mode := tmNumber;
+                        continue;
+                     end;
+               else
+                  Mode := tmIdentifier;
+                  continue;
+               end;
             tmIdentifier:
                case (Current) of
                   $2D, $30..$39, $41..$5A, $61..$7A:
@@ -345,9 +381,17 @@ begin
                case (Current) of
                   $45, $65: // E, e
                      begin
-                        Error('Exponents not supported in numeric format', []);
+                        if (NumberLength < 1) then
+                        begin
+                           Error('Exponent is only valid after a digit', []);
+                        end;
+                        Advance();
+                        NumberDecimalPosition := NumberLength;
+                        ExponentNegative := False;
+                        Exponent := 0;
+                        Mode := tmExponentStart;
                      end;
-                  $2E:
+                  $2E: // .
                      begin
                         Advance();
                         NumberDecimalPosition := NumberLength;
@@ -361,34 +405,37 @@ begin
                         {$RANGECHECKS-}
                         Number := Number * 10 + Current - $30;
                         {$POP}
-                        if (Negative and (Number > High(Int64) + 1)) then
-                        begin
+                        if ((Negative and (Number > High(Int64) + 1)) or (not Negative and (Number > High(Int64)))) then
                            Error('Numeric literal out of range (valid range is %d..%d)', [Low(Number), High(Number)]);
-                        end;
-                        if (not Negative and (Number > High(Int64))) then
-                        begin
-                           Error('Numeric literal out of range (valid range is %d..%d)', [Low(Number), High(Number)]);
-                        end;
                         Advance();
                      end;
                else
-                  FCurrentKind := tkInteger;
-                  if (Negative) then
+                  if (HasXPrefix) then
                   begin
-                     FNumericInteger := -Number; // $R-
+                     if (Negative) then
+                        Error('Negative multiplier (%f)', [Number]);
+                     FNumericDouble := Number;
+                     FCurrentKind := tkMultiplier;
                   end
                   else
                   begin
-                     FNumericInteger := Number; // $R-
+                     if (Negative) then
+                        FNumericInteger := -Number // $R-
+                     else
+                        FNumericInteger := Number; // $R-
+                     FCurrentKind := tkInteger;
                   end;
                end;
             tmNumberFraction:
                case (Current) of
                   $45, $65: // E, e
                      begin
-                        Error('Exponents not supported in numeric format', []);
+                        Advance();
+                        ExponentNegative := False;
+                        Exponent := 0;
+                        Mode := tmExponentStart;
                      end;
-                  $2E:
+                  $2E: // .
                      begin
                         Error('Unexpected decimal point in fraction', []);
                      end;
@@ -405,7 +452,6 @@ begin
                         Advance();
                      end;
                else
-                  FCurrentKind := tkDouble;
                   if (Negative) then
                   begin
                      FNumericDouble := -Number / Power(10, (NumberLength - NumberDecimalPosition)); // $R-
@@ -413,6 +459,85 @@ begin
                   else
                   begin
                      FNumericDouble := Number / Power(10, (NumberLength - NumberDecimalPosition)); // $R-
+                  end;
+                  if (HasXPrefix) then
+                  begin
+                     if (Negative) then
+                        Error('Negative multiplier (%f)', [Number]);
+                     FCurrentKind := tkMultiplier;
+                  end
+                  else
+                  begin
+                     FCurrentKind := tkDouble;
+                  end;
+               end;
+            tmExponentStart:
+               case (Current) of
+                  kEOF, $0A:
+                     begin
+                        Error('Unterminated exponent in numerical value', []);
+                     end;
+                  $2D: // -
+                     begin
+                        Advance();
+                        ExponentNegative := True;
+                        Mode := tmExponentStartDigit;
+                     end;
+                  $30..$39:
+                     begin
+                        Mode := tmExponentStartDigit;
+                        continue;
+                     end;
+               else
+                  Error('Unexpected character after exponent in numerical value', []);
+               end;
+            tmExponentStartDigit:
+               case (Current) of
+                  kEOF, $0A:
+                     begin
+                        Error('Unterminated exponent in numerical value', []);
+                     end;
+                  $30..$39:
+                     begin
+                        Mode := tmExponent;
+                        continue;
+                     end;
+               else
+                  Error('Unexpected character after exponent in numerical value', []);
+               end;
+            tmExponent:
+               case (Current) of
+                  $30..$39:
+                     begin
+                        {$PUSH}
+                        {$OVERFLOWCHECKS-}
+                        {$RANGECHECKS-}
+                        Exponent := Exponent * 10 + Current - $30; // $R-
+                        {$POP}
+                        if ((ExponentNegative and (Exponent > 1022)) or (not ExponentNegative and (Exponent > 1023))) then
+                           Error('Numeric literal out of range (valid range is %d..%d)', [-1022, 1023]);
+                        Advance();
+                     end;
+               else
+                  if (ExponentNegative) then
+                     Exponent := -Exponent; // $R-
+                  if (Negative) then
+                  begin
+                     FNumericDouble := -Number / Power(10, (NumberLength - NumberDecimalPosition)) * Power(10, Exponent); // $R-
+                  end
+                  else
+                  begin
+                     FNumericDouble := Number / Power(10, (NumberLength - NumberDecimalPosition)) * Power(10, Exponent); // $R-
+                  end;
+                  if (HasXPrefix) then
+                  begin
+                     if (Negative) then
+                        Error('Negative multiplier (%f)', [Number]);
+                     FCurrentKind := tkMultiplier;
+                  end
+                  else
+                  begin
+                     FCurrentKind := tkDouble;
                   end;
                end;
             tmString:
@@ -625,7 +750,6 @@ begin
                   Mode := tmBlockComment;
                   continue;
                end;
-
          end;
       until True;
    until FCurrentKind <> tkPending;
@@ -663,7 +787,7 @@ begin
       Error('Expected %s but got %s', [Keyword, Value]);
 end;
 
-function TTokenizer.ReadString(): UTF8String;
+function TTokenizer.ReadString(const MaxLength: Int64 = High(SizeInt)): UTF8String;
 begin
    EnsureToken();
    ExpectToken(tkString);
@@ -673,6 +797,8 @@ begin
    {$ELSE}
    Result := FStringValue;
    {$ENDIF}
+   if (Length(Result) > MaxLength) then
+      Error('String is too long. Maximum length is %d. String length was %d', [MaxLength, Length(Result)]);
    FCurrentKind := tkPending;
 end;
 
@@ -693,6 +819,14 @@ begin
      else
        Error('Expected a numeric token but got %s', [specialize EnumToString<TTokenKind>(FCurrentKind)]);
    end;
+   FCurrentKind := tkPending;
+end;
+
+function TTokenizer.ReadMultiplier(): Double;
+begin
+   EnsureToken();
+   ExpectToken(tkMultiplier);
+   Result := FNumericDouble;
    FCurrentKind := tkPending;
 end;
 
@@ -766,6 +900,13 @@ begin
    FCurrentKind := tkPending;
 end;
 
+procedure TTokenizer.ReadAt();
+begin
+   EnsureToken();
+   ExpectToken(tkAt);
+   FCurrentKind := tkPending;
+end;
+
 function TTokenizer.IsIdentifier(): Boolean;
 begin
    EnsureToken();
@@ -824,6 +965,12 @@ function TTokenizer.IsSemicolon(): Boolean;
 begin
    EnsureToken();
    Result := FCurrentKind = tkSemicolon;
+end;
+
+function TTokenizer.IsAt(): Boolean;
+begin
+   EnsureToken();
+   Result := FCurrentKind = tkAt;
 end;
 
 function TTokenizer.IsEOF(): Boolean;

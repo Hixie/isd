@@ -5,7 +5,7 @@ unit plot;
 interface
 
 uses
-   systems, systemdynasty, serverstream, materials, techtree;
+   systems, internals, systemdynasty, serverstream, materials;
 
 const
    pcNothing = 0;
@@ -16,7 +16,7 @@ type
    strict protected
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
-      constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
+      constructor CreateFromTechnologyTree(const Reader: TTechTreeReader); override;
       function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
    end;
 
@@ -36,11 +36,11 @@ type
 implementation
 
 uses
-   sysutils, isdprotocol, orbit;
+   sysutils, isdprotocol, orbit, ttparser;
 
-constructor TDynastyOriginalColonyShipFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
+constructor TDynastyOriginalColonyShipFeatureClass.CreateFromTechnologyTree(const Reader: TTechTreeReader);
 begin
-   Reader.Tokens.Error('Feature class %s is reserved for internal asset classes', [ClassName]);
+   inherited Create();
 end;
 
 function TDynastyOriginalColonyShipFeatureClass.GetFeatureNodeClass(): FeatureNodeReference;
@@ -50,8 +50,7 @@ end;
 
 function TDynastyOriginalColonyShipFeatureClass.InitFeatureNode(ASystem: TSystem): TFeatureNode;
 begin
-   Result := nil;
-   raise Exception.Create('Cannot create a TDynastyOriginalColonyShipFeatureNode from a prototype, it must be given a dynasty.');
+   Result := TDynastyOriginalColonyShipFeatureNode.Create(ASystem, nil);
 end;
 
 
@@ -63,17 +62,18 @@ end;
 
 function TDynastyOriginalColonyShipFeatureNode.HandleBusMessage(Message: TBusMessage): THandleBusMessageResult;
 begin
-   if (Message is TCrashReportMessage) then
+   if (Assigned(FDynasty) and (Message is TCrashReportMessage)) then
    begin
       TCrashReportMessage(Message).RequestRegionDimension(27);
-   end;
-   Result := inherited;
+      Result := hrActive;
+   end
+   else
+      Result := inherited;
 end;
 
 procedure TDynastyOriginalColonyShipFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);
 begin
-   Assert(Assigned(FDynasty));
-   if (FDynasty = Parent.Owner) then
+   if (Assigned(FDynasty) and (FDynasty = Parent.Owner)) then
    begin
       Writer.WriteCardinal(fcPlotControl);
       Writer.WriteCardinal(pcColonyShip);

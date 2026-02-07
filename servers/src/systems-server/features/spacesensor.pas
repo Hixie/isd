@@ -5,7 +5,7 @@ unit spacesensor;
 interface
 
 uses
-   systems, serverstream, materials, knowledge, techtree, tttokenizer, sensors;
+   systems, internals, serverstream, materials, knowledge, tttokenizer, sensors;
 
 type
    TSpaceSensorFeatureClass = class(TSensorFeatureClass)
@@ -15,7 +15,7 @@ type
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
       constructor Create(AMaxStepsToOrbit, AStepsUpFromOrbit, AStepsDownFromTop: Cardinal; AMinSize: Double; ASensorKind: TVisibility);
-      constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
+      constructor CreateFromTechnologyTree(const Reader: TTechTreeReader); override;
       function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
    end;
 
@@ -35,7 +35,7 @@ type
 implementation
 
 uses
-   sysutils, orbit, isdprotocol, typedump;
+   sysutils, orbit, isdprotocol, typedump, ttparser;
 
 constructor TSpaceSensorFeatureClass.Create(AMaxStepsToOrbit, AStepsUpFromOrbit, AStepsDownFromTop: Cardinal; AMinSize: Double; ASensorKind: TVisibility);
 begin
@@ -46,7 +46,7 @@ begin
    FMinSize := AMinSize;
 end;
 
-constructor TSpaceSensorFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
+constructor TSpaceSensorFeatureClass.CreateFromTechnologyTree(const Reader: TTechTreeReader);
 begin
    FMaxStepsToOrbit := ReadNumber(Reader.Tokens, Low(FMaxStepsToOrbit), High(FMaxStepsToOrbit)); // $R-
    Reader.Tokens.ReadIdentifier('to');

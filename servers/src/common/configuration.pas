@@ -59,8 +59,6 @@ type
       LocalSpaceRadius: Cardinal; // dword units - distance from candidate home star within which we must find MaxStarsPerHomeSystem
       MaxStarsPerHomeSystem: Cardinal;
       GalaxyDiameter: Double; // meters
-      StarGroupingThreshold: Double; // meters
-      GravitionalInfluenceConstant: Double; // meters per kilogram (to compute default hill diameter of children of space features)
       DefaultTimeRate: TTimeFactor; // game seconds per TAI second
       ClockType: TRootClockClass;
    end;
@@ -75,8 +73,6 @@ const
    LocalSpaceRadiusSetting = 'local space radius'; // dword units
    MaxStarsPerHomeSystemSetting = 'max stars per home system';
    GalaxyDiameterSetting = 'galaxy diameter'; // meters
-   StarGroupingThresholdSetting = 'star grouping threshold'; // meters
-   GravitionalInfluenceConstantSetting = 'gravitational influence constant'; // meters per kilogram
    DefaultTimeRateSetting = 'default time rate'; // game seconds per TAI second
    ClockTypeSetting = 'clock type'; // "mock" or "system"
 
@@ -201,16 +197,6 @@ begin
             if (Setting = GalaxyDiameterSetting) then
             begin
                Result^.GalaxyDiameter := ReadDoubleSetting(); // $R-
-            end
-            else
-            if (Setting = StarGroupingThresholdSetting) then
-            begin
-               Result^.StarGroupingThreshold := ReadDoubleSetting(); // $R-
-            end
-            else
-            if (Setting = GravitionalInfluenceConstantSetting) then
-            begin
-               Result^.GravitionalInfluenceConstant := ReadDoubleSetting(); // $R-
             end
             else
             if (Setting = DefaultTimeRateSetting) then

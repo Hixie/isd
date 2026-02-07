@@ -5,15 +5,16 @@ unit name;
 interface
 
 uses
-   systems, serverstream, providers, techtree, tttokenizer;
+   systems, serverstream, providers, tttokenizer;
 
 type
    // For assets that have globally known fixed names (e.g. stars).
    TAssetNameFeatureClass = class(TFeatureClass)
    strict protected
+      FDefaultName: UTF8String;
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
-      constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
+      constructor CreateFromTechnologyTree(const Reader: TTechTreeReader); override;
       function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
    end;
 
@@ -32,11 +33,12 @@ type
 implementation
 
 uses
-   sysutils;
+   sysutils, ttparser;
 
-constructor TAssetNameFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
+constructor TAssetNameFeatureClass.CreateFromTechnologyTree(const Reader: TTechTreeReader);
 begin
-   Reader.Tokens.Error('Feature class %s is reserved for internal asset classes', [ClassName]);
+   inherited Create();
+   FDefaultName := Reader.Tokens.ReadString();
 end;
 
 function TAssetNameFeatureClass.GetFeatureNodeClass(): FeatureNodeReference;
@@ -46,8 +48,7 @@ end;
 
 function TAssetNameFeatureClass.InitFeatureNode(ASystem: TSystem): TFeatureNode;
 begin
-   Result := nil;
-   raise Exception.Create('Cannot create a TAssetNameFeatureNode from a prototype; it must have a specified name.');
+   Result := TAssetNameFeatureNode.Create(ASystem, FDefaultName);
 end;
 
 

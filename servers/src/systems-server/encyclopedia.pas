@@ -5,34 +5,30 @@ unit encyclopedia;
 interface
 
 uses
-   techtree, systems, configuration, astronomy, materials,
+   techtree, internals, systems, configuration, astronomy, materials,
    random, systemdynasty, space, basenetwork, masses;
 
 type
    TEncyclopedia = class(TEncyclopediaView)
    private
-      var
-         FMaterials: TMaterialIDHashTable;
-         FAssetClasses: TAssetClassIDHashTable;
-         FResearches: TResearchIDHashTable;
-         FTopics: TTopicHashTable;
-         FSpace, FOrbits: TAssetClass;
-         FPlaceholderShip: TAssetClass;
-         FPlaceholderShipInstructionManual: TResearch;
-         FCrater, FRubblePile: TAssetClass;
-         FMessage: TAssetClass;
-         FStars: array[TStarCategory] of TAssetClass;
-         FPlanetaryBody, FRegion: TAssetClass;
-         FProtoplanetaryMaterials: TMaterial.TArray; // order matters, it's used in protoplanetary generation
-         FDarkMatter: TMaterial;
-         FMinMassPerOreUnit: TMassPerUnit; // cached value based on ores in materials passed to constructor
+      // these are the owned references
+      FMaterials: TMaterialIDHashTable;
+      FAssetClasses: TAssetClassIDHashTable;
+      FResearches: TResearch.TArray;
+      FTopics: TTopic.TArray;
+      // cached values and lookup tables
+      FResearchesByID: TResearchHashTable;
+      FTopicsByName: TTopicHashTable;
+      FProtoplanetaryMaterials: TMaterial.TArray; // order matters, it's used in protoplanetary generation
+      FMinMassPerOreUnit: TMassPerUnit; // cached value based on ores in materials passed to constructor
       function GetStarClass(Category: TStarCategory): TAssetClass;
-      function CreateRegion(CellSize: Double; Dimension: Cardinal; System: TSystem): TAssetNode;
    protected
       function GetAssetClass(ID: Integer): TAssetClass; override;
       function GetMaterial(ID: TMaterialID): TMaterial; override;
-      function GetResearch(ID: TResearchID): TResearch; override;
-      function GetTopic(Name: UTF8String): TTopic; override;
+      function GetResearchByIndex(Index: TResearchIndex): TResearch; override;
+      function GetResearchById(ID: TResearchID): TResearch; override;
+      function GetTopicByName(Name: UTF8String): TTopic; override;
+      function GetTopicByIndex(Index: TTopic.TIndex): TTopic; override;
       function GetMinMassPerOreUnit(): TMassPerUnit; override;
       procedure RegisterAssetClass(AssetClass: TAssetClass);
    public
@@ -41,52 +37,41 @@ type
       procedure RegisterMaterials(const AMaterials: TMaterialHashSet);
       procedure RegisterMaterials(const AMaterials: TMaterial.TArray);
       procedure ProcessTechTree(TechTree: TTechnologyTree);
-      property PlaceholderShipInstructionManual: TResearch read FPlaceholderShipInstructionManual;
       function WrapAssetForOrbit(Child: TAssetNode): TAssetNode;
       function CreateLoneStar(StarID: TStarID; System: TSystem): TAssetNode;
       procedure CondenseProtoplanetaryDisks(Space: TSolarSystemFeatureNode; System: TSystem);
       procedure FindTemperatureEquilibria(System: TSystem);
       procedure SpawnColonyShip(Dynasty: TDynasty; System: TSystem);
-      function Craterize(Diameter: Double; OldAssets: TAssetNode.TArray; NewAsset: TAssetNode): TAssetNode; override;
-      function HandleBusMessage(Asset: TAssetNode; Message: TBusMessage): THandleBusMessageResult; override;
-      procedure Dismantle(Asset: TAssetNode; Message: TMessage); override;
       property MinMassPerOreUnit: TMassPerUnit read FMinMassPerOreUnit;
-   public // built-in asset classes
-      property SpaceClass: TAssetClass read FSpace;
-      property PlaceholderShip: TAssetClass read FPlaceholderShip;
-      property RegionClass: TAssetClass read FRegion;
-      property MessageClass: TAssetClass read FMessage;
-      property RubblePile: TAssetClass read FRubblePile;
-      property StarClass[Category: TStarCategory]: TAssetClass read GetStarClass;
+   public
+      function HandleBusMessage(Asset: TAssetNode; Message: TBusMessage): THandleBusMessageResult; override;
+      function CreateRegion(CellSize: Double; Dimension: Cardinal; System: TSystem): TAssetNode; override;
+      procedure Dismantle(Asset: TAssetNode; Message: TMessage); override;
+      function Craterize(Diameter: Double; OldAssets: TAssetNode.TArray; NewAsset: TAssetNode): TAssetNode; override;
+   public // intrinsic asset classes
+      property SpaceClass: TAssetClass index -1 read GetAssetClass; // used to bootstrap TSystem
+   private
+      const
+         kStarIDBase = -100; // subtract star category from this number to get star asset class
+      property Orbit: TAssetClass index -2 read GetAssetClass; // used by WrapAssetForOrbit
+      property PlanetaryBody: TAssetClass index -3 read GetAssetClass; // used by CondenseProtoplanetaryDisks
+      property Region: TAssetClass index -4 read GetAssetClass; // used by CreateRegion
+      property Crater: TAssetClass index -5 read GetAssetClass; // used by Craterize
+      property RubblePile: TAssetClass index -6 read GetAssetClass; // used by Dismantle
+      property ColonyShip: TAssetClass index -8 read GetAssetClass; // used by SpawnColonyShip
    end;
 
 implementation
 
 uses
    sysutils, math, floatutils, exceptions, isdnumbers, protoplanetary,
-   time, isdprotocol, gossip, commonbuses, systemnetwork,
+   time, isdprotocol, gossip, commonbuses, systemnetwork, ttparser,
    // this must import every feature, so they get registered:
    assetpile, builders, factory, grid, gridsensor, internalsensor,
    knowledge, materialpile, messages, mining, name, onoff, orbit,
    orepile, peoplebus, planetary, plot, population, proxy, refining,
    region, research, rubble, sample, size, spacesensor, staffing,
    stellar, structure, surface;
-
-var
-   // TODO: find a way to get this to the client
-   InstructionManualText: UTF8String =
-      'Congratulations on your purchase of a Interstellar Dynasty Colony Ship.'#10 +
-      'This ship will take you and your party of up to 1000 colonists to your new world, ' +
-      'thus saving you from our planet''s impending doom.'#10 +
-      'While your Interstellar Dynasty Colony Ship is largely automated and ' +
-      'requires only minimal maintenance, in this manual you will find basic ' +
-      'instructions for the operation of your colony ship and various elementary ' +
-      'procedures that you may find useful upon arrival at your new home.'#10 +
-      'From all of us here at Interstellar Dynasties, we wish you a pleasant ' +
-      'settlement and a wonderful new life!';
-
-const
-   ColonyShipFacilityName = '@facility colony-ship';
    
 function RoundAboveZero(Value: Double): Cardinal;
 begin
@@ -99,19 +84,10 @@ end;
 
 
 constructor TEncyclopedia.Create(Settings: PSettings; const AMaterials: TMaterial.TArray; TechTree: TTechnologyTree);
-
-   function CreateStarFeatures(): TFeatureClass.TArray;
-   begin
-      Result := [ TStarFeatureClass.Create(), TAssetNameFeatureClass.Create() ];
-   end;
-
 var
-   AssetClass: TAssetClass;
    Ore: TOres;
-   ColonyShipResearchFacilities: TTopic.TArray;
 begin
    inherited Create();
-
    FMaterials := TMaterialIDHashTable.Create();
    FProtoplanetaryMaterials := AMaterials;
    RegisterMaterials(FProtoplanetaryMaterials);
@@ -122,212 +98,10 @@ begin
       if (FMaterials[Ore].MassPerUnit < FMinMassPerOreUnit) then
          FMinMassPerOreUnit := FMaterials[Ore].MassPerUnit;
    end;
-
    FAssetClasses := TAssetClassIDHashTable.Create();
-   FResearches := TResearchIDHashTable.Create();
-   FTopics := TTopicHashTable.Create();
+   FResearchesByID := TResearchHashTable.Create();
+   FTopicsByName := TTopicHashTable.Create();
    ProcessTechTree(TechTree);
-
-   FSpace := TAssetClass.Create(
-      idSpace,
-      'Space',
-      'Space',
-      'A region of outer space.',
-      [ TSolarSystemFeatureClass.Create(Settings^.StarGroupingThreshold, Settings^.GravitionalInfluenceConstant) ],
-      SpaceIcon,
-      []
-   );
-   RegisterAssetClass(FSpace);
-
-   FOrbits := TAssetClass.Create(
-      idOrbits,
-      'Orbit',
-      'Orbit',
-      'Objects in space are attracted to each other in a way that makes them spin around each other.',
-      [ TOrbitFeatureClass.Create() ],
-      OrbitIcon,
-      []
-   );
-   RegisterAssetClass(FOrbits);
-
-   // TODO: move these names and descriptions into TStarFeatureNode
-   FStars[2] := TAssetClass.Create(idStars - 2,
-                                   'Brown dwarf star', 'Star',
-                                   'A late class M star. Class M stars are among the coldest stars in the galaxy at around 3000K. ' +
-                                   'This star is at the lower end of the temperature scale for M stars.',
-                                   CreateStarFeatures(), Star2Icon, []);
-   FStars[3] := TAssetClass.Create(idStars - 3,
-                                   'Red dwarf star', 'Star',
-                                   'A class M star. Class M stars are among the coldest stars in the galaxy at around 3000K.',
-                                   CreateStarFeatures(), Star3Icon, []);
-   FStars[8] := TAssetClass.Create(idStars - 8,
-                                   'K-type main-sequence star', 'Star',
-                                   'A class K star. Class K stars are around 4000K.',
-                                   CreateStarFeatures(), Star8Icon, []);
-   FStars[4] := TAssetClass.Create(idStars - 4,
-                                   'G-type main-sequence star', 'Star',
-                                   'A class G star. This whiteish-colored star is around 6000K.',
-                                   CreateStarFeatures(), Star4Icon, []);
-   FStars[5] := TAssetClass.Create(idStars - 5,
-                                   'F-type main-sequence star', 'Star',
-                                   'A class F star. Class F stars are around 7000K.',
-                                   CreateStarFeatures(), Star5Icon, []);
-   FStars[9] := TAssetClass.Create(idStars - 9,
-                                   'A-type main-sequence star', 'Star',
-                                   'A class A star. Class A stars can reach temperatures of up to 10000K.',
-                                   CreateStarFeatures(), Star9Icon, []);
-   FStars[6] := TAssetClass.Create(idStars - 6,
-                                   'B-type main-sequence star', 'Star',
-                                   'A class B star. Class B stars are extremely hot, around 20000K.',
-                                   CreateStarFeatures(), Star6Icon, []);
-   FStars[7] := TAssetClass.Create(idStars - 7,
-                                   'O-type main-sequence star', 'Star',
-                                   'A class O star. Class O stars are the brightest and hottest stars in the galaxy, over 30000K.',
-                                   CreateStarFeatures(), Star7Icon, []);
-   FStars[10] := TAssetClass.Create(idStars - 10,
-                                   'Red hypergiant star', 'Star',
-                                   'A very large, very bright star.',
-                                   CreateStarFeatures(), Star10Icon, []);
-   for AssetClass in FStars do
-      if (Assigned(AssetClass)) then
-         RegisterAssetClass(AssetClass);
-
-   FDarkMatter := TMaterial.Create(
-      idDarkMatter,
-      'Dark Matter',
-      'A murky black material',
-      'The most fundamental and least useful material in the universe, used only for placeholders.',
-      DarkMatterIcon,
-      ukBulkResource,
-      TMassPerUnit.FromGPerUnit(1), // smallest unit is 1 gram
-      1.0, // kg per m^3
-      0.0,
-      [], // tags
-      ZeroAbundance // abundances
-   );
-   FMaterials.Add(FDarkMatter.ID, FDarkMatter);
-
-   FPlanetaryBody := TAssetClass.Create(
-      idPlanetaryBody,
-      'Planetary body',
-      'Really big rock',
-      'A cold gravitionally-bound astronomical object. (Cold when compared to a star, at least.)',
-      [
-         TPlanetaryBodyFeatureClass.Create(),
-         TSurfaceFeatureClass.Create(100.0 { cell size (m) }, 5 { min dim }, 99 { max dim }, @CreateRegion)
-      ],
-      PlanetIcon,
-      []
-   );
-   RegisterAssetClass(FPlanetaryBody);
-
-   FCrater := TAssetClass.Create(
-      idCrater,
-      'Crater',
-      'Hole',
-      'A hole containing the remnants of an area where something else crashed.',
-      [
-         TProxyFeatureClass.Create(),
-         TRubblePileFeatureClass.Create()
-      ],
-      CraterIcon,
-      []
-   );
-   RegisterAssetClass(FCrater);
-
-   FRubblePile := TAssetClass.Create(
-      idRubblePile,
-      'Rubble pile',
-      'Rubble pile',
-      'The remains of some form of destruction.',
-      [
-         TPopulationFeatureClass.Create(True, 0),
-         TRubblePileFeatureClass.Create(),
-         TAssetPileFeatureClass.Create()
-      ],
-      RubblePileIcon,
-      []
-   );
-   RegisterAssetClass(FRubblePile);
-
-   FRegion := TAssetClass.Create(
-      idRegion,
-      'Geological region',
-      'Region',
-      'An area of a planetary body.',
-      [
-         TRegionFeatureClass.Create(1, 10, TQuantity64.Max),
-         TKnowledgeBusFeatureClass.Create(),
-         TBuilderBusFeatureClass.Create(),
-         TPeopleBusFeatureClass.Create(),
-         TGenericGridFeatureClass.Create() // must be after the busses, so that they don't defer to something in the grid
-      ],
-      PlanetRegionIcon,
-      []
-   );
-   RegisterAssetClass(FRegion);
-
-   FMessage := TAssetClass.Create(
-      idMessage,
-      'Message', 'Some sort of text',
-      'A notification.',
-      [
-         TMessageFeatureClass.Create(),
-         TKnowledgeFeatureClass.Create()
-      ],
-      MessageIcon,
-      []
-   );
-   RegisterAssetClass(FMessage);
-
-   SetLength(ColonyShipResearchFacilities, 0);
-   if (FTopics.Has(ColonyShipFacilityName)) then
-   begin
-      SetLength(ColonyShipResearchFacilities, 1);
-      ColonyShipResearchFacilities[0] := FTopics[ColonyShipFacilityName];
-   end;
-   FPlaceholderShip := TAssetClass.Create(
-      idPlaceholderShip,
-      'Colony Ship', 'Unidentified Flying Object',
-      'A ship that people used to escape their dying star.',
-      [
-         TSpaceSensorFeatureClass.Create(10 { max steps to orbit }, 3 { steps up from orbit }, 2 { steps down from top }, 2e5 { min size (meters) }, [dmVisibleSpectrum]),
-         TGridSensorFeatureClass.Create([dmVisibleSpectrum]),
-         TStructureFeatureClass.Create([TMaterialLineItem.Create('Shell', FDarkMatter, TQuantity32.FromUnits(10000) { mass in units (g): 10kg })], TQuantity32.FromUnits(1) { min functional quantity }, 500.0 { default diameter, m }),
-         TDynastyOriginalColonyShipFeatureClass.Create(),
-         TPopulationFeatureClass.Create(False, 2000),
-         TMessageBoardFeatureClass.Create(FMessage),
-         TKnowledgeBusFeatureClass.Create(),
-         TPeopleBusFeatureClass.Create(),
-         TSampleFeatureClass.Create(2 { diameter of sample chamber, meters }),
-         TResearchFeatureClass.Create(ColonyShipResearchFacilities),
-         TInternalSensorFeatureClass.Create([dmVisibleSpectrum]),
-         TKnowledgeFeatureClass.Create(), // the instruction manual, ziptied to the ship
-         TOnOffFeatureClass.Create()
-      ],
-      ColonyShipIcon,
-      [beSpaceDock]
-   );
-   RegisterAssetClass(FPlaceholderShip);
-
-   FPlaceholderShipInstructionManual := TResearch.Create(
-      idPlaceholderShipInstructionManualResearch,
-      TMillisecondsDuration.Zero,
-      0,
-      [],
-      [],
-      [],
-      [
-         TReward.CreateForMessage(InstructionManualText),
-         TReward.CreateForAssetClass(FPlaceholderShip),
-         TReward.CreateForAssetClass(FMessage),
-         TReward.CreateForAssetClass(FPlanetaryBody),
-         TReward.CreateForAssetClass(FRegion),
-         TReward.CreateForAssetClass(FCrater),
-         TReward.CreateForAssetClass(FRubblePile)
-      ]
-   );
-   FResearches[FPlaceholderShipInstructionManual.ID] := FPlaceholderShipInstructionManual;
 end;
 
 destructor TEncyclopedia.Destroy();
@@ -337,18 +111,18 @@ var
    Material: TMaterial;
    Topic: TTopic;
 begin
-   for Research in FResearches.Values do
+   for Research in FResearches do
       Research.Free();
-   FResearches.Free();
+   FResearchesByID.Free();
    for Material in FMaterials.Values do
       Material.Free();
    FMaterials.Free();
    for AssetClass in FAssetClasses.Values do
       AssetClass.Free();
    FAssetClasses.Free();
-   for Topic in FTopics.Values do
+   for Topic in FTopics do
       Topic.Free();
-   FTopics.Free();
+   FTopicsByName.Free();
    inherited;
 end;
 
@@ -374,9 +148,7 @@ var
    Material: TMaterial;
    TechTreeAssetClasses: TAssetClass.TArray;
    AssetClass: TAssetClass;
-   TechTreeResearches: TResearch.TArray;
    Research: TResearch;
-   TechTreeTopics: TTopic.TArray;
    Topic: TTopic;
 begin
    TechTreeMaterials := TechTree.ExtractMaterials();
@@ -385,32 +157,51 @@ begin
    TechTreeAssetClasses := TechTree.ExtractAssetClasses();
    for AssetClass in TechTreeAssetClasses do
       FAssetClasses[AssetClass.ID] := AssetClass;
-   TechTreeResearches := TechTree.ExtractResearches();
-   for Research in TechTreeResearches do
-      FResearches[Research.ID] := Research;
-   TechTreeTopics := TechTree.ExtractTopics();
-   for Topic in TechTreeTopics do
-      FTopics[Topic.Value] := Topic;
+   FResearches := TechTree.ExtractResearches();
+   for Research in FResearches do
+      FResearchesByID[Research.ID] := Research;
+   FTopics := TechTree.ExtractTopics();
+   for Topic in FTopics do
+      FTopicsByName[Topic.Name] := Topic;
 end;
 
 function TEncyclopedia.GetAssetClass(ID: Integer): TAssetClass;
 begin
    Result := FAssetClasses[ID];
+   Assert(Result.ID = ID);
 end;
 
 function TEncyclopedia.GetMaterial(ID: TMaterialID): TMaterial;
 begin
    Result := FMaterials[ID];
+   Assert((Assigned(Result)) xor (ID = 0));
+   Assert((not Assigned(Result)) or (Result.ID = ID));
 end;
 
-function TEncyclopedia.GetResearch(ID: TResearchID): TResearch;
+function TEncyclopedia.GetResearchByIndex(Index: TResearchIndex): TResearch;
 begin
-   Result := FResearches[ID];
+   Result := FResearches[Index];
+   Assert(Assigned(Result));
+   Assert(Result.Index = Index);
 end;
 
-function TEncyclopedia.GetTopic(Name: UTF8String): TTopic;
+function TEncyclopedia.GetResearchByID(ID: TResearchID): TResearch;
 begin
-   Result := FTopics[Name];
+   Assert(FResearchesByID.Has(ID));
+   Result := FResearchesById[ID];
+   Assert(Result.ID = ID);
+end;
+
+function TEncyclopedia.GetTopicByName(Name: UTF8String): TTopic;
+begin
+   Result := FTopicsByName[Name];
+   Assert(Result.Name = Name);
+end;
+
+function TEncyclopedia.GetTopicByIndex(Index: TTopic.TIndex): TTopic;
+begin
+   Result := FTopics[Index - 1];
+   Assert(Result.Index = Index);
 end;
 
 function TEncyclopedia.GetMinMassPerOreUnit(): TMassPerUnit;
@@ -427,33 +218,34 @@ end;
 
 function TEncyclopedia.GetStarClass(Category: TStarCategory): TAssetClass;
 begin
-   Assert(Assigned(FStars[Category]));
-   Result := FStars[Category];
+   Result := AssetClasses[kStarIDBase - Category]; // $R-
 end;
 
 function TEncyclopedia.WrapAssetForOrbit(Child: TAssetNode): TAssetNode;
 var
    OrbitFeature: TOrbitFeatureNode;
+   Overrides: TFeatureNodeOverrides;
 begin
    OrbitFeature := TOrbitFeatureNode.Create(Child.System);
-   Result := FOrbits.Spawn(nil { orbits have no owner }, Child.System, [ OrbitFeature ]);
+   SetLength(Overrides, 1);
+   Overrides[0].FeatureClass := TOrbitFeatureClass;
+   Overrides[0].FeatureNode := OrbitFeature;
+   Result := Orbit.Spawn(nil { orbits have no owner }, Child.System, Overrides);
    OrbitFeature.SetPrimaryChild(Child);
 end;
 
 function TEncyclopedia.CreateLoneStar(StarID: TStarID; System: TSystem): TAssetNode;
 var
    Category: TStarCategory;
+   Overrides: TFeatureNodeOverrides;
 begin
    Category := CategoryOf(StarID);
-   Assert(Assigned(FStars[Category]));
-   Result := FStars[Category].Spawn(
-      nil, // no owner
-      System,
-      [
-         TStarFeatureNode.Create(System, StarID),
-         TAssetNameFeatureNode.Create(System, StarNameOf(StarID))
-      ]
-   );
+   SetLength(Overrides, 2);
+   Overrides[0].FeatureClass := TStarFeatureClass;
+   Overrides[0].FeatureNode := TStarFeatureNode.Create(System, StarID);
+   Overrides[1].FeatureClass := TAssetNameFeatureClass;
+   Overrides[1].FeatureNode := TAssetNameFeatureNode.Create(System, StarNameOf(StarID));
+   Result := AssetClasses[kStarIDBase - Category].Spawn(nil { no owner }, System, Overrides); // $R-
 end;
 
 procedure TEncyclopedia.CondenseProtoplanetaryDisks(Space: TSolarSystemFeatureNode; System: TSystem);
@@ -464,6 +256,7 @@ procedure TEncyclopedia.CondenseProtoplanetaryDisks(Space: TSolarSystemFeatureNo
       TotalVolume, TotalRelativeVolume: Double;
       BodyComposition: TBodyComposition;
       AssetComposition: TOreFractions;
+      Overrides: TFeatureNodeOverrides;
    begin
       TotalRelativeVolume := 0.0;
       Count := 0;
@@ -497,26 +290,18 @@ procedure TEncyclopedia.CondenseProtoplanetaryDisks(Space: TSolarSystemFeatureNo
          end;
       end;
       Fraction32.NormalizeArray(@AssetComposition[Low(AssetComposition)], Length(AssetComposition));
-      Result := FPlanetaryBody.Spawn(
-         nil, // no owner
+      SetLength(Overrides, 1);
+      Overrides[0].FeatureClass := TPlanetaryBodyFeatureClass;
+      Overrides[0].FeatureNode := TPlanetaryBodyFeatureNode.Create(
          System,
-         [
-            TPlanetaryBodyFeatureNode.Create(
-               System,
-               Body.Seed,
-               Body.Radius * 2.0, // diameter of body
-               Body.Temperature,
-               AssetComposition,
-               Body.ApproximateMass,
-               Body.Habitable // whether to consider this body when selecting a crash landing point
-            ), // $R-
-            TSurfaceFeatureNode.Create(
-               System,
-               FPlanetaryBody.Features[1] as TSurfaceFeatureClass,
-               Body.Radius * 2.0 // diameter of surface
-            )
-         ]
-      );
+         Body.Seed,
+         Body.Radius * 2.0, // diameter of body
+         Body.Temperature,
+         AssetComposition,
+         Body.ApproximateMass,
+         Body.Habitable // whether to consider this body when selecting a crash landing point
+      ); // $R-
+      Result := PlanetaryBody.Spawn(nil { no owner }, System, Overrides);
    end;
 
    procedure AddBody(const Body: TBody; Orbit: TOrbitFeatureNode);
@@ -575,18 +360,13 @@ begin
 end;
 
 function TEncyclopedia.CreateRegion(CellSize: Double; Dimension: Cardinal; System: TSystem): TAssetNode;
+var
+   Overrides: TFeatureNodeOverrides;
 begin
-   Result := FRegion.Spawn(
-      nil, // no owner
-      System,
-      [
-         TRegionFeatureNode.Create(System, FRegion.Features[0] as TRegionFeatureClass),
-         TKnowledgeBusFeatureNode.Create(System),
-         TBuilderBusFeatureNode.Create(System),
-         TPeopleBusFeatureNode.Create(System),
-         TGridFeatureNode.Create(System, bePlanetRegion, CellSize, Dimension)
-      ]
-   );
+   SetLength(Overrides, 1);
+   Overrides[0].FeatureClass := TGridFeatureClass;
+   Overrides[0].FeatureNode := TGridFeatureNode.Create(System, bePlanetRegion, CellSize, Dimension);
+   Result := Region.Spawn(nil { no owner }, System, Overrides);
 end;
 
 procedure TEncyclopedia.FindTemperatureEquilibria(System: TSystem);
@@ -690,7 +470,9 @@ const
 var
    Period: TMillisecondsDuration;
    A, PeriodOverTwoPi, Omega: Double;
-   Home: TAssetNode;
+   Home, Ship: TAssetNode;
+   Overrides: TFeatureNodeOverrides;
+   Instabuild: TInstabuildBusMessage;
 begin
    Home := FindHome(System);
    // We pick a period that should mean that the ship is at the
@@ -703,26 +485,15 @@ begin
    PeriodOverTwoPi := Period.ToSIUnits() / (2 * Pi); // $R-
    A := Power(PeriodOverTwoPi * PeriodOverTwoPi * G * Home.Mass.ToSIUnits(), 1/3); // $R-
    Omega := System.RandomNumberGenerator.GetDouble(0.0, 2.0 * Pi); // $R-
+   SetLength(Overrides, 1);
+   Overrides[0].FeatureClass := TDynastyOriginalColonyShipFeatureClass;
+   Overrides[0].FeatureNode := TDynastyOriginalColonyShipFeatureNode.Create(System, Dynasty);
+   Ship := ColonyShip.Spawn(Dynasty, System, Overrides);
+   Instabuild := TInstabuildBusMessage.Create();
+   Ship.HandleBusMessage(Instabuild);
+   FreeAndNil(Instabuild);
    (Home.Parent as TOrbitFeatureNode).AddOrbitingChild(
-      WrapAssetForOrbit(PlaceholderShip.Spawn(
-         Dynasty,
-         System,
-         [
-            TSpaceSensorFeatureNode.Create(System, PlaceholderShip.Features[0] as TSpaceSensorFeatureClass),
-            TGridSensorFeatureNode.Create(System, PlaceholderShip.Features[1] as TGridSensorFeatureClass),
-            TStructureFeatureNode.Create(System, PlaceholderShip.Features[2] as TStructureFeatureClass, TQuantity32.FromUnits(10000) { materials quantity }, 10000 { hp }),
-            TDynastyOriginalColonyShipFeatureNode.Create(System, Dynasty),
-            TPopulationFeatureNode.CreatePopulated(System, PlaceholderShip.Features[4] as TPopulationFeatureClass, 2000),
-            TMessageBoardFeatureNode.Create(System, PlaceholderShip.Features[5] as TMessageBoardFeatureClass),
-            TKnowledgeBusFeatureNode.Create(System),
-            TPeopleBusFeatureNode.Create(System),
-            TSampleFeatureNode.Create(System, PlaceholderShip.Features[8] as TSampleFeatureClass),
-            TResearchFeatureNode.Create(System, PlaceholderShip.Features[9] as TResearchFeatureClass),
-            TInternalSensorFeatureNode.Create(System, PlaceholderShip.Features[10] as TInternalSensorFeatureClass),
-            TKnowledgeFeatureNode.Create(System, PlaceholderShipInstructionManual),
-            TOnOffFeatureNode.Create(System)
-         ]
-      )),
+      WrapAssetForOrbit(Ship),
       A,
       0.95, // Eccentricity
       Omega,
@@ -739,6 +510,7 @@ var
    RubbleCollectionMessage: TRubbleCollectionMessage;
    Index: Cardinal;
    Material: TMaterial;
+   Overrides: TFeatureNodeOverrides;
 begin
    Assert(Assigned(NewAsset));
    Assert(Diameter >= NewAsset.Size);
@@ -777,10 +549,12 @@ begin
       OldAsset.Parent.DropChild(OldAsset);
       OldAsset.System.Server.ScheduleDemolition(OldAsset);
    end;
-   Result := FCrater.Spawn(nil { no owner }, NewAsset.System, [
-      TProxyFeatureNode.Create(NewAsset.System, NewAsset),
-      TRubblePileFeatureNode.Create(NewAsset.System, Diameter, Composition)
-   ]);
+   SetLength(Overrides, 2);
+   Overrides[0].FeatureClass := TProxyFeatureClass;
+   Overrides[0].FeatureNode := TProxyFeatureNode.Create(NewAsset.System, NewAsset);
+   Overrides[1].FeatureClass := TRubblePileFeatureClass;
+   Overrides[1].FeatureNode := TRubblePileFeatureNode.Create(NewAsset.System, Diameter, Composition);
+   Result := Crater.Spawn(nil { no owner }, NewAsset.System, Overrides);
 end;
 
 function TEncyclopedia.HandleBusMessage(Asset: TAssetNode; Message: TBusMessage): THandleBusMessageResult;

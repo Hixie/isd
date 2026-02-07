@@ -5,10 +5,10 @@ unit systems;
 interface
 
 uses
-   systemdynasty, configuration, hashtable, genericutils, isdprotocol,
-   serverstream, stringstream, random, materials, basenetwork,
-   time, tttokenizer, stringutils, hashsettight, rtlutils, plasticarrays,
-   masses;
+   systemdynasty, configuration, hashtable, hashsettight,
+   genericutils, isdprotocol, serverstream,
+   stringstream, random, materials, basenetwork, time, tttokenizer,
+   stringutils, rtlutils, plasticarrays, masses, internals;
 
 // VISIBILITY
 //
@@ -102,39 +102,10 @@ uses
 // when it's been recomputed.
 
 type
-   {$PUSH}
-   {$PACKSET 2}
-   TDetectionMechanism = (
-      dmInference, // set on anything with a descendant with non-empty visibility
-      dmVisibleSpectrum,
-      dmClassKnown,
-      dmInternals, // the dynasty can see internals (e.g. what happened last time the sensors triggered)
-      dmReserved4, dmReserved5, dmReserved6, dmReserved7,
-      dmReserved8, dmReserved9, dmReserved10, dmReserved11,
-      dmReserved12, dmReserved13, dmReserved14, dmReserved15
-   );
-   TVisibility = set of TDetectionMechanism;
-   {$POP}
-   {$IF SIZEOF(TVisibility) <> SIZEOF(Word)}
-     {$FATAL TVisibility size error.}
-   {$ENDIF}
-
-const
-   dmNil = [];
-   dmDetectable = [dmVisibleSpectrum]; // need one of these to get any data beyond what you can infer
-   dmOwnership = [dmInference, dmVisibleSpectrum, dmInternals]; // anything you own is visible
-
-type
    TAssetClass = class;
    TAssetNode = class;
    TFeatureNode = class;
    TSystem = class;
-
-   TDynastyIndexHashTable = class(specialize THashTable<TDynasty, Cardinal, TObjectUtils>)
-      constructor Create();
-   end;
-
-   TDynastyHashSet = specialize TObjectSet<TDynasty>;
 
    TAssetClassIDHashTable = class(specialize THashTable<TAssetClassID, TAssetClass, IntegerUtils>)
       constructor Create();
@@ -149,80 +120,6 @@ type
    TAssetNodeHashTable = class(specialize THashTable<PtrUInt, TAssetNode, PtrUIntUtils>)
       constructor Create();
    end;
-
-   TAssetID = Cardinal; // 0 is reserved for placeholders or sentinels
-
-   TDynastyNotes = record
-   strict private
-      FID: TAssetID; // 4 bytes
-      FOldVisibility, FCurrentVisibility: TVisibility; // 2 bytes each
-      function GetHasID(): Boolean; inline;
-      function GetChanged(): Boolean; inline;
-   public
-      procedure Init(const AID: TAssetID);
-      procedure InitFrom(const Other: TDynastyNotes);
-      procedure Snapshot(); inline; // copies current visibility to old visibility, set current visibility to zero
-      property HasID: Boolean read GetHasID;
-      property AssetID: TAssetID read FID write FID;
-      {$IFOPT C+} property OldVisibility: TVisibility read FOldVisibility write FOldVisibility; {$ENDIF}
-      property Visibility: TVisibility read FCurrentVisibility write FCurrentVisibility;
-      property Changed: Boolean read GetChanged;
-   end;
-   {$IF SIZEOF(TDynastyNotes) <> 8}
-      {$FATAL TDynastyNotes size error.}
-   {$ENDIF}
-
-   // used to track the 24 bit IDs and the 8 bits of visibility information per dynasty for assets
-   PDynastyNotesPackage = ^TDynastyNotesPackage;
-   TDynastyNotesPackage = packed record
-      const
-         LongThreshold = 2; // two or more dynasties get allocated on the heap; 1 uses AsShortDynasties
-      type
-         PDynastyNotesArray = ^TDynastyNotesArray;
-         TDynastyNotesArray = packed array[0..0] of TDynastyNotes;
-         TShortDynastyNotesArray = packed array[0..LongThreshold-2] of TDynastyNotes;
-      var
-         case Integer of
-            1: (AsShortDynasties: TShortDynastyNotesArray); // 1 dynasty
-            2: (AsLongDynasties: PDynastyNotesArray); // 2 or more
-   end;
-   {$IF SIZEOF(TDynastyNotesPackage) <> SIZEOF(Pointer)}
-      {$FATAL TDynastyNotesPackage size error.}
-   {$ENDIF}
-
-   // Used for tracking which dynasties know about materials.
-   // TODO: This data structure is a per-dynasty boolean. So when
-   // there is one instance of this per material, we end up using 64
-   // bits per material even if there's only one dynasty (or any
-   // number of dynasties 1-63); we should be using one bit per
-   // material in that world.
-   // TODO: consider the naming scheme in pile.pas
-   PKnowledgeSummary = ^TKnowledgeSummary;
-   TKnowledgeSummary = packed record
-   private
-      function IsLongMode(): Boolean; inline;
-   public
-      procedure Init(DynastyCount: Cardinal);
-      procedure Done();
-      procedure Reset();
-      procedure SetEntry(DynastyIndex: Cardinal; Value: Boolean);
-      function GetEntry(DynastyIndex: Cardinal): Boolean;
-      const
-         LongThreshold = 64;
-      type
-         PKnowledgeData = ^TKnowledgeData;
-         TKnowledgeData = bitpacked array[0..0] of Boolean;
-      var
-         case Integer of
-            1: (AsShortDynasties: bitpacked array[-1..LongThreshold-2] of Boolean); // 63 or fewer dynasties (bit -1 is used to mark that we're in short mode)
-            2: (AsLongDynasties: PKnowledgeData); // 64 or more; this is a pointer to 4-byte aligned data so its top bit is always zero
-            3: (AsRawPointer: Pointer);
-   end;
-   {$IF SIZEOF(TKnowledgeSummary) <> SIZEOF(Pointer)}
-      {$FATAL TKnowledgeSummary size error.}
-   {$ENDIF}
-
-   TAssetChangeKind = (ckAdd, ckChange, ckEndOfList);
 
    TJournalReader = class sealed
    private
@@ -268,26 +165,6 @@ type
       procedure WriteMaterialReference(Material: TMaterial);
    end;
 
-   TInjectBusMessageResult = (
-      irDeferred, // we're still going up the tree
-      irRejected, // we've reached a node that said to give up on this message
-      irInjected, // we did inject the message into a bus but it wasn't handled
-      irHandled // the message got injected and handled
-   );
-
-   THandleBusMessageResult = (
-      hrActive, // we're still walking down the tree
-      hrShortcut, // we are skipping the remainder of the current asset
-      hrHandled // we are done, the message was handled
-   );
-
-   TBusMessage = class abstract(TDebugObject) end;
-   TPhysicalConnectionBusMessage = class abstract(TBusMessage) end; // orbits don't propagate these up
-   // TODO: should we have some kind of bus message that is the kind of message that regions automatically manage and don't propagate
-
-   TAssetManagementBusMessage = class abstract(TBusMessage) // automatically handled by root node
-   end;
-
    TAssetGoingAway = class(TAssetManagementBusMessage)
    private
       FAsset: TAssetNode;
@@ -304,61 +181,27 @@ type
    TPreWalkCallback = function(Asset: TAssetNode): Boolean is nested;
    TPostWalkCallback = procedure(Asset: TAssetNode) is nested;
 
-   TScoreDirtyCallback = procedure(Dynasty: TDynasty) of object;
-
    FeatureClassReference = class of TFeatureClass;
    FeatureNodeReference = class of TFeatureNode;
 
-   TWeight = Cardinal;
-   TWeightDelta = Integer;
-
-   TNode = class(TDebugObject)
+   // UNLOCKS
+   
+   TUnlockedKnowledge = record // 8 bytes
+   // always owned by TResearch
    public
       type
-         TNodeArray = array of TNode;
-   strict private
-      FUnlocks: TNodeArray;
-   private
-      procedure PropagateRequirements(Requirements: TNodeArray);
-   strict protected
-   public
-      property Unlocks: TNodeArray read FUnlocks;
-      function ToString(): UTF8String; override;
-   end;
-
-   TBonus = record // 24 bytes
-   public
-      type
-         TArray = array of TBonus;
-   strict private
-      FNode: TNode; // 8 bytes
-      FTimeDelta: TMillisecondsDuration; // 8 bytes
-      FWeightDelta: TWeightDelta; // 4 bytes
-      FNegate: Boolean; // 4 bytes (31 bits unused)
-   public
-      constructor Create(ANode: TNode; ATimeDelta: TMillisecondsDuration; AWeightDelta: TWeightDelta; ANegate: Boolean);
-      function ToString(): UTF8String;
-      property Node: TNode read FNode;
-      property TimeDelta: TMillisecondsDuration read FTimeDelta;
-      property WeightDelta: TWeightDelta read FWeightDelta;
-      property Negate: Boolean read FNegate;
-   end;
-   {$IF SizeOf(TBonus) <> 24} {$FATAL TBonus has an unexpected size} {$ENDIF}
-
-   TReward = record
-   public
-      type
-         TArray = array of TReward;
+         TArray = array of TUnlockedKnowledge;
+         TPlasticArray = specialize PlasticArray<TUnlockedKnowledge, specialize IncomparableUtils<TUnlockedKnowledge>>;
          {$PUSH}
          {$PACKENUM 1}
-         TRewardKind = (rkMessage = $00, rkAssetClass = $01, rkMaterial = $02);
+         TUnlockKind = (ukMessage = $00, ukAssetClass = $01, ukMaterial = $02);
          {$POP}
    strict private
       const
          TypeMask = $07;
       var
          FData: PtrUInt;
-      function GetKind(): TRewardKind; inline;
+      function GetKind(): TUnlockKind; inline;
       function GetMessage(): UTF8String; inline;
       function GetAssetClass(): TAssetClass; inline;
       function GetMaterial(): TMaterial; inline;
@@ -370,92 +213,72 @@ type
       property Message: UTF8String read GetMessage;
       property AssetClass: TAssetClass read GetAssetClass;
       property Material: TMaterial read GetMaterial;
-      property Kind: TRewardKind read GetKind;
+      property Kind: TUnlockKind read GetKind;
    end;
-   {$IF SizeOf(TReward) <> 8} {$FATAL TReward has an unexpected size} {$ENDIF}
+   {$IF SizeOf(TUnlockedKnowledge) <> 8} {$FATAL TUnlockedKnowledge has an unexpected size} {$ENDIF}
+      
+   // RESEARCHES
 
-   TResearchID = Integer; // Negative values are internal. Positive values are from the tech tree. Integer range means we can use A-B to compare IDs, and use $FFFFFFFF as a sentinel.
-
-   TResearch = class(TNode)
+   TResearch = class
    public
       type
          TArray = array of TResearch;
+         TIndexArray = array of TResearchIndex;
+         TIndexPlasticArray = specialize PlasticArray<TResearchIndex, specialize IncomparableUtils<TResearchIndex>>;
       const
-         kNil = Low(TResearchID);
+         kNilID = Low(TResearchID);
+         kNilIndex = High(TResearchIndex);
    strict private
       FID: TResearchID;
+      FIndex: TResearchIndex;
       FDefaultTime: TMillisecondsDuration;
       FDefaultWeight: TWeight;
-      FProhibitions, FRequirements: TNode.TNodeArray;
+      FCondition: TCondition;
       FBonuses: TBonus.TArray;
-      FRewards: TReward.TArray;
-   public
-      constructor Create(AID: TResearchID; ADefaultTime: TMillisecondsDuration; ADefaultWeight: TWeight; AProhibitions, ARequirements: TNode.TNodeArray; ABonuses: TBonus.TArray; ARewards: TReward.TArray);
+      FUnlockedKnowledge: TUnlockedKnowledge.TArray;
+      FUnlockedResearches: TResearch.TIndexArray;
+      FUnlockedTopics: TTopic.TIndexArray;
+   public // do not mutate exposed arrays
+      constructor Create(AID: TResearchID; AIndex: TResearchIndex; ADefaultTime: TMillisecondsDuration; ADefaultWeight: TWeight; ACondition: TConditionAST; ABonuses: TBonus.TArray; AUnlockedKnowledge: TUnlockedKnowledge.TArray);
+      procedure UpdateUnlocks(AUnlockedResearches: TResearch.TIndexArray; AUnlockedTopics: TTopic.TIndexArray);
       destructor Destroy(); override;
-      property ID: TResearchID read FID;
+      property ID: TResearchID read FID; // stable across runs
+      property Index: TResearchIndex read FIndex; // process-specific
       property DefaultTime: TMillisecondsDuration read FDefaultTime;
       property DefaultWeight: TWeight read FDefaultWeight;
-      property Prohibitions: TNode.TNodeArray read FProhibitions; // do not mutate the array through this accessor
-      property Requirements: TNode.TNodeArray read FRequirements; // do not mutate the array through this accessor
-      property Bonuses: TBonus.TArray read FBonuses; // do not mutate the array through this accessor
-      property Rewards: TReward.TArray read FRewards; // do not mutate the array through this accessor
-      function ToString(): UTF8String; override;
+      property Condition: TCondition read FCondition;
+      property Bonuses: TBonus.TArray read FBonuses;
+      property UnlockedKnowledge: TUnlockedKnowledge.TArray read FUnlockedKnowledge;
+      property UnlockedResearches: TResearch.TIndexArray read FUnlockedResearches; // any research whose condition mentions this research should be listed here
+      property UnlockedTopics: TTopic.TIndexArray read FUnlockedTopics; // any topic whose condition mentions this research should be listed here
+      {$IFOPT C+} function DebugDescription(): UTF8String; {$ENDIF}
    end;
 
-   TResearchHashSet = specialize TObjectSet<TResearch>;
-
-   TResearchIDHashTable = class(specialize THashTable<TResearchID, TResearch, IntegerUtils>)
+   TResearchHashTable = class(specialize THashTable<TResearchID, TResearch, IntegerUtils>)
       constructor Create();
    end;
 
-   TWeightedResearchHashTable = class(specialize THashTable<TResearch, TWeight, TObjectUtils>)
-      constructor Create();
-   end;
-
-   TTopic = class(TNode)
-   public
-      type
-         TArray = array of TTopic;
-   strict private
-      FValue: UTF8String;
-      FSelectable: Boolean;
-      FRequirements: TResearch.TArray;
-      FFacilities: TTopic.TArray; // facilities a research feature should have before offering this topic
-      FObsoletes: TTopic.TArray;
-   public
-      constructor Create(AValue: UTF8String; ASelectable: Boolean; ARequirements: TResearch.TArray; AFacilities: TTopic.TArray; AObsoletes: TTopic.TArray);
-      property Value: UTF8String read FValue;
-      property Selectable: Boolean read FSelectable;
-      property Requirements: TResearch.TArray read FRequirements;
-      property Facilities: TTopic.TArray read FFacilities;
-      property Obsoletes: TTopic.TArray read FObsoletes;
-   end;
-
-   TTopicHashTable = class(specialize THashTable<UTF8String, TTopic, UTF8StringUtils>)
-      constructor Create();
-   end;
-
-   TTopicHashSet = specialize TObjectSet<TTopic>;
-
-   // TODO: add materials and asset classes as possible TNodes, so that things/topics can unlock when you build partiular things or mine particular materials.
-
+   // TECH TREE PARSING
+   
    TTechTreeReader = record
    strict private
       FTokenizer: TTokenizer;
+      FSituations: TSituationHashTable;
       FAssetClasses: TAssetClassIdentifierHashTable;
       FMaterialNames: TMaterialNameHashTable;
-      FTopics: TTopicHashTable;
+      function GetSituation(Name: UTF8String): TSituation; inline;
       function GetAssetClass(Identifier: UTF8String): TAssetClass; inline;
       function GetMaterial(Name: UTF8String): TMaterial; inline;
-      function GetTopic(Name: UTF8String): TTopic; inline;
    public
-      constructor Create(ATokenizer: TTokenizer; AAssetClasses: TAssetClassIdentifierHashTable; AMaterialNames: TMaterialNameHashTable; ATopics: TTopicHashTable);
+      constructor Create(ATokenizer: TTokenizer; ASituations: TSituationHashTable; AAssetClasses: TAssetClassIdentifierHashTable; AMaterialNames: TMaterialNameHashTable);
+      property Tokens: TTokenizer read FTokenizer;
+      property Situations[Name: UTF8String]: TSituation read GetSituation;
       property AssetClasses[Identifier: UTF8String]: TAssetClass read GetAssetClass;
       property Materials[Name: UTF8String]: TMaterial read GetMaterial;
-      property Topics[Name: UTF8String]: TTopic read GetTopic;
-      property Tokens: TTokenizer read FTokenizer;
    end;
 
+   // FEATURES
+   
    TFeatureClass = class abstract (TDebugObject)
    public
       type
@@ -466,55 +289,11 @@ type
    protected
       procedure CollectRelatedMaterials(var Materials: TMaterial.TPlasticArray; const Encyclopedia: TMaterialEncyclopedia); virtual;
    public
-      constructor CreateFromTechnologyTree(Reader: TTechTreeReader); virtual; abstract;
+      constructor CreateFromTechnologyTree(const Reader: TTechTreeReader); virtual; abstract;
       function InitFeatureNode(ASystem: TSystem): TFeatureNode; virtual; abstract;
       property FeatureNodeClass: FeatureNodeReference read GetFeatureNodeClass;
       property DefaultSize: Double read GetDefaultSize;
    end;
-
-   TDirtyKind = (
-      dkVisibilityNew, // this asset node is newly created, and ResetDynastyNotes needs to be called (with a nil first argument) [1]
-      dkDescendantsVisibilityNew, // one or more of the descendants has dkVisibilityNew set [2]
-      dkNeedsHandleChanges, // the node wants HandleChanges to be called [1]
-      dkDescendantNeedsHandleChanges, // one of the node's descendants has dkNeedsHandleChanges set [2]
-      dkUpdateClients, // this asset node is dirty and we need to update the client [1] // TODO: audit uses of this now that it has a specific meaning
-      dkDescendantUpdateClients, // one or more of the descendants has dkUpdateClients set [2]
-      dkUpdateJournal, // this asset node is dirty and we need to update the journal( // TODO: audit uses of this now that it has a specific meaning
-      dkDescendantUpdateJournal, // one or more of the descendants has dkUpdateJournal set [2]
-      dkJournalNew, // this asset node is newly created, asset will be added to the journal using jcNewAsset [1]
-      dkChildren, // this asset's node's children changed in some way [1][2]
-      dkAffectsNames, // the asset's name changed [1]
-      dkChildAffectsNames, // a child's name changed [1][2]
-      dkAffectsVisibility, // system needs to redo a visibility scan
-      dkVisibilityDidChange, // one or more dynasties changed whether they can see this node (set during CheckVisibilityChanged)
-      dkAffectsDynastyCount, // system needs to redo a dynasty census (requires dkAffectsVisibility)
-      dkAffectsKnowledge, // any nodes caching knowledge of descendants should reset caches
-      dkMassChanged, // Mass or MassFlowRate changed // TODO: set this where appropriate, handle where appropriate
-      dkHappinessChanged // Happiness changed [1]
-   );
-   TDirtyKinds = set of TDirtyKind;
-   //  [1] removed when propagating to parent
-   //  [2] added automatically when appropriate when propagating to parent
-
-const
-   dkNewNode = [ // initial dirty flags used on creation
-      dkJournalNew, dkVisibilityNew,
-      dkUpdateClients, dkUpdateJournal, dkNeedsHandleChanges,
-      dkVisibilityDidChange, dkAffectsVisibility,
-      dkDescendantNeedsHandleChanges, dkDescendantUpdateClients, dkDescendantUpdateJournal
-      // dkAffectsDynastyCount is set conditionally
-   ];
-   dkIdentityChanged = [
-      dkUpdateClients, dkUpdateJournal, dkNeedsHandleChanges,
-      dkAffectsNames, dkVisibilityDidChange, dkAffectsVisibility
-   ];
-   dkAffectsTreeStructure = [ // set on old/new parents when child's parent changes
-      dkUpdateClients, dkUpdateJournal,
-      dkAffectsVisibility,
-      dkChildren, dkChildAffectsNames,
-      dkMassChanged
-      // assets that affect happiness should set dkHappinessChanged when attaching and detaching
-   ];
 
 type
    TKnowledgeFilter = function(AssetClass: TAssetClass): Boolean is nested;
@@ -596,9 +375,14 @@ type
       property DebugName: UTF8String read GetDebugName;
    end;
 
-   TBuildEnvironment = (bePlanetRegion, beSpaceDock);
-   TBuildEnvironments = set of TBuildEnvironment;
+   TFeatureNodeOverride = record
+      FeatureClass: FeatureClassReference;
+      FeatureNode: TFeatureNode;
+   end;
+   TFeatureNodeOverrides = array of TFeatureNodeOverride;
 
+   // ASSETS
+   
    TAssetClass = class(TDebugObject)
    public
       type
@@ -610,17 +394,17 @@ type
       FName, FAmbiguousName, FDescription: UTF8String;
       FIcon: TIcon;
       FBuildEnvironments: TBuildEnvironments;
+      FSampleSituation: TSituation;
       function GetFeature(Index: Cardinal): TFeatureClass;
       function GetFeatureCount(): Cardinal;
       function GetDefaultSize(): Double;
    public
-      constructor Create(AID: TAssetClassID; AName, AAmbiguousName, ADescription: UTF8String; AFeatures: TFeatureClass.TArray; AIcon: TIcon; ABuildEnvironments: TBuildEnvironments);
+      constructor Create(AID: TAssetClassID; AName, AAmbiguousName, ADescription: UTF8String; AFeatures: TFeatureClass.TArray; AIcon: TIcon; ABuildEnvironments: TBuildEnvironments; ASampleSituation: TSituation);
       destructor Destroy(); override;
-      function SpawnFeatureNodes(ASystem: TSystem): TFeatureNode.TArray; // some feature nodes _can't_ be spawned this way (e.g. TAssetNameFeatureNode)
+      function SpawnFeatureNodes(ASystem: TSystem; FeatureNodeOverrides: TFeatureNodeOverrides = nil): TFeatureNode.TArray; // some feature nodes _can't_ be spawned this way (e.g. TAssetNameFeatureNode)
       function SpawnFeatureNodesFromJournal(Journal: TJournalReader; System: TSystem): TFeatureNode.TArray;
       procedure ApplyFeatureNodesFromJournal(Journal: TJournalReader; AssetNode: TAssetNode);
-      function Spawn(AOwner: TDynasty; ASystem: TSystem): TAssetNode; overload;
-      function Spawn(AOwner: TDynasty; ASystem: TSystem; AFeatures: TFeatureNode.TArray): TAssetNode; overload;
+      function Spawn(AOwner: TDynasty; ASystem: TSystem; FeatureNodeOverrides: TFeatureNodeOverrides = nil): TAssetNode; overload;
    public // encoded in knowledge
       procedure Serialize(Writer: TStringStreamWriter); overload;
       procedure Serialize(Writer: TServerStreamWriter); overload;
@@ -636,21 +420,28 @@ type
    public
       property ID: TAssetClassID read FID;
       property AmbiguousName: UTF8String read FAmbiguousName;
+   public // only used by the server internally, not sent to client
+      property SampleSituation: TSituation read FSampleSituation;
    end;
 
    TEncyclopediaView = class(TMaterialEncyclopedia)
    protected
       function GetAssetClass(ID: TAssetClassID): TAssetClass; virtual; abstract;
-      function GetResearch(ID: TResearchID): TResearch; virtual; abstract;
-      function GetTopic(Name: UTF8String): TTopic; virtual; abstract;
+      function GetResearchByIndex(Index: TResearchIndex): TResearch; virtual; abstract;
+      function GetResearchById(ID: TResearchID): TResearch; virtual; abstract;
+      function GetTopicByName(Name: UTF8String): TTopic; virtual; abstract;
+      function GetTopicByIndex(Index: TTopic.TIndex): TTopic; virtual; abstract;
       function GetMinMassPerOreUnit(): TMassPerUnit; virtual; abstract;
    public
-      function Craterize(Diameter: Double; OldAssets: TAssetNodeArray; NewAsset: TAssetNode): TAssetNode; virtual; abstract;
       function HandleBusMessage(Asset: TAssetNode; Message: TBusMessage): THandleBusMessageResult; virtual; abstract;
+      function CreateRegion(CellSize: Double; Dimension: Cardinal; System: TSystem): TAssetNode; virtual; abstract;
       procedure Dismantle(Asset: TAssetNode; Message: TMessage); virtual; abstract;
+      function Craterize(Diameter: Double; OldAssets: TAssetNodeArray; NewAsset: TAssetNode): TAssetNode; virtual; abstract;
       property AssetClasses[ID: TAssetClassID]: TAssetClass read GetAssetClass;
-      property Researches[ID: TResearchID]: TResearch read GetResearch;
-      property Topics[Name: UTF8String]: TTopic read GetTopic;
+      property ResearchesByIndex[Index: TResearchIndex]: TResearch read GetResearchByIndex;
+      property ResearchesByID[ID: TResearchID]: TResearch read GetResearchById;
+      property TopicsByName[Name: UTF8String]: TTopic read GetTopicByName;
+      property TopicsByIndex[Index: TTopic.TIndex]: TTopic read GetTopicByIndex;
       property MinMassPerOreUnit: TMassPerUnit read GetMinMassPerOreUnit;
    end;
 
@@ -737,6 +528,8 @@ type
       property System: TSystem read GetSystem;
    end;
 
+   // SYSTEM
+   
    // pointers to these objects are not valid after the event has run or been canceled
    TSystemEvent = class(TDebugObject)
    private
@@ -837,9 +630,6 @@ type
       procedure AddBroadVisibility(const Visibility: TVisibility; const Asset: TAssetNode);
    end;
 
-function ResearchIDHash32(const Key: TResearchID): DWord;
-function ResearchHash32(const Key: TResearch): DWord;
-
 procedure CancelEvent(var Event: TSystemEvent);
 
 implementation
@@ -848,54 +638,8 @@ uses
    sysutils, dateutils,
    exceptions, typedump,
    hashfunctions,
-   math, {$IFDEF DEBUG} debug, {$ENDIF}
+   {$IFDEF DEBUG} debug, {$ENDIF}
    providers;
-
-function UpdateDirtyKindsForAncestor(DirtyKinds: TDirtyKinds): TDirtyKinds;
-begin
-   Result := DirtyKinds;
-   if (dkNeedsHandleChanges in Result) then
-   begin
-      Exclude(Result, dkNeedsHandleChanges);
-      Include(Result, dkDescendantNeedsHandleChanges);
-   end;
-   if (dkUpdateJournal in Result) then
-   begin
-      Exclude(Result, dkJournalNew); // may or may not be present
-      Exclude(Result, dkUpdateJournal);
-      Include(Result, dkDescendantUpdateJournal);
-   end;
-   Assert(not (dkJournalNew in Result)); // it should only be set if dkUpdateJournal is set
-   if (dkUpdateClients in Result) then
-   begin
-      Exclude(Result, dkUpdateClients);
-      Include(Result, dkDescendantUpdateClients);
-   end;
-   if (dkVisibilityDidChange in Result) then
-   begin
-      Include(Result, dkUpdateClients);
-      Exclude(Result, dkVisibilityDidChange);
-   end;
-   if (dkVisibilityNew in Result) then
-   begin
-      Exclude(Result, dkVisibilityNew);
-      Include(Result, dkDescendantsVisibilityNew);
-   end;
-   if (dkChildren in Result) then
-   begin
-      Exclude(Result, dkChildren);
-   end;
-   if (dkChildAffectsNames in Result) then
-   begin
-      Exclude(Result, dkChildAffectsNames);
-   end;
-   if (dkAffectsNames in Result) then
-   begin
-      Exclude(Result, dkAffectsNames);
-      Include(Result, dkChildAffectsNames);
-   end;
-end;
-
 
 type
    TRootAssetNode = class(TAssetNode)
@@ -922,11 +666,6 @@ begin
    Result := ObjectHash32(Key);
 end;
 
-constructor TDynastyIndexHashTable.Create();
-begin
-   inherited Create(@DynastyHash32);
-end;
-
 constructor TAssetClassIDHashTable.Create();
 begin
    inherited Create(@LongIntHash32);
@@ -948,7 +687,7 @@ begin
 end;
 
 
-constructor TReward.CreateForMessage(var Message: UTF8String);
+constructor TUnlockedKnowledge.CreateForMessage(var Message: UTF8String);
 begin
    Assert((PtrUInt(Message) and TypeMask) = $00);
    if (not IsStringConstant(Message)) then
@@ -956,27 +695,27 @@ begin
       {$IFOPT C+} AssertStringIsReffed(Message, 1); {$ENDIF}
       IncRefCount(Message);
    end;
-   FData := PtrUInt(Message) or PtrUInt(rkMessage);
+   FData := PtrUInt(Message) or PtrUInt(ukMessage);
 end;
 
-constructor TReward.CreateForAssetClass(AssetClass: TAssetClass);
+constructor TUnlockedKnowledge.CreateForAssetClass(AssetClass: TAssetClass);
 begin
    Assert((PtrUInt(AssetClass) and TypeMask) = $00);
-   FData := PtrUInt(AssetClass) or PtrUInt(rkAssetClass);
+   FData := PtrUInt(AssetClass) or PtrUInt(ukAssetClass);
 end;
 
-constructor TReward.CreateForMaterial(Material: TMaterial);
+constructor TUnlockedKnowledge.CreateForMaterial(Material: TMaterial);
 begin
    Assert((PtrUInt(Material) and TypeMask) = $00);
-   FData := PtrUInt(Material) or PtrUInt(rkMaterial);
+   FData := PtrUInt(Material) or PtrUInt(ukMaterial);
 end;
 
-procedure TReward.Free();
+procedure TUnlockedKnowledge.Free();
 var
    Value: UTF8String;
 begin
    case GetKind() of
-      rkMessage:
+      ukMessage:
          begin
             Value := GetMessage();
             if (not IsStringConstant(Message)) then
@@ -985,153 +724,111 @@ begin
                {$IFOPT C+} AssertStringIsReffed(Message, 0); {$ENDIF}
             end;
          end;
-      rkAssetClass,
-      rkMaterial: ; // these are references, we don't own them
+      ukAssetClass,
+      ukMaterial: ; // these are references, we don't own them
    end;
    {$IFOPT C+}
    FData := PtrUInt(not 0);
    {$ENDIF}
 end;
 
-function TReward.GetKind(): TRewardKind;
+function TUnlockedKnowledge.GetKind(): TUnlockKind;
 begin
-   Result := TRewardKind(FData and TypeMask);
+   Result := TUnlockKind(FData and TypeMask);
 end;
 
-function TReward.GetMessage(): UTF8String;
+function TUnlockedKnowledge.GetMessage(): UTF8String;
 begin
-   Assert((PtrUInt(FData) and TypeMask) = PtrUInt(rkMessage));
+   Assert((PtrUInt(FData) and TypeMask) = PtrUInt(ukMessage));
    Result := UTF8String(Pointer(FData and not TypeMask)); // {BOGUS Hint: Conversion between ordinals and pointers is not portable}
    // If we get random crashes, consider if maybe this needs to increase the ref count
 end;
 
-function TReward.GetAssetClass(): TAssetClass;
+function TUnlockedKnowledge.GetAssetClass(): TAssetClass;
 begin
-   Assert((PtrUInt(FData) and TypeMask) = PtrUInt(rkAssetClass));
+   Assert((PtrUInt(FData) and TypeMask) = PtrUInt(ukAssetClass));
    Result := TAssetClass(Pointer(FData and not TypeMask)); // {BOGUS Hint: Conversion between ordinals and pointers is not portable}
 end;
 
-function TReward.GetMaterial(): TMaterial;
+function TUnlockedKnowledge.GetMaterial(): TMaterial;
 begin
-   Assert((PtrUInt(FData) and TypeMask) = PtrUInt(rkMaterial));
+   Assert((PtrUInt(FData) and TypeMask) = PtrUInt(ukMaterial));
    Result := TMaterial(Pointer(FData and not TypeMask)); // {BOGUS Hint: Conversion between ordinals and pointers is not portable}
 end;
 
 
-procedure TNode.PropagateRequirements(Requirements: TNodeArray);
-var
-   Requirement: TNode;
+constructor TResearch.Create(AID: TResearchID; AIndex: TResearchIndex; ADefaultTime: TMillisecondsDuration; ADefaultWeight: TWeight; ACondition: TConditionAST; ABonuses: TBonus.TArray; AUnlockedKnowledge: TUnlockedKnowledge.TArray);
 begin
-   for Requirement in Requirements do
-   begin
-      SetLength(Requirement.FUnlocks, Length(Requirement.FUnlocks) + 1);
-      Requirement.FUnlocks[High(Requirement.FUnlocks)] := Self;
-   end;
-end;
-
-function TNode.ToString(): UTF8String;
-begin
-   Result := '<TNode: ' + ClassName + '>';
-end;
-
-
-constructor TBonus.Create(ANode: TNode; ATimeDelta: TMillisecondsDuration; AWeightDelta: TWeightDelta; ANegate: Boolean);
-begin
-   FNode := ANode;
-   FTimeDelta := ATimeDelta;
-   FWeightDelta := AWeightDelta;
-   FNegate := ANegate;
-end;
-
-function TBonus.ToString(): UTF8String;
-begin
-   Result := '<TBonus: ' + Node.ToString() + '; ' + IntToStr(TimeDelta.AsInt64) + 'ms; ' + IntToStr(WeightDelta) + ' weight; negate=' + HexStr(LongInt(Negate), 8) + '>';
-end;
-
-
-constructor TResearch.Create(AID: TResearchID; ADefaultTime: TMillisecondsDuration; ADefaultWeight: TWeight; AProhibitions, ARequirements: TNode.TNodeArray; ABonuses: TBonus.TArray; ARewards: TReward.TArray);
-begin
-   inherited Create();
    FID := AID;
+   FIndex := AIndex;
    FDefaultTime := ADefaultTime;
    FDefaultWeight := ADefaultWeight;
-   FProhibitions := AProhibitions;
-   FRequirements := ARequirements;
+   FCondition.AssignConditionAST(ACondition);
    FBonuses := ABonuses;
-   FRewards := ARewards;
-   PropagateRequirements(FRequirements);
+   FUnlockedKnowledge := AUnlockedKnowledge;
+end;
+
+procedure TResearch.UpdateUnlocks(AUnlockedResearches: TResearch.TIndexArray; AUnlockedTopics: TTopic.TIndexArray);
+begin
+   FUnlockedResearches := AUnlockedResearches;
+   FUnlockedTopics := AUnlockedTopics;
 end;
 
 destructor TResearch.Destroy();
 var
-   Reward: TReward;
-begin
-   for Reward in FRewards do
-      Reward.Free();
-   inherited;
-end;
-
-function TResearch.ToString(): UTF8String;
-var
+   Knowledge: TUnlockedKnowledge;
    Bonus: TBonus;
-   Unlock: TNode;
 begin
-   Result := '<Research ' + IntToStr(FID) + '; time=' + IntToStr(FDefaultTime.AsInt64) + 'ms; weight=' + IntToStr(FDefaultTime.AsInt64) + '; ' + IntToStr(Length(FRequirements)) + ' reqs; ' + IntToStr(Length(FBonuses)) + ' bonuses>';
+   for Knowledge in FUnlockedKnowledge do
+      Knowledge.Free();
    for Bonus in FBonuses do
-      Result := Result + #$0A + '  bonus: ' + Bonus.ToString();
-   for Unlock in Unlocks do
-      Result := Result + #$0A + '  unlock: ' + Unlock.ToString();
+      Bonus.Free();
+   FCondition.Free();
 end;
 
-
-function ResearchHash32(const Key: TResearch): DWord;
+{$IFOPT C+}
+function TResearch.DebugDescription(): UTF8String;
+var
+   LinePos: SizeInt;
+   Unlock: TUnlockedKnowledge;
 begin
-   Result := ObjectHash32(Key);
+   Result := '<no message>';
+   for Unlock in UnlockedKnowledge do
+   begin
+      if (Unlock.Kind = ukMessage) then
+      begin
+         Result := Unlock.Message;
+         break;
+      end;
+   end;
+   LinePos := Pos(#10, Result);
+   if (LinePos > 0) then
+      SetLength(Result, LinePos - 1);
 end;
+{$ENDIF}
 
-function ResearchIDHash32(const Key: TResearchID): DWord;
-begin
-   Result := LongintHash32(Key);
-end;
 
-constructor TResearchIDHashTable.Create();
+constructor TResearchHashTable.Create();
 begin
    inherited Create(@ResearchIDHash32);
 end;
 
-constructor TWeightedResearchHashTable.Create();
+
+constructor TTechTreeReader.Create(ATokenizer: TTokenizer; ASituations: TSituationHashTable; AAssetClasses: TAssetClassIdentifierHashTable; AMaterialNames: TMaterialNameHashTable);
 begin
-   inherited Create(@ResearchHash32);
-end;
-
-
-constructor TTopic.Create(AValue: UTF8String; ASelectable: Boolean; ARequirements: TResearch.TArray; AFacilities: TTopic.TArray; AObsoletes: TTopic.TArray);
-begin
-   inherited Create();
-   Assert((not ASelectable) or (AValue <> ''), 'Unnamed topics cannot be selectable.');
-   FValue := AValue;
-   FSelectable := ASelectable;
-   FRequirements := ARequirements;
-   FFacilities := AFacilities;
-   FObsoletes := AObsoletes;
-   PropagateRequirements(TNode.TNodeArray(FRequirements));
-end;
-
-
-
-constructor TTopicHashTable.Create();
-begin
-   inherited Create(@UTF8StringHash32);
-end;
-
-
-
-constructor TTechTreeReader.Create(ATokenizer: TTokenizer; AAssetClasses: TAssetClassIdentifierHashTable; AMaterialNames: TMaterialNameHashTable; ATopics: TTopicHashTable);
-begin
+   Assert(Assigned(ATokenizer));
+   ASsert(Assigned(ASituations));
+   Assert(Assigned(AAssetClasses));
+   Assert(Assigned(AMaterialNames));
    FTokenizer := ATokenizer;
+   FSituations := ASituations;
    FAssetClasses := AAssetClasses;
    FMaterialNames := AMaterialNames;
-   FTopics := ATopics;
+end;
+
+function TTechTreeReader.GetSituation(Name: UTF8String): TSituation;
+begin
+   Result := FSituations[Name];
 end;
 
 function TTechTreeReader.GetAssetClass(Identifier: UTF8String): TAssetClass;
@@ -1142,11 +839,6 @@ end;
 function TTechTreeReader.GetMaterial(Name: UTF8String): TMaterial;
 begin
    Result := FMaterialNames[Name];
-end;
-
-function TTechTreeReader.GetTopic(Name: UTF8String): TTopic;
-begin
-   Result := FTopics[Name];
 end;
 
 
@@ -1703,7 +1395,7 @@ begin
 end;
 
 
-constructor TAssetClass.Create(AID: TAssetClassID; AName, AAmbiguousName, ADescription: UTF8String; AFeatures: TFeatureClass.TArray; AIcon: TIcon; ABuildEnvironments: TBuildEnvironments);
+constructor TAssetClass.Create(AID: TAssetClassID; AName, AAmbiguousName, ADescription: UTF8String; AFeatures: TFeatureClass.TArray; AIcon: TIcon; ABuildEnvironments: TBuildEnvironments; ASampleSituation: TSituation);
 begin
    inherited Create();
    FID := AID;
@@ -1717,6 +1409,7 @@ begin
    FIcon := AIcon;
    Assert(FIcon <> '');
    FBuildEnvironments := ABuildEnvironments;
+   FSampleSituation := ASampleSituation;
 end;
 
 destructor TAssetClass.Destroy();
@@ -1754,16 +1447,47 @@ begin
    end;
 end;
 
-function TAssetClass.SpawnFeatureNodes(ASystem: TSystem): TFeatureNode.TArray;
+function TAssetClass.SpawnFeatureNodes(ASystem: TSystem; FeatureNodeOverrides: TFeatureNodeOverrides = nil): TFeatureNode.TArray;
 var
    FeatureNodes: TFeatureNode.TArray;
-   Index: Cardinal;
+   Index, Subindex: Cardinal;
 begin
    SetLength(FeatureNodes, Length(FFeatures));
    if (Length(FeatureNodes) > 0) then
-      for Index := 0 to High(FFeatures) do // $R-
-         FeatureNodes[Index] := FFeatures[Index].InitFeatureNode(ASystem);
+   begin
+      if (Assigned(FeatureNodeOverrides)) then
+      begin
+         for Index := Low(FFeatures) to High(FFeatures) do // $R-
+         begin
+            if (Length(FeatureNodeOverrides) > 0) then
+            begin
+               for Subindex := Low(FeatureNodeOverrides) to High(FeatureNodeOverrides) do // $R-
+               begin
+                  if (FeatureNodeOverrides[Subindex].FeatureClass = FFeatures[Index].ClassType) then
+                  begin
+                     FeatureNodes[Index] := FeatureNodeOverrides[Subindex].FeatureNode;
+                     Delete(FeatureNodeOverrides, Subindex, 1);
+                     break;
+                  end;
+               end;
+            end;
+            if (not Assigned(FeatureNodes[Index])) then
+               FeatureNodes[Index] := FFeatures[Index].InitFeatureNode(ASystem);
+         end;
+      end
+      else
+         for Index := Low(FFeatures) to High(FFeatures) do // $R-
+            FeatureNodes[Index] := FFeatures[Index].InitFeatureNode(ASystem);
+   end;
    Result := FeatureNodes;
+   if (Length(FeatureNodeOverrides) > 0) then
+   begin
+      for Index := Low(FeatureNodeOverrides) to High(FeatureNodeOverrides) do // $R-
+      begin
+         Assert(False, 'Failed to use ' + FeatureNodeOverrides[Index].FeatureClass.ClassName + ' feature node overrides for ' + Name);
+         FeatureNodeOverrides[Index].FeatureNode.Free();
+      end;
+   end;
 end;
 
 function TAssetClass.SpawnFeatureNodesFromJournal(Journal: TJournalReader; System: TSystem): TFeatureNode.TArray;
@@ -1841,14 +1565,9 @@ begin
    end;
 end;
 
-function TAssetClass.Spawn(AOwner: TDynasty; ASystem: TSystem): TAssetNode;
+function TAssetClass.Spawn(AOwner: TDynasty; ASystem: TSystem; FeatureNodeOverrides: TFeatureNodeOverrides = nil): TAssetNode;
 begin
-   Result := TAssetNode.Create(ASystem, Self, AOwner, SpawnFeatureNodes(ASystem));
-end;
-
-function TAssetClass.Spawn(AOwner: TDynasty; ASystem: TSystem; AFeatures: TFeatureNode.TArray): TAssetNode;
-begin
-   Result := TAssetNode.Create(ASystem, Self, AOwner, AFeatures);
+   Result := TAssetNode.Create(ASystem, Self, AOwner, SpawnFeatureNodes(ASystem, FeatureNodeOverrides));
 end;
 
 procedure TAssetClass.Serialize(Writer: TStringStreamWriter);
@@ -2742,7 +2461,7 @@ begin
    FOnScoreDirty := AOnScoreDirty;
    FRoot := TRootAssetNode.Create(Self, ARootClass, nil, ARootClass.SpawnFeatureNodes(Self));
    Exclude(FRoot.FDirty, dkJournalNew); // we always create this node ourselves, even when reading from the journal, so don't tell the journal to create it
-   FChanges := dkAffectsTreeStructure + UpdateDirtyKindsForAncestor(FRoot.Dirty);
+   FChanges := [dkAffectsDynastyCount] + dkAffectsTreeStructure + UpdateDirtyKindsForAncestor(FRoot.Dirty);
 end;
 
 destructor TSystem.Destroy();
@@ -3090,7 +2809,10 @@ var
    function TrackDynasties(Asset: TAssetNode): Boolean;
    begin
       if (Assigned(Asset.Owner) and not Dynasties.Has(Asset.Owner)) then
+      begin
+         Writeln('    found dynasty ', Asset.Owner.DynastyID);
          Dynasties.Add(Asset.Owner);
+      end;
       Inc(NodeCount);
       Result := True;
    end;
@@ -3119,9 +2841,11 @@ var
    OldBuffer: Pointer;
    OldIDs: array of TAssetID;
 begin
+   Writeln('  Updating dynasty list...');
    NodeCount := 0;
    Dynasties := TDynastyHashSet.Create();
    FRoot.Walk(@TrackDynasties, nil);
+   Writeln('    total dynasty count: ', Dynasties.Count);
    if (Assigned(FDynastyNotesBuffer)) then
    begin
       OldBuffer := FDynastyNotesBuffer;
@@ -3165,6 +2889,7 @@ begin
       NewDynasties[Index] := Dynasty;
       Inc(Index);
    end;
+   Writeln('    calling ResetDynasties...');
    FRoot.Walk(@ResetDynasties, nil);
    Include(FChanges, dkDescendantUpdateClients);
    // check that either we didn't use the buffer, or we used all of it:
@@ -3249,8 +2974,11 @@ begin
          FRoot.Walk(@ResetDynastyNotesForNewNodes, nil);
       FRoot.Walk(@ResetVisibility, nil);
    end;
+   Writeln('  calling ApplyVisibility...');
    FRoot.Walk(@ApplyVisibility, nil);
+   Writeln('  calling ApplyKnowledge...');
    FRoot.Walk(@ApplyKnowledge, nil);
+   Writeln('  calling CheckVisibility...');
    FRoot.Walk(@CheckVisibility, nil);
 end;
 
@@ -3293,6 +3021,7 @@ begin
    Writeln('== Processing changes for system ', FSystemID, ' (', HexStr(FSystemID, 6), ') with RNG ', RandomNumberGenerator.State, ' ==');
    Assert((dkAffectsVisibility in FChanges) or not (dkAffectsDynastyCount in FChanges)); // dkAffectsDynastyCount requires dkAffectsVisibility
    AllChanges := [];
+   DynastyCountChanged := False;
    repeat
       Writeln('System changes: ', specialize SetToString<TDirtyKinds>(FChanges));
       LastChanges := FChanges;
@@ -3621,117 +3350,6 @@ destructor TSystemEvent.Cancel();
 begin
    FSystem.CancelEvent(Self);
    inherited Destroy();
-end;
-
-
-procedure TDynastyNotes.Init(const AID: TAssetID);
-begin
-   FID := AID;
-   FOldVisibility := dmNil;
-   FCurrentVisibility := dmNil;
-end;
-
-procedure TDynastyNotes.InitFrom(const Other: TDynastyNotes);
-begin
-   FID := Other.FID;
-   FOldVisibility := Other.FCurrentVisibility;
-   FCurrentVisibility := dmNil;
-end;
-
-function TDynastyNotes.GetHasID(): Boolean;
-begin
-   Result := FID > 0;
-end;
-
-function TDynastyNotes.GetChanged(): Boolean;
-begin
-   Result := FOldVisibility <> FCurrentVisibility;
-end;
-
-procedure TDynastyNotes.Snapshot();
-begin
-   FOldVisibility := FCurrentVisibility;
-   FCurrentVisibility := dmNil;
-end;
-
-
-function TKnowledgeSummary.IsLongMode(): Boolean;
-begin
-   Assert(Assigned(AsRawPointer));
-   Result := not AsShortDynasties[-1];
-end;
-
-procedure TKnowledgeSummary.Init(DynastyCount: Cardinal);
-var
-   RequiredSize: Cardinal;
-begin
-   if (DynastyCount >= LongThreshold) then
-   begin
-      RequiredSize := Ceil(DynastyCount / 8); // $R-
-      if (IsLongMode) then
-      begin
-         if (MemSize(AsRawPointer) = RequiredSize) then
-            exit;
-         FreeMem(AsRawPointer);
-      end;
-      AsRawPointer := GetMem(RequiredSize);
-      Assert(not AsShortDynasties[-1]);
-      Assert(IsLongMode);
-   end
-   else
-   begin
-      if (Assigned(AsRawPointer) and IsLongMode) then
-         FreeMem(AsRawPointer);
-      AsShortDynasties[-1] := True;
-      Assert(not IsLongMode);
-   end;
-   Reset();
-end;
-
-procedure TKnowledgeSummary.Done();
-begin
-   if (Assigned(AsRawPointer) and IsLongMode) then
-      FreeMem(AsRawPointer);
-   AsRawPointer := nil;
-end;
-
-procedure TKnowledgeSummary.Reset();
-begin
-   Assert(Assigned(AsRawPointer));
-   if (IsLongMode) then
-   begin
-      FillByte(AsRawPointer^, MemSize(AsRawPointer), $00); // $R-
-   end
-   else
-   begin
-      AsRawPointer := Pointer($01); // zero all bits except the LSB, which is used to mark that we're in short mode
-   end;
-end;
-
-procedure TKnowledgeSummary.SetEntry(DynastyIndex: Cardinal; Value: Boolean);
-begin
-   Assert(Assigned(AsRawPointer));
-   if (IsLongMode()) then
-   begin
-      AsLongDynasties^[DynastyIndex] := Value;
-   end
-   else
-   begin
-      AsShortDynasties[DynastyIndex] := Value;
-   end;
-end;
-
-function TKnowledgeSummary.GetEntry(DynastyIndex: Cardinal): Boolean;
-begin
-   Assert(Assigned(AsRawPointer));
-   if (IsLongMode()) then
-   begin
-      Result := AsLongDynasties^[DynastyIndex];
-   end
-   else
-   begin
-      Result := AsShortDynasties[DynastyIndex];
-   end;
 end;
 
 

@@ -5,7 +5,7 @@ unit orbit;
 interface
 
 uses
-   systems, providers, serverstream, time, techtree, masses;
+   systems, internals, providers, serverstream, time, masses;
 
 type
    TOrbitBusMessage = class abstract(TBusMessage) end;
@@ -55,7 +55,7 @@ type
    strict protected
       function GetFeatureNodeClass(): FeatureNodeReference; override;
    public
-      constructor CreateFromTechnologyTree(Reader: TTechTreeReader); override;
+      constructor CreateFromTechnologyTree(const Reader: TTechTreeReader); override;
       function InitFeatureNode(ASystem: TSystem): TFeatureNode; override;
    end;
 
@@ -100,7 +100,7 @@ type
 implementation
 
 uses
-   sysutils, isdprotocol, math, exceptions;
+   sysutils, isdprotocol, math, exceptions, ttparser;
 
 type
    POrbitData = ^TOrbitData;
@@ -164,9 +164,9 @@ begin
 end;
 
 
-constructor TOrbitFeatureClass.CreateFromTechnologyTree(Reader: TTechTreeReader);
+constructor TOrbitFeatureClass.CreateFromTechnologyTree(const Reader: TTechTreeReader);
 begin
-   Reader.Tokens.Error('Feature class %s is reserved for internal asset classes', [ClassName]);
+   inherited Create();
 end;
 
 function TOrbitFeatureClass.GetFeatureNodeClass(): FeatureNodeReference;
@@ -176,8 +176,7 @@ end;
 
 function TOrbitFeatureClass.InitFeatureNode(ASystem: TSystem): TFeatureNode;
 begin
-   Result := nil;
-   raise Exception.Create('Cannot create a TOrbitFeatureNode from a prototype; use AddChild on a TSolarSystemFeatureNode or a TOrbitFeatureNode.');
+   Result := TOrbitFeatureNode.Create(ASystem);
 end;
 
 
