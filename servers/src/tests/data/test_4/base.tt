@@ -1,192 +1,383 @@
-research nothing {
-  id: 0 (root);
+asset "Brown dwarf star" {
+  id: -102;
+  vaguely: "Star";
+  description: "A late class M star. Class M stars are among the coldest stars in the galaxy at around 3000K. This star is at the lower end of the temperature scale for M stars.";
+  icon: "star2";
+  feature: Star category 2;
+  feature: AssetName "";
 }
 
-material {
+asset "Red dwarf star" {
+  id: -103;
+  vaguely: "Star";
+  description: "A class M star. Class M stars are among the coldest stars in the galaxy at around 3000K.";
+  icon: "star3";
+  feature: Star category 3;
+  feature: AssetName "";
+}
+
+asset "K-type main-sequence star" {
+  id: -108;
+  vaguely: "Star";
+  description: "A class K star. Class K stars are around 4000K.";
+  icon: "star8";
+  feature: Star category 8;
+  feature: AssetName "";
+}
+
+asset "G-type main-sequence star" {
+  id: -104;
+  vaguely: "Star";
+  description: "A class G star. This whiteish-colored star is around 6000K.";
+  icon: "star4";
+  feature: Star category 4;
+  feature: AssetName "";
+}
+
+asset "F-type main-sequence star" {
+  id: -105;
+  vaguely: "Star";
+  description: "A class F star. Class F stars are around 7000K.";
+  icon: "star5";
+  feature: Star category 5;
+  feature: AssetName "";
+}
+
+asset "A-type main-sequence star" {
+  id: -109;
+  vaguely: "Star";
+  description: "A class A star. Class A stars can reach temperatures of up to 10000K.";
+  icon: "star9";
+  feature: Star category 9;
+  feature: AssetName "";
+}
+
+asset "B-type main-sequence star" {
+  id: -106;
+  vaguely: "Star";
+  description: "A class B star. Class B stars are extremely hot, around 20000K.";
+  icon: "star6";
+  feature: Star category 6;
+  feature: AssetName "";
+}
+
+asset "O-type main-sequence star" {
+  id: -107;
+  vaguely: "Star";
+  description: "A class O star. Class O stars are the brightest and hottest stars in the galaxy, over 30000K.";
+  icon: "star7";
+  feature: Star category 7;
+  feature: AssetName "";
+}
+
+asset "Red hypergiant star" {
+  id: -110;
+  vaguely: "Star";
+  description: "A very large, very bright star.";
+  icon: "star10";
+  feature: Star category 10;
+  feature: AssetName "";
+}
+
+asset "Space" {
+  id: -1;
+  vaguely: "Space";
+  description: "A region of outer space.";
+  icon: "outer-space";
+  feature: SolarSystem group threshold 1LY, gravitational influence 5e-15m/kg;
+}
+
+asset "Orbit" {
+  id: -2;
+  vaguely: "Orbit";
+  description: "Objects in space are attracted to each other in a way that makes them spin around each other.";
+  icon: "orbit";
+  feature: Orbit;
+}
+
+asset "Planetary body" {
+  id: -3;
+  vaguely: "Really big rock";
+  description: "A cold gravitionally-bound astronomical object. (Cold when compared to a star, at least.)";
+  icon: "planet-thin-continents";
+  feature: PlanetaryBody;
+  feature: Surface cell size 100m, region size 5 to 99;
+}
+
+asset "Geological region" {
+  id: -4;
+  vaguely: "Region";
+  description: "An area of a planetary body.";
+  icon: "region";
+  feature: Region at depth 1, 10 materials of quantity 9223372036854775807;
+  feature: PeopleBus;
+  feature: KnowledgeBus;
+  feature: BuilderBus;
+  feature: Grid 1*1, 100m, land;
+}
+
+asset "Crater" {
+  id: -5;
+  vaguely: "Hole";
+  description: "A hole containing the remnants of an area where something else crashed.";
+  icon: "crater";
+  feature: Proxy;
+  feature: RubblePile;
+}
+
+asset "Rubble pile" {
+  id: -6;
+  vaguely: "Rubble pile";
+  description: "The remains of some form of destruction.";
+  icon: "rubble";
+  feature: Population max 0, hidden;
+  feature: RubblePile;
+  feature: AssetPile;
+}
+
+research root {
+  unlocks asset "Brown dwarf star";
+  unlocks asset "Red dwarf star";
+  unlocks asset "K-type main-sequence star";
+  unlocks asset "G-type main-sequence star";
+  unlocks asset "F-type main-sequence star";
+  unlocks asset "A-type main-sequence star";
+  unlocks asset "B-type main-sequence star";
+  unlocks asset "O-type main-sequence star";
+  unlocks asset "Red hypergiant star";
+  unlocks asset "Space";
+  unlocks asset "Orbit";
+  unlocks asset "Planetary body";
+  unlocks asset "Geological region";
+  unlocks asset "Crater";
+  unlocks asset "Rubble pile";
+}
+
+asset "Message" {
+  id: -7;
+  vaguely: "Some text.";
+  description: "A message.";
+  icon: "message";
+  feature: Message;
+  feature: Knowledge;
+}
+
+asset "Colony ship" {
+  id: -8;
+  vaguely: "Big round object with round doors and circular windows.";
+  description: "A ship that people used to escape their dying star.";
+  icon: "colony-ship";
+  build: spacedock;
+  feature: DynastyOriginalColonyShip;
+  feature: PeopleBus;
+  feature: KnowledgeBus;
+  feature: BuilderBus;
+  feature: OnOff;
+  feature: Structure size 500m, materials (
+    "Ship": "Rare Material #1" * 1000,
+  ), minimum 1000;
+  feature: Population max 2000;
+  feature: SpaceSensor 10 to orbit, up 3 down 2, min size 2e5m, light;
+  feature: GridSensor light;
+  feature: InternalSensor light;
+  feature: MessageBoard spawns "Message";
+  feature: Sample size 2m;
+  feature: Research;
+  feature: Knowledge research id -1;
+}
+
+research package {
+  id: -1;
+  unlocks asset "Colony ship";
+  unlocks asset "Message";
+}
+
+
+
+// TEST RESEARCH
+
+material "Brick" {
   id: 100001;
-  name: "Brick" ("Square rock");
+  vaguely: "Square rock";
   description: "A piece of rock, fashioned into a stackable component, useful for creating buildings.";
   icon: "brick";
-  
   metrics: component 10cm weighs 1kg;
-  // metrics: fluid 1m weighs 1kg;
-  // metrics: bulk 1m weighs 1kg;
 }
 
-topic "Church support" requires nothing;
+facility church-support;
 
-class church {
+asset "Church" {
   id: 1;
-  name: "Church" ("Tall building");
+  vaguely: "Tall building";
   description: "This tall building is intended for communicating with the purported creator being.";
   icon: "church";
   build: land;
-  feature: TStructureFeatureClass size 10m, materials (
+  feature: Structure size 10m, materials (
     "Frame": "Iron" * 100,
     "Facing": "Silicon" * 50,
     "Decorations": "Iron" * 10,
   ), minimum 140;
-  feature: TResearchFeatureClass provides "Church support";
+  feature: Research provides church-support;
 }
 
-class city {
+asset "City" {
   id: 2;
-  name: "City" ("Settlement");
+  vaguely: "Settlement";
   description: "A collection of buildings and infrastructure for people to live at.";
   icon: "city";
   build: land;
-  feature: TParameterizedGridFeatureClass 6*6, 100m, land;
-  feature: TKnowledgeBusFeatureClass;
+  feature: Grid 6*6, 100m, land;
+  feature: KnowledgeBus;
 }
 
-class mining-big-hole {
+asset "Big mining hole" {
   id: 3;
-  name: "Big mining hole" ("Large hole in the ground");
+  vaguely: "Large hole in the ground";
   description: "This is a hole used for mining dirt from the ground.";
   icon: "mining-big-hole";
   build: land;
-  feature: TSizeFeatureClass 10m;
-  feature: TMiningFeatureClass max throughput 10kg/s;
-  feature: TOrePileFeatureClass max mass 30000kg;
-  feature: TOnOffFeatureClass;
+  feature: Size 10m;
+  feature: Mining max throughput 10kg/s;
+  feature: OrePile max mass 30000kg;
+  feature: OnOff;
 }
 
-class pile {
+asset "Big ore pile" {
   id: 4;
-  name: "Big ore pile" ("Big pile of dirt");
+  vaguely: "Big pile of dirt";
   description: "This is where we put resources we have mined from the ground.";
   icon: "empty-land";
   build: land;
-  feature: TSizeFeatureClass 10m;
-  feature: TOrePileFeatureClass max mass 3000000kg;
+  feature: Size 10m;
+  feature: OrePile max mass 3000000kg;
 }
 
-class mining-hole {
+asset "Mining hole" {
   id: 5000;
-  name: "Mining hole" ("Hole in the ground");
+  vaguely: "Hole in the ground";
   description: "This is a hole used to dig in the ground and get dirt and rocks and stuff.";
   icon: "mining-hole";
   build: land;
-  feature: TSizeFeatureClass 10m;
-  feature: TMiningFeatureClass max throughput 1kg/s;
-  feature: TOrePileFeatureClass max mass 30000kg;
-  feature: TOnOffFeatureClass;
+  feature: Size 10m;
+  feature: Mining max throughput 1kg/s;
+  feature: OrePile max mass 30000kg;
+  feature: OnOff;
 }
 
-class giant-mining-hole {
+asset "Mining hole with more help" {
   id: 5001;
-  name: "Mining hole with more help" ("Hole in the ground");
+  vaguely: "Hole in the ground";
   description: "This is a hole used to dig in the ground and get dirt and rocks and stuff, with lots of people helping.";
   icon: "mining-hole";
   build: land;
-  feature: TSizeFeatureClass 10m;
-  feature: TMiningFeatureClass max throughput 10kg/s;
-  feature: TOrePileFeatureClass max mass 300000kg;
-  feature: TOnOffFeatureClass;
+  feature: Size 10m;
+  feature: Mining max throughput 10kg/s;
+  feature: OrePile max mass 300000kg;
+  feature: OnOff;
 }
 
-class research-hole {
+asset "Archeological hole" {
   id: 5;
-  name: "Archeological hole" ("Hole in the ground");
+  vaguely: "Hole in the ground";
   description: "This is a hole used to dig in the ground for artifacts.";
   icon: "mining-hole";
   build: land;
-  feature: TSizeFeatureClass 10m;
-  feature: TMiningFeatureClass max throughput 1kg/s;
-  feature: TResearchFeatureClass;
-  feature: TOnOffFeatureClass;
+  feature: Size 10m;
+  feature: Mining max throughput 1kg/s;
+  feature: Research;
+  feature: OnOff;
 }
 
-class iron-team {
+asset "Iron team table" {
   id: 6;
-  name: "Iron team table" ("Table");
+  vaguely: "Table";
   description: "This is a table used by a small team of people to go through unsorted ores and pluck out bits of iron.";
   icon: "table";
   build: land;
-  feature: TSizeFeatureClass 10m;
-  feature: TRefiningFeatureClass for "Iron", max throughput 1000kg/h;
-  feature: TMaterialPileFeatureClass for "Iron", capacity 1000kg;
-  feature: TOnOffFeatureClass;
+  feature: Size 10m;
+  feature: Refining for "Iron", max throughput 1000kg/h;
+  feature: MaterialPile for "Iron", capacity 1000kg;
+  feature: OnOff;
 }
 
-class iron-pile {
+asset "Iron pile" {
   id: 7;
-  name: "Iron pile" ("Pile");
+  vaguely: "Pile";
   description: "This is a pile used for storing iron.";
   icon: "empty-land";
   build: land;
-  feature: TSizeFeatureClass 500m;
-  feature: TMaterialPileFeatureClass for "Iron", capacity 100000kg;
+  feature: Size 500m;
+  feature: MaterialPile for "Iron", capacity 100000kg;
 }
 
-class drill {
+asset "Drilling Hole" {
   id: 8;
-  name: "Drilling Hole" ("Hole");
+  vaguely: "Hole";
   description: "This is a drilling hole used for obtaining large quantities of ore.";
   icon: "drill";
   build: land;
-  feature: TSizeFeatureClass 10m;
-  feature: TMiningFeatureClass max throughput 1000kg/h;
-  feature: TOnOffFeatureClass;
+  feature: Size 10m;
+  feature: Mining max throughput 1000kg/h;
+  feature: OnOff;
 }
 
-class hack-builders {
+asset "Builder rally point" {
   id: 11;
-  name: "Builder rally point" ("Meeting point");
+  vaguely: "Meeting point";
   description: "This is the designated point for some builders to get together when planning building projects.";
   icon: "rally-point";
   build: land;
-  feature: TBuilderFeatureClass capacity 1, build 100 hp/h;
-  feature: TOnOffFeatureClass;
-  feature: TSizeFeatureClass 10m;
+  feature: Builder capacity 1, build 100 hp/h;
+  feature: OnOff;
+  feature: Size 10m;
 }
 
-class silicon-table {
+asset "Silicon Table" {
   id: 9;
-  name: "Silicon Table" ("Table");
+  vaguely: "Table";
   description: "This is a table used for sorting out silicon.";
   icon: "table";
   build: land;
-  feature: TRefiningFeatureClass for "Silicon", max throughput 1000kg/h;
-  feature: TMaterialPileFeatureClass for "Silicon", capacity 1000kg;
-  feature: TStructureFeatureClass size 10m, materials (
+  feature: Refining for "Silicon", max throughput 1000kg/h;
+  feature: MaterialPile for "Silicon", capacity 1000kg;
+  feature: Structure size 10m, materials (
     "Table": "Iron" * 2,
     "Covering": "Silicon" * 1,
   ), minimum 1;
-  feature: TBuilderFeatureClass capacity 1, build 100 hp/h;
-  feature: TOnOffFeatureClass;
+  feature: Builder capacity 1, build 100 hp/h;
+  feature: OnOff;
 }
 
-class silicon-pile {
+asset "Silicon pile" {
   id: 10;
-  name: "Silicon pile" ("Pile");
+  vaguely: "Pile";
   description: "This is a pile used for storing silicon.";
   icon: "empty-land";
   build: land;
-  feature: TSizeFeatureClass 10m;
-  feature: TMaterialPileFeatureClass for "Silicon", capacity 100000kg;
+  feature: Size 10m;
+  feature: MaterialPile for "Silicon", capacity 100000kg;
 }
 
-research unlock {
+research {
   id: 1;
   requires nothing;
   takes 1 hour;
-  rewards asset church;
-  rewards asset city;
-  rewards asset drill;
-  rewards asset giant-mining-hole;
-  rewards asset hack-builders;
-  rewards asset iron-pile;
-  rewards asset iron-team;
-  rewards asset mining-big-hole;
-  rewards asset mining-hole;
-  rewards asset pile;
-  rewards asset research-hole;
-  rewards asset silicon-pile;
-  rewards asset silicon-table;
-  rewards material "Iron";
-  rewards material "Silicon";
-  rewards [
+  unlocks asset "Church";
+  unlocks asset "City";
+  unlocks asset "Drilling Hole";
+  unlocks asset "Mining hole with more help";
+  unlocks asset "Builder rally point";
+  unlocks asset "Iron pile";
+  unlocks asset "Iron team table";
+  unlocks asset "Big mining hole";
+  unlocks asset "Mining hole";
+  unlocks asset "Big ore pile";
+  unlocks asset "Archeological hole";
+  unlocks asset "Silicon pile";
+  unlocks asset "Silicon Table";
+  unlocks material "Iron";
+  unlocks material "Silicon";
+  story: [
     Technology unlocked.
   ];
 }

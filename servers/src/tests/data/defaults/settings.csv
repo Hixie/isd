@@ -7,7 +7,5 @@ minimum distance from home,20316764
 local space radius,10158382
 max stars per home system,3
 galaxy diameter,1e21
-star grouping threshold,9460730472580800.0
-gravitational influence constant,5e-15
 default time rate,500.0
 clock type,mock

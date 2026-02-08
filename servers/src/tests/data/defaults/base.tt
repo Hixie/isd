@@ -1,12 +1,207 @@
-research nothing {
-  id: 0 (root);
+asset "Brown dwarf star" {
+  id: -102;
+  vaguely: "Star";
+  description: "A late class M star. Class M stars are among the coldest stars in the galaxy at around 3000K. This star is at the lower end of the temperature scale for M stars.";
+  icon: "star2";
+  feature: Star category 2;
+  feature: AssetName "";
 }
 
-research election {
+asset "Red dwarf star" {
+  id: -103;
+  vaguely: "Star";
+  description: "A class M star. Class M stars are among the coldest stars in the galaxy at around 3000K.";
+  icon: "star3";
+  feature: Star category 3;
+  feature: AssetName "";
+}
+
+asset "K-type main-sequence star" {
+  id: -108;
+  vaguely: "Star";
+  description: "A class K star. Class K stars are around 4000K.";
+  icon: "star8";
+  feature: Star category 8;
+  feature: AssetName "";
+}
+
+asset "G-type main-sequence star" {
+  id: -104;
+  vaguely: "Star";
+  description: "A class G star. This whiteish-colored star is around 6000K.";
+  icon: "star4";
+  feature: Star category 4;
+  feature: AssetName "";
+}
+
+asset "F-type main-sequence star" {
+  id: -105;
+  vaguely: "Star";
+  description: "A class F star. Class F stars are around 7000K.";
+  icon: "star5";
+  feature: Star category 5;
+  feature: AssetName "";
+}
+
+asset "A-type main-sequence star" {
+  id: -109;
+  vaguely: "Star";
+  description: "A class A star. Class A stars can reach temperatures of up to 10000K.";
+  icon: "star9";
+  feature: Star category 9;
+  feature: AssetName "";
+}
+
+asset "B-type main-sequence star" {
+  id: -106;
+  vaguely: "Star";
+  description: "A class B star. Class B stars are extremely hot, around 20000K.";
+  icon: "star6";
+  feature: Star category 6;
+  feature: AssetName "";
+}
+
+asset "O-type main-sequence star" {
+  id: -107;
+  vaguely: "Star";
+  description: "A class O star. Class O stars are the brightest and hottest stars in the galaxy, over 30000K.";
+  icon: "star7";
+  feature: Star category 7;
+  feature: AssetName "";
+}
+
+asset "Red hypergiant star" {
+  id: -110;
+  vaguely: "Star";
+  description: "A very large, very bright star.";
+  icon: "star10";
+  feature: Star category 10;
+  feature: AssetName "";
+}
+
+asset "Space" {
+  id: -1;
+  vaguely: "Space";
+  description: "A region of outer space.";
+  icon: "outer-space";
+  feature: SolarSystem group threshold 1LY, gravitational influence 5e-15m/kg;
+}
+
+asset "Orbit" {
+  id: -2;
+  vaguely: "Orbit";
+  description: "Objects in space are attracted to each other in a way that makes them spin around each other.";
+  icon: "orbit";
+  feature: Orbit;
+}
+
+asset "Planetary body" {
+  id: -3;
+  vaguely: "Really big rock";
+  description: "A cold gravitionally-bound astronomical object. (Cold when compared to a star, at least.)";
+  icon: "planet-thin-continents";
+  feature: PlanetaryBody;
+  feature: Surface cell size 100m, region size 5 to 99;
+}
+
+asset "Geological region" {
+  id: -4;
+  vaguely: "Region";
+  description: "An area of a planetary body.";
+  icon: "region";
+  feature: Region at depth 1, 10 materials of quantity 9223372036854775807;
+  feature: PeopleBus;
+  feature: KnowledgeBus;
+  feature: BuilderBus;
+  feature: Grid 1*1, 100m, land;
+}
+
+asset "Crater" {
+  id: -5;
+  vaguely: "Hole";
+  description: "A hole containing the remnants of an area where something else crashed.";
+  icon: "crater";
+  feature: Proxy;
+  feature: RubblePile;
+}
+
+asset "Rubble pile" {
+  id: -6;
+  vaguely: "Rubble pile";
+  description: "The remains of some form of destruction.";
+  icon: "rubble";
+  feature: Population max 0, hidden;
+  feature: RubblePile;
+  feature: AssetPile;
+}
+
+research root {
+  unlocks asset "Brown dwarf star";
+  unlocks asset "Red dwarf star";
+  unlocks asset "K-type main-sequence star";
+  unlocks asset "G-type main-sequence star";
+  unlocks asset "F-type main-sequence star";
+  unlocks asset "A-type main-sequence star";
+  unlocks asset "B-type main-sequence star";
+  unlocks asset "O-type main-sequence star";
+  unlocks asset "Red hypergiant star";
+  unlocks asset "Space";
+  unlocks asset "Orbit";
+  unlocks asset "Planetary body";
+  unlocks asset "Geological region";
+  unlocks asset "Crater";
+  unlocks asset "Rubble pile";
+}
+
+asset "Message" {
+  id: -7;
+  vaguely: "Some text.";
+  description: "A message.";
+  icon: "message";
+  feature: Message;
+  feature: Knowledge;
+}
+
+asset "Colony ship" {
+  id: -8;
+  vaguely: "Big round object with round doors and circular windows.";
+  description: "A ship that people used to escape their dying star.";
+  icon: "colony-ship";
+  build: spacedock;
+  feature: DynastyOriginalColonyShip;
+  feature: PeopleBus;
+  feature: KnowledgeBus;
+  feature: BuilderBus;
+  feature: OnOff;
+  feature: Structure size 500m, materials (
+    "Ship": "Rare Material #1" * 1000,
+  ), minimum 1000;
+  feature: Population max 2000;
+  feature: SpaceSensor 10 to orbit, up 3 down 2, min size 2e5m, light;
+  feature: GridSensor light;
+  feature: InternalSensor light;
+  feature: MessageBoard spawns "Message";
+  feature: Sample size 2m;
+  feature: Research;
+  feature: Knowledge research id -1;
+}
+
+research package {
+  id: -1;
+  unlocks asset "Colony ship";
+  unlocks asset "Message";
+}
+
+
+
+// TEST RESEARCH
+
+storybeat election;
+research {
   id: 1;
   requires nothing;
   takes 24 hours;
-  rewards [
+  story: election [
     Congratulations
 
     From: Head of Campaign
@@ -15,11 +210,12 @@ research election {
   ];
 }
 
-research science {
+storybeat science;
+research {
   id: 2;
-  requires election;
+  requires storybeat election;
   takes 1 week;
-  rewards [
+  story: science [
     Congratulations
 
     From: Director of Research
@@ -45,34 +241,31 @@ research science {
   ];
 }
 
-topic "Politics" requires election;
+topic "Politics" requires storybeat election;
 
-material {
+material "Brick" {
   id: 100001;
-  name: "Brick" ("Square rock");
+  vaguely: "Square rock";
   description: "A piece of rock, fashioned into a stackable component, useful for creating buildings.";
   icon: "brick";
-  
   metrics: component 10cm weighs 1kg;
-  // metrics: fluid 1m weighs 1kg;
-  // metrics: bulk 1m weighs 1kg;
 }
 
 
 // ------------------------------------------------------------------------
 // BRANCH FOR BASICS OF PHYSICS
 
-topic "Philosophy" requires science;
+topic "Philosophy" requires storybeat science;
 
-implicit topic "Church support";
+facility church-support;
 
-research theophany {
+storybeat theophany;
+research {
   id: 1000;
   takes 1 week;
-  weight 1;
-  requires science;
-  with "Philosophy": time -50%, weight +2000%;
-  rewards [
+  requires storybeat science;
+  with topic "Philosophy": speed x2, weight +2000%;
+  story: theophany [
     Where we come from
 
     From: Director of Research
@@ -104,30 +297,28 @@ research theophany {
   ];
 }
 
-class church {
+asset "Church" {
   id: 1;
-  name: "Church" ("Tall building");
+  vaguely: "Tall building";
   description: "This tall building is intended for communicating with the purported creator being.";
   icon: "church";
   build: land;
-  // feature: TStructureFeatureClass size 30m, materials (
-  //   "Walls": "Brick" * 1000000,
-  // ), minimum 1000000;
-  feature: TStructureFeatureClass size 100m, materials (
+  feature: Structure size 100m, materials (
     "Frame": "Iron" * 100,
     "Facing": "Silicon" * 50,
     "Decorations": "Iron" * 10,
   ), minimum 140;
-  feature: TResearchFeatureClass provides "Church support";
+  feature: Research provides church-support;
 }
 
-research religion {
+storybeat religion;
+research {
   id: 1001;
-  requires theophany;
+  requires storybeat theophany;
   takes 1 week;
-  with "Philosophy": time -50%, weight +2000%;
-  rewards asset church;
-  rewards [
+  with topic "Philosophy": speed x2, weight +2000%;
+  unlocks asset "Church";
+  story: religion [
     Communicating with our creator
     
     From: Bishop of Research, Powerful Being subdivision
@@ -140,15 +331,16 @@ research religion {
   ];
 }
 
-topic "Religion" requires religion;
+topic "Religion" requires storybeat religion;
 
-research organized-religion {
+storybeat organized-religion;
+research {
   id: 1002;
-  requires religion;
+  requires storybeat religion;
   takes 1 week;
-  with "Religion": time -50%, weight +2000%;
-  without "Church support": time +5000%;
-  rewards [
+  with topic "Religion": speed x2, weight +2000%;
+  with no situation church-support: speed x0.02;
+  story: organized-religion [
     Reorganisation
 
     From: Arch Bishop
@@ -160,14 +352,15 @@ research organized-religion {
   ];
 }
 
-research religion-irritation {
+storybeat religion-irritation;
+research {
   id: 1003;
-  requires religion;
+  requires storybeat religion;
   takes 1 month;
-  with "Philosophy": time -25%, weight +100%;
-  with "Religion": time +25%, weight -10%;
-  with organized-religion: time -90%, weight -75%;
-  rewards [
+  with topic "Philosophy": speed x1.25, weight +100%;
+  with topic "Religion": speed x0.75, weight -10%;
+  with storybeat organized-religion: speed x1.1, weight -75%;
+  story: religion-irritation [
     "Powerful Being" nonsense
     
     From: Director of Research
@@ -181,18 +374,19 @@ research religion-irritation {
   ];
 }
 
-topic "The Impact of Religion on Society" requires religion-irritation;
+storybeat religion-bad;
 
-research religion-bad {
+topic "The Impact of Religion on Society" requires storybeat religion-irritation, no storybeat religion-bad;
+
+research {
   id: 1004;
   takes 1 month;
-  requires religion;
-  requires religion-irritation;
-  with "Religion": time -10%, weight -50%;
-  with "The Impact of Religion on Society": time -25%, weight +1000%;
-  with "Church support": time +5000%, weight -25%;
-  without "Church support": time -10%, weight +100%;
-  rewards [
+  requires storybeat religion, storybeat religion-irritation;
+  with topic "Religion": speed x1.1, weight -50%;
+  with topic "The Impact of Religion on Society": speed x1.25, weight +1000%;
+  with situation church-support: speed x0.1, weight -25%;
+  with no situation church-support: speed x1.1, weight +100%;
+  story: religion-bad [
     The Impact of Religion on Society
 
     From: Director of Research
@@ -222,37 +416,30 @@ research religion-bad {
   ];
 }
 
-implicit topic requires religion-bad, obsoletes "The Impact of Religion on Society";
-
-// Breakthrough: The Scientific Method
-
 
 // ------------------------------------------------------------------------
 // RANDOM STUFF FOR DEV VERSION
 
-topic "City Development" requires science;
+topic "City Development" requires storybeat science;
 
-class city {
+asset "City" {
   id: 2;
-  name: "City" ("Settlement");
+  vaguely: "Settlement";
   description: "A collection of buildings and infrastructure for people to live at.";
   icon: "city";
   build: land;
-  feature: TParameterizedGridFeatureClass 6*6, 100m, land;
-  feature: TKnowledgeBusFeatureClass;
-  // feature: TStructureFeatureClass size 100m, materials (
-  //   "Roads": "Silicon" * 1000,
-  //   "Infrastructure": "Iron" * 1000,
-  // ), minimum 1500;
+  feature: Grid 6*6, 100m, land;
+  feature: KnowledgeBus;
 }
 
-research city-planning {
+storybeat city-planning;
+research {
   id: 2000;
   takes 1 week;
-  with "City Development": time -25%, weight +5000%;
-  requires election;
-  rewards asset city;
-  rewards [
+  with topic "City Development": speed x1.25, weight +5000%;
+  requires storybeat election;
+  unlocks asset "City";
+  story: city-planning [
     Breakthrough in City Planning
 
     From: Research
@@ -264,38 +451,38 @@ research city-planning {
   ];
 }
 
-class mining-big-hole {
+asset "Big mining hole" {
   id: 3;
-  name: "Big mining hole" ("Large hole in the ground");
+  vaguely: "Large hole in the ground";
   description: "This is a hole used for mining dirt from the ground.";
   icon: "mining-big-hole";
   build: land;
-  feature: TSizeFeatureClass 100m;
-  feature: TMiningFeatureClass max throughput 10kg/s;
-  feature: TOrePileFeatureClass max mass 30000kg;
-  feature: TOnOffFeatureClass;
+  feature: Size 100m;
+  feature: Mining max throughput 10kg/s;
+  feature: OrePile max mass 30000kg;
+  feature: OnOff;
 }
 
-class pile {
+asset "Big ore pile" {
   id: 4;
-  name: "Big ore pile" ("Big pile of dirt");
+  vaguely: "Big pile of dirt";
   description: "This is where we put resources we have mined from the ground.";
   icon: "empty-land";
   build: land;
-  feature: TSizeFeatureClass 100m;
-  feature: TOrePileFeatureClass max mass 3000000kg;
+  feature: Size 100m;
+  feature: OrePile max mass 3000000kg;
 }
 
-topic "Mining" requires science;
+topic "Mining" requires storybeat science;
 
-research mining-big {
+storybeat mining-big;
+research {
   id: 3000;
   takes 3 weeks;
-  weight 1;
-  requires science;
-  with "Mining": time -1400%, weight +500%;
-  rewards asset mining-big-hole;
-  rewards [
+  requires storybeat science;
+  with topic "Mining": speed x10, weight +500%;
+  unlocks asset "Big mining hole";
+  story: mining-big [
     Mining
     
     From: Director of Research
@@ -304,14 +491,14 @@ research mining-big {
   ];
 }
 
-research piles {
+storybeat piles;
+research {
   id: 3001;
   takes 3 weeks;
-  weight 1;
-  requires mining-big;
-  with "Mining": time -1400%, weight +500%;
-  rewards asset pile;
-  rewards [
+  requires storybeat mining-big;
+  with topic "Mining": speed x10, weight +500%;
+  unlocks asset "Big ore pile";
+  story: piles [
     Storage for mining
     
     From: Director of Research
@@ -320,50 +507,26 @@ research piles {
   ];
 }
 
-
-/*
-Breakthrough: Religion and Cities
-Needs: Organised Religion
-Needs: City Planning
-Obscurity: 525600
-
-News: Church Cities
-For: Religion and Cities
-Kind: Memo
-Body: From: Arch Bishop
-Body: Subject: More efficient setup for worship of the powerful being
-Body: 
-Body: After seeing the recent breakthrough on city planning, we think the Church should build cities around our churches. Let us know where you think we should build them. Thanks.
-Body:
-Body: (Note: This is currently the end of the game. Congratulations!)
-
-Technology: Church City
-Needs: Religion and Cities
-Implementation: TOwnableActor ../images/church-2.png land 5000 1000
-Facility: TResearchFacility
-Facility: TPrayerFacility
-*/
-
-
-class mining-hole {
+asset "Mining hole" {
   id: 5000;
-  name: "Mining hole" ("Hole in the ground");
+  vaguely: "Hole in the ground";
   description: "This is a hole used to dig in the ground and get dirt and rocks and stuff.";
   icon: "mining-hole";
   build: land;
-  feature: TSizeFeatureClass 50m;
-  feature: TMiningFeatureClass max throughput 1kg/s;
-  feature: TOrePileFeatureClass max mass 30000kg;
-  feature: TOnOffFeatureClass;
+  feature: Size 50m;
+  feature: Mining max throughput 1kg/s;
+  feature: OrePile max mass 30000kg;
+  feature: OnOff;
 }
 
-research mining {
+storybeat mining;
+research {
   id: 5001;
   takes 1 hour;
   weight 10000;
   requires nothing;
-  rewards asset mining-hole;
-  rewards [
+  unlocks asset "Mining hole";
+  story: mining [
     Don't mind the holes
 
     From: Parent of Charlie
@@ -373,25 +536,26 @@ research mining {
   ];
 }
 
-class giant-mining-hole {
+asset "Mining hole with more help" {
   id: 5001;
-  name: "Mining hole with more help" ("Hole in the ground");
+  vaguely: "Hole in the ground";
   description: "This is a hole used to dig in the ground and get dirt and rocks and stuff, with lots of people helping.";
   icon: "mining-hole";
   build: land;
-  feature: TSizeFeatureClass 100m;
-  feature: TMiningFeatureClass max throughput 10kg/s;
-  feature: TOrePileFeatureClass max mass 300000kg;
-  feature: TOnOffFeatureClass;
+  feature: Size 100m;
+  feature: Mining max throughput 10kg/s;
+  feature: OrePile max mass 300000kg;
+  feature: OnOff;
 }
 
-research giant-mining {
+storybeat giant-mining;
+research {
   id: 5002;
   takes 2 hours;
   weight 1000;
-  requires mining;
-  rewards asset giant-mining-hole;
-  rewards [
+  requires storybeat mining;
+  unlocks asset "Mining hole with more help";
+  story: giant-mining [
     Apologies please don't evict us
 
     From: Parent of Charlie
@@ -402,25 +566,26 @@ research giant-mining {
   ];
 }
 
-class research-hole {
+asset "Archeological hole" {
   id: 5;
-  name: "Archeological hole" ("Hole in the ground");
+  vaguely: "Hole in the ground";
   description: "This is a hole used to dig in the ground for artifacts.";
   icon: "mining-hole";
   build: land;
-  feature: TSizeFeatureClass 100m;
-  feature: TMiningFeatureClass max throughput 1kg/s;
-  feature: TResearchFeatureClass;
-  feature: TOnOffFeatureClass;
+  feature: Size 100m;
+  feature: Mining max throughput 1kg/s;
+  feature: Research;
+  feature: OnOff;
 }
 
-research archeology {
+storybeat archeology;
+research {
   id: 3002;
-  requires science;
+  requires storybeat science;
   takes 1 week;
-  with "Mining": time -90%, weight +2000%;
-  rewards asset research-hole;
-  rewards [
+  with topic "Mining": speed x1.1, weight +2000%;
+  unlocks asset "Archeological hole";
+  story: archeology [
     Stuff in holes
     
     From: Director of Research
@@ -429,37 +594,38 @@ research archeology {
   ];
 }
 
-class iron-team {
+asset "Iron team table" {
   id: 6;
-  name: "Iron team table" ("Table");
+  vaguely: "Table";
   description: "This is a table used by a small team of people to go through unsorted ores and pluck out bits of iron.";
   icon: "table";
   build: land;
-  feature: TSizeFeatureClass 10m;
-  feature: TRefiningFeatureClass for "Iron", max throughput 1000kg/h;
-  feature: TMaterialPileFeatureClass for "Iron", capacity 1000kg;
-  feature: TOnOffFeatureClass;
+  feature: Size 10m;
+  feature: Refining for "Iron", max throughput 1000kg/h;
+  feature: MaterialPile for "Iron", capacity 1000kg;
+  feature: OnOff;
 }
 
-class iron-pile {
+asset "Iron pile" {
   id: 7;
-  name: "Iron pile" ("Pile");
+  vaguely: "Pile";
   description: "This is a pile used for storing iron.";
   icon: "empty-land";
   build: land;
-  feature: TSizeFeatureClass 500m;
-  feature: TMaterialPileFeatureClass for "Iron", capacity 100000kg;
+  feature: Size 500m;
+  feature: MaterialPile for "Iron", capacity 100000kg;
 }
 
-research iron-team {
+storybeat iron-team;
+research {
   id: 5003;
   takes 2 hours;
   weight 1000;
-  requires mining; // should require actual iron being mined out
-  rewards asset iron-team;
-  rewards asset iron-pile;
-  rewards material "Iron";
-  rewards [
+  requires storybeat mining;
+  unlocks asset "Iron team table";
+  unlocks asset "Iron pile";
+  unlocks material "Iron";
+  story: iron-team [
     Iron team
 
     From: Director of Research
@@ -479,24 +645,25 @@ research iron-team {
   ];
 }
 
-class drill {
+asset "Drilling Hole" {
   id: 8;
-  name: "Drilling Hole" ("Hole");
+  vaguely: "Hole";
   description: "This is a drilling hole used for obtaining large quantities of ore.";
   icon: "drill";
   build: land;
-  feature: TSizeFeatureClass 500m;
-  feature: TMiningFeatureClass max throughput 1000kg/h;
-  feature: TOnOffFeatureClass;
+  feature: Size 500m;
+  feature: Mining max throughput 1000kg/h;
+  feature: OnOff;
 }
 
-research drill {
+storybeat drill;
+research {
   id: 5004;
   takes 2 hours;
   weight 2000;
-  requires mining; // should require actual iron being mined out
-  rewards asset drill;
-  rewards [
+  requires storybeat mining;
+  unlocks asset "Drilling Hole";
+  story: drill [
     Drill!
 
     From: Director of Research
@@ -511,52 +678,53 @@ research drill {
   ];
 }
 
-class hack-builders {
+asset "Builder rally point" {
   id: 11;
-  name: "Builder rally point" ("Meeting point");
+  vaguely: "Meeting point";
   description: "This is the designated point for some builders to get together when planning building projects.";
   icon: "rally-point";
   build: land;
-  feature: TBuilderFeatureClass capacity 1, build 100 hp/h;
-  feature: TSizeFeatureClass 10m;
+  feature: Builder capacity 1, build 100 hp/h;
+  feature: Size 10m;
 }
 
-class silicon-table {
+asset "Silicon Table" {
   id: 9;
-  name: "Silicon Table" ("Table");
+  vaguely: "Table";
   description: "This is a table used for sorting out silicon.";
   icon: "table";
   build: land;
-  feature: TRefiningFeatureClass for "Silicon", max throughput 1000kg/h;
-  feature: TMaterialPileFeatureClass for "Silicon", capacity 1000kg;
-  feature: TStructureFeatureClass size 10m, materials (
+  feature: Refining for "Silicon", max throughput 1000kg/h;
+  feature: MaterialPile for "Silicon", capacity 1000kg;
+  feature: Structure size 10m, materials (
     "Table": "Iron" * 2,
     "Covering": "Silicon" * 1,
   ), minimum 1;
-  feature: TBuilderFeatureClass capacity 1, build 100 hp/h;
-  feature: TOnOffFeatureClass;
+  feature: Builder capacity 1, build 100 hp/h;
+  feature: OnOff;
 }
 
-class silicon-pile {
+asset "Silicon pile" {
   id: 10;
-  name: "Silicon pile" ("Pile");
+  vaguely: "Pile";
   description: "This is a pile used for storing silicon.";
   icon: "empty-land";
   build: land;
-  feature: TSizeFeatureClass 500m;
-  feature: TMaterialPileFeatureClass for "Silicon", capacity 100000kg;
+  feature: Size 500m;
+  feature: MaterialPile for "Silicon", capacity 100000kg;
 }
 
-research silicon-table {
+storybeat silicon-table;
+research {
   id: 5005;
   takes 2 hours;
   weight 1000;
-  requires iron-team; // should require actual silicon being mined out
-  rewards asset silicon-table;
-  rewards asset silicon-pile;
-  rewards asset hack-builders;
-  rewards material "Silicon";
-  rewards [
+  requires storybeat iron-team;
+  unlocks asset "Silicon Table";
+  unlocks asset "Silicon pile";
+  unlocks asset "Builder rally point";
+  unlocks material "Silicon";
+  story: silicon-table [
     Silicon
 
     From: Iron team

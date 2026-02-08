@@ -1,7 +1,7 @@
 Tech Tree
 =========
 
-ISD uses the ISD Tech Tree language (ISDTT)), which is described
+ISD uses the ISD Tech Tree language (ISDTT), which is described
 below, to represent the game's technology tree (which in many ways is
 the core of the game).
 
@@ -13,6 +13,18 @@ The tech tree is in a single file, called `base.tt`.
 
 
 # Syntax
+
+## Token and whitespace
+
+ISDTT is a token-based language. The tokens, which are described
+below, are identifiers, strings, numbers, multipliers, and symbols
+(open brace, close brace, open parenthesis, close parenthesis, comma,
+colon, semicolon, percentage, asterisk, slash, at).
+
+Whitespace (spaces, newlines) separates tokens but is otherwise
+ignored. Whitespace is not required for separating tokens except where
+it would otherwise be ambiguous.
+
 
 ## Comments
 
@@ -88,8 +100,8 @@ Multiline strings start with a `[` open square bracket and a newline.
 
 Subsequent lines must all be indented by the same (non-zero) number of
 space characters, followed by any characters. The first line that
-contains only an optionally-indented `]` close square bracket ends the
-string.
+starts with zero or more space characters then a `]` close square
+bracket ends the string.
 
 The first line (after the indent) must not be empty (unless it only
 contains `]`).
@@ -123,7 +135,7 @@ Examples:
 ### Numbers
 
 Numbers optionally start with `+` or `-`, have one or more digits,
-then optionally are followed by a `.` followed by a period and zero or
+then optionally are followed by a period `.` and zero or
 more digits, and finally optionally followed by an `e` or `E`, an
 optional `+` or `-`, and one or more digits. The complete package is
 then interpreted as a base ten number with optional fractional
@@ -138,7 +150,7 @@ The integer component must be in the range -9223372036854775808 to
 1023.
 
 An _integer_ is a number that does not have a fractional component or
-an base ten scale component. (`1` is an integer; `1.0` and `1e0` are
+a base ten scale component. (`1` is an integer; `1.0` and `1e0` are
 not integers.)
 
 Numbers are used as a part of some other primitive types:
@@ -757,7 +769,7 @@ The most interesting field for an asset class is the `feature` class.
 
 Its syntax is the keyword `feature`, a colon `:`, an identifier that
 specifies the kind of feature (see below), the settings for that
-feature (varies by feature), and a semicolon.
+feature (varies by feature), and a semicolon `;`.
 
 Examples:
 ```
@@ -1018,6 +1030,11 @@ is set dynamically. This is the expected case when defining the asset
 class used by a `MessageBoard`, as it spawns an asset with the
 `Message` feature class and then sets the settings dynamically.
 
+It is an error to have a `Message` feature with no content in an asset
+that is sent to the client, so the settings should only be omitted in
+asset classes that are only spawned from `MessageBoard` features (this
+is not verified by the parser).
+
 Typically paired with a `Knowledge` feature.
 
 Creates an `fcMessage` feature with the read state set to "unread".
@@ -1026,7 +1043,7 @@ Examples:
 
 ```
 feature: Message;
-feature: Message from 9874 at 23.22 years: [
+feature: Message from 2097154 at 23.22 years: [
   Congratulations!
 
   From: Award system administrator
@@ -1167,6 +1184,7 @@ class -3), the following:
    integers in the range 1..4294967295. The integers are relative to
    each other and give the relative abundance of the given material.
    The materials must be ores, not materials defined in the tech tree.
+ * An close parenthesis (`)`).
  * Optionally, a comma `,` and the keyword `can-be-dynasty-start`,
    indicating that the planet could be chosen by the dynasty game
    start logic as the initial planet. In practice this has no effect,
@@ -1187,7 +1205,7 @@ Examples:
 
 ```
 feature: PlanetaryBody seed 203853699, diameter 120km, temperature 100K, mass 6.777e17kg ("Iron" 100, "Carbon" 30, "Water" 5);
-feature: PlanetaryBody seed 1000, diameter 3478.8km, temperature 300K, mass 7.347e22kg ("Silicon" 45, "Rock 60, "Iron" 2), can-be-dynasty-start;
+feature: PlanetaryBody seed 1000, diameter 3478.8km, temperature 300K, mass 7.347e22kg ("Silicon" 45, "Rock" 60, "Iron" 2), can-be-dynasty-start;
 ```
 
 
@@ -1587,6 +1605,7 @@ fields, but must not contain other fields. Normal research blocks
 (those without either annotation) can contain all the fields described
 below.
 
+
 #### ID
 
 Researches have IDs. Valid IDs expressible in the tech tree are in the
@@ -1618,9 +1637,9 @@ This field may be specified in normal research blocks, and must be
 omitted in `root` and `package` research blocks. If specified, it must
 only be specified once.
 
-The syntax is `takes`, followed by a time. The time is in game time
-(which can vary by system, but is generally 500x faster than real
-time). (There is no colon in this field's syntax.)
+The syntax is `takes`, followed by a time, and a semicolon `;`. The
+time is in game time (which can vary by system, but is generally 500x
+faster than real time). (There is no colon in this field's syntax.)
 
 If omitted, the time defaults to zero milliseconds.
 
@@ -1643,8 +1662,8 @@ omitted in `root` and `package` research blocks. If specified, it must
 only be specified once.
 
 The syntax is `weight`, followed by an integer in the range 1 to
-9223372036854775807. Weights are relative. (There is no colon in this
-field's syntax.)
+9223372036854775807, and a semicolon `;`. Weights are relative. (There
+is no colon in this field's syntax.)
 
 If omitted, the weight defaults to 1.
 
@@ -1667,7 +1686,7 @@ This field must be specified exactly once in normal research blocks,
 and omitted in `root` and `package` research blocks.
 
 The syntax is `requires` followed by a condition (whose syntax is
-described below).
+described below), and a semicolon `;`.
 
 Examples:
 
@@ -1694,6 +1713,8 @@ a comma:
  * `speed` followed by a multiplier.
  * `weight` followed by a number followed by a percentage symbol `%`.
 
+Finally, the field must end with a semicolon `;`.
+
 If the `speed` bonus is given, it must come after a `takes` time
 field. If the `weight` bonus is given, it must not come before a
 `weight` field.
@@ -1702,7 +1723,7 @@ When the given condition applies, the bonuses are applied.
 
 The `speed` bonus, when applied, divides the time field's time by the
 given multiple. For example, a research with `takes 40w` normally
-takes 40 weeks; if it has `with situation cyclotron: speed 20x` and
+takes 40 weeks; if it has `with situation cyclotron: speed x20` and
 the `Research` feature that selected this research has a `cyclotron`
 feature, then it takes 2 weeks instead. (The speed may be a fraction,
 to slow the progress down.)
@@ -1729,15 +1750,19 @@ with no situation church-support: speed x0.02;
 
 #### Story
 
-If the research results in a message to the player, it is represented
-using a story field. A story field can also specify story beats that
-have been reached, allowing several researches to all reflect the same
+Researches result in a message to the player, represented using a
+`story` field. A `story` field can also specify story beats that have
+been reached, allowing several researches to all reflect the same
 point in the overall story, and allowing the next part of the story to
 pick up from any of them.
 
+This field must be specified exactly once for normal researches, and
+must be omitted for `root` and `package` research blocks.
+
 The syntax is `story` and a colon `:`, followed by a comma-separated
-list of storybeat keywords, followed by a string. The string is a
-message, which should use the syntax expected for `fcMessage` strings.
+list of storybeat keywords, followed by a string, and a semicolon `;`.
+The string is a message, which should use the syntax expected for
+`fcMessage` strings.
 
 The storybeat keywords are those that this research has hit.
 
@@ -1765,7 +1790,7 @@ Each occurrence unlocks either a material or an asset class.
 
 The syntax is `unlocks` followed by either the keyword `asset` and the
 name of an asset, or the keyword `material` and the name of a
-material.
+material, finally followed by a semicolon `;`.
 
 Examples:
 
@@ -1824,7 +1849,7 @@ These elements can be combined with two list operators:
    list as a whole be true. Otherwise, it is false.
 
 Such lists can be wrapped in parentheses `(` ... `)` to form a new
-element that itself can be used in a list or before the keyword `no`.
+element that itself can be used in a list or after the keyword `no`.
 
 A condition can instead be merely the keyword `nothing`; this
 condition is always true. (A research that `requires nothing` is

@@ -182,7 +182,7 @@ var
 
       function ParseConditionExpression(): TConditionAST; forward;
 
-      function ParseLeafConditionExpression(const LastWasNegation = False): TConditionAST;
+      function ParseLeafConditionExpression(const LastWasNegation: Boolean = False): TConditionAST;
       var
          Identifier: UTF8String;
       begin
@@ -453,6 +453,8 @@ var
          if (Root) then
          begin
             ID := 0;
+            if (ResearchesByID.Has(ID)) then
+               Tokens.Error('Duplicate root research', []);
          end
          else      
          if (not Package) then
@@ -482,6 +484,8 @@ var
                   ID := ReadNumber(Tokens, Low(TResearchID), High(TResearchID)); // $R-
                   if (ID = 0) then
                      Tokens.Error('Package ID zero is reserved for the root research', []);
+                  if (ResearchesByID.Has(ID)) then
+                     Tokens.Error('Duplicate research with ID %d', [ID]);
                   Tokens.ReadSemicolon();
                end;
             'takes':
@@ -538,6 +542,8 @@ var
                         Tokens.ReadComma();
                   end;
                   Message := Tokens.ReadString();
+                  if (Message = '') then
+                     Tokens.Error('Story in research is empty', []);
                   Unlocks.Push(TUnlockedKnowledge.CreateForMessage(Message));
                   Tokens.ReadSemicolon();
                end;
@@ -568,11 +574,11 @@ var
          end
          else
          begin
+            if (not (rcStory in Components)) then
+               Tokens.Error('Missing "story" directive in research block', []);
             if (not Assigned(Condition)) then
                Tokens.Error('Missing "requires" directive in research block', []);
             Condition.CollectResearches(Collection); {BOGUS Warning: Local variable "Collection" of a managed type does not seem to be initialized}
-            if (Unlocks.IsEmpty) then
-               Tokens.Error('Expected either a "story" directive or an "unlocks" directive (or both) in research block', []);
          end;
       end;
       Research := Result.AddResearch(ID, DefaultTime, DefaultWeight, Condition, Bonuses.Distill(), Unlocks.Distill());

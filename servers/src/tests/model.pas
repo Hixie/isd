@@ -438,6 +438,8 @@ type
       FDisabledReasons: Cardinal;
       FTopic: UTF8String;
       FProgress: Byte;
+   public
+      FTopics: specialize PlasticArray <UTF8String, specialize DefaultUtils<UTF8String>>;
    published
       property DisabledReasons: Cardinal read FDisabledReasons write FDisabledReasons;
       property Topic: UTF8String read FTopic write FTopic;
@@ -1603,8 +1605,18 @@ end;
 
 
 procedure TModelResearchFeature.UpdateFrom(Stream: TServerStreamReader);
+var
+   NextTopic: String;
 begin
    DisabledReasons := Stream.ReadCardinal();
+   FTopics.Empty();
+   repeat
+      NextTopic := Stream.ReadStringReference();
+      if (NextTopic <> '') then
+      begin
+         FTopics.Push(NextTopic);
+      end;
+   until NextTopic = '';
    Topic := Stream.ReadStringReference();
    Progress := Stream.ReadByte();
 end;
