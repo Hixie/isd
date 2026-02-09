@@ -421,10 +421,10 @@ approximation, and in practice will use different features (e.g. an
 <componentname>     ::= <string>
 <materialname>      ::= <string>
 <builder>           ::= <assetid> | <zero32>
-<quantity>          ::= <uint32>
-<hp>                ::= <uint32>
+<quantity>          ::= <uint64>
+<hp>                ::= <uint64>
 <rate>              ::= <double> ; units per millisecond
-<minhp>             ::= <uint32>
+<minhp>             ::= <uint64>
 ```
 
 The structure feature describes the make-up and structural integrity

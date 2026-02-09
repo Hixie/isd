@@ -4,6 +4,7 @@ Air
 Light gas, very flammable.
 eeeeee
 fluid,star-fuel,atmospheric
+1000
 70.9
 n/a
 14960000000.0,1.1104974593311385
@@ -15,6 +16,7 @@ Black metal
 Highly compressed Hydrogen.
 000000
 solid,pressurized,star-fuel
+1000
 1300.0
 0.05
 14960000000.0,0.0
@@ -30,6 +32,7 @@ Air
 Light gas, non-reactive.
 eae5d8
 fluid,star-fuel,atmospheric
+1000
 125.0
 n/a
 14960000000.0,0.0
@@ -45,6 +48,7 @@ Dark solid
 Highly versatile material, foundation of some life forms.
 625d5d
 solid
+1000
 2200.0
 0.05
 14960000000.0,6.960067772498488
@@ -56,6 +60,7 @@ Air
 Light gas, mildly reactive.
 8f8fff
 fluid,terrestrial,atmospheric
+1000
 1.25
 n/a
 14960000000.0,9.0
@@ -69,6 +74,7 @@ Air
 Light gas, highly reactive.
 f00000
 fluid,terrestrial,atmospheric
+1000
 1.2
 n/a
 14960000000.0,8.450307134526085
@@ -80,6 +86,7 @@ Shiny metal
 Light metal, highly reactive.
 c1c2c3
 solid
+1000
 1740.0
 0.6
 14960000000.0,13.238876597634048
@@ -95,6 +102,7 @@ Shiny metal
 Light but structurally strong metal.
 848779
 solid
+1000
 2710.0
 0.5
 14960000000.0,6.110518630600615
@@ -106,6 +114,7 @@ Dirt
 Brittle material used for electronics.
 9599a5
 solid,terrestrial
+1000
 2330.0
 0.4
 14960000000.0,12.524055483038042
@@ -120,6 +129,7 @@ Sand
 Yellow powder, highly reactive.
 ffc832
 solid
+1000
 2070.0
 0.3
 14960000000.0,4.65794565408064
@@ -131,10 +141,11 @@ solid
 
 11
 Calcium
-Rocks
+Dull metal
 Dull grey metal.
 808090
 solid
+1000
 1550.0
 0.7
 14960000000.0,1.7261918500582676
@@ -144,10 +155,11 @@ solid
 
 12
 Iron
-Rocks
+Shiny metal.
 Strong structural material.
 4e4f55
 solid,terrestrial
+1000
 7800.0
 0.5
 14960000000.0,19.1258348812693
@@ -160,6 +172,7 @@ Shiny metal
 Light metal.
 727472
 solid
+1000
 8908.0
 0.75
 14960000000.0,11.0
@@ -173,10 +186,11 @@ solid
 
 14
 Gold
-Gold
+Shiny metal
 Heavy metal used in electronics.
 ffd700
 solid
+1000
 19320.0
 0.45
 14960000000.0,0.37740158604087126
@@ -191,10 +205,11 @@ solid
 
 15
 Uranium
-Heavy metal
+Heavy shiny metal
 Radioactive metal with applications in power and offense.
 3cff49
 solid
+1000
 19050.0
 0.1
 14960000000.0,0.0
@@ -208,6 +223,7 @@ Rare Material #1
 Rare Material #1
 ff9900
 solid
+1000
 1.0
 0.2
 14960000000.0,0.0
@@ -221,6 +237,7 @@ Rare Material #2
 Rare Material #2
 00ff99
 solid
+1000
 10.0
 0.9
 14960000000.0,0.0
@@ -234,6 +251,7 @@ Rare Material #3
 Rare Material #3
 9900ff
 solid
+1000
 100.0
 1.0
 14960000000.0,0.0
@@ -247,6 +265,7 @@ Rare Material #4
 Rare Material #4
 99ff00
 solid
+1000
 1000.0
 0.0
 14960000000.0,5.465711045563185
@@ -258,6 +277,7 @@ Rare Material #5
 Rare Material #5
 0099ff
 solid
+1000
 10000.0
 0.3
 14960000000.0,0.0
@@ -270,6 +290,7 @@ Rare Material #6
 Rare Material #6
 ff0099
 solid
+1000
 100000.0
 n/a
 14960000000.0,0.0
@@ -283,6 +304,7 @@ Water
 Liquid with high specific heat capacity.
 d4f1f9
 fluid,terrestrial
+1000
 1000.0
 0.06
 14960000000.0,7.387200809133374
@@ -293,6 +315,7 @@ Rocks
 Stones usually found in dirt.
 6a482f
 solid,terrestrial,evenly-distributed
+1000
 2700.0
 0.3
 1000000000.0,21.63659919254809

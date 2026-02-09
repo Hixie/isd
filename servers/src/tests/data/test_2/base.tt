@@ -174,8 +174,8 @@ asset "Colony ship" {
   feature: BuilderBus;
   feature: OnOff;
   feature: Structure size 500m, materials (
-    "Ship": "Rare Material #1" * 1000,
-  ), minimum 1000;
+    "Ship": "Rare Material #1" * 1000 units,
+  ), minimum 1000 units;
   feature: Population max 2000;
   feature: SpaceSensor 10 to orbit, up 3 down 2, min size 2e5m, light;
   feature: GridSensor light;
@@ -214,10 +214,10 @@ asset "Church" {
   icon: "church";
   build: land;
   feature: Structure size 100m, materials (
-    "Frame": "Iron" * 100,
-    "Facing": "Silicon" * 50,
-    "Decorations": "Iron" * 10,
-  ), minimum 140;
+    "Frame": "Iron" * 100t,
+    "Facing": "Silicon" * 50t,
+    "Decorations": "Iron" * 10t,
+  ), minimum 140 units;
   feature: Research provides church-support;
 }
 
@@ -341,9 +341,9 @@ asset "Silicon Table" {
   feature: Refining for "Silicon", max throughput 1000kg/h;
   feature: MaterialPile for "Silicon", capacity 1000kg;
   feature: Structure size 10m, materials (
-    "Table": "Iron" * 2,
-    "Covering": "Silicon" * 1,
-  ), minimum 1;
+    "Table": "Iron" * 2t,
+    "Covering": "Silicon" * 1t,
+  ), minimum 1 unit;
   feature: Builder capacity 1, build 100 hp/h;
   feature: OnOff;
 }

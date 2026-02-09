@@ -217,18 +217,18 @@ type
       LineItems: specialize PlasticArray <TMaterialLineItem, specialize IncomparableUtils<TMaterialLineItem>>;
    strict private
       FBuilderID: UInt32;
-      FQuantity: UInt32;
+      FQuantity: Int64;
       FQuantityRate: Double;
-      FHp: UInt32;
+      FHp: Int64;
       FHpRate: Double;
-      FMinHp: UInt32;
+      FMinHp: Int64;
    published
       property BuilderID: UInt32 read FBuilderID write FBuilderID;
-      property Quantity: UInt32 read FQuantity write FQuantity;
+      property Quantity: Int64 read FQuantity write FQuantity;
       property QuantityRate: Double read FQuantityRate write FQuantityRate;
-      property Hp: UInt32 read FHp write FHp;
+      property Hp: Int64 read FHp write FHp;
       property HpRate: Double read FHpRate write FHpRate;
-      property MinHp: UInt32 read FMinHp write FMinHp;
+      property MinHp: Int64 read FMinHp write FMinHp;
    end;
 
    TModelSpaceSensorFeature = class (TModelFeature)
@@ -1317,11 +1317,11 @@ begin
       LineItems.Push(MaterialLineItem);
    end;
    BuilderID := Stream.ReadCardinal();
-   Quantity := Stream.ReadCardinal();
+   Quantity := Stream.ReadInt64();
    QuantityRate := Stream.ReadDouble();
-   Hp := Stream.ReadCardinal();
+   Hp := Stream.ReadInt64();
    HpRate := Stream.ReadDouble();
-   MinHp := Stream.ReadCardinal();
+   MinHp := Stream.ReadInt64();
 end;
 
 

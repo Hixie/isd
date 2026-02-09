@@ -229,6 +229,7 @@ Examples:
 Mass is similarly represented as a number followed by an identifier
 that scales the number, as follows:
 
+ * `t` or `Mg`: Metric tonnes (1000kg)
  * `kg`: Kilograms
  * `g`: Grams (0.001kg)
  * `mg`: Milligrams (0.000001kg)
@@ -611,9 +612,9 @@ asset "City" {
   feature: Grid 6*6, 100m, land;
   feature: KnowledgeBus;
   feature: Structure size 100m, materials (
-    "Roads": "Silicon" * 1000,
-    "Infrastructure": "Iron" * 1000,
-  ), minimum 1500;
+    "Roads": "Silicon" * 400t,
+    "Infrastructure": "Iron" * 400t,
+  ), minimum "Roads" 1500kg;
   feature: Staffing 5 jobs;
 }
 ```
@@ -776,9 +777,9 @@ Examples:
 feature: Grid 6*6, 100m, land;
 feature: KnowledgeBus;
 feature: Structure size 100m, materials (
-  "Roads": "Silicon" * 1000,
-  "Infrastructure": "Iron" * 1000,
-), minimum 1500;
+  "Roads": "Silicon" * 400t,
+  "Infrastructure": "Iron" * 400t,
+), minimum "Infrastructure" 100t;
 feature: Staffing 5 jobs;
 ```
 
@@ -1522,10 +1523,13 @@ Setting syntax:
     * A colon `:`.
     * A string giving the element name.
     * An asterisk `*`.
-    * The number of units of that material.
+    * A quantity of that material.
  * A close parenthesis `)`.
  * A comma `,`.
- * The keyword `minimum` followed by an integer.
+ * The keyword `minimum` followed by one of:
+    * An integer, followed by the keyword `units`.
+    * A string giving one of the component names, optionally followed
+      by a quantity.
 
 The length is the diameter of the object, if it is a sphere, or its
 side length, if it is a cube. (Its shape is not a gameplay element and
@@ -1535,10 +1539,16 @@ The structural elements are presented in the order in which they must
 be built, with foundations coming first and decorative elements last.
 Materials may be listed multiple times.
 
-The final integer is the minimum structural integrity that is required
-before the asset is considered functional. Its value must be between
-zero and the sum of all the numbers of units in the structural
-elements.
+The final part is the minimum structural integrity that is required
+before the asset is considered functional. If it is an integer
+followed by the keyword `units`, its value must be between zero and
+the sum of all the numbers of units in the structural elements.
+Otherwise, the string must specify one of the components (if multiple
+components have the same name, it specifies the first entry with that
+name), and the quantity (which may be expressed as a mass) represents
+the number of units of that component (if omitted, it specifies all
+the units of that component). That quantity, added to all the units of
+all previous components, then forms the minimum structural integrity.
 
 The structure starts empty, except if it is used in asset class -8, in
 which case the engine fills it on creation.
@@ -1548,6 +1558,17 @@ feature is necessary; ancestors with a `BuilderBus` and a `Region` are
 required to mediate.
 
 Creates an `fcStructure` asset.
+
+Examples:
+
+```
+feature: Structure size 200m, materials ("Walls": "Iron" * 100t, "Defensive Perimeter": "Iron" * 50t, "Roof": "Iron" * 50t), minimum "Walls" 50t;
+feature: Structure size 100m, materials (
+  "Frame": "Iron" * 100t,
+  "Facing": "Silicon" * 50t,
+  "Decorations": "Iron" * 10t,
+), minimum "Facing" 20t;
+```
 
 
 ##### `Surface`

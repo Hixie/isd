@@ -24,7 +24,8 @@ function ReadLength(Tokens: TTokenizer): Double;
 function ReadTime(Tokens: TTokenizer): TTimeInMilliseconds;
 function ReadMass(Tokens: TTokenizer): TMass;
 function ReadMassPerTime(Tokens: TTokenizer): TMassRate;
-function ReadQuantity(Tokens: TTokenizer; Material: TMaterial): TQuantity64;
+function ReadQuantity64(Tokens: TTokenizer; Material: TMaterial): TQuantity64;
+function ReadQuantity32(Tokens: TTokenizer; Material: TMaterial): TQuantity32;
 function ReadQuantityPerTime(Tokens: TTokenizer; Material: TMaterial): TQuantityRate;
 function ReadKeywordPerTime(Tokens: TTokenizer; Keyword: UTF8String): TRate;
 function ReadComma(Tokens: TTokenizer): Boolean;
@@ -248,6 +249,7 @@ begin
       Tokens.Error('Invalid mass "%d"; must be greater than zero', [Value]);
    Keyword := Tokens.ReadIdentifier();
    case Keyword of
+      't', 'Mg': Result := TMass.FromKg(Value * 1000.0);
       'kg': Result := TMass.FromKg(Value);
       'g': Result := TMass.FromG(Value);
       'mg': Result := TMass.FromMg(Value);
@@ -256,7 +258,7 @@ begin
    end;
 end;
 
-function ReadQuantity(Tokens: TTokenizer; Material: TMaterial): TQuantity64;
+function ReadQuantity64(Tokens: TTokenizer; Material: TMaterial): TQuantity64;
 var
    Value: Int64;
    Mass: TMass;
@@ -269,10 +271,24 @@ begin
          Tokens.Error('Invalid quantity "%d"; must be greater than zero', [Value]);
       Keyword := Tokens.ReadIdentifier();
       case Keyword of
+         't', 'Mg': Result := TMass.FromKg(Value * 1000.0) / Material.MassPerUnit;
          'kg': Result := TMass.FromKg(Value) / Material.MassPerUnit;
          'g': Result := TMass.FromG(Value) / Material.MassPerUnit;
          'mg': Result := TMass.FromMg(Value) / Material.MassPerUnit;
-         'units': Result := TQuantity64.FromUnits(Value); // $R-
+         'unit':
+            begin
+               if (Value = 1) then
+                  Result := TQuantity64.FromUnits(Value) // $R-
+               else
+                  Tokens.Error('Expected plural "units" for non-1 value, got singular "unit"', []);
+            end;     
+         'units':
+            begin
+               if (Value <> 1) then
+                  Result := TQuantity64.FromUnits(Value) // $R-
+               else
+                  Tokens.Error('Expected singular "unit" for value 1, got plural "units"', []);
+            end;     
       else
          Tokens.Error('Unknown unit for quantity "%s"', [Keyword]);
       end;
@@ -287,6 +303,16 @@ begin
       Assert(Result.IsZero);
       Tokens.Error('Given mass rounds to zero quantity; quantity must be greater than zero', []);
    end;
+end;
+
+function ReadQuantity32(Tokens: TTokenizer; Material: TMaterial): TQuantity32;
+var
+   Value: TQuantity64;
+begin
+   Value := ReadQuantity64(Tokens, Material);
+   if (Value.AsInt64 > TQuantity32.Max.AsCardinal) then
+      Tokens.Error('Invalid quantity, must be no more than %s or %s', [TQuantity32.Max.ToString(), (TQuantity32.Max * Material.MassPerUnit).ToString()]);
+   Result := TQuantity32.FromQuantity64(Value);
 end;
 
 function ReadPerTime(Tokens: TTokenizer): TIterationsRate;
@@ -313,7 +339,7 @@ function ReadQuantityPerTime(Tokens: TTokenizer; Material: TMaterial): TQuantity
 var
    Value: TQuantity64;
 begin
-   Value := ReadQuantity(Tokens, Material);
+   Value := ReadQuantity64(Tokens, Material);
    if (Value.IsNegative) then
       Tokens.Error('Invalid throughput "%s"; must be positive', [Value.ToString()]);
    Result := Value / ReadTimeDenominator(Tokens);

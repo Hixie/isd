@@ -546,7 +546,7 @@ type
    TMaterialColor = $000000..$FFFFFF;
 var
    F: Text;
-   IDLine, ColorLine, TagsLine, DensityLine, BondAlbedoLine, AbundanceLine: UTF8String;
+   IDLine, ColorLine, TagsLine, MassPerUnitLine, DensityLine, BondAlbedoLine, AbundanceLine: UTF8String;
    Tag: UTF8String;
    TagList: array of UTF8String;
    Index: SizeInt;
@@ -555,6 +555,7 @@ var
    MaterialIcon: TIcon;
    MaterialColor: TMaterialColor;
    MaterialTags: TMaterialTags;
+   MaterialMassPerUnit: TMassPerUnit;
    MaterialDensity, MaterialBondAlbedo, MaterialDistance, MaterialAbundance: Double;
    MaterialAbundances: array of TMaterialAbundanceParameters;
    Material: TMaterial;
@@ -596,6 +597,8 @@ begin
             raise EConvertError.Create('Unknown material tag "' + Tag + '"');
          end;
       end;
+      ReadLn(F, MassPerUnitLine);
+      MaterialMassPerUnit := TMassPerUnit.FromKgPerUnit(ParseDouble(MassPerUnitLine));
       Readln(F, DensityLine); // floating point number, kg/m^3
       MaterialDensity := ParseDouble(DensityLine);
       Readln(F, BondAlbedoLine); // floating point number
@@ -638,7 +641,7 @@ begin
          MaterialDescription,
          MaterialIcon,
          ukBulkResource,
-         TMassPerUnit.FromKgPerUnit(1000.0), // MassPerUnit for ores is always 1 metric ton
+         MaterialMassPerUnit,
          MaterialDensity,
          MaterialBondAlbedo,
          MaterialTags,

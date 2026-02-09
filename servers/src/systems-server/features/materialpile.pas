@@ -70,7 +70,7 @@ begin
    FMaterial := ReadMaterial(Reader);
    Reader.Tokens.ReadComma();
    Reader.Tokens.ReadIdentifier('capacity');
-   FMaxQuantity := ReadQuantity(Reader.Tokens, FMaterial);
+   FMaxQuantity := ReadQuantity64(Reader.Tokens, FMaterial);
 end;
 
 function TMaterialPileFeatureClass.GetFeatureNodeClass(): FeatureNodeReference;

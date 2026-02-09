@@ -24,8 +24,8 @@ type
    strict private
       FDefaultSize: Double;
       FBillOfMaterials: TMaterialLineItemArray;
-      FTotalQuantityCache: TQuantity32; // computed on creation
-      FMinimumFunctionalQuantity: TQuantity32; // 0.0 .. TotalQuantity
+      FTotalQuantityCache: TQuantity64; // computed on creation
+      FMinimumFunctionalQuantity: TQuantity64; // 0.0 .. TotalQuantity
       FMassCache: TMass;
    strict protected
       function GetFeatureNodeClass(): FeatureNodeReference; override;
@@ -33,7 +33,7 @@ type
    protected
       function GetMaterialLineItem(Index: Cardinal): TMaterialLineItem;
       function GetMaterialLineItemCount(): Cardinal;
-      function ComputeTotalQuantity(): TQuantity32;
+      function ComputeTotalQuantity(): TQuantity64;
       function ComputeMass(): TMass;
    public
       constructor Create(ABillOfMaterials: TMaterialLineItemArray; AMinimumFunctionalQuantity: TQuantity32; ADefaultSize: Double);
@@ -42,9 +42,9 @@ type
       property DefaultSize: Double read FDefaultSize;
       property BillOfMaterials[Index: Cardinal]: TMaterialLineItem read GetMaterialLineItem;
       property BillOfMaterialsLength: Cardinal read GetMaterialLineItemCount;
-      property TotalQuantity: TQuantity32 read FTotalQuantityCache;
+      property TotalQuantity: TQuantity64 read FTotalQuantityCache;
       property Mass: TMass read FMassCache;
-      property MinimumFunctionalQuantity: TQuantity32 read FMinimumFunctionalQuantity; // minimum MaterialsQuantity for functioning
+      property MinimumFunctionalQuantity: TQuantity64 read FMinimumFunctionalQuantity; // minimum MaterialsQuantity for functioning
    end;
 
    TBuildingStateFlags = (bsTriggered, bsNoBuilderBus, bsNoRegion);
@@ -52,8 +52,8 @@ type
    PBuildingState = ^TBuildingState;
    TBuildingState = record
    private
-      MaterialsQuantity: TQuantity32; // 0.0 .. TStructureFeatureClass.TotalQuantity
-      StructuralIntegrity: Cardinal; // 0.0 .. TStructureFeatureClass.TotalQuantity, but cannot be higher than FMaterialsQuantity
+      MaterialsQuantity: TQuantity64; // 0.0 .. TStructureFeatureClass.TotalQuantity
+      StructuralIntegrity: Int64; // 0.0 .. TStructureFeatureClass.TotalQuantity, but cannot be higher than FMaterialsQuantity
       AnchorTime: TTimeInMilliseconds;
       StructuralIntegrityRate: TRate;
       PendingMaterial: TMaterial;
@@ -66,7 +66,7 @@ type
       Region: TRegionFeatureNode;
       Flags: set of TBuildingStateFlags; // could use AnnotatedPointers instead
       Priority: TPriority;
-      function IncStructuralIntegrity(const Delta: Double; Threshold: Cardinal): Boolean;
+      function IncStructuralIntegrity(const Delta: Double; Threshold: Int64): Boolean;
    end;
 
    // TODO: if MaterialsQuantity changes whether it equals 0, then MarkAsDirty([dkAffectsVisibility])
@@ -134,7 +134,7 @@ begin
    Quantity := AQuantity;
 end;
 
-function TBuildingState.IncStructuralIntegrity(const Delta: Double; Threshold: Cardinal): Boolean;
+function TBuildingState.IncStructuralIntegrity(const Delta: Double; Threshold: Int64): Boolean;
 var
    WasAbove: Boolean;
 begin
@@ -147,9 +147,9 @@ begin
    begin
       Inc(StructuralIntegrity, Round(Delta));
    end;
-   if (StructuralIntegrity > MaterialsQuantity.AsCardinal) then
+   if (StructuralIntegrity > MaterialsQuantity.AsInt64) then
    begin
-      StructuralIntegrity := MaterialsQuantity.AsCardinal;
+      StructuralIntegrity := MaterialsQuantity.AsInt64;
    end;
    Result := WasAbove <> (StructuralIntegrity >= Threshold);
 end;
@@ -170,14 +170,16 @@ var
    MaterialsList: specialize PlasticArray<TMaterialLineItem, specialize IncomparableUtils<TMaterialLineItem>>;
    ComponentName: UTF8String;
    Material: TMaterial;
-   Quantity, Total: TQuantity32;
+   Quantity, Delta: TQuantity32;
+   Total, Minimum: TQuantity64;
+   Index: Cardinal;
 begin
    inherited Create();
    // feature: TStructureFeatureClass size 20m, materials (
-   //    "Substructure": "Iron" x 700,
-   //    "Logic": "Circuit Board" x 5,
-   //    "Shell": "Iron" x 300,
-   // ), minimum 805;
+   //    "Substructure": "Iron" x 700t,
+   //    "Logic": "Circuit Board" x 5 units,
+   //    "Shell": "Iron" x 300kg,
+   // ), minimum "Logic" 2 units;
    MaterialsList.Prepare(2);
    Reader.Tokens.ReadIdentifier('size');
    FDefaultSize := ReadLength(Reader.Tokens);
@@ -190,7 +192,7 @@ begin
       Reader.Tokens.ReadColon();
       Material := ReadMaterial(Reader);
       Reader.Tokens.ReadAsterisk();
-      Quantity := TQuantity32.FromUnits(ReadNumber(Reader.Tokens, 1, TQuantity32.Max.AsCardinal)); // $R-
+      Quantity := ReadQuantity32(Reader.Tokens, Material);
       MaterialsList.Push(TMaterialLineItem.Create(ComponentName, Material, Quantity));
       Total := Total + Quantity;
       if (Reader.Tokens.IsCloseParenthesis()) then
@@ -200,7 +202,43 @@ begin
    Reader.Tokens.ReadCloseParenthesis();
    Reader.Tokens.ReadComma();
    Reader.Tokens.ReadIdentifier('minimum');
-   FMinimumFunctionalQuantity := TQuantity32.FromUnits(ReadNumber(Reader.Tokens, 0, Total.AsCardinal)); // $R-
+   Material := nil;
+   if (Reader.Tokens.IsString()) then
+   begin
+      ComponentName := Reader.Tokens.ReadString();
+      Minimum := TQuantity64.Zero;
+      Assert(MaterialsList.IsNotEmpty);
+      for Index := 0 to MaterialsList.Length - 1 do // $R-
+      begin
+         if (MaterialsList[Index].ComponentName = ComponentName) then
+         begin
+            Material := MaterialsList[Index].Material;
+            if (Reader.Tokens.IsDouble()) then
+            begin
+               Delta := ReadQuantity32(Reader.Tokens, Material);
+               if (Delta > MaterialsList[Index].Quantity) then
+                  Reader.Tokens.Error('Minimum specified quantity (%s) is larger than the "%s" component', [Delta.ToString(), ComponentName]);
+               Minimum := Minimum + Delta;
+            end
+            else
+            begin
+               Minimum := Minimum + MaterialsList[Index].Quantity;
+            end;
+            break;
+         end;
+         Minimum := Minimum + MaterialsList[Index].Quantity;
+      end;
+      if (not Assigned(Material)) then
+         Reader.Tokens.Error('Could not find minimum component "%s"', [ComponentName]);
+   end
+   else
+   begin
+      FMinimumFunctionalQuantity := TQuantity64.FromUnits(ReadNumber(Reader.Tokens, 0, Total.AsInt64)); // $R-
+      if (FMinimumFunctionalQuantity = TQuantity64.One) then
+         Reader.Tokens.ReadIdentifier('unit')
+      else
+         Reader.Tokens.ReadIdentifier('units');
+   end;
    FBillOfMaterials := MaterialsList.Distill();
    FTotalQuantityCache := ComputeTotalQuantity();
    FMassCache := ComputeMass();
@@ -231,16 +269,16 @@ begin
    Result := Length(FBillOfMaterials); // $R-
 end;
 
-function TStructureFeatureClass.ComputeTotalQuantity(): TQuantity32;
+function TStructureFeatureClass.ComputeTotalQuantity(): TQuantity64;
 var
    Index: Cardinal;
 begin
-   Result := TQuantity32.Zero;
+   Result := TQuantity64.Zero;
    if (Length(FBillOfMaterials) > 0) then
    begin
       for Index := Low(FBillOfMaterials) to High(FBillOfMaterials) do // $R-
       begin
-         Assert(FBillOfMaterials[Index].Quantity < TQuantity32.Max - Result);
+         Assert(FBillOfMaterials[Index].Quantity < TQuantity64.Max - Result);
          Result := Result + FBillOfMaterials[Index].Quantity; // $R-
       end;
    end;
@@ -268,7 +306,7 @@ begin
    inherited Create(ASystem);
    Assert(Assigned(AFeatureClass));
    FFeatureClass := AFeatureClass;
-   if ((AMaterialsQuantity < FFeatureClass.TotalQuantity) or (AStructuralIntegrity < FFeatureClass.TotalQuantity.AsCardinal)) then
+   if ((AMaterialsQuantity < FFeatureClass.TotalQuantity) or (AStructuralIntegrity < FFeatureClass.TotalQuantity.AsInt64)) then
    begin
       InitBuildingState();
       FBuildingState^.StructuralIntegrity := AStructuralIntegrity;
@@ -349,7 +387,7 @@ end;
 function TStructureFeatureNode.GetNextStructureQuantity(): TQuantity32;
 var
    Index: Cardinal;
-   Level: TQuantity32;
+   Level: TQuantity64;
 begin
    Assert(Assigned(GetNextStructureMaterial()));
    if (Assigned(FBuildingState) and (FBuildingState^.MaterialsQuantity < FFeatureClass.TotalQuantity)) then
@@ -360,7 +398,7 @@ begin
          Level := Level + FFeatureClass.BillOfMaterials[Index].Quantity;
          if (FBuildingState^.MaterialsQuantity < Level) then
          begin
-            Result := Level - FBuildingState^.MaterialsQuantity; // $R-
+            Result := TQuantity32.FromQuantity64(Level - FBuildingState^.MaterialsQuantity); // $R-
             exit;
          end;
       end;
@@ -372,7 +410,8 @@ end;
 function TStructureFeatureNode.GetMass(): TMass; // kg
 var
    MaterialIndex: Cardinal;
-   Remaining, CurrentQuantity: TQuantity32;
+   Remaining: TQuantity64;
+   CurrentQuantity: TQuantity32;
 begin
    Result := TMass.Zero;
    if (Assigned(FBuildingState)) then
@@ -425,14 +464,15 @@ function TStructureFeatureNode.HandleBusMessage(Message: TBusMessage): THandleBu
 var
    RubbleMessage: TRubbleCollectionMessage;
    DismantleMessage: TDismantleMessage;
-   TotalQuantity, CurrentQuantity: TQuantity32;
+   TotalQuantity: TQuantity64;
+   CurrentQuantity: TQuantity32;
    Index: Cardinal;
    LineItem: TMaterialLineItem;
    Store: TStoreMaterialBusMessage;
 begin
    if (Message is TCheckDisabledBusMessage) then
    begin
-      if (Assigned(FBuildingState) and (FBuildingState^.StructuralIntegrity < FFeatureClass.MinimumFunctionalQuantity.AsCardinal)) then
+      if (Assigned(FBuildingState) and (FBuildingState^.StructuralIntegrity < FFeatureClass.MinimumFunctionalQuantity.AsInt64)) then
          (Message as TCheckDisabledBusMessage).AddReason(drStructuralIntegrity);
    end
    else
@@ -514,7 +554,7 @@ begin
             end
             else
             begin
-               CurrentQuantity := TotalQuantity;
+               CurrentQuantity := TQuantity32.FromQuantity64(TotalQuantity);
             end;
             Assert(CurrentQuantity <= TotalQuantity);
             Writeln('  attempting to store ', CurrentQuantity.ToString(), ' of ', LineItem.Material.Name);
@@ -590,8 +630,10 @@ end;
 
 procedure TStructureFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);
 var
-   Index, StructuralIntegrity: Cardinal;
-   Remaining, Quantity, TotalQuantityAlreadyBuilt: TQuantity32;
+   Index: Cardinal;
+   StructuralIntegrity: Int64;
+   Remaining, TotalQuantityAlreadyBuilt: TQuantity64;
+   Quantity: TQuantity32;
    Visibility: TVisibility;
    ClassKnown: Boolean;
 begin
@@ -628,9 +670,9 @@ begin
                Assert(Remaining.IsPositive);
                // expected quantity unknown
                if (Remaining < Quantity) then
-                  Writer.WriteCardinal(Remaining.AsCardinal)
+                  Writer.WriteInt64(Remaining.AsInt64)
                else
-                  Writer.WriteCardinal(Quantity.AsCardinal);
+                  Writer.WriteInt64(Quantity.AsCardinal);
                Writer.WriteStringReference(''); // component name unknown
             end;
             Writer.WriteStringReference(FFeatureClass.BillOfMaterials[Index].Material.AmbiguousName);
@@ -657,7 +699,7 @@ begin
             Writer.WriteCardinal(FBuildingState^.Builder.Parent.ID(DynastyIndex))
          else
             Writer.WriteCardinal(0);
-         Writer.WriteCardinal(TotalQuantityAlreadyBuilt.AsCardinal);
+         Writer.WriteInt64(TotalQuantityAlreadyBuilt.AsInt64);
          Writer.WriteDouble(FBuildingState^.MaterialsQuantityRate.AsDouble);
          StructuralIntegrity := FBuildingState^.StructuralIntegrity;
          if (FBuildingState^.StructuralIntegrityRate.IsNotExactZero and Assigned(FBuildingState^.NextEvent)) then
@@ -665,26 +707,26 @@ begin
             Assert(not FBuildingState^.AnchorTime.IsInfinite);
             Inc(StructuralIntegrity, Round((System.Now - FBuildingState^.AnchorTime) * FBuildingState^.StructuralIntegrityRate));
          end;
-         if (StructuralIntegrity > TotalQuantityAlreadyBuilt.AsCardinal) then
-            StructuralIntegrity := TotalQuantityAlreadyBuilt.AsCardinal;
-         Writer.WriteCardinal(StructuralIntegrity);
+         if (StructuralIntegrity > TotalQuantityAlreadyBuilt.AsInt64) then
+            StructuralIntegrity := TotalQuantityAlreadyBuilt.AsInt64;
+         Writer.WriteInt64(StructuralIntegrity);
          Writer.WriteDouble(FBuildingState^.StructuralIntegrityRate.AsDouble);
       end
       else
       begin
          Writer.WriteCardinal(0);
-         Writer.WriteCardinal(FFeatureClass.TotalQuantity.AsCardinal);
+         Writer.WriteInt64(FFeatureClass.TotalQuantity.AsInt64);
          Writer.WriteDouble(0.0);
-         Writer.WriteCardinal(FFeatureClass.TotalQuantity.AsCardinal);
+         Writer.WriteInt64(FFeatureClass.TotalQuantity.AsInt64);
          Writer.WriteDouble(0.0);
       end;
       if (ClassKnown) then
       begin
-         Writer.WriteCardinal(FFeatureClass.MinimumFunctionalQuantity.AsCardinal);
+         Writer.WriteInt64(FFeatureClass.MinimumFunctionalQuantity.AsInt64);
       end
       else
       begin
-         Writer.WriteCardinal(0);
+         Writer.WriteInt64(0);
       end;
    end;
 end;
@@ -693,27 +735,28 @@ procedure TStructureFeatureNode.UpdateJournal(Journal: TJournalWriter);
 begin
    if (Assigned(FBuildingState)) then
    begin
-      Journal.WriteCardinal(FBuildingState^.MaterialsQuantity.AsCardinal);
-      Journal.WriteCardinal(FBuildingState^.StructuralIntegrity);
+      Journal.WriteInt64(FBuildingState^.MaterialsQuantity.AsInt64);
+      Journal.WriteInt64(FBuildingState^.StructuralIntegrity);
       Journal.WriteCardinal(FBuildingState^.Priority);
    end
    else
    begin
-      Journal.WriteCardinal(FFeatureClass.TotalQuantity.AsCardinal);
-      Journal.WriteCardinal(FFeatureClass.TotalQuantity.AsCardinal);
+      Journal.WriteInt64(FFeatureClass.TotalQuantity.AsInt64);
+      Journal.WriteInt64(FFeatureClass.TotalQuantity.AsInt64);
       Journal.WriteCardinal(0);
    end;
 end;
 
 procedure TStructureFeatureNode.ApplyJournal(Journal: TJournalReader);
 var
-   MaterialsQuantity: TQuantity32;
-   StructuralIntegrity, Priority: Cardinal;
+   MaterialsQuantity: TQuantity64;
+   StructuralIntegrity: Int64;
+   Priority: Cardinal;
 begin
-   MaterialsQuantity := TQuantity32.FromUnits(Journal.ReadCardinal());
-   StructuralIntegrity := Journal.ReadCardinal();
+   MaterialsQuantity := TQuantity64.FromUnits(Journal.ReadInt64());
+   StructuralIntegrity := Journal.ReadInt64();
    Priority := Journal.ReadCardinal();
-   if ((MaterialsQuantity < FFeatureClass.TotalQuantity) or (StructuralIntegrity < FFeatureClass.TotalQuantity.AsCardinal)) then
+   if ((MaterialsQuantity < FFeatureClass.TotalQuantity) or (StructuralIntegrity < FFeatureClass.TotalQuantity.AsInt64)) then
    begin
       if (not Assigned(FBuildingState)) then
          InitBuildingState();
@@ -818,7 +861,7 @@ begin
       end;
    end
    else
-   if (FBuildingState^.StructuralIntegrity = FFeatureClass.TotalQuantity.AsCardinal) then
+   if (FBuildingState^.StructuralIntegrity = FFeatureClass.TotalQuantity.AsInt64) then
    begin
       // we're done!
       if (Assigned(FBuildingState^.Region)) then
@@ -844,7 +887,7 @@ begin
    else
    begin
       // we're done with materials, but not structural integrity
-      Assert(FBuildingState^.StructuralIntegrity < FFeatureClass.TotalQuantity.AsCardinal);
+      Assert(FBuildingState^.StructuralIntegrity < FFeatureClass.TotalQuantity.AsInt64);
       Assert(Assigned(FBuildingState^.Builder));
       if (Assigned(FBuildingState^.Region)) then
       begin
@@ -868,7 +911,7 @@ var
    NextMaterial: TMaterial;
    NextQuantity: TQuantity32;
    Index: Cardinal;
-   Level: TQuantity32;
+   Level: TQuantity64;
    Obtain: TObtainMaterialBusMessage;
    ObtainedMaterial: TMaterialQuantity64;
 begin
@@ -892,7 +935,7 @@ begin
          // TODO: check if the material is known to the dynasty
          // if it is not, then we cannot fetch it.
          NextMaterial := FFeatureClass.BillOfMaterials[Index].Material;
-         NextQuantity := Level - FBuildingState^.MaterialsQuantity; // $R-
+         NextQuantity := TQuantity32.FromQuantity64(Level - FBuildingState^.MaterialsQuantity);
          Assert(NextQuantity.IsPositive);
          Obtain := TObtainMaterialBusMessage.Create(Parent.Owner, NextMaterial, NextQuantity);
          InjectBusMessage(Obtain);
@@ -950,10 +993,10 @@ begin
          Assert(not FBuildingState^.AnchorTime.IsInfinite);
          Delta := (System.Now - FBuildingState^.AnchorTime) * FBuildingState^.StructuralIntegrityRate;
          Changes := [dkUpdateJournal, dkUpdateClients];
-         if (FBuildingState^.IncStructuralIntegrity(Delta, FFeatureClass.MinimumFunctionalQuantity.AsCardinal)) then
+         if (FBuildingState^.IncStructuralIntegrity(Delta, FFeatureClass.MinimumFunctionalQuantity.AsInt64)) then
             Include(Changes, dkNeedsHandleChanges);
          MarkAsDirty(Changes);
-         Assert(FBuildingState^.StructuralIntegrity <= FFeatureClass.TotalQuantity.AsCardinal);
+         Assert(FBuildingState^.StructuralIntegrity <= FFeatureClass.TotalQuantity.AsInt64);
       end;
    end;
    Assert(Assigned(FBuildingState));
@@ -1060,11 +1103,11 @@ begin
          MarkAsDirty([dkUpdateClients, dkUpdateJournal, dkNeedsHandleChanges]);
       end;
    end;
-   if (FBuildingState^.StructuralIntegrityRate.IsNotExactZero and (FBuildingState^.StructuralIntegrity < FBuildingState^.MaterialsQuantity.AsCardinal)) then
+   if (FBuildingState^.StructuralIntegrityRate.IsNotExactZero and (FBuildingState^.StructuralIntegrity < FBuildingState^.MaterialsQuantity.AsInt64)) then
    begin
       if (Duration.IsNotZero) then
       begin
-         FBuildingState^.IncStructuralIntegrity(Duration * FBuildingState^.StructuralIntegrityRate, FFeatureClass.MinimumFunctionalQuantity.AsCardinal); // result ignored, we always do dkNeedsHandleChanges
+         FBuildingState^.IncStructuralIntegrity(Duration * FBuildingState^.StructuralIntegrityRate, FFeatureClass.MinimumFunctionalQuantity.AsInt64); // result ignored, we always do dkNeedsHandleChanges
          Assert((FBuildingState^.PendingQuantity.IsPositive) = (Assigned(FBuildingState^.PendingMaterial)));
          MarkAsDirty([dkUpdateClients, dkUpdateJournal, dkNeedsHandleChanges]);
       end;
@@ -1112,10 +1155,10 @@ begin
       RemainingTime := FBuildingState^.PendingQuantity / FBuildingState^.MaterialsQuantityRate;
    end
    else
-   if (FBuildingState^.StructuralIntegrityRate.IsNotExactZero and (FBuildingState^.MaterialsQuantity.AsCardinal > FBuildingState^.StructuralIntegrity)) then
+   if (FBuildingState^.StructuralIntegrityRate.IsNotExactZero and (FBuildingState^.MaterialsQuantity.AsInt64 > FBuildingState^.StructuralIntegrity)) then
    begin
       Assert((FBuildingState^.PendingQuantity.IsPositive) xor (FBuildingState^.MaterialsQuantity = FFeatureClass.TotalQuantity));
-      RemainingTime := (FBuildingState^.MaterialsQuantity.AsCardinal - FBuildingState^.StructuralIntegrity) / FBuildingState^.StructuralIntegrityRate;
+      RemainingTime := (FBuildingState^.MaterialsQuantity.AsInt64 - FBuildingState^.StructuralIntegrity) / FBuildingState^.StructuralIntegrityRate;
       // we may shorten this in case we would hit the structural integrity sooner, see below
    end
    else
@@ -1123,7 +1166,7 @@ begin
       // nothing to wait for
       exit;
    end;
-   if (FBuildingState^.StructuralIntegrity < FFeatureClass.MinimumFunctionalQuantity.AsCardinal) then
+   if (FBuildingState^.StructuralIntegrity < FFeatureClass.MinimumFunctionalQuantity.AsInt64) then
    begin
       if (FBuildingState^.MaterialsQuantity < FFeatureClass.MinimumFunctionalQuantity) then
       begin
@@ -1146,7 +1189,7 @@ begin
       end
       else
       begin
-         TimeUntilIntegrityFunctional := (FFeatureClass.MinimumFunctionalQuantity.AsCardinal - FBuildingState^.StructuralIntegrity) / FBuildingState^.StructuralIntegrityRate;
+         TimeUntilIntegrityFunctional := (FFeatureClass.MinimumFunctionalQuantity.AsInt64 - FBuildingState^.StructuralIntegrity) / FBuildingState^.StructuralIntegrityRate;
       end;
       if (TimeUntilMaterialFunctional > TimeUntilIntegrityFunctional) then
          TimeUntilIntegrityFunctional := TimeUntilMaterialFunctional;
@@ -1190,7 +1233,7 @@ begin
       begin
          DeliverMaterialConsumer(TQuantity32.Zero); // update structural integrity
       end;
-      if (FBuildingState^.StructuralIntegrity = FFeatureClass.TotalQuantity.AsCardinal) then
+      if (FBuildingState^.StructuralIntegrity = FFeatureClass.TotalQuantity.AsInt64) then
       begin
          // we're done!
          Assert(FBuildingState^.MaterialsQuantity = FFeatureClass.TotalQuantity);
@@ -1213,7 +1256,7 @@ begin
          FBuildingState^.MaterialsQuantityRate := TQuantityRate.Zero;
          Assert(not Assigned(FBuildingState^.PendingMaterial)); // reset by DeliverMaterialConsumer
          Assert(FBuildingState^.PendingQuantity.IsZero); // reset by DeliverMaterialConsumer
-         Assert(FBuildingState^.StructuralIntegrity < FFeatureClass.TotalQuantity.AsCardinal);
+         Assert(FBuildingState^.StructuralIntegrity < FFeatureClass.TotalQuantity.AsInt64);
          Assert(FBuildingState^.StructuralIntegrityRate.IsNotNearZero);
          {$IFOPT C+} FBuildingState^.AnchorTime := TTimeInMilliseconds.NegInfinity; {$ENDIF}
          Assert(FBuildingState^.MaterialsQuantityRate.IsNearZero);
@@ -1226,7 +1269,7 @@ begin
          Assert(FBuildingState^.PendingQuantity.IsZero); // reset by DeliverMaterialConsumer
          FBuildingState^.Region.ClientChanged();
          Assert(FBuildingState^.MaterialsQuantityRate.IsNearZero); // reset by ReconsiderMaterialConsumer calling PauseMaterialConsumer
-         Assert(FBuildingState^.StructuralIntegrity < FFeatureClass.TotalQuantity.AsCardinal);
+         Assert(FBuildingState^.StructuralIntegrity < FFeatureClass.TotalQuantity.AsInt64);
          Assert(FBuildingState^.StructuralIntegrityRate.IsNotNearZero);
          {$IFOPT C+} FBuildingState^.AnchorTime := TTimeInMilliseconds.NegInfinity; {$ENDIF}
          Assert(FBuildingState^.MaterialsQuantityRate.IsExactZero);
@@ -1234,7 +1277,7 @@ begin
       else
       begin
          Assert(FBuildingState^.PendingQuantity.IsPositive);
-         Assert(FBuildingState^.StructuralIntegrity < FFeatureClass.TotalQuantity.AsCardinal);
+         Assert(FBuildingState^.StructuralIntegrity < FFeatureClass.TotalQuantity.AsInt64);
          Assert(FBuildingState^.StructuralIntegrityRate.IsNotNearZero);
          {$IFOPT C+} FBuildingState^.AnchorTime := TTimeInMilliseconds.NegInfinity; {$ENDIF}
          Assert(bsTriggered in FBuildingState^.Flags); // so we're NOT going to get retriggered
@@ -1242,15 +1285,15 @@ begin
       end;
    end
    else
-   if (FBuildingState^.StructuralIntegrityRate.IsNotExactZero and (FBuildingState^.MaterialsQuantity.AsCardinal > FBuildingState^.StructuralIntegrity)) then
+   if (FBuildingState^.StructuralIntegrityRate.IsNotExactZero and (FBuildingState^.MaterialsQuantity.AsInt64 > FBuildingState^.StructuralIntegrity)) then
    begin
       Duration := System.Now - FBuildingState^.AnchorTime;
       Assert(Duration.IsNotZero and Duration.IsPositive);
       Changes := [dkUpdateClients, dkUpdateJournal];
-      if (FBuildingState^.IncStructuralIntegrity(Duration * FBuildingState^.StructuralIntegrityRate, FFeatureClass.MinimumFunctionalQuantity.AsCardinal)) then
+      if (FBuildingState^.IncStructuralIntegrity(Duration * FBuildingState^.StructuralIntegrityRate, FFeatureClass.MinimumFunctionalQuantity.AsInt64)) then
          Include(Changes, dkNeedsHandleChanges);
       MarkAsDirty(Changes);
-      if (FBuildingState^.StructuralIntegrity = FFeatureClass.TotalQuantity.AsCardinal) then
+      if (FBuildingState^.StructuralIntegrity = FFeatureClass.TotalQuantity.AsInt64) then
       begin
          // we're done!
          Assert(not Assigned(FBuildingState^.Region));

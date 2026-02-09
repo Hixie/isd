@@ -42,6 +42,7 @@ begin
    if (not DirectoryExists(BaseDirectory + 'defaults')) then
       raise Exception.Create('Specified directory is not fully configured for tests.');
    CreateDir(BaseDirectory + 'runtime');
+   //for Index := 0 to Tests.Length - 1 do // $R-
    for Index := Tests.Length - 1 downto 0 do // $R-
    begin
       Test := Tests[Index];

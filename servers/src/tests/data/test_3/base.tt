@@ -174,8 +174,8 @@ asset "Colony ship" {
   feature: BuilderBus;
   feature: OnOff;
   feature: Structure size 500m, materials (
-    "Ship": "Rare Material #1" * 1000,
-  ), minimum 1000;
+    "Ship": "Rare Material #1" * 1000 units,
+  ), minimum 1000 units;
   feature: Population max 2000;
   feature: SpaceSensor 10 to orbit, up 3 down 2, min size 2e5m, light;
   feature: GridSensor light;
