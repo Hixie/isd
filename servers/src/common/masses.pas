@@ -97,6 +97,7 @@ type
       function GetIsZero(): Boolean; inline;
       function GetIsNotZero(): Boolean; inline;
       function GetIsPositive(): Boolean; inline;
+      class function GetZero(): TMassPerUnit; inline; static;
       class function GetInfinity(): TMassPerUnit; inline; static;
    public
       constructor FromKgPerUnit(A: Double); // Kilograms
@@ -107,6 +108,7 @@ type
       property IsNotZero: Boolean read GetIsNotZero; // > 0
       property IsPositive: Boolean read GetIsPositive; // > 0
       property AsDouble: Double read Value; // for storage, restore with FromKgPerUnit(Double)
+      class property Zero: TMassPerUnit read GetZero;
       class property Infinity: TMassPerUnit read GetInfinity;
    end;
 
@@ -405,6 +407,11 @@ end;
 function TMassPerUnit.GetIsPositive(): Boolean;
 begin
    Result := Value > 0;
+end;
+
+class function TMassPerUnit.GetZero(): TMassPerUnit;
+begin
+   Result.Value := 0.0;
 end;
 
 class function TMassPerUnit.GetInfinity(): TMassPerUnit;

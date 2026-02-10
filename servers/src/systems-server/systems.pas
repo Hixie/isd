@@ -431,7 +431,7 @@ type
       function GetResearchById(ID: TResearchID): TResearch; virtual; abstract;
       function GetTopicByName(Name: UTF8String): TTopic; virtual; abstract;
       function GetTopicByIndex(Index: TTopic.TIndex): TTopic; virtual; abstract;
-      function GetMinMassPerOreUnit(): TMassPerUnit; virtual; abstract;
+      function GetMaxMassPerOreUnit(): TMassPerUnit; virtual; abstract;
    public
       function HandleBusMessage(Asset: TAssetNode; Message: TBusMessage): THandleBusMessageResult; virtual; abstract;
       function CreateRegion(CellSize: Double; Dimension: Cardinal; System: TSystem): TAssetNode; virtual; abstract;
@@ -442,7 +442,7 @@ type
       property ResearchesByID[ID: TResearchID]: TResearch read GetResearchById;
       property TopicsByName[Name: UTF8String]: TTopic read GetTopicByName;
       property TopicsByIndex[Index: TTopic.TIndex]: TTopic read GetTopicByIndex;
-      property MinMassPerOreUnit: TMassPerUnit read GetMinMassPerOreUnit;
+      property MaxMassPerOreUnit: TMassPerUnit read GetMaxMassPerOreUnit;
    end;
 
    TAssetNode = class(TDebugObject)

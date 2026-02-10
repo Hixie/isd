@@ -301,7 +301,7 @@ type
       function GetTotalOrePileCapacity(Dynasty: TDynasty): TMass; // kg total for all piles
       function GetTotalOrePileMass(Dynasty: TDynasty): TMass; // total for all piles
       function GetTotalOrePileMassFlowRate(Dynasty: TDynasty): TMassRate; // kg/s (total for all piles; actual miner rate minus total refinery rate)
-      function GetMinOreMassTransfer(): TMass; // kg mass that would need to be transferred from the ground to move at least one unit of quantity
+      function GetMaxUnitOreMassTransfer(): TMass; // kg mass of largest single quantity we could mine
       function GetTotalMaterialPileQuantity(Dynasty: TDynasty; Material: TMaterial): TQuantity64;
       function GetTotalMaterialPileQuantityFlowRate(Dynasty: TDynasty; Material: TMaterial): TQuantityRate; // units/s
       function GetTotalMaterialPileCapacity(Dynasty: TDynasty; Material: TMaterial): TQuantity64;
@@ -1008,24 +1008,24 @@ begin
    Result := GetTotalOrePileMassFlowRate(Dynasty) / RPileRatio;
 end;
 
-function TRegionFeatureNode.GetMinOreMassTransfer(): TMass;
+function TRegionFeatureNode.GetMaxUnitOreMassTransfer(): TMass;
 var
    Ore: TOres;
    Quantity: TQuantity64;
    TransferMassPerUnit: TMassPerUnit;
-   Min: TMass;
+   Max: TMass;
 begin
-   Min := TQuantity64.One * System.Encyclopedia.MinMassPerOreUnit;
-   Result := TMass.Infinity;
+   Max := TQuantity64.One * System.Encyclopedia.MaxMassPerOreUnit;
+   Result := TMass.Zero;
    for Ore in TOres do
    begin
       Quantity := FGroundComposition[Ore];
       if (Quantity.IsPositive) then
       begin
          TransferMassPerUnit := System.Encyclopedia.Materials[Ore].MassPerUnit;
-         if (TQuantity64.One * TransferMassPerUnit < Result) then
+         if (TQuantity64.One * TransferMassPerUnit > Result) then
             Result := TQuantity64.One * TransferMassPerUnit;
-         if (Result <= Min) then
+         if (Result >= Max) then
             exit;
       end;
    end;
@@ -2225,8 +2225,11 @@ begin
                OrePile.RegionAdjustedOrePiles(); // TODO: only notify if the actual rate of flow for that pile changed
             end;
          end;
-         OrePileCapacity := OrePileCapacity - OrePileCapacity mod GetMinOreMassTransfer(); // $R-
          Writeln('  total ore pile capacity: ', OrePileCapacity.ToString());
+         Writeln('  max unit ore mass: ', GetMaxUnitOreMassTransfer().ToString());
+         if ((OrePileCapacity > TotalOrePileMass) and (OrePileCapacity - TotalOrePileMass < GetMaxUnitOreMassTransfer())) then
+            OrePileCapacity := TotalOrePileMass;
+         Writeln('  adjusted total ore pile capacity: ', OrePileCapacity.ToString());
 
          // Sanity-check ore piles
          Assert(TotalOrePileMass <= OrePileCapacity, 'ORE PILE OVERFLOW');
@@ -2700,7 +2703,6 @@ begin
          if (TotalNetOrePileGrowthRate.IsPositive) then
          begin
             RemainingOrePileCapacity := OrePileCapacity - TotalOrePileMass;
-            Assert((RemainingOrePileCapacity mod GetMinOreMassTransfer()).IsZero);
             if (RemainingOrePileCapacity.IsPositive) then
             begin
                TimeUntilOrePilesFull := RemainingOrePileCapacity / TotalNetOrePileGrowthRate;

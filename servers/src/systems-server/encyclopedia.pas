@@ -20,7 +20,7 @@ type
       FResearchesByID: TResearchHashTable;
       FTopicsByName: TTopicHashTable;
       FProtoplanetaryMaterials: TMaterial.TArray; // order matters, it's used in protoplanetary generation
-      FMinMassPerOreUnit: TMassPerUnit; // cached value based on ores in materials passed to constructor
+      FMaxMassPerOreUnit: TMassPerUnit; // cached value based on ores in materials passed to constructor
       function GetStarClass(Category: TStarCategory): TAssetClass;
    protected
       function GetAssetClass(ID: Integer): TAssetClass; override;
@@ -29,7 +29,7 @@ type
       function GetResearchById(ID: TResearchID): TResearch; override;
       function GetTopicByName(Name: UTF8String): TTopic; override;
       function GetTopicByIndex(Index: TTopic.TIndex): TTopic; override;
-      function GetMinMassPerOreUnit(): TMassPerUnit; override;
+      function GetMaxMassPerOreUnit(): TMassPerUnit; override;
       procedure RegisterAssetClass(AssetClass: TAssetClass);
    public
       constructor Create(Settings: PSettings; const AMaterials: TMaterial.TArray; TechTree: TTechnologyTree); // AMaterials must contain all TOres
@@ -42,7 +42,7 @@ type
       procedure CondenseProtoplanetaryDisks(Space: TSolarSystemFeatureNode; System: TSystem);
       procedure FindTemperatureEquilibria(System: TSystem);
       procedure SpawnColonyShip(Dynasty: TDynasty; System: TSystem);
-      property MinMassPerOreUnit: TMassPerUnit read FMinMassPerOreUnit;
+      property MaxMassPerOreUnit: TMassPerUnit read FMaxMassPerOreUnit;
    public
       function HandleBusMessage(Asset: TAssetNode; Message: TBusMessage): THandleBusMessageResult; override;
       function CreateRegion(CellSize: Double; Dimension: Cardinal; System: TSystem): TAssetNode; override;
@@ -91,12 +91,12 @@ begin
    FMaterials := TMaterialIDHashTable.Create();
    FProtoplanetaryMaterials := AMaterials;
    RegisterMaterials(FProtoplanetaryMaterials);
-   FMinMassPerOreUnit := TMassPerUnit.Infinity;
+   FMaxMassPerOreUnit := TMassPerUnit.Zero;
    for Ore in TOres do
    begin
       Assert(FMaterials.Has(Ore), HexStr(FMaterials) + ' does not have ore ' + IntToStr(Ore));
-      if (FMaterials[Ore].MassPerUnit < FMinMassPerOreUnit) then
-         FMinMassPerOreUnit := FMaterials[Ore].MassPerUnit;
+      if (FMaterials[Ore].MassPerUnit > FMaxMassPerOreUnit) then
+         FMaxMassPerOreUnit := FMaterials[Ore].MassPerUnit;
    end;
    FAssetClasses := TAssetClassIDHashTable.Create();
    FResearchesByID := TResearchHashTable.Create();
@@ -204,9 +204,9 @@ begin
    Assert(Result.Index = Index);
 end;
 
-function TEncyclopedia.GetMinMassPerOreUnit(): TMassPerUnit;
+function TEncyclopedia.GetMaxMassPerOreUnit(): TMassPerUnit;
 begin
-   Result := FMinMassPerOreUnit;
+   Result := FMaxMassPerOreUnit;
 end;
 
 procedure TEncyclopedia.RegisterAssetClass(AssetClass: TAssetClass);
