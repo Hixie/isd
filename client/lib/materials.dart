@@ -71,6 +71,29 @@ class Material {
     );
   }
 
+  InlineSpan describeMass(BuildContext context, IconsManager icons, double mass, { required double iconSize }) {
+    final String prefix, suffix;
+    switch (kind) {
+      case MaterialKind.ore:
+        prefix = prettyMass(mass);
+        suffix = '';
+      case MaterialKind.component:
+        prefix = prettyQuantity((mass / massPerUnit).round());
+        suffix = ' (${prettyMass(mass)})';
+      case MaterialKind.fluid:
+        prefix = prettyVolume(mass / density);
+        suffix = ' (${prettyMass(mass)})';
+    }
+    final Widget icon = asIcon(context, size: iconSize, icons: icons);
+    return TextSpan(
+      text: '$prefix ',
+      children: <InlineSpan>[
+        WidgetSpan(child: icon),
+        TextSpan(text: ' $name$suffix'),
+      ],
+    );
+  }
+
   DecorationImage asDecorationImage(BuildContext context, IconsManager icons, { required double size }) {
     return DecorationImage(
       image: IconImageProvider(icon, icons),

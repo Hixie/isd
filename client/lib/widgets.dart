@@ -15,6 +15,7 @@ final CurveTween hudTween = CurveTween(curve: Curves.ease);
 const Duration hudAnimationDuration = Duration(milliseconds: 250);
 const double hudAnimationPauseLength = 75.0; // TODO: convert this to a duration
 
+const TextStyle red = TextStyle(color: Color(0xFFFF3333), fontWeight: FontWeight.bold);
 const TextStyle bold = TextStyle(fontWeight: FontWeight.bold);
 const TextStyle italic = TextStyle(fontStyle: FontStyle.italic);
 
@@ -598,24 +599,25 @@ class KnowledgeDish extends StatelessWidget {
           ),
           child: SizedBox(
             height: IconsManager.knowledgeIconSize + padding * 2,
-            child: ListView(
-              // TODO: scrollbar?
-              scrollDirection: Axis.horizontal,
-              children: <Widget>[
-                for (AssetClass assetClass in assetClasses)
-                  Padding(
-                    key: ObjectKey(assetClass),
-                    padding: const EdgeInsets.only(left: padding, top: padding, bottom: padding),
-                    child: assetClass.asKnowledgeIcon(context),
-                  ),
-                for (Material material in materials)
-                  Padding(
-                    key: ObjectKey(material),
-                    padding: const EdgeInsets.only(left: padding, top: padding, bottom: padding),
-                    child: material.asKnowledgeIcon(context),
-                  ),
-                const SizedBox(width: padding),
-              ],
+            child: Scrollbar( // TODO: figure out why scrollbar interactivity isn't working here
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                children: <Widget>[
+                  for (AssetClass assetClass in assetClasses)
+                    Padding(
+                      key: ObjectKey(assetClass),
+                      padding: const EdgeInsets.only(left: padding, top: padding, bottom: padding),
+                      child: assetClass.asKnowledgeIcon(context),
+                    ),
+                  for (Material material in materials)
+                    Padding(
+                      key: ObjectKey(material),
+                      padding: const EdgeInsets.only(left: padding, top: padding, bottom: padding),
+                      child: material.asKnowledgeIcon(context),
+                    ),
+                  const SizedBox(width: padding),
+                ],
+              ),
             ),
           ),
         ),

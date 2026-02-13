@@ -62,11 +62,9 @@ abstract class Feature extends Node {
 
   Widget buildRenderer(BuildContext context); // this one is abstract; containers always need to build something
 
-  Widget? buildHeader(BuildContext context) => null;
-
   Widget? buildDialog(BuildContext context) {
     debugPrint('warning: $runtimeType has no buildDialog');
-     return null;
+    return null;
   }
 
   @override
@@ -378,15 +376,6 @@ class AssetNode extends WorldNode {
     return backgrounds.single;
   }
 
-  Widget? buildHeader(BuildContext context) {
-    for (Feature feature in _features) {
-      final Widget? result = feature.buildHeader(context);
-      if (result != null)
-        return result;
-    }
-    return null;
-  }
-
   Widget asIcon(BuildContext context, { required double size, IconsManager? icons, String? tooltip }) {
     return IconsManager.icon(context, assetClass.icon, size: size, icons: icons, tooltip: tooltip);
   }
@@ -609,6 +598,18 @@ class _AssetInspectorState extends State<AssetInspector> {
           ),
         );
       }
+    } else if (parentAsset is SystemNode) {
+      details.add(
+        Padding(
+          padding: dialogPadding,
+          child: Text.rich(
+            TextSpan(
+              // TODO: enable this to be a hyperlink
+              text: 'Location: System ${prettySystemId(parentAsset.id)}',
+            ),
+          ),
+        ),
+      );
     }
     for (Feature feature in node._features) {
       final Widget? section = feature.buildDialog(context);

@@ -1,8 +1,15 @@
 import 'package:flutter/material.dart';
 
+import '../abilities/knowledge.dart';
+import '../abilities/message.dart';
 import '../assets.dart';
+import '../hud.dart';
+import '../prettifiers.dart';
+import '../root.dart';
 import '../widgets.dart';
 import '../world.dart';
+
+typedef MailOpener = void Function(BuildContext context);
 
 class MessageBoardFeature extends ContainerFeature {
   MessageBoardFeature(this.children);
@@ -10,9 +17,21 @@ class MessageBoardFeature extends ContainerFeature {
   // consider this read-only; the entire MessageBoardFeature gets replaced when the child list changes
   final List<AssetNode> children;
 
+  MessageBoardState? _state;
+  
+  @override
+  void init(Feature? oldFeature) {
+    super.init(oldFeature);
+    if (oldFeature == null) {
+      _state = MessageBoardState(this);
+    } else {
+      _state = (oldFeature as MessageBoardFeature)._state;
+      _state!.update(this);
+    }
+  }
+
   @override
   Offset findLocationForChild(AssetNode child, List<VoidCallback> callbacks) {
-    // final MessageBoardParameters childData = children[child]!;
     return Offset.zero;
   }
 
@@ -48,126 +67,254 @@ class MessageBoardFeature extends ContainerFeature {
 
   @override
   Widget buildRenderer(BuildContext context) {
-    return NoZoom(
-      threshold: 42.0,
-      child: StateManagerBuilder<MessagesState>(
-        creator: () => MessagesState(children.length),
-        disposer: (MessagesState state) => state.dispose(),
-        builder: (BuildContext context, MessagesState state) {
-          if (state.selectedMessage == null) {
-            return ListView.builder(
-              itemCount: children.length,
-              itemBuilder: (BuildContext context, int index) {
-                return MessageBoardMode(
-                  showBody: false,
-                  onSelect: () {
-                    state.selectedMessage = index;
-                  },
-                  child: children[index].build(context),
-                );
-              },
-            );
-          }
-          final int index = state.selectedMessage!;
-          final AssetNode child = children[index];
-          return MessageBoardMode(
-            onUp: state.up,
-            onLeft: state.left,
-            onRight: state.right,
-            child: Builder(
-              builder: (BuildContext context) => Column(
-                children: <Widget>[
-                  AppBar(
-                    leading: IconButton(
-                      icon: const Icon(Icons.arrow_upward),
-                      tooltip: 'Go to message list',
-                      onPressed: state.up,
-                    ),
-                    title: child.buildHeader(context),
-                    actions: <Widget>[
-                      IconButton(
-                        icon: const Icon(Icons.arrow_back),
-                        tooltip: 'Go to previous message',
-                        onPressed: state.left,
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.arrow_forward),
-                        tooltip: 'Go to next message',
-                        onPressed: state.right,
-                      ),
-                    ],
-                  ),
-                  Expanded(
-                    child: SingleChildScrollView(
-                      child: Card(
-                        child: child.buildRenderer(context),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+    return ListenableBuilder(
+      listenable: _state!,
+      builder: (BuildContext context, Widget? child) {
+        return FittedBox(
+          child: IconButton(
+            icon: Badge(
+              isLabelVisible: _state!.hasUnread,
+              label: Text('${_state!.unreadCount}'),
+              child: const Icon(Icons.mail),
             ),
-          );
-        },
-      ),
+            tooltip: 'Open mailbox',
+            onPressed: () => _state!.openMail(context),
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget buildDialog(BuildContext context) {
+    return ListBody(
+      children: <Widget>[
+        const Text('Mail', style: bold),
+        Padding(
+          padding: featurePadding,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              if (children.isEmpty)
+                const Text('You have no messages.', style: italic)
+              else
+                Text('You have ${_state!.unreadCount} unread messages out of ${_state!.totalCount} total messages.'),
+              SizedBox(height: featurePadding.top),
+              OutlinedButton(
+                child: const Text('Open mailbox'),
+                onPressed: () async {
+                  _state!.openMail(context);
+                },
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
 
-class MessageBoardMode extends InheritedWidget {
-  const MessageBoardMode({
-    super.key,
-    this.showBody = true,
-    this.onSelect,
-    this.onUp,
-    this.onLeft,
-    this.onRight,
+class _MessageBoardStateInheritedWidget extends InheritedWidget {
+  const _MessageBoardStateInheritedWidget({
+    // super.key,
+    required this.state,
     required super.child,
   });
 
-  final bool showBody;
-  final VoidCallback? onSelect;
-  final VoidCallback? onUp;
-  final VoidCallback? onLeft;
-  final VoidCallback? onRight;
-
-  static MessageBoardMode? of(BuildContext context) {
-    return context.dependOnInheritedWidgetOfExactType<MessageBoardMode>();
-  }
+  final MessageBoardState state;
 
   @override
-  bool updateShouldNotify(MessageBoardMode oldWidget) => oldWidget.showBody != showBody;
+  bool updateShouldNotify(_MessageBoardStateInheritedWidget oldWidget) => oldWidget.state != state;
 }
 
-class MessagesState extends ChangeNotifier {
-  MessagesState(this._count);
+class MessageBoardState extends ChangeNotifier {
+  MessageBoardState(this._board);
 
-  int get count => _count;
-  int _count = 0;
-  set count(int value) {
-    _count = value;
-    if (_selectedMessage != null && _selectedMessage! >= _count) {
-      _selectedMessage = null;
-      notifyListeners();
-    }
-  }
+  MessageBoardFeature get board => _board;
+  MessageBoardFeature _board;
 
-  int? get selectedMessage => _selectedMessage;
-  int? _selectedMessage;
-  set selectedMessage(int? value) {
-    _selectedMessage = value;
+  final Set<AssetNode> _subscribedChildren = <AssetNode>{};
+  
+  void update(MessageBoardFeature value) { // ignore: use_setters_to_change_properties
+    _unsubscribeAllChildren();
+    _board = value;
+    _dirty = true;
     notifyListeners();
   }
 
-  VoidCallback? get up => selectedMessage == null ? null : () {
-    selectedMessage = null;
-  };
+  bool get hasUnread => unreadCount > 0;
+  int get unreadCount {
+    if (_dirty)
+      _updateCaches();
+    return _unreadCount;
+  }
+  int get totalCount {
+    if (_dirty)
+      _updateCaches();
+    return _totalCount;
+  }
 
-  VoidCallback? get left => selectedMessage == null || selectedMessage! <= 0 ? null : () {
-    selectedMessage = selectedMessage! - 1;
-  };
+  bool _dirty = true;
+  int _unreadCount = 0;
+  int _totalCount = 0;
+  
+  void _updateCaches() {
+    _unreadCount = 0;
+    _totalCount = 0;
+    for (AssetNode child in board.children) {
+      bool found = false;
+      for (Feature feature in child.features) {
+        if (feature is MessageFeature) {
+          found = true;
+          if (!feature.isRead)
+            _unreadCount += 1;
+          _totalCount += 1;
+        }
+      }
+      if (found && !_subscribedChildren.contains(child)) {
+        _subscribedChildren.add(child);
+        child.addListener(_childUpdated);
+      }
+    }
+    _dirty = false;
+  }
 
-  VoidCallback? get right => selectedMessage == null || selectedMessage! >= count - 1 ? null : () {
-    selectedMessage = selectedMessage! + 1;
-  };
+  void _unsubscribeAllChildren() {
+    for (AssetNode child in _subscribedChildren)
+      child.removeListener(_childUpdated);
+  }
+
+  void _childUpdated() {
+    _dirty = true;
+    notifyListeners();
+  }
+
+  static MessageBoardState? of(BuildContext context) {
+    return context.dependOnInheritedWidgetOfExactType<_MessageBoardStateInheritedWidget>()?.state;
+  }
+
+  HudHandle? _mailBox;
+
+  bool get isOpen => _mailBox != null;
+
+  static const Size defaultSize = Size(600.0, 500.0);
+  
+  void openMail(BuildContext context) {
+    if (_mailBox != null) {
+      _mailBox!.bringToFront();
+      return;
+    }
+    final Widget widget = ListenableBuilder(
+      listenable: board.parent,
+      builder: (BuildContext context, Widget? child) {
+        final TextStyle style = DefaultTextStyle.of(context).style;
+        return HudDialog(
+          heading: Builder(
+            builder: (BuildContext context) {
+              final double iconSize = DefaultTextStyle.of(context).style.fontSize!;
+              return Row(
+                children: <Widget>[
+                  board.parent.asIcon(context, size: iconSize),
+                  const SizedBox(width: 12.0),
+                  Expanded(child: Text('${board.parent.nameOrClassName} mailbox')),
+                ],
+              );
+            },
+          ),
+          buttons: <Widget>[
+            IconButton(
+              icon: const Icon(Icons.location_searching),
+              onPressed: () {
+                ZoomProvider.centerOn(context, board.parent);
+              },
+            ),
+          ],
+          onClose: _handleClosed,
+          child: ListView.builder(
+            padding: const EdgeInsets.only(top: 8.0, left: 12.0, right: 12.0, bottom: 12.0),
+            itemCount: board.children.length,
+            itemBuilder: (BuildContext context, int index) {
+              final AssetNode asset = board.children[index];
+              return ListenableBuilder(
+                listenable: asset,
+                builder: (BuildContext context, Widget? child) {
+                  String from = '';
+                  String subject = 'no subject';
+                  String body = '';
+                  String when = '';
+                  bool isUnread = false;
+                  MailOpener? open;
+                  bool hasAttachment = false;
+                  for (Feature feature in asset.features) {
+                    switch (feature) {
+                      case final MessageFeature message:
+                        from = message.from ?? '';
+                        subject = message.subject;
+                        body = message.body.replaceAll('\n', ' ');
+                        open = message.openMail;
+                        when = prettyTime(message.timestamp);
+                        if (!message.isRead)
+                          isUnread = true;
+                      case final KnowledgeFeature knowledge:
+                        if (knowledge.assetClasses.isNotEmpty || knowledge.materials.isNotEmpty)
+                          hasAttachment = true;
+                    }
+                  }
+                  TextStyle lineStyle = style;
+                  if (isUnread)
+                    lineStyle = lineStyle.merge(bold);
+                  return InkWell(
+                    onTap: open == null ? null : () => open!(context),
+                    child: DefaultTextStyle.merge(
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      child: Row(
+                        children: <Widget>[
+                          Expanded(
+                            flex: 2,
+                            child: Text(from, style: lineStyle),
+                          ),
+                          const SizedBox(width: 12.0),
+                          Expanded(
+                            flex: 5,
+                            child: Text.rich(
+                              TextSpan(
+                                text: subject,
+                                style: lineStyle,
+                                children: <InlineSpan>[
+                                  TextSpan(text: ' - $body', style: style),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 4.0),
+                          Text(when),
+                          const SizedBox(width: 4.0),
+                          hasAttachment ? const Icon(Icons.attachment) : const Icon(null),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        );
+      },
+    );
+    _mailBox = HudProvider.add(context, defaultSize, widget);
+    notifyListeners();
+  }
+
+  void _handleClosed() {
+    _mailBox = null;
+    notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _mailBox?.cancel();
+    _unsubscribeAllChildren();
+    super.dispose();
+  }
 }

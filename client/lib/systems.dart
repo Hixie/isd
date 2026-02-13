@@ -31,6 +31,7 @@ import 'containers/grid.dart';
 import 'containers/messages.dart';
 import 'containers/orbits.dart';
 import 'containers/proxy.dart';
+import 'containers/sample.dart';
 import 'containers/space.dart';
 import 'containers/surface.dart';
 import 'dynasty.dart';
@@ -158,6 +159,12 @@ class SystemServer {
       system.root = _assets.putIfAbsent(rootAssetID, () => AssetNode(id: rootAssetID, parent: system));
       final double x = reader.readDouble();
       final double y = reader.readDouble();
+      if (_verbose) {
+        print('⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼⎼');
+        print('system $systemID (${systemID.toRadixString(16)}) at $x,$y');
+        print('currentTime: $currentTime @ ${timeFactor}x');
+        print('root asset: $rootAssetID');
+      }
       system.offset = Offset(x - galaxy.diameter / 2.0, y - galaxy.diameter / 2.0);
       galaxy.addSystem(system);
       AssetNode? asset;
@@ -165,9 +172,6 @@ class SystemServer {
       while ((asset = _readAsset(reader)) != null) {
         asset!;
         final int ownerDynastyID = reader.readUInt32();
-        if (_verbose) {
-          debugPrint('parsing asset $asset');
-        }
         asset.ownerDynasty = ownerDynastyID > 0 ? dynastyManager.getDynasty(ownerDynastyID) : null;
         asset.mass = reader.readDouble();
         asset.massFlowRate = reader.readDouble();
@@ -175,6 +179,9 @@ class SystemServer {
         asset.size = reader.readDouble();
         asset.name = reader.readString();
         asset.assetClass = reader.readAssetClass(allowUnknowns: true)!;
+        if (_verbose) {
+          debugPrint('parsing asset $asset');
+        }
         int lastFeatureCode = 0x00;
         int featureCode;
         final List<Feature> features = <Feature>[];
@@ -239,11 +246,11 @@ class SystemServer {
                 ));
               }
               final AssetNode? builder = _readAsset(reader);
-              final int materialsCurrent = reader.readUInt32();
+              final int materialsCurrent = reader.readInt64();
               final double materialsRate = reader.readDouble();
-              final int structuralIntegrityCurrent = reader.readUInt32();
+              final int structuralIntegrityCurrent = reader.readInt64();
               final double structuralIntegrityRate = reader.readDouble();
-              final int structuralIntegrityMin = reader.readUInt32();
+              final int structuralIntegrityMin = reader.readInt64();
               features.add(StructureFeature(
                 structuralComponents: components,
                 timeOrigin: currentTime,
@@ -376,19 +383,21 @@ class SystemServer {
               assert(paragraphs.length >= 3);
               final String subject = paragraphs.removeAt(0);
               const String fromPrefix = 'From: ';
-              assert(paragraphs.first.startsWith(fromPrefix));
-              final String from = paragraphs.removeAt(0).substring(fromPrefix.length);
-              features.add(MessageFeature(systemID, timestamp, isRead, subject, from, paragraphs.join('\n')));
+              String? sender;
+              if (paragraphs.first.startsWith(fromPrefix)) {
+                sender = paragraphs.removeAt(0).substring(fromPrefix.length);
+              }
+              features.add(MessageFeature(systemID, timestamp, isRead, subject, sender, paragraphs.join('\n')));
 
             case fcRubblePile:
               final Map<int, int> materials = <int, int>{};
               int material;
-              do {
-                material = reader.readInt32();
+              while ((material = reader.readInt32()) != 0) {
                 final int quantity = reader.readInt64();
                 materials[material] = quantity;
-              } while (material != 0);
-              features.add(RubblePileFeature(manifest: materials));
+              }
+              final double unknownMass = reader.readDouble();
+              features.add(RubblePileFeature(manifest: materials, unknownMass: unknownMass));
 
             case fcProxy:
               final AssetNode? child = _readAsset(reader);
@@ -435,12 +444,18 @@ class SystemServer {
   
             case fcResearch:
               final DisabledReason disabledReason = DisabledReason(reader.readUInt32());
+              String topic;
+              final List<String> topics = <String>[];
+              while ((topic = reader.readString()).isNotEmpty) {
+                topics.add(topic);
+              }
               final String research = reader.readString();
-              final int progress = reader.readUInt8();
+              final int difficulty = reader.readUInt8();
               features.add(ResearchFeature(
                 disabledReason: disabledReason,
                 current: research,
-                progress: progress,
+                topics: topics,
+                difficulty: difficulty,
               ));
   
             case fcMining:
@@ -627,13 +642,14 @@ class SystemServer {
                   ));
                 case 3:
                   final AssetNode child = _readAsset(reader)!;
-                  assert(false, 'SampleAssetFeature not yet implemented');
-                  // features.add(SampleAssetFeature(
-                  //   size: size,
-                  //   mass: mass,
-                  //   massFlowRate: massFlowRate,
-                  //   child: child,
-                  // ));
+                  features.add(SampleAssetFeature(
+                    size: size,
+                    mass: mass,
+                    massFlowRate: massFlowRate,
+                    timeOrigin: currentTime,
+                    spaceTime: spaceTime,
+                    child: child,
+                  ));
                 default: assert(false);
               }
             default:
@@ -660,6 +676,9 @@ class SystemServer {
     }
     if (colonyShip != null) {
       onColonyShip(colonyShip);
+    }
+    if (_verbose) {
+      print('⎻⎻⎻⎻⎻⎻⎻⎻⎻⎻⎻⎻⎻⎻⎻⎻⎻⎻⎻⎻⎻⎻⎻⎻⎻⎻⎻⎻⎻⎻⎻⎻⎻');
     }
   }
 

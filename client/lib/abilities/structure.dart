@@ -87,7 +87,7 @@ class StructureFeature extends AbilityFeature {
 
   Widget _buildProgressBar(BuildContext context, IconsManager icons, SystemNode system, double duration, { required double fontSize }) {
     int remaining = math.min(max ?? materialsCurrent, materialsCurrent + (duration * materialsRate).truncate());
-    final int structuralIntegrity = math.min(remaining, structuralIntegrityCurrent + (duration * structuralIntegrityRate).truncate());
+    final int hp = math.min(remaining, structuralIntegrityCurrent + (duration * structuralIntegrityRate).truncate());
 
     double smallest = double.infinity;
     for (StructuralComponent component in structuralComponents) {
@@ -95,18 +95,44 @@ class StructureFeature extends AbilityFeature {
         smallest = component.max.toDouble();
       }
     }
+
+    const double maxSegmentHeight = 56.0;
     final double scaleFactor = fontSize * 3.0 / smallest;
 
-    final double total = (max ?? materialsCurrent).toDouble();
-    final double height = total * scaleFactor;
-    final bool goodHealth = (minIntegrity == null) || (structuralIntegrity >= minIntegrity!);
+    final bool goodHealth = (minIntegrity == null) || (hp >= minIntegrity!);
 
     final List<Widget> bars = <Widget>[];
-
+    double totalBarHeight = 0.0;
+    double hpBarHeight = 0.0;
+    double minimumLinePos = 0.0;
+    int remainingHp = hp;
+    int? remainingMinHp = minIntegrity;
     for (StructuralComponent component in structuralComponents) {
       final int maxAmount = component.max;
       final int actualAmount = remaining >= component.max ? component.max : remaining;
       remaining -= actualAmount;
+
+      final double height = math.min(maxAmount * scaleFactor, maxSegmentHeight);
+      totalBarHeight += height;
+      if (remainingHp > 0) {
+        if (remainingHp > maxAmount) {
+          hpBarHeight += height;
+          remainingHp -= maxAmount;
+        } else {
+          hpBarHeight += (remainingHp / maxAmount) * height;
+          remainingHp = 0;
+        }
+      }
+      if (remainingMinHp != null && remainingMinHp > 0) {
+        if (remainingMinHp > maxAmount) {
+          minimumLinePos += height;
+          remainingMinHp -= maxAmount;
+        } else {
+          minimumLinePos += (remainingMinHp / maxAmount) * height;
+          remainingMinHp = 0;
+        }
+      }
+      
       final Material? material;
       InlineSpan label;
       if (component.materialID == 0) {
@@ -124,7 +150,7 @@ class StructureFeature extends AbilityFeature {
         label = TextSpan(text: '${component.componentName}\n', children: <InlineSpan>[label]);
       bars.add(
         SizedBox(
-          height: maxAmount * scaleFactor,
+          height: height,
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
@@ -183,7 +209,7 @@ class StructureFeature extends AbilityFeature {
       children: <Widget>[
         Text.rich(
           TextSpan(
-            text: 'Total: $structuralIntegrity ',
+            text: 'Total: $hp ',
             children: <InlineSpan>[
               if (max != null)
                 TextSpan(text: '/ $max '),
@@ -196,14 +222,15 @@ class StructureFeature extends AbilityFeature {
           ),
         ),
         SizedBox(
-          height: height,
+          height: totalBarHeight,
           child: Stack(
             children: <Widget>[
               if (minIntegrity != null)
-                if (minIntegrity! * scaleFactor < height - fontSize * 2.0)
+                // we default to showing the "Minimum" label above the line
+                if (minimumLinePos < fontSize * 2.0)
                   Positioned(
                     left: 0.0,
-                    bottom: minIntegrity! * scaleFactor,
+                    bottom: minimumLinePos,
                     width: fontSize * 5.0,
                     child: const DecoratedBox(
                       decoration: BoxDecoration(
@@ -216,10 +243,10 @@ class StructureFeature extends AbilityFeature {
                       child: Text('Minimum', textAlign: TextAlign.center, style: italic),
                     ),
                   )
-                else
+                else // but if it doesn't fit (near the top), but it below the line
                   Positioned(
                     left: 0.0,
-                    top: (total - minIntegrity!) * scaleFactor,
+                    top: totalBarHeight - minimumLinePos,
                     width: fontSize * 5.0,
                     child: const DecoratedBox(
                       decoration: BoxDecoration(
@@ -257,8 +284,8 @@ class StructureFeature extends AbilityFeature {
                             ],
                           stops: <double>[
                             0.0,
-                            structuralIntegrity / total,
-                            structuralIntegrity / total,
+                            hpBarHeight / totalBarHeight,
+                            hpBarHeight / totalBarHeight,
                             1.0,
                           ],
                         ),
@@ -316,7 +343,7 @@ class StructureFeature extends AbilityFeature {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
               progressBar,
-              const SizedBox(height: 8.0),
+              SizedBox(height: featurePadding.top),
               OutlinedButton(
                 onPressed: () async {
                   final Game game = GameProvider.of(context);
@@ -421,9 +448,6 @@ class Brace extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    assert(size.width >= dim);
-    assert(size.height >= dim * 3.0, '${size.height} < $dim * 3.0 (${dim * 3.0})');
-    assert(dim > margin * 6);
     final Path path = Path()
       ..moveTo(0.0, margin)
       ..arcToPoint(Offset(dim / 2.0, dim / 2.0), radius: Radius.circular((dim - margin) / 2.0))

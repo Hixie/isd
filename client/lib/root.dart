@@ -197,7 +197,13 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
 
   void _centerOn(WorldNode node) {
     _changeCenterNode(node);
-    final double zoom = log(widget.rootNode.diameter / _centerNode.diameter);
+    double centerDiameter = _centerNode.diameter;
+    WorldNode ancestorNode = _centerNode;
+    while (centerDiameter <= 0.0) {
+      ancestorNode = _centerNode.worldParent!;
+      centerDiameter = ancestorNode.diameter;
+    }
+    final double zoom = log(widget.rootNode.diameter / centerDiameter);
     _zoomTween.begin = _zoom.value;
     _zoomTween.end = zoom;
     _panTween.begin = _pan.value;
@@ -262,7 +268,7 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
           offset -= node.worldParent!.findLocationForChild(node, <VoidCallback>[_handlePositionChange]);
           node = node.worldParent;
         } else {
-          assert(node == widget.rootNode);
+          assert(node == widget.rootNode, '_centerNode=$_centerNode node=$node widget.rootNode=${widget.rootNode}');
           // TODO: remove this, it should be obsolete debugging logic at this point
           if (node != widget.rootNode) {
             if (_centerNode != _badNode) {

@@ -10,29 +10,29 @@ import '../nodes/system.dart';
 import '../widgets.dart';
 
 class RubblePileFeature extends AbilityFeature {
-  RubblePileFeature({ required this.manifest });
+  RubblePileFeature({ required this.manifest, required this.unknownMass });
 
   final Map<int, int> manifest;
+  final double unknownMass;
 
   @override
   RendererType get rendererType => RendererType.none;
 
   @override
   Widget buildDialog(BuildContext context) {
-    final Map<Material, int> analysis = <Material, int>{};
+    final Map<Material, double> analysis = <Material, double>{};
     final List<Material> materials = <Material>[];
     final SystemNode system = SystemNode.of(parent);
-    double total = 0;
+    double total = unknownMass;
     for (int materialID in manifest.keys) {
       final int quantity = manifest[materialID]!;
-      if (materialID != 0) {
-        final Material material = system.material(materialID);
-        analysis[material] = quantity;
-        materials.add(material);
-      }
-      total += quantity;
+      final Material material = system.material(materialID);
+      final double mass = quantity * material.massPerUnit;
+      analysis[material] = mass;
+      materials.add(material);
+      total += mass;
     }
-    materials.sort((Material a, Material b) => analysis[b]! - analysis[a]!);
+    materials.sort((Material a, Material b) => (analysis[b]! - analysis[a]!).sign.toInt());
     return ListBody(
       children: <Widget>[
         const Text('Rubble', style: bold),

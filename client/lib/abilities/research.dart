@@ -1,24 +1,36 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 
 import '../assets.dart';
 import '../hud.dart';
 import '../nodes/system.dart';
-import '../stringstream.dart';
 import '../types.dart';
 import '../widgets.dart';
 
 class ResearchFeature extends AbilityFeature {
   ResearchFeature({
     required this.disabledReason,
+    required this.topics,
     required this.current,
-    required this.progress,
+    required this.difficulty,
   });
 
   final DisabledReason disabledReason;
+  final List<String> topics;
   final String current;
-  final int progress;
+  final int difficulty;
+
+  ValueNotifier<List<String>>? _topics;
+  
+  @override
+  void init(Feature? oldFeature) {
+    super.init(oldFeature);
+    if (oldFeature == null) {
+      _topics = ValueNotifier<List<String>>(topics);
+    } else {
+      _topics = (oldFeature as ResearchFeature)._topics;
+      _topics!.value = topics;
+    }
+  }
 
   @override
   String get status {
@@ -63,15 +75,15 @@ class ResearchFeature extends AbilityFeature {
                 ),
               ),
             ),
-            switch (progress) {
-              0 => const Text('No progress is being made.'),
+            switch (difficulty) {
+              0 => const Text('No progress is being made.', style: red),
               1 => const Text('Progress is slow.'),
               2 => const Text('Researching in progress!'),
-              _ => throw const FormatException('Unknown progress!'),
+              _ => throw const FormatException('Unknown difficulty!'),
             },
             Padding(
               padding: const EdgeInsets.only(top: 8.0),
-              child: _ResearchState.build(context, system, this),
+              child: _ResearchState.build(context, system, parent, _topics!),
             ),
           ],
         ),
@@ -102,8 +114,8 @@ class ResearchFeature extends AbilityFeature {
                       ],
                     ),
                   ),
-              const SizedBox(height: 8.0),
-              _ResearchState.build(context, system, this),
+              SizedBox(height: featurePadding.top),
+              _ResearchState.build(context, system, parent, _topics!),
             ],
           ),
         ),
@@ -133,7 +145,7 @@ class _ResearchState extends ChangeNotifier {
     super.dispose();
   }
 
-  static Widget build(BuildContext context, SystemNode system, ResearchFeature feature) {
+  static Widget build(BuildContext context, SystemNode system, AssetNode node, ValueNotifier<List<String>> topics) {
     return StateManagerBuilder<_ResearchState>(
       creator: _ResearchState.new,
       disposer: (_ResearchState state) { state.dispose(); },
@@ -144,7 +156,8 @@ class _ResearchState extends ChangeNotifier {
             heading: const Text('Select Research Topic'),
             child: ResearchTopicUi(
               system: system,
-              node: feature.parent,
+              node: node,
+              topics: topics,
               onClose: state.closed,
             ),
             onClose: state.closed,
@@ -156,106 +169,42 @@ class _ResearchState extends ChangeNotifier {
   }
 }
 
-class ResearchTopicUi extends StatefulWidget {
+class ResearchTopicUi extends StatelessWidget {
   const ResearchTopicUi({
     super.key,
     required this.system,
     required this.node,
+    required this.topics,
     this.onClose,
   }); // TODO: hard-code the key to be on all the arguments
 
   final SystemNode system;
   final AssetNode node;
+  final ValueNotifier<List<String>> topics;
   final VoidCallback? onClose;
 
   @override
-  State<ResearchTopicUi> createState() => _ResearchTopicUiState();
-}
-
-@immutable
-class _Topic {
-  const _Topic(this.name, this.label);
-  final String name;
-  final String label;
-
-  static int alphabeticalSort(_Topic a, _Topic b) {
-    return a.label.compareTo(b.label);
-  }
-}
-
-class _ResearchTopicUiState extends State<ResearchTopicUi> {
-  final List<_Topic> _options = <_Topic>[];
-
-  bool _pending = true;
-  bool _tired = false;
-  Timer? _loadTimer;
-
-  @override
-  void initState() {
-    super.initState();
-    widget.system
-      .play(<Object>[widget.node.id, 'get-topics'])
-      .then((StreamReader reader) {
-        if (mounted) {
-          _loadTimer?.cancel();
-          setState(() {
-            while (!reader.eof) {
-              final String name = reader.readString();
-              if (reader.readBool())
-                _options.add(_Topic(name, name));
-            }
-            _options.sort(_Topic.alphabeticalSort);
-            _options.add(const _Topic('', 'Undirected research'));
-            _pending = false;
-            _tired = false;
-          });
-        }
-      });
-    _loadTimer = Timer(const Duration(milliseconds: 750), _loading);
-  }
-
-  void _loading() {
-    setState(() {
-      _tired = true;
-    });
-  }
-
-  @override
   Widget build(BuildContext context) {
-    Widget body;
-    if (_pending) {
-      if (_tired) {
-        body = const Center(
-          child: CircularProgressIndicator(),
-        );
-      } else {
-        body = const SizedBox.shrink();
-      }
-    } else {
-      body = Padding(
-        padding: const EdgeInsets.fromLTRB(0.0, 0.0, 4.0, 0.0),
-        child: ListView.builder(
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(0.0, 0.0, 4.0, 0.0),
+      child: ValueListenableBuilder<List<String>>(
+        valueListenable: topics,
+        builder: (BuildContext context, List<String> topics, Widget? child) => ListView.builder(
           padding: const EdgeInsets.fromLTRB(22.0, 4.0, 20.0, 24.0),
-          itemCount: _options.length,
+          itemCount: topics.length,
           itemBuilder: (BuildContext context, int index) {
             return TextButton(
-              child: Text(_options[index].label),
+              child: Text(topics[index]),
               onPressed: () {
-                widget.system.play(<Object>[widget.node.id, 'set-topic', _options[index].name]);
+                system.play(<Object>[node.id, 'set-topic', topics[index]]);
                 HudHandle.of(context).cancel();
-                if (widget.onClose != null)
-                  widget.onClose!();
+                if (onClose != null)
+                  onClose!();
               },
             );
           },
         ),
-      );
-    }
-    return AnimatedSwitcher(
-      child: body,
-      duration: const Duration(milliseconds: 160),
-      switchInCurve: Curves.easeInOut,
-      switchOutCurve: Curves.easeInOut,
+      ),
     );
   }
 }

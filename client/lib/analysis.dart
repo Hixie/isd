@@ -54,7 +54,7 @@ class _AnalysisUiState extends State<AnalysisUi> {
   late final int _time;
   late final double _total;
   late final String _message;
-  final Map<Material, int> _analysis = <Material, int>{};
+  final Map<Material, double> _analysis = <Material, double>{}; // kg
   late final List<Material> _materials;
 
   @override
@@ -72,13 +72,14 @@ class _AnalysisUiState extends State<AnalysisUi> {
             _message = reader.readString();
             while (!reader.eof) {
               final int materialId = reader.readInt();
-              final int quantity = reader.readInt();
-              _analysis[system.material(materialId)] = quantity;
+              final double mass = reader.readDouble(); // kg
+              _analysis[system.material(materialId)] = mass;
             }
             _materials = _analysis.keys.toList();
             _materials.sort(_quantitySort);
             _pending = false;
             _tired = false;
+            print('analysis: $_total kg; "$_message"');
           });
         }
       });
@@ -92,7 +93,7 @@ class _AnalysisUiState extends State<AnalysisUi> {
   }
 
   int _quantitySort(Material a, Material b) {
-    return _analysis[b]! - _analysis[a]!;
+    return (_analysis[b]! - _analysis[a]!).sign.toInt();
   }
 
   @override
@@ -166,7 +167,7 @@ class PieChart extends StatelessWidget {
   final AssetNode? node;
   final int? time;
   final double total;
-  final Map<Material, int> analysis;
+  final Map<Material, double> analysis;
   final List<Material> materials;
 
   static List<Color> get colors => _genColors();
@@ -204,7 +205,7 @@ class PieChart extends StatelessWidget {
     final double fontSize = DefaultTextStyle.of(context).style.fontSize!;
     final IconsManager icons = IconsManagerProvider.of(context);
     final List<Widget> legend = <Widget>[];
-    if (materials.isEmpty) {
+    if (total == 0.0) {
       legend.add(const Text('No materials found.'));
     } else {
       double accountedTotal = 0.0;
@@ -215,14 +216,14 @@ class PieChart extends StatelessWidget {
             children: <InlineSpan>[
               TextSpan(text: '●', style: TextStyle(color: colors[index])),
               const TextSpan(text: ' '),
-              material.describeQuantity(context, icons, analysis[material]!, iconSize: fontSize),
+              material.describeMass(context, icons, analysis[material]!, iconSize: fontSize),
             ],
           ),
         ));
         accountedTotal += analysis[material]!;
       }
       if (accountedTotal < total) {
-        legend.add(const Text('○ Unknown'));
+        legend.add(Text('○ ${prettyMass(total - accountedTotal)} unknown'));
       }
       legend.add(const SizedBox(height: 8.0));
       legend.add(const Text('All numbers are approximate.', style: italic, softWrap: true, overflow: TextOverflow.visible));
@@ -295,7 +296,7 @@ class PieChart extends StatelessWidget {
 class _PieChart extends CustomPainter {
   _PieChart(this.analysis, this.materials, this.colors, this.total);
 
-  final Map<Material, int> analysis;
+  final Map<Material, double> analysis;
   final List<Material> materials;
   final List<Color> colors;
   final double total;

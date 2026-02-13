@@ -387,6 +387,11 @@ String prettyFraction(double value) {
   return '${(value * 100.0).toStringAsFixed(1)}%';
 }
 
+String prettySystemId(int id) {
+  // TODO: enable this to be a hyperlink
+  return 'S${id.toRadixString(16).toUpperCase().padLeft(8, "0")}';
+}
+
 String _superscript(String value) {
   final List<String> result = <String>[];
   for (int rune in value.runes) {

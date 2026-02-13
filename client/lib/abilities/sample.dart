@@ -96,13 +96,14 @@ class SampleMaterialFeature extends AbilityFeature {
     final double fontSize = DefaultTextStyle.of(context).style.fontSize!;
     final IconsManager icons = IconsManagerProvider.of(context);
     final SystemNode system = SystemNode.of(parent);
-    return ListBody(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         const Text('Sample container', style: bold),
         Padding(
           padding: featurePadding,
           child: mass == 0.0
-               ? const Text('empty')
+               ? const Text('Empty')
                : material == 0
                ? Text('${prettyMass(mass)} of unknown ${ isOre ? "ore" : "material" }')
                : Text.rich(
