@@ -84,7 +84,7 @@ type
       property IsZero: Boolean read GetIsZero;
       property IsNotZero: Boolean read GetIsNotZero;
       property AsCardinal: Cardinal read FNumerator write FNumerator; // for storage or aggregate math
-      class procedure NormalizeArray(Target: PFraction32; Count: SizeInt); static;
+      class procedure NormalizeArray(Target: PFraction32; Count: SizeInt); static; // Target must have at least one value greater than 0
       class procedure InitArray(Target: PFraction32; Count: SizeInt; Value: Cardinal = 0); static;
       class function ChooseFrom(Target: PFraction32; Count: SizeInt; RandomSource: TRandomNumberGenerator): SizeInt; static;
       class property Zero: Fraction32 read GetZero;
@@ -839,6 +839,7 @@ begin
    begin
       Inc(Total, (Target + Index)^.FNumerator);
    end;
+   Assert(Total > 0, 'Cannot normalize array with no values.');
    NewTotal := 0;
    if (Count > 1) then
       for Index := 0 to Count - 2 do // $R-

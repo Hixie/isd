@@ -104,6 +104,7 @@ type
       constructor FromGPerUnit(A: Double); // Grams
       constructor FromMassPerUnit(A: TMass);
       function ToString(): UTF8String;
+      function ConvertMassToQuantity64Ceil(Mass: TMass): TQuantity64; // same as (TMass / TMassPerUnit) and (TMass div TMassPerUnit) but uses Ceil instead of Round and Trunc (respectively)
       property IsZero: Boolean read GetIsZero; // > 0
       property IsNotZero: Boolean read GetIsNotZero; // > 0
       property IsPositive: Boolean read GetIsPositive; // > 0
@@ -420,6 +421,11 @@ begin
    {$IEEEERRORS OFF}
    Result.Value := math.Infinity;
    {$POP}
+end;
+
+function TMassPerUnit.ConvertMassToQuantity64Ceil(Mass: TMass): TQuantity64;
+begin
+   Result.Value := Ceil(Mass.Value / Value);
 end;
 
 

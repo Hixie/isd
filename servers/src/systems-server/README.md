@@ -716,9 +716,9 @@ may not necessarily be when the gossip item was created.
 ```
 
 Child assets of a `fcMessageBoard` (the `<messages>`) must be virtual
-and must only have features from the following list:
+and must have an `fcMessage` feature. They may also have other
+features from the following list:
 
- * `fcMessage`
  * `fcKnowledge`
 
 It is an error if the server sends a physical asset, or an asset with
@@ -775,7 +775,11 @@ paragraphs in the _text_.
 > possibly _subject_ and _sender_) to support formatting, images,
 > links to assets, etc.
 
-This feature is usually paired with an `fcKnowledge` feature.
+This feature is often paired with an `fcKnowledge` feature.
+
+This feature is typically found on assets that are children of
+`fcMessageBoard` features, but they can also appear in isolation,
+e.g. decorating non-virtual assets.
 
 
 This feature supports the following commands:
@@ -790,17 +794,17 @@ whose class is not known.
 #### `fcRubblePile` (0x0E)
 
 ```bnf
-<featuredata>       ::= [ <materialid> <quantity> ]* <zero32> <quantity>
+<featuredata>       ::= [ <materialid> <quantity> ]* <zero32> <mass>
 <quantity>          ::= <int64>
+<mass>              ::= <double> // kg
 ```
 
 Indicates that the asset contains, possibly among other things, a pile
 of rubble.
 
 The contents are listed as pairs of material ID and quantity (in
-units). Only known materials are listed. The balance of materials
-(i.e. the quantity of unknown materials) is given at the end of the
-list, paired with the material ID zero. Materials may be listed
+units). Only known materials are listed. The total mass of unknown
+materials is given after the terminating zero. Materials may be listed
 multiple times.
 
 > TODO: have some command to move materials to material piles
@@ -1019,13 +1023,12 @@ recognized.
 This feature supports the following command:
 
  * `analyze`: No fields. Returns the time of the analysis (int64),
-   followed by an approximation of the total quantity of material in
-   the pile (double), followed by a string (see below), followed by a
-   list of pairs of material IDs (int64) and quantities (int64, though
-   negative numbers indicate a server error) giving the known ores and
-   how much of each there is. (The difference between the sum of these
-   quantities and the given total quantity is the number of unknown
-   ores.) These numbers are quantities, not masses.
+   followed by an approximation of the total mass of material in the
+   pile (double), followed by a string (see below), followed by a list
+   of pairs of material IDs (int64) and masses (double) giving the
+   known ores and how much of each there is. (The difference between
+   the sum of these masses and the given total mass is the number of
+   unknown ores.)
 
 The string provided in the analysis is one of the following:
 

@@ -990,7 +990,7 @@ begin
    PileRatio := Pile.GetOrePileCapacity() / GetTotalOrePileCapacity(Dynasty);
    Assert(PileRatio <= 1.0);
    Result := GetTotalOrePileMass(Dynasty) * PileRatio;
-   Assert(Result.AsDouble <= Pile.GetOrePileCapacity().AsDouble + Epsilon, DebugName + ' computed an ore pile mass of ' + Result.ToString() + ' for a pile with capacity ' + Pile.GetOrePileCapacity().ToString() + ' (this was ' + FloatToStr(PileRatio) + 'x the total ore pile capacity of ' + GetTotalOrePileCapacity(Dynasty).ToString() + ')');
+   Assert(Result.AsDouble <= Pile.GetOrePileCapacity().AsDouble + Epsilon, DebugName + ' computed an ore pile mass of ' + Result.ToString() + ' for a pile with capacity ' + Pile.GetOrePileCapacity().ToString() + ' (total ore pile mas is ' + GetTotalOrePileMass(Dynasty).ToString() + ', total capacity is ' + GetTotalOrePileCapacity(Dynasty).ToString() + ')');
 end;
 
 function TRegionFeatureNode.GetOrePileMassFlowRate(Pile: IOrePile): TMassRate; // kg/s
@@ -2008,22 +2008,25 @@ end;
 
 procedure TRegionFeatureNode.ReturnOreToGround(DynastyData: PPerDynastyData; TotalOrePileMass, TotalTransferMass: TMass);
 var
+   Material: TMaterial;
    Ore: TOres;
    ActualTransfer: TMass;
    TransferQuantity, TotalQuantity: TQuantity64;
    Distribution: TOreFractions;
+   RemainingCount: Cardinal;
 begin
-   Writeln(DebugName, ' :: ReturnOreToGround ', TotalOrePileMass.ToString, ' ', TotalTransferMass.ToString());
+   Writeln(DebugName, ' :: ReturnOreToGround - total mass: ', TotalOrePileMass.ToString, '; returning ', TotalTransferMass.ToString(), ' to ground');
    Assert(not TotalTransferMass.IsNegative);
    ActualTransfer := TMass.Zero;
    for Ore in TOres do
    begin
+      Material := System.Encyclopedia.Materials[Ore];
       TransferQuantity := DynastyData^.FOrePileComposition[Ore] * (TotalTransferMass / TotalOrePileMass);
       if (TransferQuantity.IsPositive) then
       begin
          DynastyData^.FOrePileComposition[Ore] := DynastyData^.FOrePileComposition[Ore] - TransferQuantity;
          FGroundComposition[Ore] := FGroundComposition[Ore] + TransferQuantity; // TODO: handle overflow
-         ActualTransfer := ActualTransfer + TransferQuantity * System.Encyclopedia.Materials[Ore].MassPerUnit;
+         ActualTransfer := ActualTransfer + TransferQuantity * Material.MassPerUnit;
       end;
    end;
    if (ActualTransfer < TotalTransferMass) then
@@ -2034,15 +2037,26 @@ begin
       begin
          Distribution[Ore] := Fraction32.FromDouble(DynastyData^.FOrePileComposition[Ore] * System.Encyclopedia.Materials[Ore].MassPerUnit / TotalOrePileMass);
       end;
-      Fraction32.NormalizeArray(@Distribution[Low(TOres)], Length(Distribution));
-      Ore := TOres(Fraction32.ChooseFrom(@Distribution[Low(TOres)], Length(Distribution), System.RandomNumberGenerator) + Low(TOres));
-      TotalQuantity := DynastyData^.FOrePileComposition[Ore];
-      Assert(TotalQuantity.IsPositive);
-      TransferQuantity := (TotalTransferMass - ActualTransfer) / System.Encyclopedia.Materials[Ore].MassPerUnit;
-      DynastyData^.FOrePileComposition[Ore] := DynastyData^.FOrePileComposition[Ore] - TransferQuantity;
-      ActualTransfer := ActualTransfer + TransferQuantity * System.Encyclopedia.Materials[Ore].MassPerUnit;
-      FGroundComposition[Ore] := FGroundComposition[Ore] + TransferQuantity; // TODO: handle overflow
+      RemainingCount := Length(Distribution);
+      while ((ActualTransfer < TotalTransferMass) and (RemainingCount > 0)) do
+      begin
+         Fraction32.NormalizeArray(@Distribution[Low(TOres)], Length(Distribution));
+         Ore := TOres(Fraction32.ChooseFrom(@Distribution[Low(TOres)], Length(Distribution), System.RandomNumberGenerator) + Low(TOres));
+         TotalQuantity := DynastyData^.FOrePileComposition[Ore];
+         Assert(TotalQuantity.IsPositive);
+         TransferQuantity := System.Encyclopedia.Materials[Ore].MassPerUnit.ConvertMassToQuantity64Ceil(TotalTransferMass - ActualTransfer);
+         if (TransferQuantity.IsPositive) then
+         begin
+            Assert(TransferQuantity <= TotalQuantity);
+            DynastyData^.FOrePileComposition[Ore] := DynastyData^.FOrePileComposition[Ore] - TransferQuantity;
+            ActualTransfer := ActualTransfer + TransferQuantity * System.Encyclopedia.Materials[Ore].MassPerUnit;
+            FGroundComposition[Ore] := FGroundComposition[Ore] + TransferQuantity; // TODO: handle overflow
+         end;
+         Distribution[Ore].ResetToZero();
+         Dec(RemainingCount);
+      end;
    end;
+   Assert(ActualTransfer >= TotalTransferMass);
 end;
 
 procedure TRegionFeatureNode.HandleScheduledEvent(var Data);

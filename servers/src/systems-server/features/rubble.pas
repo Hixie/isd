@@ -170,11 +170,11 @@ end;
 procedure TRubblePileFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);
 var
    KnownMaterials: TGetKnownMaterialsMessage;
-   Other: TQuantity64;
+   Other: TMass;
    Index: Cardinal;
 begin
    Writer.WriteCardinal(fcRubblePile);
-   Other := TQuantity64.Zero;
+   Other := TMass.Zero;
    if (Length(FComposition) > 0) then
    begin
       KnownMaterials := TGetKnownMaterialsMessage.Create(System.DynastyByIndex[DynastyIndex]);
@@ -189,12 +189,12 @@ begin
             Writer.WriteInt64(FComposition[Index].Quantity.AsInt64);
          end
          else
-            Other := Other + FComposition[Index].Quantity;
+            Other := Other + FComposition[Index].Quantity * FComposition[Index].Material.MassPerUnit;
       end;
       FreeAndNil(KnownMaterials);
    end;
    Writer.WriteCardinal(0);
-   Writer.WriteInt64(Other.AsInt64);
+   Writer.WriteDouble(Other.AsDouble);
 end;
 
 procedure TRubblePileFeatureNode.UpdateJournal(Journal: TJournalWriter);

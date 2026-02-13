@@ -171,7 +171,7 @@ var
    ComponentName: UTF8String;
    Material: TMaterial;
    Quantity, Delta: TQuantity32;
-   Total, Minimum: TQuantity64;
+   Total: TQuantity64;
    Index: Cardinal;
 begin
    inherited Create();
@@ -206,7 +206,7 @@ begin
    if (Reader.Tokens.IsString()) then
    begin
       ComponentName := Reader.Tokens.ReadString();
-      Minimum := TQuantity64.Zero;
+      Assert(FMinimumFunctionalQuantity.IsZero);
       Assert(MaterialsList.IsNotEmpty);
       for Index := 0 to MaterialsList.Length - 1 do // $R-
       begin
@@ -218,15 +218,15 @@ begin
                Delta := ReadQuantity32(Reader.Tokens, Material);
                if (Delta > MaterialsList[Index].Quantity) then
                   Reader.Tokens.Error('Minimum specified quantity (%s) is larger than the "%s" component', [Delta.ToString(), ComponentName]);
-               Minimum := Minimum + Delta;
+               FMinimumFunctionalQuantity := FMinimumFunctionalQuantity + Delta;
             end
             else
             begin
-               Minimum := Minimum + MaterialsList[Index].Quantity;
+               FMinimumFunctionalQuantity := FMinimumFunctionalQuantity + MaterialsList[Index].Quantity;
             end;
             break;
          end;
-         Minimum := Minimum + MaterialsList[Index].Quantity;
+         FMinimumFunctionalQuantity := FMinimumFunctionalQuantity + MaterialsList[Index].Quantity;
       end;
       if (not Assigned(Material)) then
          Reader.Tokens.Error('Could not find minimum component "%s"', [ComponentName]);

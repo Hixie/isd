@@ -386,9 +386,9 @@ type
    public
       KnownContents: specialize PlasticArray <TContents, specialize IncomparableUtils<TContents>>;
    strict private
-      FRemainingQuantity: UInt64;
+      FRemainingMass: Double;
    published
-      property RemainingQuantity: UInt64 read FRemainingQuantity write FRemainingQuantity;
+      property RemainingMass: Double read FRemainingMass write FRemainingMass;
    end;
 
    TModelProxyFeature = class (TModelFeature)
@@ -1525,7 +1525,7 @@ begin
       Contents.Quantity := Stream.ReadUInt64();
       KnownContents.Push(Contents);
    end;
-   RemainingQuantity := Stream.ReadUInt64();
+   RemainingMass := Stream.ReadDouble();
 end;
 
 

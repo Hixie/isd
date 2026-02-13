@@ -458,7 +458,7 @@ var
    OreKnowledge: TOreFilter;
    OreQuantities: TOreQuantities;
    Ore: TOres;
-   Total: TQuantity64;
+   Total: TMass;
 begin
    if (Command = ccAnalyze) then
    begin
@@ -472,13 +472,13 @@ begin
          begin
             OreKnowledge := FRegion.Unwrap().GetOresPresentForPile(Self) and FDynastyKnowledge[DynastyIndex];
             OreQuantities := FRegion.Unwrap().GetOresForPile(Self);
-            Total := TQuantity64.Zero;
+            Total := TMass.Zero;
             for Ore in TOres do
             begin
-               Total := Total + OreQuantities[Ore];
+               Total := Total + OreQuantities[Ore] * System.Encyclopedia.Materials[Ore].MassPerUnit;
             end;
             Message.Output.WriteInt64(System.Now.AsInt64);
-            Message.Output.WriteInt64(Total.AsInt64);
+            Message.Output.WriteDouble(Total.AsDouble);
             if (Total.IsZero) then
             begin
                if (FRegion.Unwrap().GetOrePileMass(Self).IsPositive) then
@@ -493,7 +493,7 @@ begin
                if (OreKnowledge[Ore] and (OreQuantities[Ore].IsPositive)) then
                begin
                   Message.Output.WriteLongint(Ore);
-                  Message.Output.WriteInt64(OreQuantities[Ore].AsInt64);
+                  Message.Output.WriteDouble((OreQuantities[Ore] * System.Encyclopedia.Materials[Ore].MassPerUnit).AsDouble);
                end;
             end;
          end;
