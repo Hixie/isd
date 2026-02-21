@@ -19,6 +19,8 @@ type
       property Column: Cardinal read FColumn;
    end;
 
+// TODO: add tkCaret, which just reads a single "^" character
+   
 type
    TTokenizer = class
    strict private
@@ -27,7 +29,7 @@ type
             tkPending,
             tkIdentifier, tkString, tkInteger, tkDouble, tkMultiplier,
             tkOpenBrace, tkCloseBrace, tkOpenParenthesis, tkCloseParenthesis,
-            tkComma, tkColon, tkSemicolon, tkPercentage, tkAsterisk, tkSlash, tkAt,
+            tkComma, tkColon, tkSemicolon, tkPercentage, tkAsterisk, tkSlash, tkAt, tkCaret,
             tkEOF
          );
       var
@@ -48,34 +50,39 @@ type
    public
       constructor Create(Buffer: Pointer; Size: QWord);
       destructor Destroy(); override;
+      // values
       function ReadIdentifier(): UTF8String;
       procedure ReadIdentifier(Keyword: UTF8String);
       function ReadString(const MaxLength: Int64 = High(SizeInt)): UTF8String;
       function ReadNumber(): Int64;
       function ReadDouble(): Double;
       function ReadMultiplier(): Double;
-      procedure ReadOpenBrace();
-      procedure ReadCloseBrace();
-      procedure ReadOpenParenthesis();
-      procedure ReadCloseParenthesis();
-      procedure ReadComma(); // see also ReadComma in ttparser.pas
-      procedure ReadColon();
-      procedure ReadSemicolon();
-      procedure ReadPercentage();
-      procedure ReadAsterisk();
-      procedure ReadSlash();
-      procedure ReadAt();
       function IsIdentifier(): Boolean;
       function IsIdentifier(Keyword: UTF8String): Boolean;
       function IsString(): Boolean;
       function IsNumber(): Boolean; // integer only
       function IsDouble(): Boolean;
+      // punctuation
+      procedure ReadAsterisk();
+      procedure ReadAt();
+      procedure ReadCaret();
+      procedure ReadCloseBrace();
+      procedure ReadCloseParenthesis();
+      procedure ReadColon();
+      procedure ReadComma(); // see also ReadComma in ttparser.pas
+      procedure ReadOpenBrace();
+      procedure ReadOpenParenthesis();
+      procedure ReadPercentage();
+      procedure ReadSemicolon();
+      procedure ReadSlash();
+      function IsAsterisk(): Boolean;
+      function IsAt(): Boolean;
+      function IsCaret(): Boolean;
       function IsCloseBrace(): Boolean;
-      function IsOpenParenthesis(): Boolean;
       function IsCloseParenthesis(): Boolean;
       function IsComma(): Boolean;
+      function IsOpenParenthesis(): Boolean;
       function IsSemicolon(): Boolean;
-      function IsAt(): Boolean;
       function IsEOF(): Boolean;
       procedure Error(const AMessage: UTF8String; const Arguments: array of const);
    end;
@@ -338,6 +345,11 @@ begin
                      begin
                         Advance();
                         Mode := tmMultilineStringStart;
+                     end;
+                  $5E: // U+005E CIRCUMFLEX ACCENT character (^)
+                     begin
+                        FCurrentKind := tkCaret;
+                        Advance();
                      end;
                   $7B: // U+007B LEFT CURLY BRACKET character ({)
                      begin
@@ -907,6 +919,13 @@ begin
    FCurrentKind := tkPending;
 end;
 
+procedure TTokenizer.ReadCaret();
+begin
+   EnsureToken();
+   ExpectToken(tkCaret);
+   FCurrentKind := tkPending;
+end;
+
 function TTokenizer.IsIdentifier(): Boolean;
 begin
    EnsureToken();
@@ -967,10 +986,22 @@ begin
    Result := FCurrentKind = tkSemicolon;
 end;
 
+function TTokenizer.IsAsterisk(): Boolean;
+begin
+   EnsureToken();
+   Result := FCurrentKind = tkAsterisk;
+end;
+
 function TTokenizer.IsAt(): Boolean;
 begin
    EnsureToken();
    Result := FCurrentKind = tkAt;
+end;
+
+function TTokenizer.IsCaret(): Boolean;
+begin
+   EnsureToken();
+   Result := FCurrentKind = tkCaret;
 end;
 
 function TTokenizer.IsEOF(): Boolean;

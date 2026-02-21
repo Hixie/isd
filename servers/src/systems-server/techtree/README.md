@@ -98,22 +98,30 @@ string.
 
 Multiline strings start with a `[` open square bracket and a newline.
 
-Subsequent lines must all be indented by the same (non-zero) number of
-space characters, followed by any characters. The first line that
-starts with zero or more space characters then a `]` close square
-bracket ends the string.
+If the string is not empty, the first line following the start line
+must consist of one or more space characters, then a non-space,
+non-newline character, then any any characters other than a newline,
+followed by a newline. The number of space characters at the start of
+this line is the _indent_.
 
-The first line (after the indent) must not be empty (unless it only
-contains `]`).
+Subsequent lines may contain text or be empty. Empty lines consist of
+zero or more space characters, followed by a newline. Non-empty lines
+consist of as many space characters as the _indent_, followed by any
+characters other than a newline, followed by a newline.
 
-The prefix on each line is removed. Trailing spaces on each line are
-removed. Lone newlines are replaced with single space characters.
-Pairs of newlines are replaced by a single newline. (Lines that start
-with spaces beyond the indent found on the first line are not
-removed.)
+The string ends with the first line that has as many or fewer space
+characters as the _indent_, followed by a `]` close square bracket.
+
+The prefix (_indent_) on each line is removed. Trailing spaces on each
+line are removed. Lone newlines are replaced with single space
+characters. Pairs of newlines are replaced by a single newline. (Lines
+that start with spaces beyond the indent found on the first line are
+not removed.)
 
 As a special case, empty strings can also be represented as `[]`,
-without the otherwise required newline following the `[`.
+without the otherwise required newline following the `[`, or as a `[`
+opening bracket, a newline, zero or more spaces, and a `]` closing
+bracket.
 
 Examples:
 
@@ -224,6 +232,30 @@ Examples:
 ```
 
 
+### Volumes
+
+Volumes are numbers followed by either an identifier or an identifier,
+a caret (`^`), and a 3, where the identifier specifies how the number
+is interpreted, as follows:
+
+ * `L`: Liters (0.001 m^3)
+ * `LY^3`: Cubic light-years (9460730472580800m cubed)
+ * `AU^3`: Cubic astronomical units (149597870700m cubed)
+ * `km^3`: Cubic kilometers (1000000000m^3)
+ * `m^3`: Cubic meters
+ * `cm^3`: Cubic centimeters (0.000001m^3)
+ * `mm^3`: Cubic millimeters (0.000000001m^3)
+
+Examples:
+
+```
+// One liter:
+1L
+10cm^3
+0.001m^3
+```
+
+
 ### Mass
 
 Mass is similarly represented as a number followed by an identifier
@@ -241,6 +273,22 @@ Examples:
 0.1kg
 100g
 100e3 mg
+```
+
+
+### Density
+
+Density is represented as a mass, followed by a slash (`/`), followed
+by a volume without the leading number, where the number is assumed to
+be a 1.
+
+Examples:
+
+```
+// Density of water
+1g/cm^3
+1kg/L
+1000kg/m^3
 ```
 
 
@@ -268,6 +316,9 @@ Examples:
 
 There are various other values that have units. Those are expressed as
 a number, followed by an identifier of the specified unit.
+
+Energies are values with a single unit, where the unit is one that was
+previously declared with an `energy` directive, as described below.
 
 Examples:
 
@@ -315,8 +366,8 @@ Examples:
 Various values are given as rates. 
 
 Rates are a numeric value from one of the earlier categories (e.g.
-number, mass, `hp`), following by a `/` character, followed by one of
-the following:
+number, mass, `hp`, energy unit), following by a `/` character,
+followed by one of the following:
 
  * `decade`: Per decade (ten years, 1/315360000000ms)
  * `year`: Per year (365 days, 1/31536000000ms)
@@ -394,6 +445,7 @@ storybeat developed-warp-engines;
 storybeat need-dilthium;
 ```
 
+
 ### Facilities
 
 Facilities are kinds of situations that can be used to specialize
@@ -408,6 +460,7 @@ facility astrophysics;
 facility subterranean;
 facility particle-accelerator;
 ```
+
 
 ### Topics
 
@@ -433,6 +486,28 @@ topic "Entertainment";
 topic "Example samples" requires situation @sample @present;
 ```
 
+### Energies
+
+Energies are used for game effects defined in the tech tree.
+
+The syntax is the keyword `energy`, a string giving the name, an
+identifier giving the units, a colon, and a string giving a
+description.
+
+Every energy must have a unique name and unique units.
+
+Energies are given by a number followed by the unit specified for an
+energy. Energy rates are given using the rate syntax, using the unit
+specified for an energy.
+
+Examples:
+
+```
+energy "Electricity" J: "Power that can be used to make machines turn and make computers run."; 
+energy "Biochemical Energy", cal: "Food turns into biochemical energy when eaten. This helps people stay alive.";
+```
+
+
 ### Materials
 
 Materials are what asset classes are made of.
@@ -453,7 +528,7 @@ material "Wheels" {
   vaguely: "Round things";
   description: "Component for making vehicles able to move on flat surfaces.";
   icon: "wheel";
-  metrics: component 0.5m weighs 5kg;
+  metrics: component, size 0.5m, mass 5kg;
 }
 ```
 
@@ -568,22 +643,27 @@ kilograms, the keyword `fluid` indicates that the material is measured
 in liters, and the keyword `component` indicates that the material is
 measured in units.
 
-> TODO: support fluids.
+> TODO: support fluids, gases.
 
-Then, the diameter of one unit of this material must be given, as a
-length.
+This must be followed by two of the following:
 
-Then, the keyword `weighs` must be specified, followed by the mass of
-one unit of this material, as a mass.
+  * A comma, the keyword `size`, and the diameter of one unit of this
+    material, as a length.
 
-The field must end with a semicolon `;`.
+  * A comma, the keyword `density`, and the material's density.
+
+  * A comma, the keyword `mass`, and the mass of one unit of this
+    material.
+
+Finnaly, the field must end with a semicolon `;`.
 
 Examples:
 
 ```
-metrics: bulk 1m weighs 1kg;
-metrics: component 10cm weighs 100g;
-metrics: pressurized fluid 1m weighs 1000000kg; // TODO: support this
+metrics: bulk, size 1m, mass 1kg;
+metrics: component, size 10cm, mass 100g;
+metrics: pressurized fluid, size 1m, mass 1000000kg; // TODO: support this
+metrics: bulk, size: 1mm, density 1000kg/m^3;
 ```
 
 
@@ -632,6 +712,8 @@ unknown asset class. IDs 1 and above are for use by the tech tree.
 Each asset class must have a unique ID.
 
 The syntax is `id`, a colon `:`, a number, and a semicolon `;`.
+
+This field is always required in an asset class.
 
 Examples:
 
@@ -700,6 +782,8 @@ The name seen when an asset class isn't known is the _vague name_.
 The syntax for this field is `vaguely`, a colon `:`, a string, and a
 semicolon `;`. The string should not end in punctuation.
 
+This field is always required in an asset class.
+
 Examples:
 
 ```
@@ -715,6 +799,8 @@ The next field is the description of a known asset class.
 The syntax for this field is `description`, a colon `:`, a string, and
 a semicolon `;`. The string should end with a period (or other
 sentence-ending punctuation).
+
+This field is always required in an asset class.
 
 Examples:
 
@@ -742,6 +828,8 @@ even if they do not know the asset class. (The placeholder icon
 `unknown` is used for asset classes that are not visible but are
 inferred.)
 
+This field is always required in an asset class.
+
 Examples:
 
 ```
@@ -757,6 +845,8 @@ The `build` field takes a keyword that represents a build environment.
 The syntax for this field is `build`, a colon `:`, a keyword from the
 list above, and a semicolon `;`.
 
+This field is always required in an asset class.
+
 Examples:
 ```
 build: land;
@@ -771,6 +861,9 @@ The most interesting field for an asset class is the `feature` class.
 Its syntax is the keyword `feature`, a colon `:`, an identifier that
 specifies the kind of feature (see below), the settings for that
 feature (varies by feature), and a semicolon `;`.
+
+This field may be specified any number of times (including zero) in an
+asset class.
 
 Examples:
 ```
@@ -851,6 +944,51 @@ Settings syntax: There are no settings for this feature.
 Creates an `fcPlot` feature.
 
 
+##### `EnergyBus`
+
+The feature that manages internal messages related to energy. An
+energy message bus should be present within any self-contained asset
+that has children or features that manage energy, e.g.
+`EnergyGenerator` or `EnergyConsumer`.
+
+An energy bus has a maximum capacity per supported energy type. Any
+unlisted energies have zero capacity.
+
+Settings syntax: A comma-separated list of energy rates.
+
+Examples:
+
+```
+feature: EnergyBus 23000cal/s, 40e3 VA/s;
+```
+
+
+##### `EnergyConsumer`
+
+The feature represents using energy to make an asset work.
+
+Settings syntax: An energy rate.
+
+Examples:
+
+```
+feature: EnergyConsumer 10e3 VA/s;
+```
+
+
+##### `EnergyGenerator`
+
+The feature represents creating energy.
+
+Settings syntax: An energy rate.
+
+Examples:
+
+```
+feature: EnergyGenerator 10e3 VA/s;
+```
+
+
 ##### `Factory`
 
 Converts materials into other materials.
@@ -859,13 +997,13 @@ Settings syntax:
 
  * The keyword `input`.
  * One or more inputs, each of which is:
-    * Optionally a number (defaults to 1 if omitted),
     * A string giving a material name,
+    * Optionally an asterisk followed by a quantity (defaults to 1 unit if omitted),
     * A comma `,`.
  * The keyword `output`.
  * One or more outputs, each of which is:
-    * Optionally a number (defaults to 1 if omitted),
     * A string giving a material name,
+    * Optionally an asterisk followed by a quantity (defaults to 1 unit if omitted),
     * A comma `,`.
  * The keywords `max` and `throughput`.
  * A rate.
@@ -878,7 +1016,7 @@ Creates an `fcFactory` feature.
 Examples:
 
 ```
-feature: Factory input "Iron", 2 "Microchips", output "Televisions", max throughput 1/h;
+feature: Factory input "Iron", "Microchips" * 2 units, output "Televisions", max throughput 1/h;
 ```
 
 
@@ -1475,7 +1613,7 @@ For a staffing feature to determine that an asset is functional, a
 certain number of people from `Population` features must be assigned
 to this feature by a `PeopleBus`.
 
-Settings syntax: An integer followed by the keyword `jobs`.
+Settings syntax: A non-zero positive integer followed by the keyword `jobs`.
 
 Creates an `fcStaffing` feature.
 
@@ -1682,11 +1820,12 @@ This field may be specified in normal research blocks, and must be
 omitted in `root` and `package` research blocks. If specified, it must
 only be specified once.
 
-The syntax is `weight`, followed by an integer in the range 1 to
+The syntax is `weight`, followed by an integer in the range 2 to
 9223372036854775807, and a semicolon `;`. Weights are relative. (There
 is no colon in this field's syntax.)
 
-If omitted, the weight defaults to 1.
+If omitted, the weight defaults to 1. (1 cannot be specified, because
+it would be redundant, as it is the default.)
 
 Examples:
 
@@ -1736,9 +1875,8 @@ a comma:
 
 Finally, the field must end with a semicolon `;`.
 
-If the `speed` bonus is given, it must come after a `takes` time
-field. If the `weight` bonus is given, it must not come before a
-`weight` field.
+Any `with` directives must come after any `weight` or `takes`
+directives.
 
 When the given condition applies, the bonuses are applied.
 
@@ -1866,7 +2004,7 @@ These elements can be combined with two list operators:
    whole to be true. Otherwise, it is false.
 
  * The keyword `or` can be used to combine elements into an "or" list;
-   any one element in the list being true lets the comma-separated
+   any one element in the list being true lets the `or`-separated
    list as a whole be true. Otherwise, it is false.
 
 Such lists can be wrapped in parentheses `(` ... `)` to form a new

@@ -85,7 +85,7 @@ type
       {$IFOPT C+} property IsNotNearZero: Boolean read GetIsNotNearZero; {$ENDIF}
       property IsNegative: Boolean read GetIsNegative; // < 0
       property IsPositive: Boolean read GetIsPositive; // > 0
-      property AsDouble: Double read Value; // for storage, restore with FromKg(Double)
+      property AsDouble: Double read Value write Value; // for storage
       class property Zero: TMass read GetZero;
       class property Infinity: TMass read GetInfinity;
       class property Units: UTF8String read GetUnits;
@@ -113,11 +113,14 @@ type
       class property Infinity: TMassPerUnit read GetInfinity;
    end;
 
+   TMassSum = specialize TTypedSum<TMass>;
+   
 operator + (A: TQuantity64; B: TQuantity64): TQuantity64; inline;
 operator - (A: TQuantity64; B: TQuantity64): TQuantity64; inline;
 operator - (A: TQuantity64; B: TQuantity32): TQuantity64; inline;
 operator * (A: TQuantity64; B: Int64): TQuantity64; inline;
 operator * (A: TQuantity64; B: Double): TQuantity64; inline;
+operator * (A: TQuantity64; B: Fraction32): TQuantity64; inline;
 operator / (A: TQuantity64; B: TQuantity64): Double; inline;
 operator div (A: TQuantity64; B: TQuantity64): Int64; inline;
 operator div (A: TQuantity64; B: Int64): TQuantity64; inline;
@@ -131,6 +134,7 @@ operator + (A: TQuantity32; B: TQuantity32): TQuantity32; inline;
 operator - (A: TQuantity32; B: TQuantity32): TQuantity32; inline;
 operator * (A: TQuantity32; B: Cardinal): TQuantity32; inline;
 operator * (A: TQuantity32; B: Double): TQuantity32; inline;
+operator * (A: TQuantity32; B: Fraction32): TQuantity32; inline;
 operator / (A: TQuantity32; B: TQuantity32): Double; inline;
 operator div (A: TQuantity32; B: TQuantity32): Cardinal; inline;
 operator div (A: TQuantity32; B: Cardinal): TQuantity32; inline;
@@ -145,10 +149,12 @@ operator := (A: TQuantity32): TQuantity64; inline;
 operator + (A: TMass; B: TMass): TMass; inline;
 operator - (A: TMass; B: TMass): TMass; inline;
 operator * (A: TMass; B: Double): TMass; inline;
+operator * (A: TMass; B: Fraction32): TMass; inline;
 operator * (A: TMass; B: Int64): TMass; inline;
 operator * (A: Fraction32; B: TMass): TMass; inline;
 operator / (A: TMass; B: TMass): Double; inline;
 operator mod (A: TMass; B: TMass): TMass; inline;
+operator / (A: TMass; B: Fraction32): TMass; inline;
 operator < (A: TMass; B: TMass): Boolean; inline;
 operator <= (A: TMass; B: TMass): Boolean; inline;
 operator = (A: TMass; B: TMass): Boolean; inline;
@@ -454,6 +460,11 @@ begin
    Result.Value := Round(A.Value * B);
 end;
 
+operator * (A: TQuantity64; B: Fraction32): TQuantity64;
+begin
+   Result.Value := Round(A.Value * B.ToDouble());
+end;
+
 operator / (A: TQuantity64; B: TQuantity64): Double;
 begin
    Result := A.Value / B.Value;
@@ -514,6 +525,11 @@ end;
 operator * (A: TQuantity32; B: Double): TQuantity32;
 begin
    Result.Value := Round(A.Value * B); // $R-
+end;
+
+operator * (A: TQuantity32; B: Fraction32): TQuantity32;
+begin
+   Result.Value := Round(A.Value * B.ToDouble()); // $R-
 end;
 
 operator / (A: TQuantity32; B: TQuantity32): Double;
@@ -578,6 +594,11 @@ begin
    Result.Value := A.Value * B;
 end;
 
+operator * (A: TMass; B: Fraction32): TMass;
+begin
+   Result.Value := A.Value * B.ToDouble();
+end;
+
 operator * (A: TMass; B: Int64): TMass;
 begin
    Result.Value := A.Value * B;
@@ -596,6 +617,11 @@ end;
 operator mod (A: TMass; B: TMass): TMass;
 begin
    Result.Value := A.Value mod B.Value; // $R-
+end;
+
+operator / (A: TMass; B: Fraction32): TMass;
+begin
+   Result.Value := A.Value / B.ToDouble();
 end;
 
 operator < (A: TMass; B: TMass): Boolean;

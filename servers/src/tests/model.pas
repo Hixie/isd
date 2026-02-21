@@ -649,6 +649,37 @@ type
       property MassFlowRate: Double read FMassFlowRate write FMassFlowRate;
       property Data: Int32 read FData write FData;
    end;
+   
+   TModelGeneratorFeature = class (TModelFeature)
+   public
+      procedure UpdateFrom(Stream: TServerStreamReader); override;
+   strict private
+      FEnergyName, FEnergyUnits: UTF8String;
+      FDisabledReason: Cardinal;
+      FDesignMax, FCurrentMax, FCurrentUsed: Double;
+   published
+      property EnergyName: UTF8String read FEnergyName write FEnergyName;
+      property EnergyUnits: UTF8String read FEnergyUnits write FEnergyUnits;
+      property DisabledReason: Cardinal read FDisabledReason write FDisabledReason;
+      property DesignMax: Double read FDesignMax write FDesignMax;
+      property CurrentMax: Double read FCurrentMax write FCurrentMax;
+      property CurrentUsed: Double read FCurrentUsed write FCurrentUsed;
+   end;
+
+   TModelEnergyConsumerFeature = class (TModelFeature)
+   public
+      procedure UpdateFrom(Stream: TServerStreamReader); override;
+   strict private
+      FEnergyName, FEnergyUnits: UTF8String;
+      FDisabledReason: Cardinal;
+      FDesignMax, FCurrentUsed: Double;
+   published
+      property EnergyName: UTF8String read FEnergyName write FEnergyName;
+      property EnergyUnits: UTF8String read FEnergyUnits write FEnergyUnits;
+      property DisabledReason: Cardinal read FDisabledReason write FDisabledReason;
+      property DesignMax: Double read FDesignMax write FDesignMax;
+      property CurrentUsed: Double read FCurrentUsed write FCurrentUsed;
+   end;
 
 const
    ModelFeatureClasses: array[1..fcHighestKnownFeatureCode] of TModelFeatureClass = (
@@ -684,7 +715,9 @@ const
      TModelStaffingFeature,
      TModelAssetPileFeature,
      TModelFactoryFeature,
-     TModelSampleFeature
+     TModelSampleFeature,
+     TModelGeneratorFeature,
+     TModelEnergyConsumerFeature
   );
 
 implementation
@@ -1809,6 +1842,27 @@ begin
    FMass := Stream.ReadDouble();
    FMassFlowRate := Stream.ReadDouble();
    FData := Stream.ReadInt32();
+end;
+
+
+procedure TModelGeneratorFeature.UpdateFrom(Stream: TServerStreamReader);
+begin
+   FEnergyName := Stream.ReadString();
+   FEnergyUnits := Stream.ReadString();
+   FDisabledReason := Stream.ReadCardinal();
+   FDesignMax := Stream.ReadDouble();
+   FCurrentMax := Stream.ReadDouble();
+   FCurrentUsed := Stream.ReadDouble();
+end;
+
+
+procedure TModelEnergyConsumerFeature.UpdateFrom(Stream: TServerStreamReader);
+begin
+   FEnergyName := Stream.ReadString();
+   FEnergyUnits := Stream.ReadString();
+   FDisabledReason := Stream.ReadCardinal();
+   FDesignMax := Stream.ReadDouble();
+   FCurrentUsed := Stream.ReadDouble();
 end;
 
 end.

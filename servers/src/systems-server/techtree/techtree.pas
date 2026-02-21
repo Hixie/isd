@@ -8,7 +8,7 @@ interface
 
 uses
    sysutils, internals, time, systems, plasticarrays, genericutils,
-   tttokenizer, materials, masses, conditions;
+   tttokenizer, materials, masses, conditions, energies;
 
 type
    TTechnologyTree = class
@@ -17,11 +17,13 @@ type
       FTopics: specialize PlasticArray<TTopic, specialize IncomparableUtils<TTopic>>;
       FAssetClasses: TAssetClass.TPlasticArray;
       FMaterials: specialize PlasticArray<TMaterial, TObjectUtils>;
+      FEnergies: TEnergy.TPlasticArray;
    private
       function AddResearch(AID: TResearchID; ADefaultTime: TMillisecondsDuration; ADefaultWeight: TWeight; ACondition: TConditionAST; ABonuses: TBonus.TArray; AUnlockedKnowledge: TUnlockedKnowledge.TArray): TResearch;
       function AddTopic(Name: UTF8String; Condition: TRootConditionAST): TTopic;
       procedure AddAssetClass(AssetClass: TAssetClass);
       procedure AddMaterial(Material: TMaterial);
+      procedure AddEnergy(Energy: TEnergy);
       procedure Compile();
    public
       constructor Create();
@@ -30,6 +32,7 @@ type
       function ExtractTopics(): TTopic.TArray;
       function ExtractAssetClasses(): TAssetClass.TArray;
       function ExtractMaterials(): TMaterial.TArray;
+      function ExtractEnergies(): TEnergy.TArray;
    end;
 
 function LoadTechnologyTree(Filename: RawByteString; Materials: TMaterial.TArray): TTechnologyTree;
@@ -52,6 +55,7 @@ var
    Research: TResearch;
    AssetClass: TAssetClass;
    Material: TMaterial;
+   Energy: TEnergy;
 begin
    for Research in FResearches do
       Research.Free();
@@ -59,6 +63,8 @@ begin
       AssetClass.Free();
    for Material in FMaterials do
       Material.Free();
+   for Energy in FEnergies do
+      Energy.Free();
    inherited;
 end;
 
@@ -90,6 +96,11 @@ end;
 procedure TTechnologyTree.AddMaterial(Material: TMaterial);
 begin
    FMaterials.Push(Material);
+end;
+      
+procedure TTechnologyTree.AddEnergy(Energy: TEnergy);
+begin
+   FEnergies.Push(Energy);
 end;
 
 procedure TTechnologyTree.Compile();
@@ -159,6 +170,11 @@ begin
    Result := FMaterials.Distill();
 end;
 
+function TTechnologyTree.ExtractEnergies(): TEnergy.TArray;
+begin
+   Result := FEnergies.Distill();
+end;
+
 
 // PARSER
    
@@ -172,10 +188,12 @@ var
    MaterialsByName: TMaterialNameHashTable;
    AssetClassesByID: TAssetClassIDHashTable; // only used to catch duplicate IDs
    MaterialsByID: TMaterialIDHashTable; // only used to catch duplicate IDs
+   EnergiesByName: TEnergyNameHashTable;
+   EnergiesByUnits: TEnergyUnitsHashTable;
 
    function GetTechTreeReader(): TTechTreeReader; inline;
    begin
-      Result := TTechTreeReader.Create(Tokens, SituationsByIdentifier, AssetClassesByName, MaterialsByName);
+      Result := TTechTreeReader.Create(Tokens, SituationsByIdentifier, AssetClassesByName, MaterialsByName, EnergiesByUnits);
    end;
 
    function ParseCondition(): TRootConditionAST;
@@ -189,7 +207,7 @@ var
          if (Tokens.IsOpenParenthesis()) then
          begin
             Tokens.ReadOpenParenthesis();
-            Result := TGroupConditionAST(ParseConditionExpression());
+            Result := TGroupConditionAST.Create(ParseConditionExpression());
             Tokens.ReadCloseParenthesis();
          end
          else
@@ -242,7 +260,7 @@ var
                Result := TNotConditionAST.Create(ParseLeafConditionExpression(True));
             end
             else
-               Tokens.Error('Unknown condition directive "%s", expected one of "nothing", "storybeat", "material", "asset", "situation", "topic", "no", or an open parenthesis', [Identifier]);
+               Tokens.Error('Unknown condition directive "%s", expected one of "storybeat", "material", "asset", "situation", "topic", "no", or an open parenthesis', [Identifier]);
          end;
       end;
 
@@ -604,46 +622,6 @@ var
       end;
    end;
 
-   procedure ParseStorybeat();
-   var
-      Identifier: UTF8String;
-   begin
-      Identifier := Tokens.ReadIdentifier();
-      if (StorybeatResearches.Has(Identifier)) then
-         Tokens.Error('Duplicate storybeat "%s"', [Identifier]);
-      Tokens.ReadSemicolon();
-      StorybeatResearches.AddDefault(Identifier);
-   end;
-
-   procedure ParseFacility();
-   var
-      Name: UTF8String;
-   begin
-      // We don't support _declaring_ our magic @sample etc facilities
-      Name := Tokens.ReadIdentifier();
-      if (SituationsByIdentifier.Has(Name)) then
-         Tokens.Error('Duplicate facility (situation) "%s"', [Name]);
-      Tokens.ReadSemicolon();
-      RegisterSituation(Name);
-   end;
-
-   procedure ParseTopic();
-   var
-      Name: UTF8String;
-      Condition: TRootConditionAST;
-   begin
-      Name := Tokens.ReadString();
-      if (TopicsByName.Has(Name)) then
-         Tokens.Error('Duplicate topic "%s"', [Name]);
-      if (not Tokens.IsSemicolon()) then
-      begin
-         Tokens.ReadIdentifier('requires');
-         Condition := ParseCondition();
-      end;
-      Tokens.ReadSemicolon();
-      TopicsByName[Name] := Result.AddTopic(Name, Condition);
-   end;
-
    procedure ParseAssetClass();
    type
       TClassComponent = (ccID, ccVaguely, ccDescription, ccIcon, ccBuild, ccFeature);
@@ -766,14 +744,19 @@ var
          Include(Components, Component);
       end;
 
+   type
+      TMetrics = (mSize, mMass, mDensity);
+      
    var
       Material: TMaterial;
       ID: TMaterialID;
       Name, AmbiguousName, Description: UTF8String;
       Icon: TIcon;
       UnitKind: TUnitKind;
-      Mass: TMass;
-      Length, Volume, Density: Double;
+      SubMass: TMass;
+      Size, SubVolume, Density: Double;
+      Metrics: set of TMetrics;
+      MetricCount: Cardinal;
       MassPerUnit: TMassPerUnit;
       Tag: UTF8String;
       Tags: TMaterialTags;
@@ -781,6 +764,8 @@ var
    begin
       Components := [];
       Name := Tokens.ReadString();
+      if (Name = '') then
+         Tokens.Error('Expected a non-empty name', []);
       if (MaterialsByName.Has(Name)) then
          Tokens.Error('Material name "%s" already used by another material (with ID %d)', [Name, MaterialsByName[Name].ID]);
       if (AssetClassesByName.Has(Name)) then
@@ -805,21 +790,29 @@ var
                begin
                   MarkSeen(mcVaguely);
                   AmbiguousName := Tokens.ReadString();
+                  if (AmbiguousName = '') then
+                     Tokens.Error('Expected a non-empty vague name', []);
                end;
             'description':
                begin
                   MarkSeen(mcDescription);
                   Description := Tokens.ReadString();
+                  if (Description = '') then
+                     Tokens.Error('Expected a non-empty description', []);
                end;
             'icon':
                begin
                   MarkSeen(mcIcon);
                   Icon := Tokens.ReadString(High(TIcon));
+                  if (Icon = '') then
+                     Tokens.Error('Expected a non-empty icon', []);
                end;
             'metrics':
                begin
                   MarkSeen(mcMetrics);
-                  // metrics: [pressurized] [bulk|component|fluid] <length> weighs <mass>;
+                  // metrics: [pressurized] [bulk|component|fluid] [, size <length>] [, density <mass> / <volumeunits>] [, mass <mass>]; // two of the last three
+                  Metrics := [];
+                  MetricCount := 0;
                   Tags := [];
                   if (Tokens.IsIdentifier('pressurized')) then
                   begin
@@ -846,12 +839,56 @@ var
                   else
                      Tokens.Error('Unknown material category "%s", expected "bulk", "fluid", or "component"', [Tag]);
                   end;
-                  Length := ReadLength(Tokens);
-                  Tokens.ReadIdentifier('weighs');
-                  Mass := ReadMass(Tokens);
-                  MassPerUnit := Mass / TQuantity64.One;
-                  Volume := Length * Length * Length;
-                  Density := Mass.ToSIUnits() / Volume;
+                  repeat
+                     Tokens.ReadComma();
+                     Tag := Tokens.ReadIdentifier();
+                     case Tag of
+                        'size':
+                           begin
+                              if (mSize in Metrics) then
+                                 Tokens.Error('Duplicate field "size" in material description', []);
+                              Include(Metrics, mSize);
+                              Inc(MetricCount);
+                              Size := ReadLength(Tokens);
+                           end;
+                        'mass':
+                           begin
+                              if (mMass in Metrics) then
+                                 Tokens.Error('Duplicate field "mass" in material description', []);
+                              Include(Metrics, mMass);
+                              Inc(MetricCount);
+                              MassPerUnit := ReadMass(Tokens) / TQuantity64.One;
+                           end;
+                        'density':
+                           begin
+                              if (mDensity in Metrics) then
+                                 Tokens.Error('Duplicate field "density" in material description', []);
+                              Include(Metrics, mDensity);
+                              Inc(MetricCount);
+                              SubMass := ReadMass(Tokens);
+                              SubVolume := ReadVolumeDenominator(Tokens);
+                              Density := SubMass.ToSIUnits() / SubVolume;
+                           end;
+                     else
+                        Tokens.Error('Unknown mass description keyword "%s", expected "size", "mass", or "density"', [Tag]);
+                     end;
+                  until MetricCount = 2;
+                  if (Metrics = [mSize, mMass]) then
+                  begin
+                     // MassPerUnit is already established
+                     Density := MassPerUnit.AsDouble / (Size * Size * Size);
+                  end
+                  else
+                  if (Metrics = [mSize, mDensity]) then
+                  begin
+                     // Density is already established
+                     MassPerUnit := TMass.FromKg(Density * Size * Size * Size) / TQuantity64.One;
+                  end
+                  else
+                  begin
+                     Assert(Metrics = [mMass, mDensity]);
+                     // Density and MassPerUnit are both already established
+                  end;
                end;
          else
             Tokens.Error('Unknown directive "%s" in material block', [Keyword]);
@@ -867,6 +904,68 @@ var
       MaterialsByName[Material.Name] := Material;
       MaterialsByID[Material.ID] := Material;
       MaterialResearches.AddDefault(Material.Name);
+   end;
+
+   procedure ParseEnergy();
+   var
+      Name, Units, Description: UTF8String;
+      Energy: TEnergy;
+   begin
+      // energy "Biochemical Energy", cal: "Food turns into biochemical energy when eaten. This helps people stay alive.";
+      Name := Tokens.ReadString();
+      if (EnergiesByName.Has(Name)) then
+         Tokens.Error('Duplicate energy "%s"', [Name]);
+      Tokens.ReadComma();
+      Units := Tokens.ReadIdentifier();
+      if (EnergiesByUnits.Has(Name)) then
+         Tokens.Error('Duplicate energy units "%s" (also used by "%s")', [Units, EnergiesByUnits[Units].Name]);
+      Tokens.ReadColon();
+      Description := Tokens.ReadString();
+      Tokens.ReadSemicolon();
+      Energy := TEnergy.Create(Name, Units, Description);
+      EnergiesByName[Energy.Name] := Energy;
+      EnergiesByUnits[Energy.Units] := Energy;
+      Result.AddEnergy(Energy);
+   end;
+
+   procedure ParseTopic();
+   var
+      Name: UTF8String;
+      Condition: TRootConditionAST;
+   begin
+      Name := Tokens.ReadString();
+      if (TopicsByName.Has(Name)) then
+         Tokens.Error('Duplicate topic "%s"', [Name]);
+      if (not Tokens.IsSemicolon()) then
+      begin
+         Tokens.ReadIdentifier('requires');
+         Condition := ParseCondition();
+      end;
+      Tokens.ReadSemicolon();
+      TopicsByName[Name] := Result.AddTopic(Name, Condition);
+   end;
+
+   procedure ParseStorybeat();
+   var
+      Identifier: UTF8String;
+   begin
+      Identifier := Tokens.ReadIdentifier();
+      if (StorybeatResearches.Has(Identifier)) then
+         Tokens.Error('Duplicate storybeat "%s"', [Identifier]);
+      Tokens.ReadSemicolon();
+      StorybeatResearches.AddDefault(Identifier);
+   end;
+
+   procedure ParseFacility();
+   var
+      Name: UTF8String;
+   begin
+      // We don't support _declaring_ our magic @sample etc facilities
+      Name := Tokens.ReadIdentifier();
+      if (SituationsByIdentifier.Has(Name)) then
+         Tokens.Error('Duplicate facility (situation) "%s"', [Name]);
+      Tokens.ReadSemicolon();
+      RegisterSituation(Name);
    end;
 
 // function Parse(Tokens: TTokenizer; Ores: TMaterial.TArray): TTechnologyTree;
@@ -886,6 +985,8 @@ begin
       AssetClassesByID := TAssetClassIDHashTable.Create();
       MaterialsByName := TMaterialNameHashTable.Create(Length(Ores)); // $R-
       MaterialsByID := TMaterialIDHashTable.Create(Length(Ores)); // $R-
+      EnergiesByName := TEnergyNameHashTable.Create();
+      EnergiesByUnits := TEnergyUnitsHashTable.Create();
       for Material in Ores do
       begin
          MaterialsByName[Material.Name] := Material;
@@ -897,12 +998,13 @@ begin
          begin
             Keyword := Tokens.ReadIdentifier();
             case Keyword of
+               'asset': ParseAssetClass();
+               'energy': ParseEnergy();
+               'facility': ParseFacility();
+               'material': ParseMaterial();
                'research': ParseResearch();
                'storybeat': ParseStorybeat();
-               'facility': ParseFacility();
                'topic': ParseTopic();
-               'asset': ParseAssetClass();
-               'material': ParseMaterial();
             else
                Tokens.Error('Unknown keyword "%s" at top level', [Keyword]);
             end;
@@ -923,6 +1025,8 @@ begin
       FreeAndNil(AssetClassesByID);
       FreeAndNil(MaterialsByName);
       FreeAndNil(MaterialsByID);
+      FreeAndNil(EnergiesByName);
+      FreeAndNil(EnergiesByUnits);
    end;
 end;
 

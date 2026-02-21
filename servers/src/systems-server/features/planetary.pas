@@ -12,13 +12,11 @@ type
    strict private
       FDepth: Cardinal;
       FTargetCount: Cardinal;
-      FTargetQuantity: TQuantity64;
    public
       AssignedOres: TOreQuantities;
-      constructor Create(ADepth: Cardinal; ATargetCount: Cardinal; ATargetQuantity: TQuantity64);
+      constructor Create(ADepth: Cardinal; ATargetCount: Cardinal);
       property Depth: Cardinal read FDepth;
       property TargetCount: Cardinal read FTargetCount;
-      property TargetQuantity: TQuantity64 read FTargetQuantity;
    end;
 
    TPlanetaryBodyFeatureClass = class(TFeatureClass)
@@ -26,7 +24,7 @@ type
       FSeed: Cardinal;
       FDiameter: Double; // m
       FTemperature: Double; // K
-      FComposition: TOreFractions;
+      FComposition: TOreFractions; // fractions of total _mass_ (not units)
       FMass: Int256; // kg
       FConsiderForDynastyStart: Boolean;
       function GetFeatureNodeClass(): FeatureNodeReference; override;
@@ -40,7 +38,7 @@ type
       FSeed: Cardinal;
       FDiameter: Double; // m
       FTemperature: Double; // K
-      FComposition: TOreFractions;
+      FComposition: TOreFractions; // fractions of total mass (not units)
       FMass: Int256; // kg
       FConsiderForDynastyStart: Boolean;
       function GetBondAlbedo(): Double;
@@ -64,17 +62,19 @@ type
       property Temperature: Double read FTemperature; // K
    end;
 
+const
+   MaxUnitsPerOre = 1 << 62; // the actual max would be 2^63-1 but having some headroom for floating point approximation when converting to and from doubles avoids some confusion
+
 implementation
 
 uses
    isdprotocol, sysutils, exceptions, math, rubble, commonbuses, ttparser;
 
-constructor TAllocateOresBusMessage.Create(ADepth: Cardinal; ATargetCount: Cardinal; ATargetQuantity: TQuantity64);
+constructor TAllocateOresBusMessage.Create(ADepth: Cardinal; ATargetCount: Cardinal);
 begin
    inherited Create();
    FDepth := ADepth;
    FTargetCount := ATargetCount;
-   FTargetQuantity := ATargetQuantity;
 end;
 
 constructor TPlanetaryBodyFeatureClass.CreateFromTechnologyTree(const Reader: TTechTreeReader);
@@ -210,22 +210,29 @@ end;
 function TPlanetaryBodyFeatureNode.ManageBusMessage(Message: TBusMessage): TInjectBusMessageResult;
 var
    AllocateResourcesMessage: TAllocateOresBusMessage;
+   LimitingOre: TOres;
+   LimitingQuantity, LimitingQuantityCandidate: Double;
+   LimitingMass: TMass;
    OreIndex: TOres;
    Material: TMaterial;
    ConsiderOre, IncludeOre: Boolean;
    TargetCount, RemainingCount, Index: Cardinal;
-   CurrentFraction, IncludedFraction: Fraction32;
-   ApproximateMass, CandidateMass, MaxMass: TMass;
+   IncludedFraction: Fraction32;
+   ApproximateMass, CandidateMass: TMass;
    SelectedOres: TOreFilter;
+   CandidateQuantity: TQuantity64;
 begin
    if (Message is TAllocateOresBusMessage) then
    begin
+      Writeln('ALLOCATING ORES FROM ', Parent.DebugName);
       AllocateResourcesMessage := Message as TAllocateOresBusMessage;
       TargetCount := AllocateResourcesMessage.TargetCount;
       Assert(TargetCount > 0);
       SelectedOres.Clear();
       ApproximateMass := TMass.FromKg(FMass);
       RemainingCount := 0;
+      // FComposition[Ore] is the fraction of the mass of the planet that is of that ore
+      // ApproximateMass is the mass of the planet (as a double)
       for OreIndex in TOres do
       begin
          Material := System.Encyclopedia.Materials[OreIndex];
@@ -238,7 +245,7 @@ begin
             Inc(RemainingCount);
       end;
       Index := 0;
-      IncludedFraction := Fraction32.Zero;
+      IncludedFraction := Fraction32.Zero; // fraction of planet mass that we are considering including in the region
       for OreIndex in TOres do
       begin
          if (FComposition[OreIndex].IsNotZero) then
@@ -272,8 +279,7 @@ begin
                if (IncludeOre) then
                begin
                   SelectedOres.Enable(OreIndex);
-                  CurrentFraction := FComposition[OreIndex];
-                  IncludedFraction := IncludedFraction + CurrentFraction;
+                  IncludedFraction := IncludedFraction + FComposition[OreIndex]; // fraction of mass
                   Inc(Index);
                   Dec(TargetCount);
                   if (TargetCount = 0) then
@@ -285,33 +291,51 @@ begin
          end;
       end;
       Assert((RemainingCount = 0) or (TargetCount = 0));
-      Writeln('ALLOCATING ORES FROM ', Parent.DebugName);
+
+      // first determine the limiting ore
+      // this is the one where the included fraction results in the largest quantity
+      LimitingQuantity := 0.0;
+      LimitingOre := Low(TOres); // this line should not matter
       for OreIndex in TOres do
       begin
          if (SelectedOres[OreIndex]) then
          begin
             Material := System.Encyclopedia.Materials[OreIndex];
-            CandidateMass := (FComposition[OreIndex] / IncludedFraction) * (AllocateResourcesMessage.TargetQuantity * Material.MassPerUnit);
-            MaxMass := FComposition[OreIndex] * ApproximateMass; // the amount of material that's left
-            if (CandidateMass > MaxMass) then
+            LimitingQuantityCandidate := FComposition[OreIndex] / Material.MassPerUnit.AsDouble;
+            Assert(LimitingQuantityCandidate > 0);
+            if (LimitingQuantityCandidate > LimitingQuantity) then
             begin
-               // finish it off
-               FComposition[OreIndex].ResetToZero();
-               AllocateResourcesMessage.AssignedOres[OreIndex] := MaxMass / Material.MassPerUnit; // $R-
-            end
-            else
-            begin
-               // extract a little
-               FComposition[OreIndex].Subtract(CandidateMass / ApproximateMass);
-               AllocateResourcesMessage.AssignedOres[OreIndex] := CandidateMass / Material.MassPerUnit; // $R-
+               LimitingOre := OreIndex;
+               LimitingQuantity := LimitingQuantityCandidate;
             end;
-            FMass.Subtract(Int256.FromDouble((AllocateResourcesMessage.AssignedOres[OreIndex] * Material.MassPerUnit).AsDouble));
+         end;
+      end;
+
+      // now compute the fraction we want to include
+      // the goal is to max out the LimitingOre
+      Material := System.Encyclopedia.Materials[LimitingOre];
+      LimitingMass := (TQuantity64.FromUnits(MaxUnitsPerOre) * Material.MassPerUnit) / FComposition[LimitingOre]; // TQuantity64.Max is the most we could put in
+      if (LimitingMass > FComposition[LimitingOre] * ApproximateMass) then
+         LimitingMass := FComposition[LimitingOre] * ApproximateMass;
+
+      // actually assign the ores, in quantities
+      for OreIndex in TOres do
+      begin
+         if (SelectedOres[OreIndex]) then
+         begin
+            Material := System.Encyclopedia.Materials[OreIndex];
+            CandidateMass := FComposition[OreIndex] * LimitingMass;
+            CandidateQuantity := CandidateMass div Material.MassPerUnit;
+            CandidateMass := CandidateQuantity * Material.MassPerUnit;
+            FComposition[OreIndex].ReduceBy(Fraction32.FromDouble(CandidateMass / ApproximateMass));
+            AllocateResourcesMessage.AssignedOres[OreIndex] := CandidateQuantity;
+            FMass.Subtract(Int256.FromDouble(CandidateMass.AsDouble));
+            Writeln('  ', Material.Name, ' (ore #', OreIndex, '): ', AllocateResourcesMessage.AssignedOres[OreIndex].ToString(), ' (', (AllocateResourcesMessage.AssignedOres[OreIndex] * Material.MassPerUnit).ToString(), ')');
          end
          else
          begin
             AllocateResourcesMessage.AssignedOres[OreIndex] := TQuantity64.Zero;
          end;
-         Writeln('  Ore #', OreIndex, ': ', AllocateResourcesMessage.AssignedOres[OreIndex].ToString());
       end;
       Fraction32.NormalizeArray(@FComposition[Low(FComposition)], Length(FComposition)); // renormalize our composition
       MarkAsDirty([dkUpdateClients, dkUpdateJournal]);

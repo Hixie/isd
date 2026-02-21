@@ -109,7 +109,7 @@ asset "Geological region" {
   vaguely: "Region";
   description: "An area of a planetary body.";
   icon: "region";
-  feature: Region at depth 1, 10 materials of quantity 9223372036854775807;
+  feature: Region at depth 1, 10 materials;
   feature: PeopleBus;
   feature: KnowledgeBus;
   feature: BuilderBus;
@@ -202,7 +202,7 @@ material "Brick" {
   description: "A piece of rock, fashioned into a stackable component, useful for creating buildings.";
   icon: "brick";
   
-  metrics: component 10cm weighs 1kg;
+  metrics: component, size 10cm, mass 1kg;
 }
 
 facility church-support;

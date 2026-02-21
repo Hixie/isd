@@ -78,7 +78,7 @@ type
    POreQuantities = ^TOreQuantities;
    
    TOreQuantities = array[TOres] of TQuantity64;
-   TOreFractions = array[TOres] of Fraction32;
+   TOreFractions = array[TOres] of Fraction32; // fractions of _mass_
    TOreRates = array[TOres] of TQuantityRate;
    TFixedPointOreRates = array[TOres] of TQuantityRateSum;
    TOreMasses = array[TOres] of TMass;

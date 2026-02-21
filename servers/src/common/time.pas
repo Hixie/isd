@@ -75,7 +75,7 @@ type
       Value: Double;
    public
       constructor FromFactor(A: Double);
-      property AsDouble: Double read Value; // for storage, restore with FromFactor(Double)
+      property AsDouble: Double read Value write Value; // for storage
       function ToString(): UTF8String;
    end;
 
@@ -107,7 +107,7 @@ type
       property IsNegative: Boolean read GetIsNegative; // <0
       property IsFinite: Boolean read GetIsFinite;
       property IsInfinite: Boolean read GetIsInfinite;
-      property AsDouble: Double read Value; // for storage, restore with FromPerMillisecond(Double)
+      property AsDouble: Double read Value write Value; // for storage
       class property Zero: TRawRate read GetZero;
       class property Infinity: TRawRate read GetInfinity;
       class operator + (A: TRawRate; B: TRawRate): TRawRate; inline;
@@ -152,38 +152,13 @@ type
    function ApplyIncrementally(Rate: TMassRate; Time: TMillisecondsDuration; var Fraction: Fraction32): TMass;
 
 type
-   generic TRateSum<TRate> = record
-   private
-      Value: TSum;
-      class operator Initialize(var Rec: TRateSum);
-      function GetIsZero(): Boolean; inline;
-      function GetIsNotZero(): Boolean; inline;
-      function GetIsNegative(): Boolean; inline;
-      function GetIsPositive(): Boolean; inline;
-      function ToStringImpl(Units: UTF8String): UTF8String; inline;
-   public
-      procedure Reset(); inline;
-      procedure Inc(Delta: TRate); inline;
-      procedure Dec(Delta: TRate); inline;
-      procedure Inc(Delta: TRateSum); inline;
-      procedure Dec(Delta: TRateSum); inline;
-      class operator Copy(constref Source: TRateSum; var Destination: TRateSum);
-      property IsZero: Boolean read GetIsZero;
-      property IsNotZero: Boolean read GetIsNotZero;
-      property IsNegative: Boolean read GetIsNegative;
-      property IsPositive: Boolean read GetIsPositive;
-      property AsSum: TSum read Value;
-      function ToRate(): TRate; inline;
-      function ToDouble(): Double; inline;
-      class operator <(A, B: TRateSum): Boolean; inline;
-      class operator <=(A, B: TRateSum): Boolean; inline;
-      class operator >=(A, B: TRateSum): Boolean; inline;
-      class operator >(A, B: TRateSum): Boolean; inline;
-      class operator -(A, B: TRateSum): TRateSum;
-   end;
+   TRateSum = specialize TTypedSum<TRate>;
+   TQuantityRateSum = specialize TTypedSum<TQuantityRate>;
+   TMassRateSum = specialize TTypedSum<TMassRate>;
 
-   TQuantityRateSum = specialize TRateSum<TQuantityRate>;
-   TMassRateSum = specialize TRateSum<TMassRate>;
+   TRateSumHelper = record helper for TRateSum
+      function ToString(): UTF8String; inline;
+   end;
 
    TQuantityRateSumHelper = record helper for TQuantityRateSum
       function ToString(): UTF8String; inline;
@@ -201,7 +176,7 @@ type
       constructor FromEachWeek(A: Double); // must be positive
       constructor FromDoublingTimeInMilliseconds(A: Double); // must be positive
       constructor FromDoublingTimeInWeeks(A: Double); // must be positive
-      property AsDouble: Double read Value; // for storage, restore with FromEachMilliseconds(Double)
+      property AsDouble: Double read Value write Value; // for storage
    end;
 
    TFactor = record
@@ -1258,112 +1233,19 @@ begin
 end;
 
 
-class operator TRateSum.Initialize(var Rec: TRateSum);
+function TRateSumHelper.ToString(): UTF8String;
 begin
-   Rec.Value.Reset();
+   Result := Flatten().ToString();
 end;
-
-function TRateSum.ToRate(): TRate;
-begin
-   Result.Value := Value.ToDouble();
-end;
-
-function TRateSum.ToDouble(): Double;
-begin
-   Result := Value.ToDouble();
-end;
-
-procedure TRateSum.Reset();
-begin
-   Value.Reset();
-end;
-
-function TRateSum.GetIsZero(): Boolean;
-begin
-   Result := Value.IsZero;
-end;
-
-function TRateSum.GetIsNotZero(): Boolean;
-begin
-   Result := Value.IsNotZero;
-end;
-
-function TRateSum.GetIsNegative(): Boolean;
-begin
-   Result := Value.IsNegative;
-end;
-
-function TRateSum.GetIsPositive(): Boolean;
-begin
-   Result := Value.IsPositive;
-end;
-
-procedure TRateSum.Inc(Delta: TRate);
-begin
-   Value.Inc(Delta.AsDouble);
-end;
-
-procedure TRateSum.Dec(Delta: TRate);
-begin
-   Value.Dec(Delta.AsDouble);
-end;
-
-procedure TRateSum.Inc(Delta: TRateSum);
-begin
-   Value.Inc(Delta.Value);
-end;
-
-procedure TRateSum.Dec(Delta: TRateSum);
-begin
-   Value.Dec(Delta.Value);
-end;
-
-class operator TRateSum.Copy(constref Source: TRateSum; var Destination: TRateSum);
-begin
-   Destination.Value := Source.Value;
-end;
-
-function TRateSum.ToStringImpl(Units: UTF8String): UTF8String;
-begin
-   Result := ToRate().ToStringImpl(Units);
-end;
-
-class operator TRateSum.< (A, B: TRateSum): Boolean;
-begin
-   Result := A.Value < B.Value;
-end;
-
-class operator TRateSum.> (A, B: TRateSum): Boolean;
-begin
-   Result := A.Value > B.Value;
-end;
-
-class operator TRateSum.<= (A, B: TRateSum): Boolean;
-begin
-   Result := A.Value <= B.Value;
-end;
-
-class operator TRateSum.>= (A, B: TRateSum): Boolean;
-begin
-   Result := A.Value >= B.Value;
-end;
-
-class operator TRateSum.- (A, B: TRateSum): TRateSum;
-begin
-   Result.Value.Reset();
-   Result.Value.Inc(A.Value);
-   Result.Value.Dec(B.Value);
-end;
-
 
 function TQuantityRateSumHelper.ToString(): UTF8String;
 begin
-   Result := Self.ToStringImpl('units');
+   Result := Flatten().ToString();
 end;
 
 function TMassRateSumHelper.ToString(): UTF8String;
 begin
-   Result := Self.ToStringImpl('kg');
+   Result := Flatten().ToString();
 end;
 
    

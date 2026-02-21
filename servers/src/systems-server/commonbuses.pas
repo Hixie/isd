@@ -24,17 +24,10 @@ type
       drUnowned = 4, // The asset is not associated with a dynasty.
       drCannotGuaranteeInput = 5, // A factory is disabled because the region could not guarantee availibility of input.
       drCannotStoreOutput = 6, // A factory is disabled because the region could not guarantee availability of space for output.
+      drInsufficientEnergy = 7, // The asset is operating below maximum strength because of a lack of power.
       drActive // unused; reserved value for fdActive
    );
    TDisabledReasons = set of TDisabledReason;
-
-   TFactoryDisabledReason = ( // guaranteed to be bitwise compatible with TDisabledReason except for fdActive
-      fdNotYetActive = Cardinal(drNoBus), // never sent by region, intended as initial value
-      fdCannotGuaranteeInput = Cardinal(drCannotGuaranteeInput),
-      fdCannotStoreOutput = Cardinal(drCannotStoreOutput),
-      fdActive = Cardinal(drActive) // never sent by region
-   );
-   {$IF SIZEOF(TFactoryDisabledReason) > SIZEOF(TDisabledReason) } {$FATAL TFactoryDisabledReason inconsistent} {$ENDIF}
    
 const
    drSourceLimited = drCannotGuaranteeInput; // For refineries and miners.
@@ -117,6 +110,20 @@ type
    // Should never be used during gameplay; does not conserve mass!
    // Warning! This will usually be sent when the asset is not in the tree.
    TInstabuildBusMessage = class(TBusMessage) end;
+
+type
+   // This is used as follows:
+   //
+   // type
+   //   TRegisterMinerBusMessage = specialize TRegisterProviderBusMessage<TPhysicalConnectionBusMessage, IMiner>;
+   //
+   generic TRegisterProviderBusMessage<TSuperclass: TBusMessage; IProvider> = class(TSuperclass)
+   private
+      FProvider: IProvider;
+   public
+      constructor Create(AProvider: IProvider);
+      property Provider: IProvider read FProvider;
+   end;
    
 implementation
 
@@ -277,6 +284,13 @@ begin
    if (FSourceGossip.Allocated and TargetGossip.Allocated) then
       TGossipHashTable.MoveGossip(FSourceGossip, TargetGossip, FMovingPopulation + FStayingPopulation, Amount, Now); // $R-
    Dec(FMovingPopulation, Amount);
+end;
+
+
+constructor TRegisterProviderBusMessage.Create(AProvider: IProvider);
+begin
+   inherited Create();
+   FProvider := AProvider;
 end;
 
 end.

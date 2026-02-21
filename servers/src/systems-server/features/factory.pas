@@ -5,8 +5,9 @@ unit factory;
 interface
 
 uses
-   basenetwork, systems, internals, serverstream, materials, commonbuses,
-   messageport, region, time, systemdynasty, annotatedpointer, isdnumbers;
+   basenetwork, systems, internals, serverstream, materials,
+   commonbuses, messageport, region, time, systemdynasty,
+   annotatedpointer, isdnumbers;
 
 type
    TFactoryFeatureClass = class(TFeatureClass)
@@ -25,14 +26,13 @@ type
    TFactoryFeatureNode = class(TFeatureNode, IFactory)
    strict private
       type
-         TBusStatus = (bsNoRegion);
+         TBusStatus = (bsNoRegion, bsInputStalled, bsOutputStalled);
    strict private
       FFeatureClass: TFactoryFeatureClass;
       FRegion: specialize TAnnotatedPointer<TRegionFeatureNode, TBusStatus>;
       FConfiguredMaxRate: TIterationsRate; // the rate set by the player
       FCurrentRate: TIterationsRate; // FFeatureClass.FMaxRate * RateLimit, limited to FConfiguredMaxRate; FLocalDisabledReason overrides this
       FDisabledReasons: TDisabledReasons;
-      FLocalDisabledReason: TFactoryDisabledReason; // if not fdActive, actual rate is currently zero, and FDisabledReasons should be considered to also have this one when telling client
       FPendingFraction: Fraction32;
       FBacklog: Cardinal; // number of cycles we've artificially kept back because it was causing accounting issues
    private // IFactory
@@ -41,8 +41,7 @@ type
       function GetFactoryRate(): TIterationsRate; // instances (not units!) per second; zero if stalled
       procedure SetFactoryRegion(Region: TRegionFeatureNode);
       procedure StartFactory();
-      procedure StallFactory(Reason: TFactoryDisabledReason);
-      procedure ResetFactory();
+      procedure StallFactory(Reason: TStallReason);
       procedure DisconnectFactory();
       function GetDynasty(): TDynasty;
       function GetPendingFraction(): PFraction32;
@@ -70,18 +69,21 @@ uses
 
 constructor TFactoryFeatureClass.CreateFromTechnologyTree(const Reader: TTechTreeReader);
 
-   function ReadManifest(const Section: UTF8String; var Manifest: TMaterialQuantity32Array): TMass;
+   function ReadManifest(const Section: UTF8String; var Manifest: TMaterialQuantity32Array): TMassSum;
    var
       NewEntry, Entry: TMaterialQuantity32;
    begin
-      Result := TMass.Zero;
+      Result.Reset();;
       Reader.Tokens.ReadIdentifier(section);
       repeat
-         if (Reader.Tokens.IsNumber()) then
-            NewEntry.Quantity := TQuantity32.FromUnits(ReadNumber(Reader.Tokens, 1, TQuantity32.Max.AsCardinal)) // $R-
+         NewEntry.Material := ReadMaterial(Reader);
+         if (Reader.Tokens.IsAsterisk()) then
+         begin
+            Reader.Tokens.ReadAsterisk();
+            NewEntry.Quantity := ReadQuantity32(Reader.Tokens, NewEntry.Material);
+         end
          else
             NewEntry.Quantity := TQuantity32.FromUnits(1);
-         NewEntry.Material := ReadMaterial(Reader);
          for Entry in Manifest do
          begin
             if Entry.Material = NewEntry.Material then
@@ -89,14 +91,14 @@ constructor TFactoryFeatureClass.CreateFromTechnologyTree(const Reader: TTechTre
          end;
          SetLength(Manifest, Length(Manifest) + 1);
          Manifest[High(Manifest)] := NewEntry;
-         Result := Result + NewEntry.Quantity * NewEntry.Material.MassPerUnit;
+         Result.Inc(NewEntry.Quantity * NewEntry.Material.MassPerUnit);
          Reader.Tokens.ReadComma();
       until Reader.Tokens.IsIdentifier();
    end;
 
 var
-   InputMass: TMass;
-   OutputMass: TMass;
+   InputMass: TMassSum;
+   OutputMass: TMassSum;
 begin
    inherited Create();
    Assert(FInputs = nil);
@@ -110,7 +112,7 @@ begin
    if (Length(FInputs) + Length(FOutputs) > High(Integer)) then
       Reader.Tokens.Error('Factory has too many inputs and outputs.', [Length(FInputs), Length(FOutputs)]);
    if (InputMass <> OutputMass) then
-      Reader.Tokens.Error('Mass of factory inputs and outputs is inconsistent. Inputs mass %s, outputs mass %s.', [InputMass.ToString(), OutputMass.ToString()]);
+      Reader.Tokens.Error('Mass of factory inputs and outputs is inconsistent. Inputs mass %s, outputs mass %s.', [InputMass.Flatten().ToString(), OutputMass.Flatten().ToString()]);
    Reader.Tokens.ReadIdentifier('max');
    Reader.Tokens.ReadIdentifier('throughput');
    FMaxRate := ReadPerTime(Reader.Tokens);
@@ -145,7 +147,6 @@ begin
    inherited Create(ASystem);
    FFeatureClass := AFeatureClass;
    FConfiguredMaxRate := FFeatureClass.FMaxRate;
-   Assert(FLocalDisabledReason = fdNotYetActive);
 end;
 
 constructor TFactoryFeatureNode.CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem);
@@ -153,7 +154,6 @@ begin
    Assert(Assigned(AFeatureClass));
    FFeatureClass := AFeatureClass as TFactoryFeatureClass;
    FConfiguredMaxRate := FFeatureClass.FMaxRate;
-   Assert(FLocalDisabledReason = fdNotYetActive);
    inherited;
 end;
 
@@ -163,7 +163,6 @@ begin
    begin
       FRegion.Unwrap().RemoveFactory(Self);
       FRegion.Clear();
-      FLocalDisabledReason := fdNotYetActive;
    end;
    inherited;
 end;
@@ -179,8 +178,7 @@ procedure TFactoryFeatureNode.Detaching();
 begin
    if (FRegion.Assigned) then
       FRegion.Unwrap().RemoveFactory(Self);
-   FRegion.Clear();
-   FLocalDisabledReason := fdNotYetActive;
+   FRegion.ClearFlag(bsNoRegion);
 end;
 
 function TFactoryFeatureNode.GetFactoryInputs(): TMaterialQuantity32Array;
@@ -197,43 +195,49 @@ end;
 
 function TFactoryFeatureNode.GetFactoryRate(): TIterationsRate; // instances (not units!) per second
 begin
-   Assert(FLocalDisabledReason <> fdNotYetActive);
-   if (FLocalDisabledReason = fdActive) then
-      Result := FCurrentRate
-   else
-      Result := TIterationsRate.Zero;
+   Assert(FRegion.IsFlagClear(bsNoRegion));
+   Assert(FRegion.IsFlagClear(bsInputStalled));
+   Assert(FRegion.IsFlagClear(bsOutputStalled));
+   Assert(FRegion.Assigned);
+   Result := FCurrentRate;
 end;
 
 procedure TFactoryFeatureNode.SetFactoryRegion(Region: TRegionFeatureNode);
 begin
-   Assert(FLocalDisabledReason = fdActive);
+   Assert(FRegion.IsFlagClear(bsNoRegion));
+   Assert(FRegion.IsFlagClear(bsInputStalled));
+   Assert(FRegion.IsFlagClear(bsOutputStalled));
    Assert(not FRegion.Assigned);
    FRegion := Region;
 end;
 
 procedure TFactoryFeatureNode.StartFactory();
 begin
-   Assert(FLocalDisabledReason = fdActive);
+   Assert(FRegion.IsFlagClear(bsNoRegion));
+   Assert(FRegion.IsFlagClear(bsInputStalled));
+   Assert(FRegion.IsFlagClear(bsOutputStalled));
+   Assert(FRegion.Assigned);
    MarkAsDirty([dkUpdateClients]);
 end;
 
-procedure TFactoryFeatureNode.StallFactory(Reason: TFactoryDisabledReason);
+procedure TFactoryFeatureNode.StallFactory(Reason: TStallReason);
 begin
-   Assert(FLocalDisabledReason = fdActive);
-   Assert(Reason <> fdNotYetActive);
-   FLocalDisabledReason := Reason;
-   MarkAsDirty([dkUpdateClients]);
-end;
-
-procedure TFactoryFeatureNode.ResetFactory();
-begin
-   FLocalDisabledReason := fdActive;
+   Assert(FRegion.IsFlagClear(bsNoRegion));
+   Assert(FRegion.IsFlagClear(bsInputStalled));
+   Assert(FRegion.IsFlagClear(bsOutputStalled));
+   Assert(FRegion.Assigned);
+   case Reason of
+      srInput: FRegion.SetFlag(bsInputStalled);
+      srOutput: FRegion.SetFlag(bsOutputStalled);
+   end;
+   FRegion.Wrap(nil);
+   MarkAsDirty([dkUpdateClients, dkUpdateJournal]);
 end;
 
 procedure TFactoryFeatureNode.DisconnectFactory();
 begin
-   FRegion.Clear();
-   FLocalDisabledReason := fdActive;
+   Assert(FRegion.IsFlagClear(bsNoRegion));
+   FRegion.Wrap(nil);
    MarkAsDirty([dkUpdateClients]);
 end;
 
@@ -272,12 +276,8 @@ var
    RateLimit: Double;
    PoweredLimit: TIterationsRate;
 begin
-   Writeln(DebugName, ' :: HandleChanges');
-   FLocalDisabledReason := fdActive;
    DisabledReasons := CheckDisabled(Parent, RateLimit);
    PoweredLimit := FFeatureClass.FMaxRate * RateLimit;
-   Writeln('  DisabledReasons: ', specialize SetToString<TDisabledReasons>(DisabledReasons));
-   Writeln('  RateLimit: ', RateLimit:0:9);
    if (PoweredLimit > FConfiguredMaxRate) then
       PoweredLimit := FConfiguredMaxRate;
    if (DisabledReasons <> FDisabledReasons) then
@@ -285,7 +285,6 @@ begin
       FDisabledReasons := DisabledReasons;
       MarkAsDirty([dkUpdateClients]);
    end;
-   Writeln('  PoweredLimit=', PoweredLimit.ToString(), '; FCurrentRate=', FCurrentRate.ToString());
    if (PoweredLimit <> FCurrentRate) then
    begin
       FCurrentRate := PoweredLimit;
@@ -294,7 +293,8 @@ begin
       begin
          if (FRegion.Assigned) then
             FRegion.Unwrap().RemoveFactory(Self);
-         FRegion.Clear(); // clears the bsNoRegion flag if set, as well
+         FRegion.Wrap(nil);
+         FRegion.ClearFlag(bsNoRegion);
       end
       else
       if (FRegion.Assigned) then
@@ -302,7 +302,7 @@ begin
          FRegion.Unwrap().ClientChanged();
       end
       else
-      if (FRegion.IsFlagClear(bsNoRegion)) then
+      if (FRegion.IsFlagClear(bsNoRegion) and FRegion.IsFlagClear(bsInputStalled) and FRegion.IsFlagClear(bsOutputStalled)) then
       begin
          Message := TRegisterFactoryBusMessage.Create(Self);
          if (InjectBusMessage(Message) <> irHandled) then
@@ -333,6 +333,7 @@ procedure TFactoryFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerS
    
 var
    Visibility: TVisibility;
+   ReportedDisabledReason: TDisabledReasons;
 begin
    Visibility := Parent.ReadVisibilityFor(DynastyIndex);
    if ((dmDetectable * Visibility <> []) and (dmClassKnown in Visibility)) then
@@ -342,16 +343,20 @@ begin
       WriteManifest(FFeatureClass.FOutputs);
       Writer.WriteDouble(FFeatureClass.FMaxRate.AsDouble);
       Writer.WriteDouble(FConfiguredMaxRate.AsDouble);
-      if (FLocalDisabledReason = fdActive) then
+      if (FRegion.Assigned) then
       begin
          Writer.WriteDouble(FCurrentRate.AsDouble)
       end
       else
       begin
-         Assert(FRegion.Assigned);
          Writer.WriteDouble(0.0);
       end;
-      Writer.WriteCardinal(Cardinal(FDisabledReasons + [TDisabledReason(FLocalDisabledReason)] - [drActive]));
+      ReportedDisabledReason := FDisabledReasons;
+      if (FRegion.IsFlagSet(bsInputStalled)) then
+         Include(ReportedDisabledReason, drSourceLimited);
+      if (FRegion.IsFlagSet(bsOutputStalled)) then
+         Include(ReportedDisabledReason, drTargetLimited);
+      Writer.WriteCardinal(Cardinal(ReportedDisabledReason));
    end;
 end;
 
@@ -360,6 +365,8 @@ begin
    Journal.WriteDouble(FConfiguredMaxRate.AsDouble);
    Journal.WriteCardinal(FPendingFraction.AsCardinal);
    Journal.WriteCardinal(FBacklog);
+   Journal.WriteBoolean(FRegion.IsFlagClear(bsInputStalled));
+   Journal.WriteBoolean(FRegion.IsFlagClear(bsOutputStalled));
 end;
 
 procedure TFactoryFeatureNode.ApplyJournal(Journal: TJournalReader);
@@ -367,6 +374,8 @@ begin
    FConfiguredMaxRate := TIterationsRate.FromPerMillisecond(Journal.ReadDouble());
    FPendingFraction := Fraction32.FromCardinal(Journal.ReadCardinal());
    FBacklog := Journal.ReadCardinal();
+   FRegion.ConfigureFlag(bsInputStalled, Journal.ReadBoolean());
+   FRegion.ConfigureFlag(bsOutputStalled, Journal.ReadBoolean());
 end;
 
 function TFactoryFeatureNode.HandleCommand(PlayerDynasty: TDynasty; Command: UTF8String; var Message: TMessage): Boolean;
@@ -388,6 +397,8 @@ begin
          else
          begin
             FConfiguredMaxRate := TIterationsRate.FromPerMillisecond(RequestedValue);
+            FRegion.ClearFlag(bsInputStalled);
+            FRegion.ClearFlag(bsOutputStalled);
             MarkAsDirty([dkUpdateClients, dkUpdateJournal, dkNeedsHandleChanges]);
             Message.CloseOutput();
          end;

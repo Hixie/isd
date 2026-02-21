@@ -6,7 +6,7 @@ interface
 
 uses
    techtree, internals, systems, configuration, astronomy, materials,
-   random, systemdynasty, space, basenetwork, masses;
+   random, systemdynasty, space, basenetwork, masses, energies;
 
 type
    TEncyclopedia = class(TEncyclopediaView)
@@ -16,6 +16,7 @@ type
       FAssetClasses: TAssetClassIDHashTable;
       FResearches: TResearch.TArray;
       FTopics: TTopic.TArray;
+      FEnergies: TEnergy.TArray;
       // cached values and lookup tables
       FResearchesByID: TResearchHashTable;
       FTopicsByName: TTopicHashTable;
@@ -67,11 +68,12 @@ uses
    sysutils, math, floatutils, exceptions, isdnumbers, protoplanetary,
    time, isdprotocol, gossip, commonbuses, systemnetwork, ttparser,
    // this must import every feature, so they get registered:
-   assetpile, builders, factory, grid, gridsensor, internalsensor,
-   knowledge, materialpile, messages, mining, name, onoff, orbit,
-   orepile, peoplebus, planetary, plot, population, proxy, refining,
-   region, research, rubble, sample, size, spacesensor, staffing,
-   stellar, structure, surface;
+   assetpile, builders, energybus, energyconsumer, factory, generator,
+   grid, gridsensor, internalsensor, knowledge, materialpile,
+   messages, mining, name, onoff, orbit, orepile, peoplebus,
+   planetary, plot, population, proxy, refining, region, research,
+   rubble, sample, size, spacesensor, staffing, stellar, structure,
+   surface;
    
 function RoundAboveZero(Value: Double): Cardinal;
 begin
@@ -110,6 +112,7 @@ var
    Research: TResearch;
    Material: TMaterial;
    Topic: TTopic;
+   Energy: TEnergy;
 begin
    for Research in FResearches do
       Research.Free();
@@ -123,6 +126,8 @@ begin
    for Topic in FTopics do
       Topic.Free();
    FTopicsByName.Free();
+   for Energy in FEnergies do
+      Energy.Free();
    inherited;
 end;
 
@@ -163,6 +168,8 @@ begin
    FTopics := TechTree.ExtractTopics();
    for Topic in FTopics do
       FTopicsByName[Topic.Name] := Topic;
+   Assert(not Assigned(FEnergies));
+   FEnergies := TechTree.ExtractEnergies();
 end;
 
 function TEncyclopedia.GetAssetClass(ID: Integer): TAssetClass;
@@ -297,7 +304,7 @@ procedure TEncyclopedia.CondenseProtoplanetaryDisks(Space: TSolarSystemFeatureNo
          Body.Seed,
          Body.Radius * 2.0, // diameter of body
          Body.Temperature,
-         AssetComposition,
+         AssetComposition, // fractions of _mass_
          Body.ApproximateMass,
          Body.Habitable // whether to consider this body when selecting a crash landing point
       ); // $R-

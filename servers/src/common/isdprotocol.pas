@@ -92,7 +92,9 @@ const
    fcAssetPile = $1F;
    fcFactory = $20;
    fcSample = $21;
-   fcHighestKnownFeatureCode = fcSample;
+   fcGenerator = $22;
+   fcConsumer = $23;
+   fcHighestKnownFeatureCode = fcConsumer;
 
 type
    TAssetClassID = LongInt; // signed because negative values are built-in, and positive values are in tech tree

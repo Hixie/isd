@@ -44,6 +44,7 @@ type
       class property Zero: Int256 read GetZero;
       class operator < (A, B: Int256): Boolean;
       class operator <= (A, B: Int256): Boolean;
+      class operator = (A, B: Int256): Boolean;
       class operator >= (A, B: Int256): Boolean;
       class operator > (A, B: Int256): Boolean;
    private
@@ -73,14 +74,21 @@ type
       procedure ResetToZero(); inline;
       procedure Add(Value: Double);
       procedure Subtract(Value: Double);
+      procedure ReduceBy(Value: Fraction32); // subtracts Self * Value from Self
       function Increment(Delta: Double): Double; // 0 <= Value < 1, 0 <= Delta < 1.0
-      function ToDouble(): Double;
+      function ToDouble(): Double; inline;
       function ToString(): UTF8String;
       class operator + (A: Fraction32; B: Fraction32): Fraction32; inline;
       class operator * (Multiplicand: Fraction32; Multiplier: Double): Double; inline;
       class operator * (Multiplicand: Fraction32; Multiplier: Int64): Double; inline;
+      class operator * (Multiplicand: Fraction32; Multiplier: Fraction32): Fraction32; inline;
       class operator / (Dividend: Fraction32; Divisor: Double): Double; inline;
       class operator / (Dividend: Fraction32; Divisor: Fraction32): Fraction32; inline;
+      class operator < (A, B: Fraction32): Boolean;
+      class operator <= (A, B: Fraction32): Boolean;
+      class operator = (A, B: Fraction32): Boolean;
+      class operator >= (A, B: Fraction32): Boolean;
+      class operator > (A, B: Fraction32): Boolean;
       property IsZero: Boolean read GetIsZero;
       property IsNotZero: Boolean read GetIsNotZero;
       property AsCardinal: Cardinal read FNumerator write FNumerator; // for storage or aggregate math
@@ -119,10 +127,42 @@ type
       function ToDouble(): Double; inline;
       class operator < (A, B: TSum): Boolean;
       class operator <= (A, B: TSum): Boolean;
+      class operator = (A, B: TSum): Boolean;
       class operator >= (A, B: TSum): Boolean;
       class operator > (A, B: TSum): Boolean;
    end;
-   
+
+   // this should be a more or less zero-cost abstraction over TSum, which itself is a near zero-cost abstraction over Int256
+   generic TTypedSum<T> = record // T must be a type with an AsDouble getter/setter of type Double
+   private
+      Value: TSum;
+      class operator Initialize(var Rec: TTypedSum);
+      function GetIsZero(): Boolean; inline;
+      function GetIsNotZero(): Boolean; inline;
+      function GetIsNegative(): Boolean; inline;
+      function GetIsPositive(): Boolean; inline;
+   public
+      procedure Reset(); inline;
+      class operator Copy(constref Source: TTypedSum; var Destination: TTypedSum);
+      procedure Inc(Delta: T); inline;
+      procedure Dec(Delta: T); inline;
+      procedure Inc(Delta: TTypedSum); inline;
+      procedure Dec(Delta: TTypedSum); inline;
+      property IsZero: Boolean read GetIsZero;
+      property IsNotZero: Boolean read GetIsNotZero;
+      property IsNegative: Boolean read GetIsNegative;
+      property IsPositive: Boolean read GetIsPositive;
+      property AsSum: TSum read Value;
+      function Flatten(): T; inline;
+      function ToDouble(): Double; inline;
+      class operator <(A, B: TTypedSum): Boolean; inline;
+      class operator <=(A, B: TTypedSum): Boolean; inline;
+      class operator =(A, B: TTypedSum): Boolean; inline;
+      class operator >=(A, B: TTypedSum): Boolean; inline;
+      class operator >(A, B: TTypedSum): Boolean; inline;
+      class operator -(A, B: TTypedSum): TTypedSum; inline;
+   end;
+  
 
 function RoundUInt64(Value: Double): UInt64;
 function TruncUInt64(Value: Double): UInt64;
@@ -309,6 +349,14 @@ begin
    begin
       Result := False;
    end;
+end;
+
+class operator Int256.= (A, B: Int256): Boolean;
+begin
+   Result := ((A.FQuad1 = B.FQuad1) and
+              (A.FQuad2 = B.FQuad2) and
+              (A.FQuad3 = B.FQuad3) and
+              (A.FQuad4 = B.FQuad4));
 end;
 
 class operator Int256.>= (A, B: Int256): Boolean;
@@ -761,6 +809,11 @@ begin
    Result := (Multiplicand.FNumerator / Multiplicand.FDenominator) * Multiplier;
 end;
 
+class operator Fraction32.* (Multiplicand: Fraction32; Multiplier: Fraction32): Fraction32;
+begin
+   Result.FNumerator := Round(Multiplicand.FNumerator * Multiplier.FNumerator / FDenominator); // $R-
+end;
+
 class operator Fraction32./ (Dividend: Fraction32; Divisor: Double): Double;
 begin
    Result := (Dividend.FNumerator / Dividend.FDenominator) / Divisor;
@@ -772,6 +825,31 @@ begin
    Assert(Divisor.FDenominator = FDenominator);
    Assert(Dividend.FNumerator <= Divisor.FNumerator);
    Result.FNumerator := Round(FDenominator * Dividend.FNumerator / Divisor.FNumerator); // $R-
+end;
+
+class operator Fraction32.< (A, B: Fraction32): Boolean;
+begin
+   Result := A.FNumerator < B.FNumerator;
+end;
+
+class operator Fraction32.<= (A, B: Fraction32): Boolean;
+begin
+   Result := A.FNumerator <= B.FNumerator;
+end;
+
+class operator Fraction32.= (A, B: Fraction32): Boolean;
+begin
+   Result := A.FNumerator = B.FNumerator;
+end;
+
+class operator Fraction32.>= (A, B: Fraction32): Boolean;
+begin
+   Result := A.FNumerator >= B.FNumerator;
+end;
+
+class operator Fraction32.> (A, B: Fraction32): Boolean;
+begin
+   Result := A.FNumerator > B.FNumerator;
 end;
 
 
@@ -801,6 +879,11 @@ begin
    Assert(ToDouble() - Value <= 1.0);
    Assert(ToDouble() - Value >= 0.0);
    FNumerator := FNumerator - Round(Value * FDenominator); // $R-
+end;
+
+procedure Fraction32.ReduceBy(Value: Fraction32);
+begin
+   FNumerator := Round(FNumerator * (1.0 - Value.FNumerator / Value.FDenominator)); // $R-
 end;
 
 function Fraction32.Increment(Delta: Double): Double;
@@ -1170,6 +1253,11 @@ begin
    Result := A.Value <= B.Value;
 end;
 
+class operator TSum.=(A, B: TSum): Boolean;
+begin
+   Result := A.Value = B.Value;
+end;
+
 class operator TSum.>=(A, B: TSum): Boolean;
 begin
    Result := A.Value >= B.Value;
@@ -1178,6 +1266,105 @@ end;
 class operator TSum.>(A, B: TSum): Boolean;
 begin
    Result := A.Value > B.Value;
+end;
+
+
+class operator TTypedSum.Initialize(var Rec: TTypedSum);
+begin
+   Rec.Value.Reset();
+end;
+
+function TTypedSum.Flatten(): T;
+begin
+   Result.AsDouble := Value.ToDouble();
+end;
+
+function TTypedSum.ToDouble(): Double;
+begin
+   Result := Value.ToDouble();
+end;
+
+procedure TTypedSum.Reset();
+begin
+   Value.Reset();
+end;
+
+function TTypedSum.GetIsZero(): Boolean;
+begin
+   Result := Value.IsZero;
+end;
+
+function TTypedSum.GetIsNotZero(): Boolean;
+begin
+   Result := Value.IsNotZero;
+end;
+
+function TTypedSum.GetIsNegative(): Boolean;
+begin
+   Result := Value.IsNegative;
+end;
+
+function TTypedSum.GetIsPositive(): Boolean;
+begin
+   Result := Value.IsPositive;
+end;
+
+procedure TTypedSum.Inc(Delta: T);
+begin
+   Value.Inc(Delta.AsDouble);
+end;
+
+procedure TTypedSum.Dec(Delta: T);
+begin
+   Value.Dec(Delta.AsDouble);
+end;
+
+procedure TTypedSum.Inc(Delta: TTypedSum);
+begin
+   Value.Inc(Delta.Value);
+end;
+
+procedure TTypedSum.Dec(Delta: TTypedSum);
+begin
+   Value.Dec(Delta.Value);
+end;
+
+class operator TTypedSum.Copy(constref Source: TTypedSum; var Destination: TTypedSum);
+begin
+   Destination.Value := Source.Value;
+end;
+
+
+class operator TTypedSum.< (A, B: TTypedSum): Boolean;
+begin
+   Result := A.Value < B.Value;
+end;
+
+class operator TTypedSum.<= (A, B: TTypedSum): Boolean;
+begin
+   Result := A.Value <= B.Value;
+end;
+
+class operator TTypedSum.= (A, B: TTypedSum): Boolean;
+begin
+   Result := A.Value = B.Value;
+end;
+
+class operator TTypedSum.>= (A, B: TTypedSum): Boolean;
+begin
+   Result := A.Value >= B.Value;
+end;
+
+class operator TTypedSum.> (A, B: TTypedSum): Boolean;
+begin
+   Result := A.Value > B.Value;
+end;
+
+class operator TTypedSum.- (A, B: TTypedSum): TTypedSum;
+begin
+   Result.Value.Reset();
+   Result.Value.Inc(A.Value);
+   Result.Value.Dec(B.Value);
 end;
 
 

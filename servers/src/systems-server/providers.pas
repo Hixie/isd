@@ -5,7 +5,7 @@ unit providers;
 interface
 
 uses
-   internals, systems, masses;
+   systems, masses;
 
 type
    IHillDiameterProvider = interface ['IHillDiameterProvider']
@@ -22,26 +22,6 @@ type
 
    // TODO: asset description provider? e.g. surface should describe a planet
 
-
-   // This is used as follows:
-   //
-   // type
-   //   TRegisterMinerBusMessage = specialize TRegisterProviderBusMessage<TPhysicalConnectionBusMessage, IMiner>;
-   //
-   generic TRegisterProviderBusMessage<TSuperclass: TBusMessage; IProvider> = class(TSuperclass)
-   private
-      FProvider: IProvider;
-   public
-      constructor Create(AProvider: IProvider);
-      property Provider: IProvider read FProvider;
-   end;
-
 implementation
-
-constructor TRegisterProviderBusMessage.Create(AProvider: IProvider);
-begin
-   inherited Create();
-   FProvider := AProvider;
-end;
 
 end.

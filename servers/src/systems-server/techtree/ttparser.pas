@@ -7,7 +7,7 @@ unit ttparser;
 interface
 
 uses
-   sysutils, time, systems, internals, tttokenizer, materials, masses;
+   sysutils, time, systems, internals, tttokenizer, materials, masses, energies;
 
 procedure RegisterFeatureClass(FeatureClass: FeatureClassReference);
 function RegisterSituation(Name: UTF8String): TSituation;
@@ -18,10 +18,15 @@ function ReadFeatureClass(Reader: TTechTreeReader): TFeatureClass;
 function ReadMaterial(Reader: TTechTreeReader): TMaterial;
 function ReadSituationName(Reader: TTechTreeReader): UTF8String;
 function ReadSituation(Reader: TTechTreeReader): TSituation;
+function ReadEnergy(Reader: TTechTreeReader; out Energy: TEnergy): Double;
+
 function ReadNumber(Tokens: TTokenizer; Min, Max: Int64): Int64; // integer only
 function ReadPerTime(Tokens: TTokenizer): TIterationsRate;
 function ReadLength(Tokens: TTokenizer): Double;
+function ReadLengthDenominator(Tokens: TTokenizer): Double;
+function ReadVolumeDenominator(Tokens: TTokenizer): Double;
 function ReadTime(Tokens: TTokenizer): TTimeInMilliseconds;
+function ReadTimeDenominator(Tokens: TTokenizer): TMillisecondsDuration;
 function ReadMass(Tokens: TTokenizer): TMass;
 function ReadMassPerTime(Tokens: TTokenizer): TMassRate;
 function ReadQuantity64(Tokens: TTokenizer; Material: TMaterial): TQuantity64;
@@ -177,6 +182,18 @@ begin
       Reader.Tokens.Error('Unknown situation "%s"', [Value]);
 end;
 
+function ReadEnergy(Reader: TTechTreeReader; out Energy: TEnergy): Double;
+var
+   Units: UTF8String;
+begin
+   Result := Reader.Tokens.ReadDouble();
+   Units := Reader.Tokens.ReadIdentifier();
+   Energy := Reader.EnergiesByUnits[Units];
+   if (not Assigned(Energy)) then
+      Reader.Tokens.Error('Unknown energy unit "%s"', [Units]);
+end;
+   
+
 function ReadLength(Tokens: TTokenizer): Double;
 var
    Value: Double;
@@ -195,6 +212,55 @@ begin
       'mm': Result := Value / 1000.0;
    else
       Tokens.Error('Unknown unit for length "%s"', [Keyword]);
+   end;
+end;
+
+function ReadLengthDenominator(Tokens: TTokenizer): Double;
+var
+   Keyword: UTF8String;
+begin
+   Tokens.ReadSlash();
+   Keyword := Tokens.ReadIdentifier();
+   case Keyword of
+      'LY': Result := LY;
+      'AU': Result := AU;
+      'km': Result := 1000.0;
+      'm': Result := 1.0;
+      'cm': Result := 1.0 / 100.0;
+      'mm': Result := 1.0 / 1000.0;
+   else
+      Tokens.Error('Unknown unit for length "%s"', [Keyword]);
+   end;
+end;
+
+function ReadVolumeDenominator(Tokens: TTokenizer): Double;
+var
+   Keyword: UTF8String;
+   Three: Double;
+begin
+   Tokens.ReadSlash();
+   Keyword := Tokens.ReadIdentifier();
+   if (Keyword = 'L') then
+   begin
+      Result := 0.001; // 1L = 10cm^3
+   end
+   else
+   begin
+      case Keyword of
+         'LY': Result := LY;
+         'AU': Result := AU;
+         'km': Result := 1000.0;
+         'm': Result := 1.0;
+         'cm': Result := 1.0 / 100.0;
+         'mm': Result := 1.0 / 1000.0;
+      else
+         Tokens.Error('Unknown unit for length or volume "%s"', [Keyword]);
+      end;
+      Tokens.ReadCaret();
+      Three := Tokens.ReadNumber();
+      if (Three <> 3.0) then
+         Tokens.Error('Expected 3, but got "%f"', [Three]);
+      Result := Result * Result * Result;
    end;
 end;
 

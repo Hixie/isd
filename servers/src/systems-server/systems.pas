@@ -8,7 +8,7 @@ uses
    systemdynasty, configuration, hashtable, hashsettight,
    genericutils, isdprotocol, serverstream,
    stringstream, random, materials, basenetwork, time, tttokenizer,
-   stringutils, rtlutils, plasticarrays, masses, internals;
+   stringutils, rtlutils, plasticarrays, masses, internals, energies;
 
 // VISIBILITY
 //
@@ -266,15 +266,18 @@ type
       FSituations: TSituationHashTable;
       FAssetClasses: TAssetClassIdentifierHashTable;
       FMaterialNames: TMaterialNameHashTable;
+      FEnergies: TEnergyUnitsHashTable;
       function GetSituation(Name: UTF8String): TSituation; inline;
       function GetAssetClass(Identifier: UTF8String): TAssetClass; inline;
       function GetMaterial(Name: UTF8String): TMaterial; inline;
+      function GetEnergy(Units: UTF8String): TEnergy; inline;
    public
-      constructor Create(ATokenizer: TTokenizer; ASituations: TSituationHashTable; AAssetClasses: TAssetClassIdentifierHashTable; AMaterialNames: TMaterialNameHashTable);
+      constructor Create(ATokenizer: TTokenizer; ASituations: TSituationHashTable; AAssetClasses: TAssetClassIdentifierHashTable; AMaterialNames: TMaterialNameHashTable; AEnergies: TEnergyUnitsHashTable);
       property Tokens: TTokenizer read FTokenizer;
       property Situations[Name: UTF8String]: TSituation read GetSituation;
       property AssetClasses[Identifier: UTF8String]: TAssetClass read GetAssetClass;
       property Materials[Name: UTF8String]: TMaterial read GetMaterial;
+      property EnergiesByUnits[Units: UTF8String]: TEnergy read GetEnergy;
    end;
 
    // FEATURES
@@ -814,16 +817,18 @@ begin
 end;
 
 
-constructor TTechTreeReader.Create(ATokenizer: TTokenizer; ASituations: TSituationHashTable; AAssetClasses: TAssetClassIdentifierHashTable; AMaterialNames: TMaterialNameHashTable);
+constructor TTechTreeReader.Create(ATokenizer: TTokenizer; ASituations: TSituationHashTable; AAssetClasses: TAssetClassIdentifierHashTable; AMaterialNames: TMaterialNameHashTable; AEnergies: TEnergyUnitsHashTable);
 begin
    Assert(Assigned(ATokenizer));
    ASsert(Assigned(ASituations));
    Assert(Assigned(AAssetClasses));
    Assert(Assigned(AMaterialNames));
+   Assert(Assigned(AEnergies));
    FTokenizer := ATokenizer;
    FSituations := ASituations;
    FAssetClasses := AAssetClasses;
    FMaterialNames := AMaterialNames;
+   FEnergies := AEnergies;
 end;
 
 function TTechTreeReader.GetSituation(Name: UTF8String): TSituation;
@@ -839,6 +844,11 @@ end;
 function TTechTreeReader.GetMaterial(Name: UTF8String): TMaterial;
 begin
    Result := FMaterialNames[Name];
+end;
+
+function TTechTreeReader.GetEnergy(Units: UTF8String): TEnergy;
+begin
+   Result := FEnergies[Units];
 end;
 
 
