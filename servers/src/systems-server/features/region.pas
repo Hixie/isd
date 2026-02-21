@@ -1756,40 +1756,38 @@ begin
          for Factory in DynastyData^.FFactories.Without(nil) do
          begin
             Rate := Factory.GetFactoryRate();
-            if (Rate.IsNotExactZero) then
+            Assert(Rate.IsNotExactZero);
+            Iterations := ApplyIncrementally(Rate, SyncDuration, Factory.GetPendingFraction()^) + Factory.GetBacklog(); // $R-
+            Writeln('  - ', Factory.GetFactoryOutputs()[0].Material.Name, ' factory with rate ', Rate.ToString(), ' pending fraction ', Factory.GetPendingFraction()^.ToString(), ' and backlog ', Factory.GetBacklog(), ' computed iterations ', Iterations);
+            Assert(Iterations <= High(Cardinal)); // is this safe to assume?
+            Assert(Iterations >= 0, 'Negative factory iterations! ' + IntToStr(Iterations));
+            if (Iterations > 0) then
             begin
-               Iterations := ApplyIncrementally(Rate, SyncDuration, Factory.GetPendingFraction()^) + Factory.GetBacklog(); // $R-
-               Writeln('  - ', Factory.GetFactoryOutputs()[0].Material.Name, ' factory with rate ', Rate.ToString(), ' pending fraction ', Factory.GetPendingFraction()^.ToString(), ' and backlog ', Factory.GetBacklog(), ' computed iterations ', Iterations);
-               Assert(Iterations <= High(Cardinal)); // is this safe to assume?
-               Assert(Iterations >= 0, 'Negative factory iterations! ' + IntToStr(Iterations));
-               if (Iterations > 0) then
+               if (Iterations > High(Cardinal)) then
                begin
-                  if (Iterations > High(Cardinal)) then
-                  begin
-                     Writeln('    ?! Had to truncate a high factory iterations count for ', HexStr(Factory), ': ', Iterations);
-                     Iterations := High(Cardinal); // otherwise we could theoretically overflow below
-                  end;
-                  FactoryEntry := Factories.AddDefault(Factory);
-                  FactoryEntry^.Factory := Factory;
-                  FactoryEntry^.Iterations := Iterations;
-                  for Entry in Factory.GetFactoryInputs() do
-                  begin
-                     Assert(Entry.Quantity.IsPositive);
-                     DynastyData^.DecMaterialPile(Entry.Material, Entry.Quantity * Iterations); // $R-
-                     MaterialPilesAffected := True;
-                     FactoryEntryList := InputFactories.GetOrAddPtr(Entry.Material);
-                     FactoryEntryList^.Push(FactoryEntry);
-                  end;
-                  for Entry in Factory.GetFactoryOutputs() do
-                  begin
-                     Assert(Entry.Quantity.IsPositive);
-                     DynastyData^.IncMaterialPile(Entry.Material, Entry.Quantity * Iterations); // $R-
-                     MaterialPilesAffected := True;
-                     FactoryEntryList := OutputFactories.GetOrAddPtr(Entry.Material);
-                     FactoryEntryList^.Push(FactoryEntry);
-                  end;
-                  Factory.ResetBacklog();
+                  Writeln('    ?! Had to truncate a high factory iterations count for ', HexStr(Factory), ': ', Iterations);
+                  Iterations := High(Cardinal); // otherwise we could theoretically overflow below
                end;
+               FactoryEntry := Factories.AddDefault(Factory);
+               FactoryEntry^.Factory := Factory;
+               FactoryEntry^.Iterations := Iterations;
+               for Entry in Factory.GetFactoryInputs() do
+               begin
+                  Assert(Entry.Quantity.IsPositive);
+                  DynastyData^.DecMaterialPile(Entry.Material, Entry.Quantity * Iterations); // $R-
+                  MaterialPilesAffected := True;
+                  FactoryEntryList := InputFactories.GetOrAddPtr(Entry.Material);
+                  FactoryEntryList^.Push(FactoryEntry);
+               end;
+               for Entry in Factory.GetFactoryOutputs() do
+               begin
+                  Assert(Entry.Quantity.IsPositive);
+                  DynastyData^.IncMaterialPile(Entry.Material, Entry.Quantity * Iterations); // $R-
+                  MaterialPilesAffected := True;
+                  FactoryEntryList := OutputFactories.GetOrAddPtr(Entry.Material);
+                  FactoryEntryList^.Push(FactoryEntry);
+               end;
+               Factory.ResetBacklog();
             end;
          end;
       end;
@@ -2435,19 +2433,17 @@ begin
             begin
                Rate := Factory.GetFactoryRate();
                Write('   - at ', Rate.ToString(), ' ');
-               if (Rate.IsNotExactZero) then
+               Assert(Rate.IsNotExactZero);
+               for Entry in Factory.GetFactoryInputs() do
                begin
-                  for Entry in Factory.GetFactoryInputs() do
-                  begin
-                     MaterialFlowRates.Dec(Entry.Material, Entry.Quantity * Rate);
-                     Write(Entry.Material.Name, ' ');
-                  end;
-                  Write('-> ');
-                  for Entry in Factory.GetFactoryOutputs() do
-                  begin
-                     MaterialFlowRates.Inc(Entry.Material, Entry.Quantity * Rate);
-                     Write(Entry.Material.Name, ' ');
-                  end;
+                  MaterialFlowRates.Dec(Entry.Material, Entry.Quantity * Rate);
+                  Write(Entry.Material.Name, ' ');
+               end;
+               Write('-> ');
+               for Entry in Factory.GetFactoryOutputs() do
+               begin
+                  MaterialFlowRates.Inc(Entry.Material, Entry.Quantity * Rate);
+                  Write(Entry.Material.Name, ' ');
                end;
                Writeln();
             end;
@@ -2528,43 +2524,37 @@ begin
                         Writeln('      starting MaterialFlowRates for ', Material.Name, ': ', MaterialFlowRates[Material].ToString());
                         // we're out of room and the factories are the cause.
                         // shut down all the factories making this material.
-                        for Factory in DynastyData^.FFactories do
+                        for Factory in DynastyData^.FFactories.Without(nil) do
                         begin
                            Rate := Factory.GetFactoryRate();
-                           //if (Rate.IsNotExactZero) then
+                           Assert(Rate.IsNotExactZero);
+                           Found := False;
+                           for Entry in Factory.GetFactoryOutputs() do
                            begin
-                              Found := False;
+                              if (Entry.Material = Material) then
+                              begin
+                                 Found := True;
+                                 break;
+                              end;
+                           end;
+                           if (Found) then
+                              Write('    - removing ', Rate.ToString(), ' factory turning ')
+                           else
+                              Write('    - not removing ', Rate.ToString(), ' factory turning ');
+                           for Entry in Factory.GetFactoryInputs() do
+                              Write(Entry.Material.Name, ' (', (Entry.Quantity * Rate).ToString(), '); ');
+                           Write('-> ');
+                           for Entry in Factory.GetFactoryOutputs() do
+                              Write(Entry.Material.Name, ' (', (Entry.Quantity * Rate).ToString(), '); ');
+                           Writeln();
+                           if (Found) then
+                           begin
+                              for Entry in Factory.GetFactoryInputs() do
+                                 MaterialFlowRates.Inc(Entry.Material, Entry.Quantity * Rate);
                               for Entry in Factory.GetFactoryOutputs() do
-                              begin
-                                 if (Entry.Material = Material) then
-                                 begin
-                                    Found := True;
-                                    break;
-                                 end;
-                              end;
-                              //if (Found) then
-                              begin
-                                 if (Found) then
-                                    Write('    - removing ', Rate.ToString(), ' factory turning ')
-                                 else
-                                    Write('    - not removing ', Rate.ToString(), ' factory turning ');
-                                 for Entry in Factory.GetFactoryInputs() do
-                                 begin
-                                    if (Found) then
-                                       MaterialFlowRates.Inc(Entry.Material, Entry.Quantity * Rate);
-                                    Write(Entry.Material.Name, ' (', (Entry.Quantity * Rate).ToString(), '); ');
-                                 end;
-                                 Write('-> ');
-                                 for Entry in Factory.GetFactoryOutputs() do
-                                 begin
-                                    if (Found) then
-                                       MaterialFlowRates.Dec(Entry.Material, Entry.Quantity * Rate);
-                                    Write(Entry.Material.Name, ' (', (Entry.Quantity * Rate).ToString(), '); ');
-                                 end;
-                                 if (Found and Rate.IsNotExactZero) then
-                                    Factory.StallFactory(srOutput);
-                                 Writeln();
-                              end;
+                                 MaterialFlowRates.Dec(Entry.Material, Entry.Quantity * Rate);
+                              Factory.StallFactory(srOutput);
+                              FData[Factory.GetDynasty()]^.FFactories.Replace(Factory, nil);
                            end;
                         end;
                         if (Material.IsOre) then
@@ -2588,57 +2578,52 @@ begin
                         end;
                         // we're running out of stuff in piles.
                         // shut down the factories needing more of this material than we have.
-                        for Factory in DynastyData^.FFactories do
+                        for Factory in DynastyData^.FFactories.Without(nil) do
                         begin
                            Rate := Factory.GetFactoryRate();
-                           //if (Rate.IsNotExactZero) then
+                           Assert(Rate.IsNotExactZero);
+                           Found := False;
+                           for Entry in Factory.GetFactoryInputs() do
                            begin
-                              Found := False;
-                              for Entry in Factory.GetFactoryInputs() do
+                              if (Entry.Material = Material) then
                               begin
-                                 if (Entry.Material = Material) then
-                                 begin
-                                    Found := True;
-                                    NeededMaterial := Entry.Quantity;
-                                    break;
-                                 end;
+                                 Found := True;
+                                 NeededMaterial := Entry.Quantity;
+                                 break;
                               end;
-                              Write('    - ');
-                              if (not Found) then
-                                 Write('ignoring unrelated')
-                              else
-                              if (Rate.IsExactZero) then
-                                 Write('ignoring stalled')
-                              else
-                              if (NeededMaterial <= RemainingMaterial) then
-                                 Write('ignoring satisfied')
-                              else
-                                 Write('disabling');
-                              Write(' ', Rate.ToString(), ' factory turning ');
-                              for Entry in Factory.GetFactoryInputs() do
-                                 Write(Entry.Material.Name, ' ');
-                              Write('-> ');
-                              for Entry in Factory.GetFactoryOutputs() do
-                                 Write(Entry.Material.Name, ' ');
-                              Writeln();
-                              if (Found and Rate.IsNotExactZero) then
+                           end;
+                           Write('    - ');
+                           if (not Found) then
+                              Write('ignoring unrelated')
+                           else
+                           if (Rate.IsExactZero) then
+                              Write('ignoring stalled')
+                           else
+                           if (NeededMaterial <= RemainingMaterial) then
+                              Write('ignoring satisfied')
+                           else
+                              Write('disabling');
+                           Write(' ', Rate.ToString(), ' factory turning ');
+                           for Entry in Factory.GetFactoryInputs() do
+                              Write(Entry.Material.Name, ' ');
+                           Write('-> ');
+                           for Entry in Factory.GetFactoryOutputs() do
+                              Write(Entry.Material.Name, ' ');
+                           Writeln();
+                           if (Found and Rate.IsNotExactZero) then
+                           begin
+                              if (NeededMaterial > RemainingMaterial) then
                               begin
-                                 if (NeededMaterial > RemainingMaterial) then
-                                 begin
-                                    for Entry in Factory.GetFactoryInputs() do
-                                    begin
-                                       MaterialFlowRates.Inc(Entry.Material, Entry.Quantity * Rate);
-                                    end;
-                                    for Entry in Factory.GetFactoryOutputs() do
-                                    begin
-                                       MaterialFlowRates.Dec(Entry.Material, Entry.Quantity * Rate);
-                                    end;
-                                    Factory.StallFactory(srInput);
-                                 end
-                                 else
-                                 begin
-                                    RemainingMaterial := RemainingMaterial - NeededMaterial;
-                                 end;
+                                 for Entry in Factory.GetFactoryInputs() do
+                                    MaterialFlowRates.Inc(Entry.Material, Entry.Quantity * Rate);
+                                 for Entry in Factory.GetFactoryOutputs() do
+                                    MaterialFlowRates.Dec(Entry.Material, Entry.Quantity * Rate);
+                                 Factory.StallFactory(srInput);
+                                 FData[Factory.GetDynasty()]^.FFactories.Replace(Factory, nil);
+                              end
+                              else
+                              begin
+                                 RemainingMaterial := RemainingMaterial - NeededMaterial;
                               end;
                            end;
                         end;
@@ -2660,7 +2645,7 @@ begin
 
          // TURN ON ANY FACTORY THAT IS LEFT
          Writeln('  factories (activating):');
-         for Factory in DynastyData^.FFactories do
+         for Factory in DynastyData^.FFactories.Without(nil) do
          begin
             Rate := Factory.GetFactoryRate();
             Write('   - at ', Rate.ToString(), ' ');
@@ -2670,8 +2655,8 @@ begin
             for Entry in Factory.GetFactoryOutputs() do
                Write(Entry.Material.Name, ' ');
             Writeln();
-            if (Rate.IsNotExactZero) then
-               Factory.StartFactory();
+            Assert(Rate.IsNotExactZero);
+            Factory.StartFactory();
          end;
 
          // COMPUTE REFINING AND CONSUMPTION RATES
@@ -2709,23 +2694,26 @@ begin
             for MaterialConsumer in DynastyData^.FMaterialConsumers do
             begin
                Material := MaterialConsumer.GetMaterialConsumerMaterial();
-               Assert(MaterialConsumerCounts.Has(Material));
-               Assert(MaterialConsumerCounts[Material] > 0);
-               if (Assigned(MaterialFlowRates)) then
+               if (Assigned(Material)) then
                begin
-                  MaterialConsumptionRate := MaterialFlowRates[Material].Flatten();
-                  if (MaterialConsumptionRate.IsNegative) then
+                  Assert(MaterialConsumerCounts.Has(Material));
+                  Assert(MaterialConsumerCounts[Material] > 0);
+                  if (Assigned(MaterialFlowRates)) then
+                  begin
+                     MaterialConsumptionRate := MaterialFlowRates[Material].Flatten();
+                     if (MaterialConsumptionRate.IsNegative) then
+                        MaterialConsumptionRate := TQuantityRate.Zero;
+                  end
+                  else
                      MaterialConsumptionRate := TQuantityRate.Zero;
-               end
-               else
-                  MaterialConsumptionRate := TQuantityRate.Zero;
-               // If we have consumers who want this, then by definition there's none of that material in
-               // our piles (because they would have taken that first before calling us).
-               Assert((not Assigned(DynastyData^.FMaterialPileComposition)) or
-                      (not DynastyData^.FMaterialPileComposition.Has(Material)) or
-                      (DynastyData^.FMaterialPileComposition[Material].IsZero),
-                      'Unexpectedly found ' + DynastyData^.FMaterialPileComposition[Material].ToString() + ' of ' + Material.Name + ' but we have a consumer: ' + MaterialConsumer.GetAsset().DebugName);
-               MaterialConsumer.StartMaterialConsumer(MaterialConsumptionRate / MaterialConsumerCounts[Material]);
+                  // If we have consumers who want this, then by definition there's none of that material in
+                  // our piles (because they would have taken that first before calling us).
+                  Assert((not Assigned(DynastyData^.FMaterialPileComposition)) or
+                         (not DynastyData^.FMaterialPileComposition.Has(Material)) or
+                         (DynastyData^.FMaterialPileComposition[Material].IsZero),
+                         'Unexpectedly found ' + DynastyData^.FMaterialPileComposition[Material].ToString() + ' of ' + Material.Name + ' but we have a consumer: ' + MaterialConsumer.GetAsset().DebugName);
+                  MaterialConsumer.StartMaterialConsumer(MaterialConsumptionRate / MaterialConsumerCounts[Material]);
+               end;
             end;
             if (Assigned(MaterialFlowRates)) then
             begin

@@ -199,6 +199,7 @@ begin
    Assert(FRegion.IsFlagClear(bsInputStalled));
    Assert(FRegion.IsFlagClear(bsOutputStalled));
    Assert(FRegion.Assigned);
+   Assert(FCurrentRate.IsPositive);
    Result := FCurrentRate;
 end;
 
@@ -222,6 +223,7 @@ end;
 
 procedure TFactoryFeatureNode.StallFactory(Reason: TStallReason);
 begin
+   Writeln(DebugName, ' :: StallFactory');
    Assert(FRegion.IsFlagClear(bsNoRegion));
    Assert(FRegion.IsFlagClear(bsInputStalled));
    Assert(FRegion.IsFlagClear(bsOutputStalled));
@@ -231,6 +233,9 @@ begin
       srOutput: FRegion.SetFlag(bsOutputStalled);
    end;
    FRegion.Wrap(nil);
+   Assert(FRegion.IsFlagSet(bsInputStalled) xor FRegion.IsFlagSet(bsOutputStalled));
+   FPendingFraction.ResetToZero();
+   FBacklog := 0;
    MarkAsDirty([dkUpdateClients, dkUpdateJournal]);
 end;
 
@@ -238,7 +243,7 @@ procedure TFactoryFeatureNode.DisconnectFactory();
 begin
    Assert(FRegion.IsFlagClear(bsNoRegion));
    FRegion.Wrap(nil);
-   MarkAsDirty([dkUpdateClients]);
+   MarkAsDirty([dkUpdateClients, dkNeedsHandleChanges]);
 end;
 
 function TFactoryFeatureNode.GetDynasty(): TDynasty;
@@ -276,10 +281,16 @@ var
    RateLimit: Double;
    PoweredLimit: TIterationsRate;
 begin
+   Writeln(DebugName, ' :: HandleChanges');
    DisabledReasons := CheckDisabled(Parent, RateLimit);
    PoweredLimit := FFeatureClass.FMaxRate * RateLimit;
    if (PoweredLimit > FConfiguredMaxRate) then
       PoweredLimit := FConfiguredMaxRate;
+   Writeln('  DisabledReasons: ', specialize SetToString<TDisabledReasons>(DisabledReasons));
+   Writeln('  RateLimit: ', RateLimit.ToString());
+   Writeln('  MaxRate: ', FFeatureClass.FMaxRate.ToString());
+   Writeln('  FConfiguredMaxRate: ', FConfiguredMaxRate.ToString());
+   Writeln('  => PoweredLimit: ', PoweredLimit.ToString());
    if (DisabledReasons <> FDisabledReasons) then
    begin
       FDisabledReasons := DisabledReasons;
@@ -288,22 +299,30 @@ begin
    if (PoweredLimit <> FCurrentRate) then
    begin
       FCurrentRate := PoweredLimit;
-      MarkAsDirty([dkUpdateClients]);
-      if (PoweredLimit.IsExactZero) then
-      begin
-         if (FRegion.Assigned) then
-            FRegion.Unwrap().RemoveFactory(Self);
-         FRegion.Wrap(nil);
-         FRegion.ClearFlag(bsNoRegion);
-      end
-      else
       if (FRegion.Assigned) then
       begin
          FRegion.Unwrap().ClientChanged();
-      end
-      else
+      end;
+      MarkAsDirty([dkUpdateClients]);
+   end;
+   if (PoweredLimit.IsExactZero) then
+   begin
+      Writeln('  => Disabled due to configuration or other issue.');
+      Assert(FDisabledReasons <> []);
+      if (FRegion.Assigned) then
+      begin
+         FRegion.Unwrap().RemoveFactory(Self);
+         FRegion.Wrap(nil);
+         FRegion.ClearFlag(bsNoRegion);
+      end;
+      Assert(FRegion.IsFlagClear(bsNoRegion));
+   end
+   else
+   if (not FRegion.Assigned) then
+   begin
       if (FRegion.IsFlagClear(bsNoRegion) and FRegion.IsFlagClear(bsInputStalled) and FRegion.IsFlagClear(bsOutputStalled)) then
       begin
+         Writeln('  => Enabled, attempting to connect.');
          Message := TRegisterFactoryBusMessage.Create(Self);
          if (InjectBusMessage(Message) <> irHandled) then
             FRegion.SetFlag(bsNoRegion)
@@ -312,8 +331,15 @@ begin
          FreeAndNil(Message);
       end
       else
-         Writeln('  bsNoRegion flag set');
-   end;
+      begin
+         Writeln('  => Enabled, but marked as failed to connect or stalled.');
+         Writeln('  bsNoRegion: ', FRegion.IsFlagSet(bsNoRegion));
+         Writeln('  bsInputStalled: ', FRegion.IsFlagSet(bsInputStalled));
+         Writeln('  bsOutputStalled: ', FRegion.IsFlagSet(bsOutputStalled));
+      end;
+   end
+   else
+      Writeln('  => Enabled, but already connected.');
    inherited;
 end;
 
@@ -352,10 +378,13 @@ begin
          Writer.WriteDouble(0.0);
       end;
       ReportedDisabledReason := FDisabledReasons;
+      if (FRegion.IsFlagSet(bsNoRegion)) then
+         Include(ReportedDisabledReason, drNoBus);
       if (FRegion.IsFlagSet(bsInputStalled)) then
          Include(ReportedDisabledReason, drSourceLimited);
       if (FRegion.IsFlagSet(bsOutputStalled)) then
          Include(ReportedDisabledReason, drTargetLimited);
+      Assert((FRegion.Assigned and FCurrentRate.IsNotExactZero) or FConfiguredMaxRate.IsExactZero or (ReportedDisabledReason <> [])); // PROBLEM ASSERT
       Writer.WriteCardinal(Cardinal(ReportedDisabledReason));
    end;
 end;
@@ -399,6 +428,12 @@ begin
             FConfiguredMaxRate := TIterationsRate.FromPerMillisecond(RequestedValue);
             FRegion.ClearFlag(bsInputStalled);
             FRegion.ClearFlag(bsOutputStalled);
+            Writeln(DebugName, ' user request to set rate to ', FConfiguredMaxRate.ToString());
+            if (FConfiguredMaxRate.IsExactZero) then
+            begin
+               FPendingFraction.ResetToZero();
+               FBacklog := 0;
+            end;
             MarkAsDirty([dkUpdateClients, dkUpdateJournal, dkNeedsHandleChanges]);
             Message.CloseOutput();
          end;
