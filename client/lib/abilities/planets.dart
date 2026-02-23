@@ -19,8 +19,6 @@ class PlanetFeature extends AbilityFeature {
   Widget buildRenderer(BuildContext context) {
     return PlanetWidget(
       node: parent,
-      diameter: parent.diameter,
-      maxDiameter: parent.maxRenderDiameter,
       seed: seed,
       spaceTime: SystemNode.of(parent).spaceTime,
     );
@@ -34,15 +32,11 @@ class PlanetWidget extends LeafRenderObjectWidget {
   const PlanetWidget({
     super.key,
     required this.node,
-    required this.diameter,
-    required this.maxDiameter,
     required this.seed,
     required this.spaceTime,
   });
 
   final WorldNode node;
-  final double diameter;
-  final double maxDiameter;
   final int seed;
   final SpaceTime spaceTime;
 
@@ -50,8 +44,6 @@ class PlanetWidget extends LeafRenderObjectWidget {
   RenderPlanet createRenderObject(BuildContext context) {
     return RenderPlanet(
       node: node,
-      diameter: diameter,
-      maxDiameter: maxDiameter,
       seed: seed,
       shaders: ShaderProvider.of(context),
       spaceTime: spaceTime,
@@ -62,8 +54,6 @@ class PlanetWidget extends LeafRenderObjectWidget {
   void updateRenderObject(BuildContext context, RenderPlanet renderObject) {
     renderObject
       ..node = node
-      ..diameter = diameter
-      ..maxDiameter = maxDiameter
       ..seed = seed
       ..shaders = ShaderProvider.of(context)
       ..spaceTime = spaceTime;
@@ -73,34 +63,12 @@ class PlanetWidget extends LeafRenderObjectWidget {
 class RenderPlanet extends RenderWorldNode {
   RenderPlanet({
     required super.node,
-    required double diameter,
-    required double maxDiameter,
     required int seed,
     required ShaderLibrary shaders,
     required SpaceTime spaceTime,
-  }) : _diameter = diameter,
-       _maxDiameter = maxDiameter,
-       _seed = seed,
+  }) : _seed = seed,
        _shaders = shaders,
        _spaceTime = spaceTime;
-
-  double get diameter => _diameter;
-  double _diameter;
-  set diameter (double value) {
-    if (value != _diameter) {
-      _diameter = value;
-      markNeedsPaint();
-    }
-  }
-
-  double get maxDiameter => _maxDiameter;
-  double _maxDiameter;
-  set maxDiameter (double value) {
-    if (value != _maxDiameter) {
-      _maxDiameter = value;
-      markNeedsPaint();
-    }
-  }
 
   int get seed => _seed;
   int _seed;

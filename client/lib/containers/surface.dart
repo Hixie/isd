@@ -51,8 +51,6 @@ class SurfaceFeature extends ContainerFeature {
   Widget buildRenderer(BuildContext context) {
     return SurfaceWidget(
       node: parent,
-      diameter: parent.diameter,
-      maxDiameter: parent.maxRenderDiameter,
       children: children.keys.map((AssetNode assetChild) => assetChild.build(context)).toList(),
     );
   }
@@ -87,30 +85,22 @@ class SurfaceWidget extends MultiChildRenderObjectWidget {
   const SurfaceWidget({
     super.key,
     required this.node,
-    required this.diameter,
-    required this.maxDiameter,
     super.children,
   });
 
   final WorldNode node;
-  final double diameter;
-  final double maxDiameter;
 
   @override
   RenderSurface createRenderObject(BuildContext context) {
     return RenderSurface(
       node: node,
-      diameter: diameter,
-      maxDiameter: maxDiameter,
     );
   }
 
   @override
   void updateRenderObject(BuildContext context, RenderSurface renderObject) {
     renderObject
-      ..node = node
-      ..diameter = diameter
-      ..maxDiameter = maxDiameter;
+      ..node = node;
   }
 }
 
@@ -121,30 +111,7 @@ class SurfaceParentData extends ParentData with ContainerParentDataMixin<RenderW
 class RenderSurface extends RenderWorldWithChildren<SurfaceParentData> {
   RenderSurface({
     required super.node,
-    required double diameter,
-    required double maxDiameter,
-  }) : _diameter = diameter,
-       _maxDiameter = maxDiameter;
-
-  double get diameter => _diameter;
-  double _diameter;
-  set diameter (double value) {
-    if (value != _diameter) {
-      _diameter = value;
-      markNeedsPaint();
-    }
-  }
-
-  double get maxDiameter => _maxDiameter;
-  double _maxDiameter;
-  set maxDiameter (double value) {
-    if (value != _maxDiameter) {
-      _maxDiameter = value;
-      markNeedsPaint();
-    }
-  }
-
-  double get radius => diameter / 2.0;
+  });
 
   @override
   void setupParentData(RenderObject child) {

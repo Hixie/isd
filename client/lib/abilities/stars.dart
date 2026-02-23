@@ -21,8 +21,6 @@ class StarFeature extends AbilityFeature {
     return StarWidget(
       node: parent,
       starId: starId,
-      diameter: parent.diameter,
-      maxDiameter: parent.maxRenderDiameter,
       spaceTime: SystemNode.of(parent).spaceTime,
     );
   }
@@ -56,15 +54,11 @@ class StarWidget extends LeafRenderObjectWidget {
     super.key,
     required this.node,
     required this.starId,
-    required this.diameter,
-    required this.maxDiameter,
     required this.spaceTime,
   });
 
   final WorldNode node;
   final int starId;
-  final double diameter;
-  final double maxDiameter;
   final SpaceTime spaceTime;
 
   @override
@@ -72,8 +66,6 @@ class StarWidget extends LeafRenderObjectWidget {
     return RenderStar(
       node: node,
       starId: starId,
-      diameter: diameter,
-      maxDiameter: maxDiameter,
       shaders: ShaderProvider.of(context),
       spaceTime: spaceTime,
     );
@@ -84,8 +76,6 @@ class StarWidget extends LeafRenderObjectWidget {
     renderObject
       ..node = node
       ..starId = starId
-      ..diameter = diameter
-      ..maxDiameter = maxDiameter
       ..shaders = ShaderProvider.of(context)
       ..spaceTime = spaceTime;
   }
@@ -95,13 +85,9 @@ class RenderStar extends RenderWorldNode {
   RenderStar({
     required super.node,
     required int starId,
-    required double diameter,
-    required double maxDiameter,
     required ShaderLibrary shaders,
     required SpaceTime spaceTime,
   }) : _starId = starId,
-       _diameter = diameter,
-       _maxDiameter = maxDiameter,
        _shaders = shaders,
        _spaceTime = spaceTime;
 
@@ -111,24 +97,6 @@ class RenderStar extends RenderWorldNode {
     if (value != _starId) {
       _starId = value;
       _starShader = null;
-      markNeedsPaint();
-    }
-  }
-
-  double get diameter => _diameter;
-  double _diameter;
-  set diameter (double value) {
-    if (value != _diameter) {
-      _diameter = value;
-      markNeedsPaint();
-    }
-  }
-
-  double get maxDiameter => _maxDiameter;
-  double _maxDiameter;
-  set maxDiameter (double value) {
-    if (value != _maxDiameter) {
-      _maxDiameter = value;
       markNeedsPaint();
     }
   }

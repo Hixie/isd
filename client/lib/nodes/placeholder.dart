@@ -8,22 +8,16 @@ class WorldPlaceholder extends LeafRenderObjectWidget {
   const WorldPlaceholder({
     super.key,
     required this.node,
-    required this.diameter,
-    required this.maxDiameter,
     required this.color,
-  }) : assert(maxDiameter > 0.0);
+  });
 
   final WorldNode node;
-  final double diameter;
-  final double maxDiameter;
   final Color color;
 
   @override
   RenderWorldPlaceholder createRenderObject(BuildContext context) {
     return RenderWorldPlaceholder(
       node: node,
-      diameter: diameter,
-      maxDiameter: maxDiameter,
       color: color,
     );
   }
@@ -32,8 +26,6 @@ class WorldPlaceholder extends LeafRenderObjectWidget {
   void updateRenderObject(BuildContext context, RenderWorldPlaceholder renderObject) {
     renderObject
       ..node = node
-      ..diameter = diameter
-      ..maxDiameter = maxDiameter
       ..color = color;
   }
 }
@@ -41,34 +33,8 @@ class WorldPlaceholder extends LeafRenderObjectWidget {
 class RenderWorldPlaceholder extends RenderWorldNode {
   RenderWorldPlaceholder({
     required super.node,
-    required double diameter,
-    required double maxDiameter,
     Color color = const Color(0xFFFFFFFF),
-  }) : _diameter = diameter,
-       _maxDiameter = maxDiameter,
-       _color = color;
-
-  double get diameter => _diameter;
-  double _diameter;
-  set diameter (double value) {
-    if (value != _diameter) {
-      _diameter = value;
-      markNeedsPaint();
-    }
-  }
-
-  double get maxRadius => maxDiameter / 2.0;
-
-  double get maxDiameter => _maxDiameter;
-  double _maxDiameter;
-  set maxDiameter (double value) {
-    if (value != _maxDiameter) {
-      _maxDiameter = value;
-      markNeedsPaint();
-    }
-  }
-
-  double get radius => diameter / 2.0;
+  }) : _color = color;
 
   Color get color => _color;
   Color _color;

@@ -224,15 +224,11 @@ class WorldTapDetector extends LeafRenderObjectWidget {
   const WorldTapDetector({
     super.key,
     required this.node,
-    required this.diameter,
-    required this.maxDiameter,
     required this.shape,
     this.onTap,
   });
 
   final WorldNode node;
-  final double diameter;
-  final double maxDiameter;
   final BoxShape shape;
   final TapDetectorCallback? onTap;
 
@@ -240,8 +236,6 @@ class WorldTapDetector extends LeafRenderObjectWidget {
   RenderWorldTapDetector createRenderObject(BuildContext context) {
     return RenderWorldTapDetector(
       node: node,
-      diameter: diameter,
-      maxDiameter: maxDiameter,
       shape: shape,
       onTap: onTap == null ? null : () => onTap!(context),
     );
@@ -251,8 +245,6 @@ class WorldTapDetector extends LeafRenderObjectWidget {
   void updateRenderObject(BuildContext context, RenderWorldTapDetector renderObject) {
     renderObject
       ..node = node
-      ..diameter = diameter
-      ..maxDiameter = maxDiameter
       ..shape = shape
       ..onTap = onTap == null ? null : () => onTap!(context);
     }
@@ -261,30 +253,9 @@ class WorldTapDetector extends LeafRenderObjectWidget {
 class RenderWorldTapDetector extends RenderWorldNode {
   RenderWorldTapDetector({
     required super.node,
-    required double diameter,
-    required double maxDiameter,
     this.shape,
     this.onTap,
-  }) : _diameter = diameter,
-       _maxDiameter = maxDiameter;
-
-  double get diameter => _diameter;
-  double _diameter;
-  set diameter (double value) {
-    if (value != _diameter) {
-      _diameter = value;
-      markNeedsLayout();
-    }
-  }
-
-  double get maxDiameter => _maxDiameter;
-  double _maxDiameter;
-  set maxDiameter (double value) {
-    if (value != _maxDiameter) {
-      _maxDiameter = value;
-      markNeedsLayout();
-    }
-  }
+  });
 
   BoxShape? shape;
   VoidCallback? onTap;

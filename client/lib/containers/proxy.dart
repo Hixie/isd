@@ -46,8 +46,6 @@ class ProxyFeature extends ContainerFeature {
   Widget buildRenderer(BuildContext context) {
     return ProxyWidget(
       node: parent,
-      diameter: parent.diameter,
-      maxDiameter: parent.maxRenderDiameter,
       child: child?.build(context),
     );
   }
@@ -82,60 +80,29 @@ class ProxyWidget extends SingleChildRenderObjectWidget {
   const ProxyWidget({
     super.key,
     required this.node,
-    required this.diameter,
-    required this.maxDiameter,
     super.child,
   });
 
   final WorldNode node;
-  final double diameter;
-  final double maxDiameter;
 
   @override
   RenderProxy createRenderObject(BuildContext context) {
     return RenderProxy(
       node: node,
-      diameter: diameter,
-      maxDiameter: maxDiameter,
     );
   }
 
   @override
   void updateRenderObject(BuildContext context, RenderProxy renderObject) {
     renderObject
-      ..node = node
-      ..diameter = diameter
-      ..maxDiameter = maxDiameter;
+      ..node = node;
   }
 }
 
 class RenderProxy extends RenderWorldNode with RenderObjectWithChildMixin<RenderWorld> {
   RenderProxy({
     required super.node,
-    required double diameter,
-    required double maxDiameter,
-  }) : _diameter = diameter,
-       _maxDiameter = maxDiameter;
-
-  double get diameter => _diameter;
-  double _diameter;
-  set diameter (double value) {
-    if (value != _diameter) {
-      _diameter = value;
-      markNeedsPaint();
-    }
-  }
-
-  double get maxDiameter => _maxDiameter;
-  double _maxDiameter;
-  set maxDiameter (double value) {
-    if (value != _maxDiameter) {
-      _maxDiameter = value;
-      markNeedsPaint();
-    }
-  }
-
-  double get radius => diameter / 2.0;
+  });
 
   @override
   void computeLayout(WorldConstraints constraints, double actualDiameter) {

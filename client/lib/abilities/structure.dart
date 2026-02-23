@@ -61,8 +61,6 @@ class StructureFeature extends AbilityFeature {
   Widget buildRenderer(BuildContext context) {
     return _cachedBuild ??= WorldToBoxAdapter(
       node: parent,
-      diameter: parent.diameter,
-      maxDiameter: parent.maxRenderDiameter,
       child: (max == null) ||
              (minIntegrity == null) ||
              (((structuralIntegrityCurrent == max!) || (structuralIntegrityCurrent == 0.0)) && structuralIntegrityRate == 0.0)

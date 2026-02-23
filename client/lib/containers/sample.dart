@@ -59,8 +59,6 @@ class SampleAssetFeature extends ContainerFeature {
   Widget buildRenderer(BuildContext context) {
     return ProxyWidget(
       node: parent,
-      diameter: parent.diameter,
-      maxDiameter: parent.maxRenderDiameter,
       child: child?.build(context),
     );
   }

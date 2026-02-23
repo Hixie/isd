@@ -313,16 +313,12 @@ class WorldIcon extends LeafRenderObjectWidget {
     super.key,
     required this.node,
     required this.icon,
-    required this.diameter,
-    required this.maxDiameter,
     required this.ghost,
     this.onTap,
   });
 
   final WorldNode node;
   final String icon;
-  final double diameter;
-  final double maxDiameter;
   final bool ghost;
   final IconTapCallback? onTap;
 
@@ -331,8 +327,6 @@ class WorldIcon extends LeafRenderObjectWidget {
     return RenderWorldIcon(
       node: node,
       icon: icon,
-      diameter: diameter,
-      maxDiameter: maxDiameter,
       ghost: ghost,
       devicePixelRatio: MediaQuery.of(context).devicePixelRatio,
       icons: IconsManagerProvider.of(context),
@@ -347,8 +341,6 @@ class WorldIcon extends LeafRenderObjectWidget {
     renderObject
       ..node = node
       ..icon = icon
-      ..diameter = diameter
-      ..maxDiameter = maxDiameter
       ..ghost = ghost
       ..devicePixelRatio = MediaQuery.of(context).devicePixelRatio
       ..icons = IconsManagerProvider.of(context)
@@ -362,8 +354,6 @@ class RenderWorldIcon extends RenderWorldNode {
   RenderWorldIcon({
     required super.node,
     required String icon,
-    required double diameter,
-    required double maxDiameter,
     required bool ghost,
     required double devicePixelRatio,
     required IconsManager icons,
@@ -371,8 +361,6 @@ class RenderWorldIcon extends RenderWorldNode {
     required SpaceTime spaceTime,
     this.onTap,
   }) : _icon = icon,
-       _diameter = diameter,
-       _maxDiameter = maxDiameter,
        _ghost = ghost,
        _devicePixelRatio = devicePixelRatio,
        _icons = icons,
@@ -384,24 +372,6 @@ class RenderWorldIcon extends RenderWorldNode {
   set icon (String value) {
     if (value != _icon) {
       _icon = value;
-      markNeedsLayout();
-    }
-  }
-
-  double get diameter => _diameter;
-  double _diameter;
-  set diameter (double value) {
-    if (value != _diameter) {
-      _diameter = value;
-      markNeedsLayout();
-    }
-  }
-
-  double get maxDiameter => _maxDiameter;
-  double _maxDiameter;
-  set maxDiameter (double value) {
-    if (value != _maxDiameter) {
-      _maxDiameter = value;
       markNeedsLayout();
     }
   }
@@ -606,23 +576,17 @@ class WorldFields extends MultiChildRenderObjectWidget {
     super.key,
     required this.node,
     required this.icon,
-    required this.diameter,
-    required this.maxDiameter,
     required super.children,
   });
 
   final WorldNode node;
   final String icon;
-  final double diameter;
-  final double maxDiameter;
 
   @override
   RenderWorldFieldPlacement createRenderObject(BuildContext context) {
     return RenderWorldFieldPlacement(
       node: node,
       icon: icon,
-      diameter: diameter,
-      maxDiameter: maxDiameter,
       icons: IconsManagerProvider.of(context),
     );
   }
@@ -632,8 +596,6 @@ class WorldFields extends MultiChildRenderObjectWidget {
     renderObject
       ..node = node
       ..icon = icon
-      ..diameter = diameter
-      ..maxDiameter = maxDiameter
       ..icons = IconsManagerProvider.of(context);
   }
 }
@@ -658,12 +620,8 @@ class RenderWorldFieldPlacement extends RenderWorldNode
   RenderWorldFieldPlacement({
     required super.node,
     required String icon,
-    required double diameter,
-    required double maxDiameter,
     required IconsManager icons,
   }) : _icon = icon,
-       _diameter = diameter,
-       _maxDiameter = maxDiameter,
        _icons = icons;
 
   String get icon => _icon;
@@ -671,24 +629,6 @@ class RenderWorldFieldPlacement extends RenderWorldNode
   set icon (String value) {
     if (value != _icon) {
       _icon = value;
-      markNeedsLayout();
-    }
-  }
-
-  double get diameter => _diameter;
-  double _diameter;
-  set diameter (double value) {
-    if (value != _diameter) {
-      _diameter = value;
-      markNeedsLayout();
-    }
-  }
-
-  double get maxDiameter => _maxDiameter;
-  double _maxDiameter;
-  set maxDiameter (double value) {
-    if (value != _maxDiameter) {
-      _maxDiameter = value;
       markNeedsLayout();
     }
   }

@@ -54,7 +54,7 @@ class _RenderWorldLayoutBuilder extends RenderWorld
 
   @override
   bool hitTestChildren(BoxHitTestResult result, { required Offset position }) {
-    return child!.hitTestChildren(result, position: position) ?? false;
+    return child!.hitTestChildren(result, position: position);
   }
 
   @override
@@ -203,30 +203,22 @@ class WorldBoxGrid extends MultiChildRenderObjectWidget {
   const WorldBoxGrid({
     super.key,
     required this.node,
-    required this.diameter,
-    required this.maxDiameter,
     super.children,
   });
 
   final WorldNode node;
-  final double diameter;
-  final double maxDiameter;
 
   @override
   RenderWorldBoxGrid createRenderObject(BuildContext context) {
     return RenderWorldBoxGrid(
       node: node,
-      diameter: diameter,
-      maxDiameter: maxDiameter,
     );
   }
 
   @override
   void updateRenderObject(BuildContext context, RenderWorldBoxGrid renderObject) {
     renderObject
-      ..node = node
-      ..diameter = diameter
-      ..maxDiameter = maxDiameter;
+      ..node = node;
   }
 }
 
@@ -237,28 +229,7 @@ class WorldBoxGridParentData extends ContainerBoxParentData<RenderBox> {
 class RenderWorldBoxGrid extends RenderWorldNode with ContainerRenderObjectMixin<RenderBox, WorldBoxGridParentData>, RenderBoxContainerDefaultsMixin<RenderBox, WorldBoxGridParentData> {
   RenderWorldBoxGrid({
     required super.node,
-    required double diameter,
-    required double maxDiameter,
-  }) : _diameter = diameter,
-       _maxDiameter = maxDiameter;
-
-  double get diameter => _diameter;
-  double _diameter;
-  set diameter (double value) {
-    if (value != _diameter) {
-      _diameter = value;
-      markNeedsLayout();
-    }
-  }
-
-  double get maxDiameter => _maxDiameter;
-  double _maxDiameter;
-  set maxDiameter (double value) {
-    if (value != _maxDiameter) {
-      _maxDiameter = value;
-      markNeedsLayout();
-    }
-  }
+  });
 
   @override
   void setupParentData(RenderObject child) {
@@ -324,30 +295,22 @@ class WorldStack extends MultiChildRenderObjectWidget {
   const WorldStack({
     super.key,
     required this.node,
-    required this.diameter,
-    required this.maxDiameter,
     super.children,
   });
 
   final WorldNode node;
-  final double diameter;
-  final double maxDiameter;
 
   @override
   RenderWorldStack createRenderObject(BuildContext context) {
     return RenderWorldStack(
       node: node,
-      diameter: diameter,
-      maxDiameter: maxDiameter,
     );
   }
 
   @override
   void updateRenderObject(BuildContext context, RenderWorldStack renderObject) {
     renderObject
-      ..node = node
-      ..diameter = diameter
-      ..maxDiameter = maxDiameter;
+      ..node = node;
   }
 }
 
@@ -356,28 +319,7 @@ class StackParentData extends ParentData with ContainerParentDataMixin<RenderWor
 class RenderWorldStack extends RenderWorldWithChildren<StackParentData> {
   RenderWorldStack({
     required super.node,
-    required double diameter,
-    required double maxDiameter,
-  }) : _diameter = diameter,
-       _maxDiameter = maxDiameter;
-
-  double get diameter => _diameter;
-  double _diameter;
-  set diameter (double value) {
-    if (value != _diameter) {
-      _diameter = value;
-      markNeedsLayout();
-    }
-  }
-
-  double get maxDiameter => _maxDiameter;
-  double _maxDiameter;
-  set maxDiameter (double value) {
-    if (value != _maxDiameter) {
-      _maxDiameter = value;
-      markNeedsLayout();
-    }
-  }
+  });
 
   @override
   void setupParentData(RenderObject child) {
@@ -424,58 +366,29 @@ class WorldToBoxAdapter extends SingleChildRenderObjectWidget {
   const WorldToBoxAdapter({
     super.key,
     required this.node,
-    required this.diameter,
-    required this.maxDiameter,
     super.child,
   });
 
   final WorldNode node;
-  final double diameter;
-  final double maxDiameter;
 
   @override
   RenderWorldToBoxAdapter createRenderObject(BuildContext context) {
     return RenderWorldToBoxAdapter(
       node: node,
-      diameter: diameter,
-      maxDiameter: maxDiameter,
     );
   }
 
   @override
   void updateRenderObject(BuildContext context, RenderWorldToBoxAdapter renderObject) {
     renderObject
-      ..node = node
-      ..diameter = diameter
-      ..maxDiameter = maxDiameter;
+      ..node = node;
   }
 }
 
 class RenderWorldToBoxAdapter extends RenderWorldNode with RenderObjectWithChildMixin<RenderBox> {
   RenderWorldToBoxAdapter({
     required super.node,
-    required double diameter,
-    required double maxDiameter,
-  }) : _diameter = diameter,
-       _maxDiameter = maxDiameter;
-
-  double get diameter => _diameter;
-  double _diameter;
-  set diameter (double value) {
-    if (value != _diameter) {
-      _diameter = value;
-      markNeedsPaint();
-    }
-  }
-
-  double get maxDiameter => _maxDiameter;
-  double _maxDiameter;
-  set maxDiameter (double value) {
-    if (value != _maxDiameter) {
-      _maxDiameter = value;
-      markNeedsPaint();
-    }
-  }
+  });
 
   @override
   void computeLayout(WorldConstraints constraints, double actualDiameter) {

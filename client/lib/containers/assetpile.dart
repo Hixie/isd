@@ -51,8 +51,6 @@ class AssetPileFeature extends ContainerFeature {
   Widget buildRenderer(BuildContext context) {
     return AssetPileWidget(
       node: parent,
-      diameter: parent.diameter,
-      maxDiameter: parent.maxRenderDiameter,
       children: children.map((AssetNode child) => child.build(context)).toList(),
     );
   }
@@ -87,30 +85,22 @@ class AssetPileWidget extends MultiChildRenderObjectWidget {
   const AssetPileWidget({
     super.key,
     required this.node,
-    required this.diameter,
-    required this.maxDiameter,
     super.children,
   });
 
   final WorldNode node;
-  final double diameter;
-  final double maxDiameter;
 
   @override
   RenderAssetPile createRenderObject(BuildContext context) {
     return RenderAssetPile(
       node: node,
-      diameter: diameter,
-      maxDiameter: maxDiameter,
     );
   }
 
   @override
   void updateRenderObject(BuildContext context, RenderAssetPile renderObject) {
     renderObject
-      ..node = node
-      ..diameter = diameter
-      ..maxDiameter = maxDiameter;
+      ..node = node;
   }
 }
 
@@ -121,28 +111,7 @@ class AssetPileParentData extends ParentData with ContainerParentDataMixin<Rende
 class RenderAssetPile extends RenderWorldWithChildren<AssetPileParentData> {
   RenderAssetPile({
     required super.node,
-    required double diameter,
-    required double maxDiameter,
-  }) : _diameter = diameter,
-       _maxDiameter = maxDiameter;
-
-  double get diameter => _diameter;
-  double _diameter;
-  set diameter (double value) {
-    if (value != _diameter) {
-      _diameter = value;
-      markNeedsPaint();
-    }
-  }
-
-  double get maxDiameter => _maxDiameter;
-  double _maxDiameter;
-  set maxDiameter (double value) {
-    if (value != _maxDiameter) {
-      _maxDiameter = value;
-      markNeedsPaint();
-    }
-  }
+  });
 
   @override
   void setupParentData(RenderObject child) {

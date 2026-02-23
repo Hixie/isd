@@ -337,8 +337,6 @@ class AssetNode extends WorldNode {
       shape = BoxShape.rectangle;
       backgrounds.insert(0, WorldIcon(
         node: this,
-        diameter: diameter,
-        maxDiameter: worldParent!.maxRenderDiameter,
         icon: assetClass.icon,
         ghost: isGhost,
       ));
@@ -347,16 +345,12 @@ class AssetNode extends WorldNode {
       backgrounds.add(WorldFields(
         node: this,
         icon: assetClass.icon,
-        diameter: diameter,
-        maxDiameter: worldParent!.maxRenderDiameter,
         children: boxes,
      ));
     }
     if (shape != null) {
       backgrounds.insert(0, WorldTapDetector(
         node: this,
-        diameter: diameter,
-        maxDiameter: worldParent!.maxRenderDiameter,
         shape: shape,
         onTap: showInspector,
       ));
@@ -367,8 +361,6 @@ class AssetNode extends WorldNode {
     if (backgrounds.length > 1) {
       return WorldStack(
         node: this,
-        diameter: diameter,
-        maxDiameter: worldParent!.maxRenderDiameter,
         children: backgrounds,
       );
     }
