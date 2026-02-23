@@ -449,6 +449,7 @@ class SystemServer {
               while ((topic = reader.readString()).isNotEmpty) {
                 topics.add(topic);
               }
+              topics.add('');
               final String research = reader.readString();
               final int difficulty = reader.readUInt8();
               features.add(ResearchFeature(

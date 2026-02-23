@@ -193,8 +193,14 @@ class ResearchTopicUi extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(22.0, 4.0, 20.0, 24.0),
           itemCount: topics.length,
           itemBuilder: (BuildContext context, int index) {
+            final Widget label;
+            if (topics[index] == '') {
+              label = const Text('Unguided research', style: italic);
+            } else {
+              label = Text(topics[index]);
+            }
             return TextButton(
-              child: Text(topics[index]),
+              child: label,
               onPressed: () {
                 system.play(<Object>[node.id, 'set-topic', topics[index]]);
                 HudHandle.of(context).cancel();
