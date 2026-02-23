@@ -7,7 +7,7 @@ import '../prettifiers.dart';
 import '../root.dart';
 import '../widgets.dart';
 
-// TODO: automatically pop-out a message when it comes in?
+// TODO: when a message comes in, header bar should say "You have mail!" and link to the mailbox and mail
 
 class MessageFeature extends AbilityFeature with ChangeNotifier {
   MessageFeature(this.systemID, this.timestamp, this.isRead, this.subject, this.from, this.body);

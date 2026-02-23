@@ -142,7 +142,7 @@ class RenderAssetPile extends RenderWorldWithChildren<AssetPileParentData> {
   }
 
   @override
-  WorldTapTarget? routeTap(Offset offset) {
+  WorldTapTarget? computeTap(Offset offset) {
     if (!isInsideSquare(offset))
       return null;
     RenderWorld? child = lastChild;

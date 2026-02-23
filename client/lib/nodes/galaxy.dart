@@ -506,11 +506,6 @@ class RenderGalaxy extends RenderWorldWithChildren<GalaxyParentData> {
   double _legendLength = 0.0;
 
   @override
-  double computePaintDiameter() {
-    return diameter * constraints.scale;
-  }
-
-  @override
   void computeLayout(WorldConstraints constraints, double actualDiameter) {
     RenderWorld? child = firstChild;
     while (child != null) {
@@ -960,7 +955,7 @@ class RenderGalaxy extends RenderWorldWithChildren<GalaxyParentData> {
   }
 
   @override
-  WorldTapTarget? routeTap(Offset offset) {
+  WorldTapTarget? computeTap(Offset offset) {
     if (constraints.zoom < minReticuleZoom) {
       RenderWorld? child = firstChild;
       while (child != null) {

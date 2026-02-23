@@ -546,7 +546,7 @@ class RenderWorldIcon extends RenderWorldNode {
   }
 
   @override
-  WorldTapTarget? routeTap(Offset offset) {
+  WorldTapTarget? computeTap(Offset offset) {
     if ((onTap != null) && isInsideSquare(offset)) {
       return _IconTapTarget(onTap!);
     }
@@ -770,7 +770,7 @@ class RenderWorldFieldPlacement extends RenderWorldNode
   }
 
   @override
-  WorldTapTarget? routeTap(Offset offset) {
+  WorldTapTarget? computeTap(Offset offset) {
     return null;
   }
 

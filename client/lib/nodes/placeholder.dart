@@ -67,7 +67,7 @@ class RenderWorldPlaceholder extends RenderWorldNode {
   }
 
   @override
-  WorldTapTarget? routeTap(Offset offset) {
+  WorldTapTarget? computeTap(Offset offset) {
     return null;
   }
 }

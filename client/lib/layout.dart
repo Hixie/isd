@@ -117,7 +117,11 @@ abstract class RenderWorld extends RenderObject {
     );
   }
 
+  static const double _paintThreshold = 1.0;
+
+  Offset get paintCenter => _paintCenter!;
   Offset? _paintCenter;
+  double get paintDiameter => _paintDiameter!;
   double? _paintDiameter;
 
   double computePaintDiameter() => _computePaintDiameter(node.diameter, node.maxRenderDiameter, constraints.scale);
@@ -131,8 +135,9 @@ abstract class RenderWorld extends RenderObject {
   @override
   void performLayout() {
     _paintDiameter = computePaintDiameter();
-    // TODO: short-circuit when _paintDiameter is small
-    computeLayout(constraints, _paintDiameter!);
+    if (_paintDiameter! >= _paintThreshold) {
+      computeLayout(constraints, _paintDiameter!);
+    }
   }
 
   void computeLayout(WorldConstraints constraints, double actualDiameter);
@@ -142,7 +147,9 @@ abstract class RenderWorld extends RenderObject {
   void paint(PaintingContext context, Offset offset) {
     assert(offset.isFinite);
     _paintCenter = offset;
-    computePaint(context, offset, _paintDiameter!);
+    if (_paintDiameter! >= _paintThreshold) {
+      computePaint(context, offset, _paintDiameter!);
+    }
   }
 
   // The offset parameter is the distance from the canvas origin to the asset origin, in pixels.
@@ -156,10 +163,6 @@ abstract class RenderWorld extends RenderObject {
     // See WorldToBox in widgets.dart.
   }
 
-  Offset get paintCenter => _paintCenter!;
-
-  double get paintDiameter => _paintDiameter!;
-
   @override
   Rect get paintBounds => Rect.fromCircle(center: _paintCenter!, radius: _paintDiameter! / 2.0);
 
@@ -167,24 +170,39 @@ abstract class RenderWorld extends RenderObject {
   Rect get semanticBounds => paintBounds; // TODO: actually implement semantics
 
   bool isInsideCircle(Offset offset) {
-    final double r = paintDiameter / 2.0;
-    return (offset - paintCenter).distanceSquared <= r * r;
+    final double r = _paintDiameter! / 2.0;
+    return (_paintDiameter! >= _paintThreshold) && (offset - _paintCenter!).distanceSquared <= r * r;
   }
 
   bool isInsideSquare(Offset offset) {
-    final Offset distance = offset - paintCenter;
-    return (distance.dx.abs() <= paintDiameter / 2.0) && (distance.dy.abs() <= paintDiameter / 2.0);
+    final double r = _paintDiameter! / 2.0;
+    final Offset distance = offset - _paintCenter!;
+    return (_paintDiameter! >= _paintThreshold) && (distance.dx.abs() <= r) && (distance.dy.abs() <= r);
   }
 
   @override
   void debugAssertDoesMeetConstraints() { }
 
+  bool hitTest(BoxHitTestResult result, { required Offset position }) {
+    return (_paintDiameter! >= _paintThreshold) && hitTestChildren(result, position: position);
+  }
+
+  @protected
   bool hitTestChildren(BoxHitTestResult result, { required Offset position });
 
   // Offset is the offset from the center of the screen at which the tap happened.
   // Subtracting the offset given to [computePaint] gives you the distance from
   // the center of the asset to the tap.
-  WorldTapTarget? routeTap(Offset offset);
+  @nonVirtual
+  WorldTapTarget? routeTap(Offset offset) {
+    if (_paintDiameter! >= _paintThreshold) {
+      return computeTap(offset);
+    } else {
+      return null;
+    }
+  }
+
+  WorldTapTarget? computeTap(Offset offset);
 }
 
 abstract class RenderWorldNode extends RenderWorld {
@@ -211,7 +229,7 @@ abstract class RenderWorldWithChildren<ParentDataType extends ContainerParentDat
     bool hit = false;
     RenderWorld? child = lastChild;
     while (child != null) {
-      hit = hit || child.hitTestChildren(result, position: position);
+      hit = hit || child.hitTest(result, position: position);
       child = childBefore(child);
     }
     return hit;
@@ -272,7 +290,7 @@ class RenderWorldTapDetector extends RenderWorldNode {
   }
 
   @override
-  WorldTapTarget? routeTap(Offset offset) {
+  WorldTapTarget? computeTap(Offset offset) {
     if (onTap != null) {
       if (switch (shape!) {
         BoxShape.rectangle => isInsideSquare(offset),

@@ -270,11 +270,6 @@ class RenderSystem extends RenderWorldNode with RenderObjectWithChildMixin<Rende
   static final TextStyle _clockStyle = TextStyle(fontSize: 12.0, foreground: _clockPaint);
 
   @override
-  double computePaintDiameter() {
-    return diameter * constraints.scale;
-  }
-
-  @override
   void computeLayout(WorldConstraints constraints, double actualDiameter) {
     if (child != null)
       child!.layout(constraints);
@@ -386,11 +381,11 @@ class RenderSystem extends RenderWorldNode with RenderObjectWithChildMixin<Rende
 
   @override
   bool hitTestChildren(BoxHitTestResult result, { required Offset position }) {
-    return child?.hitTestChildren(result, position: position) ?? false;
+    return child?.hitTest(result, position: position) ?? false;
   }
 
   @override
-  WorldTapTarget? routeTap(Offset offset) {
+  WorldTapTarget? computeTap(Offset offset) {
     final Offset offsetInSystem = offset - _childPosition!; // pixels relative to system center
     if (!isInsideCircle(offset))
       return null;

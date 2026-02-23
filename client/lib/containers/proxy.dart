@@ -114,7 +114,7 @@ class RenderProxy extends RenderWorldNode with RenderObjectWithChildMixin<Render
   Offset? _childPosition;
 
   @override
-  void computePaint(PaintingContext context, Offset offset, actualDiameter) {
+  void computePaint(PaintingContext context, Offset offset, double actualDiameter) {
     if (child != null) {
       // TODO: position the child based on the icon's fields
       // one of the modes should be to center the child's bottom
@@ -125,7 +125,7 @@ class RenderProxy extends RenderWorldNode with RenderObjectWithChildMixin<Render
   }
 
   @override
-  WorldTapTarget? routeTap(Offset offset) {
+  WorldTapTarget? computeTap(Offset offset) {
     if (child != null) {
       final WorldTapTarget? result = child!.routeTap(offset); // TODO: correct offset
       if (result != null)
@@ -138,7 +138,7 @@ class RenderProxy extends RenderWorldNode with RenderObjectWithChildMixin<Render
   bool hitTestChildren(BoxHitTestResult result, { required Offset position }) {
     bool hit = false;
     if (child != null) {
-      hit = hit || child!.hitTestChildren(result, position: position);
+      hit = hit || child!.hitTest(result, position: position);
     }
     return hit;
   }

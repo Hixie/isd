@@ -75,6 +75,7 @@ class OrbitFeature extends ContainerFeature {
     for (AssetNode asset in children.keys) {
       final Orbit orbit = children[asset]!;
       final double childRadius = orbit.a * (1 + orbit.e) + asset.diameter / 2.0;
+      assert(childRadius > 0.0);
       if (childRadius > radius) {
         radius = childRadius;
       }
@@ -86,9 +87,13 @@ class OrbitFeature extends ContainerFeature {
         ),
       );
     }
+    double diameter = radius * 2.0;
+    if (diameter < originChild.diameter) {
+      diameter = originChild.diameter;
+    }
     return OrbitWidget(
       node: parent,
-      diameter: radius * 2.0,
+      diameter: diameter,
       spaceTime: spaceTime,
       drawPrimaryOnTop: originChild.features.isNotEmpty && originChild.features.first is StarFeature, // TODO: this is a hack
       children: childList,
@@ -289,11 +294,6 @@ class RenderOrbit extends RenderWorldWithChildren<OrbitParentData> {
   }
 
   @override
-  double computePaintDiameter() {
-    return diameter * constraints.scale;
-  }
-
-  @override
   void computeLayout(WorldConstraints constraints, double actualDiameter) {
     RenderWorld? child = firstChild;
     while (child != null) {
@@ -337,7 +337,7 @@ class RenderOrbit extends RenderWorldWithChildren<OrbitParentData> {
   }
 
   @override
-  WorldTapTarget? routeTap(Offset offset) {
+  WorldTapTarget? computeTap(Offset offset) {
     RenderWorld? child = lastChild;
     while (child != null) {
       final OrbitParentData childParentData = child.parentData! as OrbitParentData;

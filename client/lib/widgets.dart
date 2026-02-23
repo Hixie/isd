@@ -54,11 +54,11 @@ class _RenderWorldLayoutBuilder extends RenderWorld
 
   @override
   bool hitTestChildren(BoxHitTestResult result, { required Offset position }) {
-    return child!.hitTestChildren(result, position: position);
+    return child!.hitTest(result, position: position);
   }
 
   @override
-  WorldTapTarget? routeTap(Offset offset) {
+  WorldTapTarget? computeTap(Offset offset) {
     return child!.routeTap(offset);
   }
 }
@@ -92,7 +92,7 @@ class RenderWorldNull extends RenderWorldNode {
   }
 
   @override
-  WorldTapTarget? routeTap(Offset offset) => null;
+  WorldTapTarget? computeTap(Offset offset) => null;
 }
 
 
@@ -281,7 +281,7 @@ class RenderWorldBoxGrid extends RenderWorldNode with ContainerRenderObjectMixin
   }
 
   @override
-  WorldTapTarget? routeTap(Offset offset) {
+  WorldTapTarget? computeTap(Offset offset) {
     return null; // TODO: figure out what this should do, if anything
   }
 
@@ -349,7 +349,7 @@ class RenderWorldStack extends RenderWorldWithChildren<StackParentData> {
   }
 
   @override
-  WorldTapTarget? routeTap(Offset offset) {
+  WorldTapTarget? computeTap(Offset offset) {
     RenderWorld? child = lastChild;
     while (child != null) {
       final StackParentData childParentData = child.parentData! as StackParentData;
@@ -424,7 +424,7 @@ class RenderWorldToBoxAdapter extends RenderWorldNode with RenderObjectWithChild
   }
 
   @override
-  WorldTapTarget? routeTap(Offset offset) {
+  WorldTapTarget? computeTap(Offset offset) {
     return null; // we don't tap into the RenderBox world
   }
 }

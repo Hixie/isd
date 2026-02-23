@@ -564,7 +564,7 @@ class RenderBoxToRenderWorldAdapter extends RenderBox with RenderObjectWithChild
   }
 
   bool _hitTestChild(BoxHitTestResult result, Offset offset) {
-    return child?.hitTestChildren(result, position: offset) ?? false;
+    return child?.hitTest(result, position: offset) ?? false;
   }
 
   WorldTapTarget? routeTap(Offset offset) {

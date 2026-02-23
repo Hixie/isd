@@ -142,7 +142,7 @@ class RenderSurface extends RenderWorldWithChildren<SurfaceParentData> {
   }
 
   @override
-  WorldTapTarget? routeTap(Offset offset) {
+  WorldTapTarget? computeTap(Offset offset) {
     RenderWorld? child = lastChild;
     while (child != null) {
       final SurfaceParentData childParentData = child.parentData! as SurfaceParentData;

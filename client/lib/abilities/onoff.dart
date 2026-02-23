@@ -145,7 +145,7 @@ class _OnOffHudState extends ChangeNotifier {
   void update(OnOffFeature feature) {
     _feature = feature;
     enabled = feature.enabled;
-    updating = false; // TODO: technically we should way for the system.play message to return
+    updating = false; // TODO: technically we should wait for the system.play message to return
   }
 
   VoidCallback? get toggleEnabledSwitch => updating ? null : _toggleEnabledSwitch;

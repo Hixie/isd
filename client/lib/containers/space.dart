@@ -145,11 +145,6 @@ class RenderSpace extends RenderWorldWithChildren<SpaceParentData> {
   }
 
   @override
-  double computePaintDiameter() {
-    return diameter;
-  }
-
-  @override
   void computeLayout(WorldConstraints constraints, double actualDiameter) {
     RenderWorld? child = firstChild;
     while (child != null) {
@@ -171,7 +166,7 @@ class RenderSpace extends RenderWorldWithChildren<SpaceParentData> {
   }
 
   @override
-  WorldTapTarget? routeTap(Offset offset) {
+  WorldTapTarget? computeTap(Offset offset) {
     RenderWorld? child = lastChild;
     while (child != null) {
       final SpaceParentData childParentData = child.parentData! as SpaceParentData;

@@ -134,7 +134,7 @@ class GridFeature extends ContainerFeature {
                     listenable: _state!,
                     builder: (BuildContext context, Widget? child) {
                       return BuildableDish(
-                         // TODO: let the user drag the palette out and close the inspector
+                         // TODO: move this into a docked bottom toolbar
                          assetClasses: buildables.map((Buildable buildable) => buildable.assetClass).toList(),
                          onSelect: (AssetClass? assetClass) => _state!.selection = assetClass,
                          selection: _state!.selection,
@@ -315,11 +315,6 @@ class RenderGrid extends RenderWorldWithChildren<GridParentData> {
   }
 
   @override
-  double computePaintDiameter() {
-    return diameter * constraints.scale;
-  }
-
-  @override
   void computeLayout(WorldConstraints constraints, double actualDiameter) {
     RenderWorld? child = firstChild;
     while (child != null) {
@@ -354,7 +349,7 @@ class RenderGrid extends RenderWorldWithChildren<GridParentData> {
   }
 
   @override
-  WorldTapTarget? routeTap(Offset offset) {
+  WorldTapTarget? computeTap(Offset offset) {
     if (!isInsideSquare(offset))
       return null;
     RenderWorld? child = lastChild;
