@@ -506,7 +506,12 @@ class RenderGalaxy extends RenderWorldWithChildren<GalaxyParentData> {
   double _legendLength = 0.0;
 
   @override
-  void computeLayout(WorldConstraints constraints) {
+  double computePaintDiameter() {
+    return diameter * constraints.scale;
+  }
+
+  @override
+  void computeLayout(WorldConstraints constraints, double actualDiameter) {
     RenderWorld? child = firstChild;
     while (child != null) {
       final GalaxyParentData childParentData = child.parentData! as GalaxyParentData;
@@ -535,7 +540,7 @@ class RenderGalaxy extends RenderWorldWithChildren<GalaxyParentData> {
   }
 
   @override
-  double computePaint(PaintingContext context, Offset offset) {
+  void computePaint(PaintingContext context, Offset offset, double actualDiameter) {
     if (galaxy != null) {
       _drawGalaxyHalo(context, offset);
       final Rect wholeGalaxy = Rect.fromCircle(center: Offset.zero, radius: diameter / 2.0);
@@ -569,7 +574,6 @@ class RenderGalaxy extends RenderWorldWithChildren<GalaxyParentData> {
       _drawLegend(context);
       _drawHud(context, offset);
     }
-    return diameter * constraints.scale;
   }
 
   void _drawGalaxyHalo(PaintingContext context, Offset offset) {

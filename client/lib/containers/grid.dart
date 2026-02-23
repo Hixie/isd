@@ -315,7 +315,12 @@ class RenderGrid extends RenderWorldWithChildren<GridParentData> {
   }
 
   @override
-  void computeLayout(WorldConstraints constraints) {
+  double computePaintDiameter() {
+    return diameter * constraints.scale;
+  }
+
+  @override
+  void computeLayout(WorldConstraints constraints, double actualDiameter) {
     RenderWorld? child = firstChild;
     while (child != null) {
       final GridParentData childParentData = child.parentData! as GridParentData;
@@ -328,17 +333,16 @@ class RenderGrid extends RenderWorldWithChildren<GridParentData> {
   final Paint _gridPaint = Paint();
 
   @override
-  double computePaint(PaintingContext context, Offset offset) {
+  void computePaint(PaintingContext context, Offset offset, double actualDiameter) {
     _gridShader ??= shaders.grid(height: dimension, width: dimension);
     final double time = spaceTime.computeTime(<VoidCallback>[markNeedsPaint]);
-    final double diameter = this.diameter; // cache computation
     _gridShader!.setFloat(uT, time);
     _gridShader!.setFloat(uX, offset.dx);
     _gridShader!.setFloat(uY, offset.dy);
-    _gridShader!.setFloat(uGridWidth, diameter * constraints.scale);
-    _gridShader!.setFloat(uGridHeight, diameter * constraints.scale);
+    _gridShader!.setFloat(uGridWidth, actualDiameter);
+    _gridShader!.setFloat(uGridHeight, actualDiameter);
     _gridPaint.shader = _gridShader;
-    final Rect rect = Rect.fromCircle(center: offset, radius: diameter * constraints.scale / 2.0);
+    final Rect rect = Rect.fromCircle(center: offset, radius: actualDiameter / 2.0);
     context.canvas.drawRect(rect, _gridPaint);
     RenderWorld? child = firstChild;
     while (child != null) {
@@ -347,7 +351,6 @@ class RenderGrid extends RenderWorldWithChildren<GridParentData> {
       context.paintChild(child, childParentData._computedPosition!);
       child = childParentData.nextSibling;
     }
-    return diameter * constraints.scale;
   }
 
   @override

@@ -36,30 +36,30 @@ class _RenderWorldLayoutBuilder extends RenderWorld
   WorldNode get node => child!.node;
 
   @override
-  void computeLayout(WorldConstraints constraints) {
+  void performLayout() {
     runLayoutCallback();
-    if (child != null) {
-      child!.layout(constraints, parentUsesSize: true);
-    }
+    assert(child != null);
+    super.performLayout();
   }
 
   @override
-  double computePaint(PaintingContext context, Offset offset) {
-    if (child != null) {
-      context.paintChild(child!, offset);
-      return child!.paintBounds.width;
-    }
-    return 0.0;
+  void computeLayout(WorldConstraints constraints, double actualDiameter) {
+    child!.layout(constraints, parentUsesSize: true);
+  }
+
+  @override
+  void computePaint(PaintingContext context, Offset offset, double actualDiameter) {
+    context.paintChild(child!, offset);
   }
 
   @override
   bool hitTestChildren(BoxHitTestResult result, { required Offset position }) {
-    return child?.hitTestChildren(result, position: position) ?? false;
+    return child!.hitTestChildren(result, position: position) ?? false;
   }
 
   @override
   WorldTapTarget? routeTap(Offset offset) {
-    return child?.routeTap(offset);
+    return child!.routeTap(offset);
   }
 }
 
@@ -81,12 +81,10 @@ class RenderWorldNull extends RenderWorldNode {
   RenderWorldNull({ required super.node });
 
   @override
-  void computeLayout(WorldConstraints constraints) { }
+  void computeLayout(WorldConstraints constraints, double actualDiameter) { }
 
   @override
-  double computePaint(PaintingContext context, Offset offset) {
-    return 0.0;
-  }
+  void computePaint(PaintingContext context, Offset offset, double actualDiameter) { }
 
   @override
   bool hitTestChildren(BoxHitTestResult result, { required Offset position }) {
@@ -270,15 +268,13 @@ class RenderWorldBoxGrid extends RenderWorldNode with ContainerRenderObjectMixin
   }
 
   int? _cellCount;
-  double? _actualDiameter;
   double? _cellSize;
 
   @override
-  void computeLayout(WorldConstraints constraints) {
+  void computeLayout(WorldConstraints constraints, double actualDiameter) {
     final int count = childCount;
     _cellCount = sqrt(count).ceil();
-    _actualDiameter = computePaintDiameter(diameter, maxDiameter);
-    _cellSize = _actualDiameter! / _cellCount!;
+    _cellSize = actualDiameter / _cellCount!;
     final BoxConstraints childConstraints = BoxConstraints.tightFor(width: _cellSize, height: _cellSize);
     RenderBox? child = firstChild;
     while (child != null) {
@@ -289,7 +285,7 @@ class RenderWorldBoxGrid extends RenderWorldNode with ContainerRenderObjectMixin
   }
 
   @override
-  double computePaint(PaintingContext context, Offset offset) {
+  void computePaint(PaintingContext context, Offset offset, double actualDiameter) {
     RenderBox? child = firstChild;
     double x = 0;
     double y = 0;
@@ -309,9 +305,8 @@ class RenderWorldBoxGrid extends RenderWorldNode with ContainerRenderObjectMixin
       }
     }
     if (debugPaintSizeEnabled) {
-      context.canvas.drawRect(Rect.fromCircle(center: offset, radius: _actualDiameter! / 2.0), Paint()..color=const Color(0x7FFF00FF)..strokeWidth=2..style=PaintingStyle.stroke);
+      context.canvas.drawRect(Rect.fromCircle(center: offset, radius: actualDiameter / 2.0), Paint()..color=const Color(0x7FFF00FF)..strokeWidth=2..style=PaintingStyle.stroke);
     }
-    return _actualDiameter!;
   }
 
   @override
@@ -392,7 +387,7 @@ class RenderWorldStack extends RenderWorldWithChildren<StackParentData> {
   }
 
   @override
-  void computeLayout(WorldConstraints constraints) {
+  void computeLayout(WorldConstraints constraints, double actualDiameter) {
     RenderWorld? child = firstChild;
     while (child != null) {
       final StackParentData childParentData = child.parentData! as StackParentData;
@@ -402,15 +397,13 @@ class RenderWorldStack extends RenderWorldWithChildren<StackParentData> {
   }
 
   @override
-  double computePaint(PaintingContext context, Offset offset) {
-    // TODO: apply maxDiameter (ideally by refactoring it so they all do)
+  void computePaint(PaintingContext context, Offset offset, double actualDiameter) {
     RenderWorld? child = firstChild;
     while (child != null) {
       final StackParentData childParentData = child.parentData! as StackParentData;
       context.paintChild(child, offset);
       child = childParentData.nextSibling;
     }
-    return diameter * constraints.scale;
   }
 
   @override
@@ -484,26 +477,22 @@ class RenderWorldToBoxAdapter extends RenderWorldNode with RenderObjectWithChild
     }
   }
 
-  double _actualDiameter = 0.0;
-
   @override
-  void computeLayout(WorldConstraints constraints) {
-    _actualDiameter = computePaintDiameter(diameter, maxDiameter);
+  void computeLayout(WorldConstraints constraints, double actualDiameter) {
     if (child != null) {
-      child!.layout(BoxConstraints.tight(Size.square(_actualDiameter)));
+      child!.layout(BoxConstraints.tight(Size.square(actualDiameter)));
     }
   }
 
   Offset? _childPosition;
 
   @override
-  double computePaint(PaintingContext context, Offset offset) {
-    _childPosition = Offset(offset.dx - _actualDiameter / 2.0, offset.dy - _actualDiameter / 2.0);
+  void computePaint(PaintingContext context, Offset offset, double actualDiameter) {
+    _childPosition = Offset(offset.dx - actualDiameter / 2.0, offset.dy - actualDiameter / 2.0);
     context.paintChild(child!, _childPosition!);
     if (debugPaintSizeEnabled) {
-      context.canvas.drawRect(_childPosition! & Size.square(_actualDiameter), Paint()..color=const Color(0x7FFFFF00)..strokeWidth=10..style=PaintingStyle.stroke);
+      context.canvas.drawRect(_childPosition! & Size.square(actualDiameter), Paint()..color=const Color(0x7FFFFF00)..strokeWidth=10..style=PaintingStyle.stroke);
     }
-    return _actualDiameter;
   }
 
   @override

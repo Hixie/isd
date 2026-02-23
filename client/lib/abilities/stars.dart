@@ -153,17 +153,16 @@ class RenderStar extends RenderWorldNode {
   }
 
   @override
-  void computeLayout(WorldConstraints constraints) { }
+  void computeLayout(WorldConstraints constraints, double actualDiameter) { }
 
   FragmentShader? _starShader;
   final Paint _starPaint = Paint();
 
   @override
-  double computePaint(PaintingContext context, Offset offset) {
+  void computePaint(PaintingContext context, Offset offset, double actualDiameter) {
     // TODO: starId-based paint
     _starShader ??= shaders.stars(0); // TODO: use actual star category id
     final double time = spaceTime.computeTime(<VoidCallback>[markNeedsPaint]);
-    final double actualDiameter = computePaintDiameter(diameter, maxDiameter);
     _starShader!.setFloat(uT, time);
     _starShader!.setFloat(uX, offset.dx);
     _starShader!.setFloat(uY, offset.dy);
@@ -173,7 +172,6 @@ class RenderStar extends RenderWorldNode {
     // (radius is twice the star's radius) so that the star can have solar
     // flares and such.
     context.canvas.drawRect(Rect.fromCircle(center: offset, radius: actualDiameter), _starPaint);
-    return actualDiameter;
   }
 
   @override

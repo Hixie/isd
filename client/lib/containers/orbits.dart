@@ -289,7 +289,12 @@ class RenderOrbit extends RenderWorldWithChildren<OrbitParentData> {
   }
 
   @override
-  void computeLayout(WorldConstraints constraints) {
+  double computePaintDiameter() {
+    return diameter * constraints.scale;
+  }
+
+  @override
+  void computeLayout(WorldConstraints constraints, double actualDiameter) {
     RenderWorld? child = firstChild;
     while (child != null) {
       final OrbitParentData childParentData = child.parentData! as OrbitParentData;
@@ -299,7 +304,7 @@ class RenderOrbit extends RenderWorldWithChildren<OrbitParentData> {
   }
 
   @override
-  double computePaint(PaintingContext context, Offset offset) {
+  void computePaint(PaintingContext context, Offset offset, double actualDiameter) {
     RenderWorld? child = firstChild;
     assert(child != null);
     final OrbitParentData primaryChildParentData = child!.parentData! as OrbitParentData;
@@ -329,7 +334,6 @@ class RenderOrbit extends RenderWorldWithChildren<OrbitParentData> {
     }
     if (drawPrimaryOnTop)
       context.paintChild(firstChild!, offset);
-    return diameter * constraints.scale;
   }
 
   @override

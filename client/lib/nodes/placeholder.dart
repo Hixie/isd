@@ -80,7 +80,7 @@ class RenderWorldPlaceholder extends RenderWorldNode {
   }
 
   @override
-  void computeLayout(WorldConstraints constraints) { }
+  void computeLayout(WorldConstraints constraints, double actualDiameter) { }
 
   Paint get _paint => Paint()
     ..color = color
@@ -88,13 +88,11 @@ class RenderWorldPlaceholder extends RenderWorldNode {
     ..style = PaintingStyle.stroke;
 
   @override
-  double computePaint(PaintingContext context, Offset offset) {
-    final double actualDiameter = computePaintDiameter(diameter, maxDiameter);
+  void computePaint(PaintingContext context, Offset offset, double actualDiameter) {
     final double radius = actualDiameter / 2.0;
     context.canvas.drawCircle(offset, radius, _paint);
     context.canvas.drawLine(offset - Offset(radius, 0.0), offset + Offset(radius, 0.0), _paint);
     context.canvas.drawLine(offset - Offset(0.0, radius), offset + Offset(0.0, radius), _paint);
-    return actualDiameter;
   }
 
   @override

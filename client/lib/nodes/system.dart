@@ -270,7 +270,12 @@ class RenderSystem extends RenderWorldNode with RenderObjectWithChildMixin<Rende
   static final TextStyle _clockStyle = TextStyle(fontSize: 12.0, foreground: _clockPaint);
 
   @override
-  void computeLayout(WorldConstraints constraints) {
+  double computePaintDiameter() {
+    return diameter * constraints.scale;
+  }
+
+  @override
+  void computeLayout(WorldConstraints constraints, double actualDiameter) {
     if (child != null)
       child!.layout(constraints);
   }
@@ -337,11 +342,10 @@ class RenderSystem extends RenderWorldNode with RenderObjectWithChildMixin<Rende
   Offset? _childPosition;
 
   @override
-  double computePaint(PaintingContext context, Offset offset) {
-    final double visibleDiameter = diameter * constraints.scale;
+  void computePaint(PaintingContext context, Offset offset, double actualDiameter) {
     if (child != null) {
-      assert(visibleDiameter >= WorldGeometry.minSystemRenderDiameter);
-      final double fade = ((visibleDiameter - WorldGeometry.minSystemRenderDiameter) / (WorldGeometry.fullyVisibleRenderDiameter - WorldGeometry.minSystemRenderDiameter)).clamp(0.0, 1.0);
+      assert(actualDiameter >= WorldGeometry.minSystemRenderDiameter);
+      final double fade = ((actualDiameter - WorldGeometry.minSystemRenderDiameter) / (WorldGeometry.fullyVisibleRenderDiameter - WorldGeometry.minSystemRenderDiameter)).clamp(0.0, 1.0);
       final double renderRadius = radius * constraints.scale;
       context.canvas.drawRect(Rect.fromCircle(center: offset, radius: renderRadius), _blackFadePaint(fade, offset, renderRadius));
       _childPosition = constraints.paintPositionFor(child!.node, offset, <VoidCallback>[markNeedsPaint]);
@@ -368,10 +372,9 @@ class RenderSystem extends RenderWorldNode with RenderObjectWithChildMixin<Rende
       }
     }
     final Rect viewportRect = Rect.fromCenter(center: Offset.zero, width: constraints.viewportSize.width, height: constraints.viewportSize.height);
-    final Rect systemRect = Rect.fromCircle(center: offset, radius: visibleDiameter / 2.0);
+    final Rect systemRect = Rect.fromCircle(center: offset, radius: actualDiameter / 2.0);
     if (systemRect.contains(viewportRect.topLeft) && systemRect.contains(viewportRect.bottomRight))
       _paintClock(context);
-    return visibleDiameter;
   }
 
   void _paintClock(PaintingContext context) {

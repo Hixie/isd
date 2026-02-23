@@ -131,16 +131,15 @@ class RenderPlanet extends RenderWorldNode {
   }
 
   @override
-  void computeLayout(WorldConstraints constraints) { }
+  void computeLayout(WorldConstraints constraints, double actualDiameter) { }
 
   FragmentShader? _planetShader;
   final Paint _planetPaint = Paint();
 
   @override
-  double computePaint(PaintingContext context, Offset offset) {
+  void computePaint(PaintingContext context, Offset offset, double actualDiameter) {
     _planetShader ??= shaders.planet;
     final double time = spaceTime.computeTime(<VoidCallback>[markNeedsPaint]);
-    final double actualDiameter = computePaintDiameter(diameter, maxDiameter);
     _planetShader!.setFloat(uT, time);
     _planetShader!.setFloat(uX, offset.dx);
     _planetShader!.setFloat(uY, offset.dy);
@@ -153,7 +152,6 @@ class RenderPlanet extends RenderWorldNode {
     // effects like solar particles interacting with the magnetosphere. Not that
     // we do anything like that yet.
     context.canvas.drawRect(Rect.fromCircle(center: offset, radius: actualDiameter), _planetPaint);
-    return actualDiameter;
   }
 
   @override

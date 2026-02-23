@@ -154,7 +154,7 @@ class RenderSurface extends RenderWorldWithChildren<SurfaceParentData> {
   }
 
   @override
-  void computeLayout(WorldConstraints constraints) {
+  void computeLayout(WorldConstraints constraints, double actualDiameter) {
     RenderWorld? child = firstChild;
     while (child != null) {
       final SurfaceParentData childParentData = child.parentData! as SurfaceParentData;
@@ -164,16 +164,14 @@ class RenderSurface extends RenderWorldWithChildren<SurfaceParentData> {
   }
 
   @override
-  double computePaint(PaintingContext context, Offset offset) {
+  void computePaint(PaintingContext context, Offset offset, double actualDiameter) {
     RenderWorld? child = firstChild;
-    final double actualDiameter = computePaintDiameter(diameter, maxDiameter);
     while (child != null) {
       final SurfaceParentData childParentData = child.parentData! as SurfaceParentData;
       childParentData._computedPosition = constraints.paintPositionFor(child.node, offset, <VoidCallback>[markNeedsPaint]);
       context.paintChild(child, childParentData._computedPosition!);
       child = childParentData.nextSibling;
     }
-    return actualDiameter;
   }
 
   @override

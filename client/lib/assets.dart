@@ -284,8 +284,7 @@ class AssetNode extends WorldNode {
   }
 
   @override
-  Widget buildRenderer(BuildContext context, [ Widget? nil ]){
-    // TODO: compute actualDiameter here, and short-circuit if it's too small
+  Widget buildRenderer(BuildContext context, [ Widget? nil ]) {
     List<Widget>? backgrounds;
     List<Widget>? overlays;
     List<Widget>? boxes;
@@ -303,11 +302,11 @@ class AssetNode extends WorldNode {
         case RendererType.circle:
           backgrounds ??= <Widget>[];
           backgrounds.add(feature.buildRenderer(context));
-          shape ??= BoxShape.circle; // does not override RendererType.square
+          shape ??= BoxShape.circle; // does not override an earlier RendererType.square
         case RendererType.square:
           backgrounds ??= <Widget>[];
           backgrounds.add(feature.buildRenderer(context));
-          shape = BoxShape.rectangle; // does override RendererType.circle
+          shape = BoxShape.rectangle; // does override an earlier RendererType.circle
         case RendererType.space:
           backgrounds ??= <Widget>[];
           backgrounds.add(feature.buildRenderer(context));
@@ -348,8 +347,8 @@ class AssetNode extends WorldNode {
       backgrounds.add(WorldFields(
         node: this,
         icon: assetClass.icon,
-        maxDiameter: worldParent!.maxRenderDiameter,
         diameter: diameter,
+        maxDiameter: worldParent!.maxRenderDiameter,
         children: boxes,
      ));
     }
@@ -368,8 +367,8 @@ class AssetNode extends WorldNode {
     if (backgrounds.length > 1) {
       return WorldStack(
         node: this,
-        maxDiameter: worldParent!.maxRenderDiameter,
         diameter: diameter,
+        maxDiameter: worldParent!.maxRenderDiameter,
         children: backgrounds,
       );
     }

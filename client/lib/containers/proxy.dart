@@ -138,7 +138,7 @@ class RenderProxy extends RenderWorldNode with RenderObjectWithChildMixin<Render
   double get radius => diameter / 2.0;
 
   @override
-  void computeLayout(WorldConstraints constraints) {
+  void computeLayout(WorldConstraints constraints, double actualDiameter) {
     if (child != null) {
       child!.layout(constraints);
     }
@@ -147,8 +147,7 @@ class RenderProxy extends RenderWorldNode with RenderObjectWithChildMixin<Render
   Offset? _childPosition;
 
   @override
-  double computePaint(PaintingContext context, Offset offset) {
-    final double actualDiameter = computePaintDiameter(diameter, maxDiameter);
+  void computePaint(PaintingContext context, Offset offset, actualDiameter) {
     if (child != null) {
       // TODO: position the child based on the icon's fields
       // one of the modes should be to center the child's bottom
@@ -156,7 +155,6 @@ class RenderProxy extends RenderWorldNode with RenderObjectWithChildMixin<Render
       _childPosition = constraints.paintPositionFor(child!.node, offset, <VoidCallback>[markNeedsPaint]);
       context.paintChild(child!, _childPosition!);
     }
-    return actualDiameter;
   }
 
   @override

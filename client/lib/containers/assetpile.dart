@@ -152,7 +152,7 @@ class RenderAssetPile extends RenderWorldWithChildren<AssetPileParentData> {
   }
 
   @override
-  void computeLayout(WorldConstraints constraints) {
+  void computeLayout(WorldConstraints constraints, double actualDiameter) {
     RenderWorld? child = firstChild;
     while (child != null) {
       final AssetPileParentData childParentData = child.parentData! as AssetPileParentData;
@@ -162,8 +162,7 @@ class RenderAssetPile extends RenderWorldWithChildren<AssetPileParentData> {
   }
 
   @override
-  double computePaint(PaintingContext context, Offset offset) {
-    final double actualDiameter = computePaintDiameter(diameter, maxDiameter);
+  void computePaint(PaintingContext context, Offset offset, double actualDiameter) {
     RenderWorld? child = firstChild;
     while (child != null) {
       final AssetPileParentData childParentData = child.parentData! as AssetPileParentData;
@@ -171,7 +170,6 @@ class RenderAssetPile extends RenderWorldWithChildren<AssetPileParentData> {
       context.paintChild(child, childParentData.childPosition!);
       child = childParentData.nextSibling;
     }
-    return actualDiameter;
   }
 
   @override

@@ -145,7 +145,12 @@ class RenderSpace extends RenderWorldWithChildren<SpaceParentData> {
   }
 
   @override
-  void computeLayout(WorldConstraints constraints) {
+  double computePaintDiameter() {
+    return diameter;
+  }
+
+  @override
+  void computeLayout(WorldConstraints constraints, double actualDiameter) {
     RenderWorld? child = firstChild;
     while (child != null) {
       final SpaceParentData childParentData = child.parentData! as SpaceParentData;
@@ -155,7 +160,7 @@ class RenderSpace extends RenderWorldWithChildren<SpaceParentData> {
   }
 
   @override
-  double computePaint(PaintingContext context, Offset offset) {
+  void computePaint(PaintingContext context, Offset offset, double actualDiameter) {
     RenderWorld? child = firstChild;
     while (child != null) {
       final SpaceParentData childParentData = child.parentData! as SpaceParentData;
@@ -163,7 +168,6 @@ class RenderSpace extends RenderWorldWithChildren<SpaceParentData> {
       context.paintChild(child, childParentData._computedPosition!);
       child = childParentData.nextSibling;
     }
-    return diameter;
   }
 
   @override
