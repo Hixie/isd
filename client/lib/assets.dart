@@ -67,6 +67,8 @@ abstract class Feature extends Node {
     return null;
   }
 
+  Widget? buildDock(BuildContext context, double height) => null;
+
   @override
   String toString() => '$runtimeType@${hashCode.toRadixString(16)}';
 }

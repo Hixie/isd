@@ -475,6 +475,7 @@ class RenderGalaxy extends RenderWorldWithChildren<GalaxyParentData> {
 
   final TextStyle _hudStyle = const TextStyle(fontSize: 14.0, color: Color(0xFFFFFFFF));
 
+  static const double legendWidthFraction = 0.2;
   static const double minReticuleZoom = 8.0;
   static const double reticuleFadeZoom = 5.0;
   static const double lineFadeZoom = 7.5;
@@ -790,7 +791,7 @@ class RenderGalaxy extends RenderWorldWithChildren<GalaxyParentData> {
   }
 
   void _layoutLegend(WorldConstraints constraints) {
-    final (double legendLength, String legendText) = _selectLegend(constraints.viewportSize.width * 0.2, constraints.scale);
+    final (double legendLength, String legendText) = _selectLegend(constraints.viewportSize.width * legendWidthFraction, constraints.scale);
     _legendLength = legendLength;
     final TextStyle style = _legendStyle;
     _legendLabel.text = TextSpan(text: legendText, style: style);

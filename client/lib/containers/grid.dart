@@ -6,6 +6,7 @@ import 'package:flutter/rendering.dart' hide Gradient;
 
 import '../assetclasses.dart';
 import '../assets.dart';
+import '../dock.dart';
 import '../icons.dart';
 import '../layout.dart';
 import '../nodes/system.dart';
@@ -95,13 +96,22 @@ class GridFeature extends ContainerFeature {
   @override
   RendererType get rendererType => RendererType.square;
 
+  DockHandle? _dock;
+
   @override
   Widget buildRenderer(BuildContext context) {
     final SystemNode system = SystemNode.of(this);
     final int assetID = parent.id;
-    return ListenableBuilder(
-      listenable: _state!,
-      builder: (BuildContext context, Widget? child) => GridWidget(
+    return StateManagerBuilder<_GridState>(
+      creator: () {
+        _dock = DockProvider.add(context, this);
+        return _state!;
+      },
+      disposer: (_GridState state) {
+        _dock!.dismiss();
+        _dock = null;
+      },
+      builder: (BuildContext context, _GridState value) => GridWidget(
         spaceTime: SystemNode.of(parent).spaceTime,
         selection: _state!.selection,
         node: parent,
@@ -128,20 +138,7 @@ class GridFeature extends ContainerFeature {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
               if (buildables.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8.0),
-                  child: ListenableBuilder(
-                    listenable: _state!,
-                    builder: (BuildContext context, Widget? child) {
-                      return BuildableDish(
-                         // TODO: move this into a docked bottom toolbar
-                         assetClasses: buildables.map((Buildable buildable) => buildable.assetClass).toList(),
-                         onSelect: (AssetClass? assetClass) => _state!.selection = assetClass,
-                         selection: _state!.selection,
-                      );
-                    },
-                  ),
-                ),
+                Text('Can build ${buildables.length} types of structures.'), // TODO: singular
               if (children.isEmpty)
                 Text('No structures present in ${parent.nameOrClassName}.', style: italic),
               for (AssetNode child in children.keys)
@@ -152,6 +149,25 @@ class GridFeature extends ContainerFeature {
           ),
         ),
       ],
+    );
+  }
+
+  @override
+  Widget? buildDock(BuildContext context, double height) {
+    if (buildables.isEmpty)
+      return null;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8.0),
+      child: ListenableBuilder(
+        listenable: _state!,
+        builder: (BuildContext context, Widget? child) {
+          return BuildableDish(
+             assetClasses: buildables.map((Buildable buildable) => buildable.assetClass).toList(),
+             onSelect: (AssetClass? assetClass) => _state!.selection = assetClass,
+             selection: _state!.selection,
+          );
+        },
+      ),
     );
   }
 }

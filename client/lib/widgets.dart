@@ -429,6 +429,7 @@ class RenderWorldToBoxAdapter extends RenderWorldNode with RenderObjectWithChild
   }
 }
 
+@Deprecated('Unused')
 class NoZoom extends StatelessWidget {
   const NoZoom({
     super.key,

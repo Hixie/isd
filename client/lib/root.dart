@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
@@ -38,25 +39,29 @@ class PanCurve extends Curve {
   }
 }
 
+class WorldFocusNotifier extends ChangeNotifier {
+  void _notify() => notifyListeners();
+}
+
 class WorldRoot extends StatefulWidget {
   const WorldRoot({
     super.key,
     required this.rootNode,
     required this.recommendedFocus,
     required this.dynastyManager,
-    this.hudKey,
+    required this.worldFocusNotifier,
   });
 
   final WorldNode rootNode;
   final ValueListenable<WorldNode?> recommendedFocus;
   final DynastyManager dynastyManager;
-  final Key? hudKey;
+  final WorldFocusNotifier worldFocusNotifier;
 
   @override
   _WorldRootState createState() => _WorldRootState();
 }
 
-class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMixin implements Listenable {
+class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMixin {
   late final AnimationController _controller = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 3000),
@@ -83,13 +88,6 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
   // (otherwise WorldConstraints will be unstable)
   Map<WorldNode, Offset> _precomputedPositions = <WorldNode, Offset>{};
   Offset _rootPosition = Offset.zero;
-
-  // we would just mix in ChangeNotifier, but its dispose doesn't call super.dispose, which breaks State
-  final ChangeNotifier _notifierImplementation = ChangeNotifier();
-  @override
-  void addListener(VoidCallback listener) => _notifierImplementation.addListener(listener);
-  @override
-  void removeListener(VoidCallback listener) => _notifierImplementation.removeListener(listener);
 
   @override
   void initState() {
@@ -119,7 +117,12 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
         // TODO: when we're zoomed in enough that the things that changed position aren't visible, skip doing this
         _precomputedPositions = <WorldNode, Offset>{};
       });
-      _notifierImplementation.notifyListeners(); // ignore: invalid_use_of_protected_member, invalid_use_of_visible_for_testing_member
+      scheduleMicrotask(() {
+        // TODO: need to audit if this is ever done during builds in a way that matters.
+        // if yes, fix that. if not, prevent us from calling this during build.
+        // right now, it gets called during creation, which triggers the Hud logic to try to rebuild.
+        widget.worldFocusNotifier._notify();
+      });
     }
   }
 
@@ -312,62 +315,58 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
         state: this,
         child: DynastyProvider(
           dynastyManager: widget.dynastyManager,
-          child: HudLayout(
-            key: widget.hudKey,
-            zoom: this,
-            child: GestureDetector(
-              trackpadScrollCausesScale: true,
-              onScaleStart: (ScaleStartDetails details) {
+          child: GestureDetector(
+            trackpadScrollCausesScale: true,
+            onScaleStart: (ScaleStartDetails details) {
+              final RenderBoxToRenderWorldAdapter box = _worldRoot;
+              _scaleAtGestureStart = box.layoutScale;
+              _zoomAtGestureStart = _zoom.value;
+              _panAtGestureStart = _pan.value;
+              _accumulatedOffset = Offset.zero;
+            },
+            onScaleEnd: (ScaleEndDetails details) {
+              _scaleAtGestureStart = null;
+              _zoomAtGestureStart = null;
+              _panAtGestureStart = null;
+            },
+            onScaleUpdate: (ScaleUpdateDetails details) {
+              // TODO: still need to test this with pinch+zoom at the same time
+              setState(() {
                 final RenderBoxToRenderWorldAdapter box = _worldRoot;
-                _scaleAtGestureStart = box.layoutScale;
-                _zoomAtGestureStart = _zoom.value;
-                _panAtGestureStart = _pan.value;
-                _accumulatedOffset = Offset.zero;
-              },
-              onScaleEnd: (ScaleEndDetails details) {
-                _scaleAtGestureStart = null;
-                _zoomAtGestureStart = null;
-                _panAtGestureStart = null;
-              },
-              onScaleUpdate: (ScaleUpdateDetails details) {
-                // TODO: still need to test this with pinch+zoom at the same time
+                final Size size = box.size;
                 setState(() {
-                  final RenderBoxToRenderWorldAdapter box = _worldRoot;
-                  final Size size = box.size;
-                  setState(() {
-                    _lastScale ??= box.layoutScale;
-                    final Offset sigma = -Offset(details.localFocalPoint.dx - size.width / 2.0, details.localFocalPoint.dy - size.height / 2.0) + details.focalPointDelta;
-                    final double newScale = max(box.minScale, _scaleAtGestureStart! * details.scale);
-                    _accumulatedOffset = _accumulatedOffset! + details.focalPointDelta / newScale;
-                    _updatePan(_panAtGestureStart! + _accumulatedOffset! + sigma / _scaleAtGestureStart! - sigma / newScale, newScale, zoom: _zoomAtGestureStart! + log(details.scale));
-                  });
+                  _lastScale ??= box.layoutScale;
+                  final Offset sigma = -Offset(details.localFocalPoint.dx - size.width / 2.0, details.localFocalPoint.dy - size.height / 2.0) + details.focalPointDelta;
+                  final double newScale = max(box.minScale, _scaleAtGestureStart! * details.scale);
+                  _accumulatedOffset = _accumulatedOffset! + details.focalPointDelta / newScale;
+                  _updatePan(_panAtGestureStart! + _accumulatedOffset! + sigma / _scaleAtGestureStart! - sigma / newScale, newScale, zoom: _zoomAtGestureStart! + log(details.scale));
                 });
+              });
+            },
+            onTapDown: (TapDownDetails details) {
+              assert(_currentTarget == null);
+              _currentTarget = _worldRoot.routeTap(details.localPosition);
+              _currentTarget?.handleTapDown();
+            },
+            onTapCancel: () {
+              _currentTarget?.handleTapCancel();
+              _currentTarget = null;
+            },
+            onTapUp: (TapUpDetails details) {
+              _currentTarget?.handleTapUp();
+              _currentTarget = null;
+            },
+            child: ListenableBuilder(
+              listenable: Listenable.merge(<Listenable?>[widget.rootNode, _controller]),
+              builder: (BuildContext context, Widget? child) {
+                return BoxToWorldAdapter(
+                  key: _worldRootKey,
+                  diameter: widget.rootNode.diameter,
+                  zoom: max(0.0, _zoom.value),
+                  precomputedPositions: _precomputedPositions,
+                  child: widget.rootNode.build(context),
+                );
               },
-              onTapDown: (TapDownDetails details) {
-                assert(_currentTarget == null);
-                _currentTarget = _worldRoot.routeTap(details.localPosition);
-                _currentTarget?.handleTapDown();
-              },
-              onTapCancel: () {
-                _currentTarget?.handleTapCancel();
-                _currentTarget = null;
-              },
-              onTapUp: (TapUpDetails details) {
-                _currentTarget?.handleTapUp();
-                _currentTarget = null;
-              },
-              child: ListenableBuilder(
-                listenable: Listenable.merge(<Listenable?>[widget.rootNode, _controller]),
-                builder: (BuildContext context, Widget? child) {
-                  return BoxToWorldAdapter(
-                    key: _worldRootKey,
-                    diameter: widget.rootNode.diameter,
-                    zoom: max(0.0, _zoom.value),
-                    precomputedPositions: _precomputedPositions,
-                    child: widget.rootNode.build(context),
-                  );
-                },
-              ),
             ),
           ),
         ),

@@ -239,98 +239,96 @@ class HudDialog extends StatelessWidget {
       elevation: 24.0,
       shadowColor: const Color(0xFF000000),
       clipBehavior: Clip.antiAlias,
-      child: NoZoom(
-        child: Listener(
-          onPointerDown: (PointerDownEvent event) {
-            HudHandle.of(context).bringToFront();
-          },
-          child: Stack(
-            children: <Widget>[
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: <Widget>[
-                  // TODO: a11y
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    // TODO: when moving, if you go out of bounds, the cursor gets unpinned from the dialog.
-                    onPanUpdate: (DragUpdateDetails details) {
-                      HudHandle.of(context).updatePosition(details.delta);
-                    },
-                    child: MouseRegion(
-                      cursor: SystemMouseCursors.move,
-                      child: DecoratedBox(
-                        decoration: const BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: <Color>[
-                              Color(0x00000000),
-                              Color(0x11000000),
-                              Color(0x00000000),
-                              Color(0x11000000),
-                              Color(0x00000000),
-                              Color(0x11000000),
-                              Color(0x00000000),
-                              Color(0x11000000),
-                              Color(0x00000000),
-                            ],
-                          ),
-                        ),
-                        child: Row(
-                          children: <Widget>[
-                            const SizedBox(width: 24.0),
-                            Expanded(
-                              child: DefaultTextStyle(
-                                style: (Theme.of(context).textTheme.titleLarge ?? const TextStyle()).copyWith(fontWeight: FontWeight.w500),
-                                softWrap: false,
-                                overflow: TextOverflow.ellipsis,
-                                child: heading,
-                              ),
-                            ),
-                            const SizedBox(width: 24.0),
-                            ...buttons,
-                            IconButton(
-                              icon: const Icon(Icons.close),
-                              onPressed: () {
-                                HudHandle.of(context).cancel();
-                                if (onClose != null)
-                                  onClose!();
-                              },
-                            ),
+      child: Listener(
+        onPointerDown: (PointerDownEvent event) {
+          HudHandle.of(context).bringToFront();
+        },
+        child: Stack(
+          children: <Widget>[
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                // TODO: a11y
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  // TODO: when moving, if you go out of bounds, the cursor gets unpinned from the dialog.
+                  onPanUpdate: (DragUpdateDetails details) {
+                    HudHandle.of(context).updatePosition(details.delta);
+                  },
+                  child: MouseRegion(
+                    cursor: SystemMouseCursors.move,
+                    child: DecoratedBox(
+                      decoration: const BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: <Color>[
+                            Color(0x00000000),
+                            Color(0x11000000),
+                            Color(0x00000000),
+                            Color(0x11000000),
+                            Color(0x00000000),
+                            Color(0x11000000),
+                            Color(0x00000000),
+                            Color(0x11000000),
+                            Color(0x00000000),
                           ],
                         ),
                       ),
-                    ),
-                  ),
-                  Expanded(
-                    child: child,
-                  ),
-                ],
-              ),
-              Positioned(
-                // TODO: a11y
-                bottom: 0,
-                right: 0,
-                child: GestureDetector(
-                  // TODO: when resizing smaller than minimum size, the cursor gets unpinned from the corner.
-                  onPanUpdate: (DragUpdateDetails details) {
-                    HudHandle.of(context).updateSize(details.delta);
-                  },
-                  child: MouseRegion(
-                    cursor: SystemMouseCursors.resizeDownRight,
-                    child: SizedBox(
-                      width: 36.0,
-                      height: 36.0,
-                      child: Transform.rotate(
-                        angle: -pi / 4,
-                        child: const Icon(Icons.drag_handle),
+                      child: Row(
+                        children: <Widget>[
+                          const SizedBox(width: 24.0),
+                          Expanded(
+                            child: DefaultTextStyle(
+                              style: (Theme.of(context).textTheme.titleLarge ?? const TextStyle()).copyWith(fontWeight: FontWeight.w500),
+                              softWrap: false,
+                              overflow: TextOverflow.ellipsis,
+                              child: heading,
+                            ),
+                          ),
+                          const SizedBox(width: 24.0),
+                          ...buttons,
+                          IconButton(
+                            icon: const Icon(Icons.close),
+                            onPressed: () {
+                              HudHandle.of(context).cancel();
+                              if (onClose != null)
+                                onClose!();
+                            },
+                          ),
+                        ],
                       ),
                     ),
                   ),
                 ),
+                Expanded(
+                  child: child,
+                ),
+              ],
+            ),
+            Positioned(
+              // TODO: a11y
+              bottom: 0,
+              right: 0,
+              child: GestureDetector(
+                // TODO: when resizing smaller than minimum size, the cursor gets unpinned from the corner.
+                onPanUpdate: (DragUpdateDetails details) {
+                  HudHandle.of(context).updateSize(details.delta);
+                },
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.resizeDownRight,
+                  child: SizedBox(
+                    width: 36.0,
+                    height: 36.0,
+                    child: Transform.rotate(
+                      angle: -pi / 4,
+                      child: const Icon(Icons.drag_handle),
+                    ),
+                  ),
+                ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
