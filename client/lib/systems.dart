@@ -165,7 +165,7 @@ class SystemServer {
         print('currentTime: $currentTime @ ${timeFactor}x');
         print('root asset: $rootAssetID');
       }
-      system.offset = Offset(x - galaxy.diameter / 2.0, y - galaxy.diameter / 2.0);
+      system.offset = Offset(x - galaxy.actualDiameter / 2.0, y - galaxy.actualDiameter / 2.0);
       galaxy.addSystem(system);
       AssetNode? asset;
       final List<Feature> obsoleteFeatures = <Feature>[];

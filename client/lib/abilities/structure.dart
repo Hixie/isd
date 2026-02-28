@@ -58,9 +58,10 @@ class StructureFeature extends AbilityFeature {
   Widget? _cachedBuild;
 
   @override
-  Widget buildRenderer(BuildContext context) {
+  Widget buildRenderer(BuildContext context, double paintDiameter) {
     return _cachedBuild ??= WorldToBoxAdapter(
       node: parent,
+      paintDiameter: paintDiameter,
       child: (max == null) ||
              (minIntegrity == null) ||
              (((structuralIntegrityCurrent == max!) || (structuralIntegrityCurrent == 0.0)) && structuralIntegrityRate == 0.0)

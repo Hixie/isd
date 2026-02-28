@@ -69,8 +69,8 @@ class WorldConstraints extends Constraints {
   String toString() => 'WorldConstraints(x$zoom, scale=${scale}px/m, viewport=${viewportSize}px)';
 }
 
-sealed class WorldGeometry {
-  static const double minSystemRenderDiameter = 4.0; // a system less than this size is not rendered at all, and fades in...
+sealed class WorldGeometry { // pixels
+  static const double minAssetRenderDiameter = 2.0; // a system less than this size is not rendered at all, and fades in...
   static const double fullyVisibleRenderDiameter = 48.0; // ...up to the point where it's at least this size.
 }
 
@@ -86,7 +86,7 @@ abstract interface class WorldTapTarget {
 // ABSTRACT RENDER OBJECTS
 
 abstract class RenderWorld extends RenderObject {
-  RenderWorld();
+  RenderWorld({ required double paintDiameter }) : _paintDiameter = paintDiameter;
 
   // this is used just to figure out the position of a child
   // (the child's node is the first argument passed to constraints.paintPositionFor)
@@ -95,36 +95,17 @@ abstract class RenderWorld extends RenderObject {
   @override
   WorldConstraints get constraints => super.constraints as WorldConstraints;
 
-  static const double _minDiameter = 20.0;
-  static const double _maxDiameterRatio = 0.1;
-
-  static double get _minCartoonDiameter => log(10e6); // 10,000 km, a bit smaller than earth
-  static double get _maxCartoonDiameter => log( 1e9); // 2 million km, a bit bigger than our sun
-
-  static double _computePaintDiameter(double diameter, double parentDiameter, double scale) {
-    final double cartoonScale = ((log(diameter) - _minCartoonDiameter) / (_maxCartoonDiameter - _minCartoonDiameter)).clamp(0.0, 1.0) * 2.5 + 1.0;
-    assert(cartoonScale >= 1.0);
-    assert(cartoonScale <= 3.5);
-    return min(
-      max(
-        diameter * scale, // try to be your actual size, but
-        _minDiameter * cartoonScale, // ...don't be smaller than something visible
-      ),
-      scale * max( // ...and...
-        parentDiameter * _maxDiameterRatio, // ...definitely don't be bigger than one tenth your parent
-        diameter, // ...unless you really are bigger than one tenth your parent
-      ),
-    );
-  }
-
-  static const double _paintThreshold = 1.0;
-
   Offset get paintCenter => _paintCenter!;
   Offset? _paintCenter;
-  double get paintDiameter => _paintDiameter!;
-  double? _paintDiameter;
 
-  double computePaintDiameter() => _computePaintDiameter(node.diameter, node.maxRenderDiameter, constraints.scale);
+  double get paintDiameter => _paintDiameter; // in pixels
+  double _paintDiameter;
+  set paintDiameter (double value) {
+    if (value != _paintDiameter) {
+      _paintDiameter = value;
+      markNeedsPaint();
+    }
+  }
 
   @override
   bool get sizedByParent => true;
@@ -134,27 +115,22 @@ abstract class RenderWorld extends RenderObject {
 
   @override
   void performLayout() {
-    _paintDiameter = computePaintDiameter();
-    if (_paintDiameter! >= _paintThreshold) {
-      computeLayout(constraints, _paintDiameter!);
-    }
+    computeLayout(constraints);
   }
 
-  void computeLayout(WorldConstraints constraints, double actualDiameter);
+  void computeLayout(WorldConstraints constraints);
 
   @override
   @nonVirtual
   void paint(PaintingContext context, Offset offset) {
     assert(offset.isFinite);
     _paintCenter = offset;
-    if (_paintDiameter! >= _paintThreshold) {
-      computePaint(context, offset, _paintDiameter!);
-    }
+    computePaint(context, offset);
   }
 
   // The offset parameter is the distance from the canvas origin to the asset origin, in pixels.
   // Canvas origin is the center of the viewport, whose size is constraints.viewportSize.
-  void computePaint(PaintingContext context, Offset offset, double actualDiameter);
+  void computePaint(PaintingContext context, Offset offset);
 
   @override
   void applyPaintTransform(covariant RenderObject child, Matrix4 transform) {
@@ -164,27 +140,27 @@ abstract class RenderWorld extends RenderObject {
   }
 
   @override
-  Rect get paintBounds => Rect.fromCircle(center: _paintCenter!, radius: _paintDiameter! / 2.0);
+  Rect get paintBounds => Rect.fromCircle(center: _paintCenter!, radius: paintDiameter / 2.0);
 
   @override
   Rect get semanticBounds => paintBounds; // TODO: actually implement semantics
 
   bool isInsideCircle(Offset offset) {
-    final double r = _paintDiameter! / 2.0;
-    return (_paintDiameter! >= _paintThreshold) && (offset - _paintCenter!).distanceSquared <= r * r;
+    final double r = paintDiameter / 2.0;
+    return (offset - _paintCenter!).distanceSquared <= r * r;
   }
 
   bool isInsideSquare(Offset offset) {
-    final double r = _paintDiameter! / 2.0;
+    final double r = paintDiameter / 2.0;
     final Offset distance = offset - _paintCenter!;
-    return (_paintDiameter! >= _paintThreshold) && (distance.dx.abs() <= r) && (distance.dy.abs() <= r);
+    return (distance.dx.abs() <= r) && (distance.dy.abs() <= r);
   }
 
   @override
   void debugAssertDoesMeetConstraints() { }
 
   bool hitTest(BoxHitTestResult result, { required Offset position }) {
-    return (_paintDiameter! >= _paintThreshold) && hitTestChildren(result, position: position);
+    return hitTestChildren(result, position: position);
   }
 
   @protected
@@ -195,18 +171,14 @@ abstract class RenderWorld extends RenderObject {
   // the center of the asset to the tap.
   @nonVirtual
   WorldTapTarget? routeTap(Offset offset) {
-    if (_paintDiameter! >= _paintThreshold) {
-      return computeTap(offset);
-    } else {
-      return null;
-    }
+    return computeTap(offset);
   }
 
   WorldTapTarget? computeTap(Offset offset);
 }
 
 abstract class RenderWorldNode extends RenderWorld {
-  RenderWorldNode({ required WorldNode node }) : _node = node;
+  RenderWorldNode({ required WorldNode node, required super.paintDiameter }) : _node = node;
 
   @override
   WorldNode get node => _node;
@@ -222,7 +194,10 @@ abstract class RenderWorldNode extends RenderWorld {
 abstract class RenderWorldWithChildren<ParentDataType extends ContainerParentDataMixin<RenderWorld>>
        extends RenderWorldNode
           with ContainerRenderObjectMixin<RenderWorld, ParentDataType> {
-  RenderWorldWithChildren({ required super.node });
+  RenderWorldWithChildren({
+    required super.node,
+    required super.paintDiameter,
+  });
 
   @override
   bool hitTestChildren(BoxHitTestResult result, { required Offset position }) {
@@ -244,11 +219,13 @@ class WorldTapDetector extends LeafRenderObjectWidget {
     required this.node,
     required this.shape,
     this.onTap,
+    required this.paintDiameter,
   });
 
   final WorldNode node;
   final BoxShape shape;
   final TapDetectorCallback? onTap;
+  final double paintDiameter;
 
   @override
   RenderWorldTapDetector createRenderObject(BuildContext context) {
@@ -256,6 +233,7 @@ class WorldTapDetector extends LeafRenderObjectWidget {
       node: node,
       shape: shape,
       onTap: onTap == null ? null : () => onTap!(context),
+      paintDiameter: paintDiameter,
     );
   }
 
@@ -264,7 +242,8 @@ class WorldTapDetector extends LeafRenderObjectWidget {
     renderObject
       ..node = node
       ..shape = shape
-      ..onTap = onTap == null ? null : () => onTap!(context);
+      ..onTap = (onTap == null ? null : () => onTap!(context))
+      ..paintDiameter = paintDiameter;
     }
 }
 
@@ -273,16 +252,17 @@ class RenderWorldTapDetector extends RenderWorldNode {
     required super.node,
     this.shape,
     this.onTap,
+    required super.paintDiameter,
   });
 
   BoxShape? shape;
   VoidCallback? onTap;
 
   @override
-  void computeLayout(WorldConstraints constraints, double actualDiameter) { }
+  void computeLayout(WorldConstraints constraints) { }
 
   @override
-  void computePaint(PaintingContext context, Offset offset, double actualDiameter) { }
+  void computePaint(PaintingContext context, Offset offset) { }
 
   @override
   bool hitTestChildren(BoxHitTestResult result, { required Offset position }) {

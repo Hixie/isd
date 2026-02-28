@@ -46,3 +46,6 @@ app.*.map.json
 /android/app/release
 
 1.bin
+
+# Local backup files
+*.*~

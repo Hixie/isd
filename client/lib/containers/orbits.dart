@@ -60,10 +60,13 @@ class OrbitFeature extends ContainerFeature {
   }
 
   @override
+  WorldNode cartoonZoomRoot(WorldNode child) => parent.cartoonZoomRoot(parent);
+
+  @override
   RendererType get rendererType => RendererType.space;
 
   @override
-  Widget buildRenderer(BuildContext context) {
+  Widget buildRenderer(BuildContext context, double paintDiameter) {
     final List<Widget> childList = <Widget>[
       OrbitChildData(
         mass: originChild.mass,
@@ -74,7 +77,7 @@ class OrbitFeature extends ContainerFeature {
     double radius = 0.0;
     for (AssetNode asset in children.keys) {
       final Orbit orbit = children[asset]!;
-      final double childRadius = orbit.a * (1 + orbit.e) + asset.diameter / 2.0;
+      final double childRadius = orbit.a * (1 + orbit.e) + asset.actualDiameter / 2.0;
       assert(childRadius > 0.0);
       if (childRadius > radius) {
         radius = childRadius;
@@ -88,14 +91,14 @@ class OrbitFeature extends ContainerFeature {
       );
     }
     double diameter = radius * 2.0;
-    if (diameter < originChild.diameter) {
-      diameter = originChild.diameter;
+    if (diameter < originChild.actualDiameter) {
+      diameter = originChild.actualDiameter;
     }
     return OrbitWidget(
       node: parent,
-      diameter: diameter,
       spaceTime: spaceTime,
       drawPrimaryOnTop: originChild.features.isNotEmpty && originChild.features.first is StarFeature, // TODO: this is a hack
+      paintDiameter: paintDiameter,
       children: childList,
     );
   }
@@ -187,24 +190,24 @@ class OrbitWidget extends MultiChildRenderObjectWidget {
   const OrbitWidget({
     super.key,
     required this.node,
-    required this.diameter,
     required this.spaceTime,
     required this.drawPrimaryOnTop,
+    required this.paintDiameter,
     required super.children,
   });
 
   final WorldNode node;
-  final double diameter;
   final SpaceTime spaceTime;
   final bool drawPrimaryOnTop;
+  final double paintDiameter;
 
   @override
   RenderOrbit createRenderObject(BuildContext context) {
     return RenderOrbit(
       node: node,
-      diameter: diameter,
       spaceTime: spaceTime,
       drawPrimaryOnTop: drawPrimaryOnTop,
+      paintDiameter: paintDiameter,
     );
   }
 
@@ -212,9 +215,9 @@ class OrbitWidget extends MultiChildRenderObjectWidget {
   void updateRenderObject(BuildContext context, RenderOrbit renderObject) {
     renderObject
       ..node = node
-      ..diameter = diameter
       ..spaceTime = spaceTime
-      ..drawPrimaryOnTop = drawPrimaryOnTop;
+      ..drawPrimaryOnTop = drawPrimaryOnTop
+      ..paintDiameter = paintDiameter;
   }
 }
 
@@ -252,21 +255,11 @@ class OrbitParentData extends ParentData with ContainerParentDataMixin<RenderWor
 class RenderOrbit extends RenderWorldWithChildren<OrbitParentData> {
   RenderOrbit({
     required super.node,
-    required double diameter,
     required SpaceTime spaceTime,
     required bool drawPrimaryOnTop,
-  }) : _diameter = diameter,
-       _spaceTime = spaceTime,
+    required super.paintDiameter,
+  }) : _spaceTime = spaceTime,
        _drawPrimaryOnTop = drawPrimaryOnTop;
-
-  double get diameter => _diameter;
-  double _diameter;
-  set diameter (double value) {
-    if (value != _diameter) {
-      _diameter = value;
-      markNeedsPaint();
-    }
-  }
 
   SpaceTime get spaceTime => _spaceTime;
   SpaceTime _spaceTime;
@@ -294,7 +287,7 @@ class RenderOrbit extends RenderWorldWithChildren<OrbitParentData> {
   }
 
   @override
-  void computeLayout(WorldConstraints constraints, double actualDiameter) {
+  void computeLayout(WorldConstraints constraints) {
     RenderWorld? child = firstChild;
     while (child != null) {
       final OrbitParentData childParentData = child.parentData! as OrbitParentData;
@@ -304,7 +297,7 @@ class RenderOrbit extends RenderWorldWithChildren<OrbitParentData> {
   }
 
   @override
-  void computePaint(PaintingContext context, Offset offset, double actualDiameter) {
+  void computePaint(PaintingContext context, Offset offset) {
     RenderWorld? child = firstChild;
     assert(child != null);
     final OrbitParentData primaryChildParentData = child!.parentData! as OrbitParentData;

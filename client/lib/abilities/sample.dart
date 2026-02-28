@@ -53,7 +53,7 @@ class SampleMaterialFeature extends AbilityFeature {
   }
   
   @override
-  Widget buildRenderer(BuildContext context) {
+  Widget buildRenderer(BuildContext context, double paintDiameter) {
     final IconsManager icons = IconsManagerProvider.of(context);
     final SystemNode system = SystemNode.of(parent);
     Widget result;

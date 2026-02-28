@@ -66,7 +66,7 @@ class MessageBoardFeature extends ContainerFeature {
   bool get debugExpectVirtualChildren => true;
 
   @override
-  Widget buildRenderer(BuildContext context) {
+  Widget buildRenderer(BuildContext context, double paintDiameter) {
     return ListenableBuilder(
       listenable: _state!,
       builder: (BuildContext context, Widget? child) {

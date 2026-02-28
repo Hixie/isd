@@ -77,7 +77,7 @@ class SystemNode extends WorldNode {
   }
 
   @override
-  double get diameter => root.diameter;
+  double get actualDiameter => root.actualDiameter; // m
 
   // Tracks all materials ever seen during this session in this system.
   final Map<int, Material> _materials = <int, Material>{};
@@ -111,11 +111,11 @@ class SystemNode extends WorldNode {
   }
 
   @override
-  Widget buildRenderer(BuildContext context, Widget? nil) {
+  Widget buildRenderer(BuildContext context, double paintDiameter) {
     final Set<_HighlightDetails> labels = <_HighlightDetails>{};
     root.walk((AssetNode asset) {
       if (asset.ownerDynasty != null) {
-        labels.add(_HighlightDetails(asset, locate(asset), asset.diameter));
+        labels.add(_HighlightDetails(asset, locate(asset), asset.actualDiameter));
         return false;
       }
       return true;
@@ -129,7 +129,7 @@ class SystemNode extends WorldNode {
           node: this,
           vsync: vsync,
           spaceTime: spaceTime,
-          diameter: diameter,
+          paintDiameter: paintDiameter,
           labels: labels,
           child: root.build(context),
           onZoomRequest: zoom,
@@ -158,7 +158,7 @@ class SystemWidget extends SingleChildRenderObjectWidget {
     super.key,
     required this.node,
     required this.vsync,
-    required this.diameter,
+    required this.paintDiameter,
     required this.labels,
     required this.onZoomRequest,
     required this.spaceTime,
@@ -167,7 +167,7 @@ class SystemWidget extends SingleChildRenderObjectWidget {
 
   final WorldNode node;
   final TickerProvider vsync;
-  final double diameter;
+  final double paintDiameter;
   final Set<_HighlightDetails> labels;
   final ZoomCallback onZoomRequest;
   final SpaceTime spaceTime;
@@ -177,7 +177,7 @@ class SystemWidget extends SingleChildRenderObjectWidget {
     return RenderSystem(
       node: node,
       vsync: vsync,
-      diameter: diameter,
+      paintDiameter: paintDiameter,
       labels: labels,
       onZoomRequest: onZoomRequest,
       spaceTime: spaceTime,
@@ -189,7 +189,7 @@ class SystemWidget extends SingleChildRenderObjectWidget {
     renderObject
       ..node = node
       ..vsync = vsync
-      ..diameter = diameter
+      ..paintDiameter = paintDiameter
       ..labels = labels
       ..onZoomRequest = onZoomRequest
       ..spaceTime = spaceTime;
@@ -200,12 +200,11 @@ class RenderSystem extends RenderWorldNode with RenderObjectWithChildMixin<Rende
   RenderSystem({
     required super.node,
     required TickerProvider vsync,
-    required double diameter,
+    required super.paintDiameter,
     required Set<_HighlightDetails> labels,
     required this.onZoomRequest,
     required SpaceTime spaceTime,
   }) : _vsync = vsync,
-       _diameter = diameter,
        _labels = labels,
        _spaceTime = spaceTime;
 
@@ -220,17 +219,6 @@ class RenderSystem extends RenderWorldNode with RenderObjectWithChildMixin<Rende
       status.resync(vsync);
     }
   }
-
-  double get diameter => _diameter;
-  double _diameter;
-  set diameter (double value) {
-    if (value != _diameter) {
-      _diameter = value;
-      markNeedsPaint();
-    }
-  }
-
-  double get radius => diameter / 2.0;
 
   Set<_HighlightDetails> get labels => _labels;
   Set<_HighlightDetails> _labels;
@@ -270,7 +258,7 @@ class RenderSystem extends RenderWorldNode with RenderObjectWithChildMixin<Rende
   static final TextStyle _clockStyle = TextStyle(fontSize: 12.0, foreground: _clockPaint);
 
   @override
-  void computeLayout(WorldConstraints constraints, double actualDiameter) {
+  void computeLayout(WorldConstraints constraints) {
     if (child != null)
       child!.layout(constraints);
   }
@@ -337,11 +325,11 @@ class RenderSystem extends RenderWorldNode with RenderObjectWithChildMixin<Rende
   Offset? _childPosition;
 
   @override
-  void computePaint(PaintingContext context, Offset offset, double actualDiameter) {
+  void computePaint(PaintingContext context, Offset offset) {
     if (child != null) {
-      assert(actualDiameter >= WorldGeometry.minSystemRenderDiameter);
-      final double fade = ((actualDiameter - WorldGeometry.minSystemRenderDiameter) / (WorldGeometry.fullyVisibleRenderDiameter - WorldGeometry.minSystemRenderDiameter)).clamp(0.0, 1.0);
-      final double renderRadius = radius * constraints.scale;
+      assert(paintDiameter >= WorldGeometry.minAssetRenderDiameter, '$this $paintDiameter px');
+      final double fade = ((paintDiameter - WorldGeometry.minAssetRenderDiameter) / (WorldGeometry.fullyVisibleRenderDiameter - WorldGeometry.minAssetRenderDiameter)).clamp(0.0, 1.0);
+      final double renderRadius = paintDiameter / 2.0;
       context.canvas.drawRect(Rect.fromCircle(center: offset, radius: renderRadius), _blackFadePaint(fade, offset, renderRadius));
       _childPosition = constraints.paintPositionFor(child!.node, offset, <VoidCallback>[markNeedsPaint]);
       context.paintChild(child!, _childPosition!);
@@ -349,7 +337,7 @@ class RenderSystem extends RenderWorldNode with RenderObjectWithChildMixin<Rende
     _visibleHudElements.clear();
     if (_labels.isNotEmpty) {
       final double side = constraints.viewportSize.shortestSide;
-      final double outerFade = ((diameter * constraints.scale / side) - 0.5).clamp(0.0, 1.0);
+      final double outerFade = ((paintDiameter / side) - 0.5).clamp(0.0, 1.0);
       if (outerFade > 0.0) {
         for (_HighlightDetails label in _labels) {
           assert(_fadeFactorStart < _fadeFactorEnd);
@@ -367,7 +355,7 @@ class RenderSystem extends RenderWorldNode with RenderObjectWithChildMixin<Rende
       }
     }
     final Rect viewportRect = Rect.fromCenter(center: Offset.zero, width: constraints.viewportSize.width, height: constraints.viewportSize.height);
-    final Rect systemRect = Rect.fromCircle(center: offset, radius: actualDiameter / 2.0);
+    final Rect systemRect = Rect.fromCircle(center: offset, radius: paintDiameter / 2.0);
     if (systemRect.contains(viewportRect.topLeft) && systemRect.contains(viewportRect.bottomRight))
       _paintClock(context);
   }

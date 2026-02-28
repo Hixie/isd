@@ -16,11 +16,12 @@ class PlanetFeature extends AbilityFeature {
   final int seed;
 
   @override
-  Widget buildRenderer(BuildContext context) {
+  Widget buildRenderer(BuildContext context, double paintDiameter) {
     return PlanetWidget(
       node: parent,
       seed: seed,
       spaceTime: SystemNode.of(parent).spaceTime,
+      paintDiameter: paintDiameter,
     );
   }
 
@@ -34,12 +35,14 @@ class PlanetWidget extends LeafRenderObjectWidget {
     required this.node,
     required this.seed,
     required this.spaceTime,
+    required this.paintDiameter,
   });
 
   final WorldNode node;
   final int seed;
   final SpaceTime spaceTime;
-
+  final double paintDiameter;
+  
   @override
   RenderPlanet createRenderObject(BuildContext context) {
     return RenderPlanet(
@@ -47,6 +50,7 @@ class PlanetWidget extends LeafRenderObjectWidget {
       seed: seed,
       shaders: ShaderProvider.of(context),
       spaceTime: spaceTime,
+      paintDiameter: paintDiameter,
     );
   }
 
@@ -56,7 +60,8 @@ class PlanetWidget extends LeafRenderObjectWidget {
       ..node = node
       ..seed = seed
       ..shaders = ShaderProvider.of(context)
-      ..spaceTime = spaceTime;
+      ..spaceTime = spaceTime
+      ..paintDiameter = paintDiameter;
   }
 }
 
@@ -66,6 +71,7 @@ class RenderPlanet extends RenderWorldNode {
     required int seed,
     required ShaderLibrary shaders,
     required SpaceTime spaceTime,
+    required super.paintDiameter,
   }) : _seed = seed,
        _shaders = shaders,
        _spaceTime = spaceTime;
@@ -99,27 +105,27 @@ class RenderPlanet extends RenderWorldNode {
   }
 
   @override
-  void computeLayout(WorldConstraints constraints, double actualDiameter) { }
+  void computeLayout(WorldConstraints constraints) { }
 
   FragmentShader? _planetShader;
   final Paint _planetPaint = Paint();
 
   @override
-  void computePaint(PaintingContext context, Offset offset, double actualDiameter) {
+  void computePaint(PaintingContext context, Offset offset) {
     _planetShader ??= shaders.planet;
     final double time = spaceTime.computeTime(<VoidCallback>[markNeedsPaint]);
     _planetShader!.setFloat(uT, time);
     _planetShader!.setFloat(uX, offset.dx);
     _planetShader!.setFloat(uY, offset.dy);
-    _planetShader!.setFloat(uD, actualDiameter);
-    _planetShader!.setFloat(uVisible, constraints.viewportSize.shortestSide / actualDiameter);
+    _planetShader!.setFloat(uD, paintDiameter);
+    _planetShader!.setFloat(uVisible, constraints.viewportSize.shortestSide / paintDiameter);
     _planetShader!.setFloat(uSeed, seed.toDouble());
     _planetPaint.shader = _planetShader;
     // The texture we draw onto is intentionally much bigger than the planet
     // (radius is twice the planet's radius) so that the planet can have
     // effects like solar particles interacting with the magnetosphere. Not that
     // we do anything like that yet.
-    context.canvas.drawRect(Rect.fromCircle(center: offset, radius: actualDiameter), _planetPaint);
+    context.canvas.drawRect(Rect.fromCircle(center: offset, radius: paintDiameter), _planetPaint);
   }
 
   @override

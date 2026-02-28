@@ -17,11 +17,12 @@ class StarFeature extends AbilityFeature {
   final int starId;
 
   @override
-  Widget buildRenderer(BuildContext context) {
+  Widget buildRenderer(BuildContext context, double paintDiameter) {
     return StarWidget(
       node: parent,
       starId: starId,
       spaceTime: SystemNode.of(parent).spaceTime,
+      paintDiameter: paintDiameter,
     );
   }
 
@@ -55,11 +56,13 @@ class StarWidget extends LeafRenderObjectWidget {
     required this.node,
     required this.starId,
     required this.spaceTime,
+    required this.paintDiameter,
   });
 
   final WorldNode node;
   final int starId;
   final SpaceTime spaceTime;
+  final double paintDiameter;
 
   @override
   RenderStar createRenderObject(BuildContext context) {
@@ -68,6 +71,7 @@ class StarWidget extends LeafRenderObjectWidget {
       starId: starId,
       shaders: ShaderProvider.of(context),
       spaceTime: spaceTime,
+      paintDiameter: paintDiameter,
     );
   }
 
@@ -77,7 +81,8 @@ class StarWidget extends LeafRenderObjectWidget {
       ..node = node
       ..starId = starId
       ..shaders = ShaderProvider.of(context)
-      ..spaceTime = spaceTime;
+      ..spaceTime = spaceTime
+      ..paintDiameter = paintDiameter;
   }
 }
 
@@ -87,6 +92,7 @@ class RenderStar extends RenderWorldNode {
     required int starId,
     required ShaderLibrary shaders,
     required SpaceTime spaceTime,
+    required super.paintDiameter,
   }) : _starId = starId,
        _shaders = shaders,
        _spaceTime = spaceTime;
@@ -121,25 +127,25 @@ class RenderStar extends RenderWorldNode {
   }
 
   @override
-  void computeLayout(WorldConstraints constraints, double actualDiameter) { }
+  void computeLayout(WorldConstraints constraints) { }
 
   FragmentShader? _starShader;
   final Paint _starPaint = Paint();
 
   @override
-  void computePaint(PaintingContext context, Offset offset, double actualDiameter) {
+  void computePaint(PaintingContext context, Offset offset) {
     // TODO: starId-based paint
     _starShader ??= shaders.stars(0); // TODO: use actual star category id
     final double time = spaceTime.computeTime(<VoidCallback>[markNeedsPaint]);
     _starShader!.setFloat(uT, time);
     _starShader!.setFloat(uX, offset.dx);
     _starShader!.setFloat(uY, offset.dy);
-    _starShader!.setFloat(uD, actualDiameter);
+    _starShader!.setFloat(uD, paintDiameter);
     _starPaint.shader = _starShader;
     // The texture we draw onto is intentionally much bigger than the star
     // (radius is twice the star's radius) so that the star can have solar
     // flares and such.
-    context.canvas.drawRect(Rect.fromCircle(center: offset, radius: actualDiameter), _starPaint);
+    context.canvas.drawRect(Rect.fromCircle(center: offset, radius: paintDiameter), _starPaint);
   }
 
   @override

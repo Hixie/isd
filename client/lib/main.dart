@@ -324,7 +324,8 @@ class _InterstellarDynastiesState extends State<InterstellarDynasties> with Rest
     }
   }
 
-  WorldFocusNotifier _worldFocusNotifier = WorldFocusNotifier();
+  final WorldFocusNotifier _worldFocusNotifier = WorldFocusNotifier();
+  final WorldRootKey _worldRootKey = WorldRootKey();
 
   @override
   void dispose() {
@@ -336,231 +337,229 @@ class _InterstellarDynastiesState extends State<InterstellarDynasties> with Rest
 
   @override
   Widget build(BuildContext context) {
-    return DockLayout(
-      builder: (BuildContext context, Widget? docks) => HudLayout(
-        key: hudKey,
-        zoom: _worldFocusNotifier,
-        child: ValueListenableBuilder<bool>(
-          valueListenable: widget.game.loggedIn,
-          builder: (BuildContext context, bool loggedIn, Widget? child) => Stack(
-            fit: StackFit.expand,
-            children: <Widget>[
-              // GAME VIEW
-              WorldRoot(
-                rootNode: widget.game.rootNode,
-                recommendedFocus: widget.game.recommendedFocus,
-                dynastyManager: widget.game.dynastyManager,
-                worldFocusNotifier: _worldFocusNotifier,
-              ),
-              // GAME TITLE
-              Positioned(
-                top: 0.0,
-                left: 0.0,
-                right: 0.0,
-                child: IgnorePointer(
-                  child: AnimatedOpacity(
-                    duration: loggedIn ? const Duration(milliseconds: 5000) : const Duration(milliseconds: 1000),
-                    curve: Curves.easeIn,
-                    opacity: loggedIn ? 0.0 : 1.0,
-                    child: const FittedBox(
-                      child: Padding(
-                        padding: EdgeInsets.all(200.0),
-                        child: Text(
-                          'Interstellar\nDynasties',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 200.0,
-                            fontWeight: FontWeight.w900,
-                            shadows: <Shadow>[Shadow(offset: Offset(0.0, 10.0), blurRadius: 100.0)],
-                            height: 0.45,
-                            color: Color(0xFFFFFFFF),
+    return ZoomProvider(
+      stateKey: _worldRootKey,
+      child: DockLayout(
+        builder: (BuildContext context, Widget? docks) => HudLayout(
+          key: hudKey,
+          zoom: _worldFocusNotifier,
+          child: ValueListenableBuilder<bool>(
+            valueListenable: widget.game.loggedIn,
+            builder: (BuildContext context, bool loggedIn, Widget? child) => Stack(
+              fit: StackFit.expand,
+              children: <Widget>[
+                // GAME VIEW
+                WorldRoot(
+                  key: _worldRootKey,
+                  rootNode: widget.game.rootNode,
+                  recommendedFocus: widget.game.recommendedFocus,
+                  dynastyManager: widget.game.dynastyManager,
+                  worldFocusNotifier: _worldFocusNotifier,
+                ),
+                // GAME TITLE
+                Positioned(
+                  top: 0.0,
+                  left: 0.0,
+                  right: 0.0,
+                  child: IgnorePointer(
+                    child: AnimatedOpacity(
+                      duration: loggedIn ? const Duration(milliseconds: 5000) : const Duration(milliseconds: 1000),
+                      curve: Curves.easeIn,
+                      opacity: loggedIn ? 0.0 : 1.0,
+                      child: const FittedBox(
+                        child: Padding(
+                          padding: EdgeInsets.all(200.0),
+                          child: Text(
+                            'Interstellar\nDynasties',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 200.0,
+                              fontWeight: FontWeight.w900,
+                              shadows: <Shadow>[Shadow(offset: Offset(0.0, 10.0), blurRadius: 100.0)],
+                              height: 0.45,
+                              color: Color(0xFFFFFFFF),
+                            ),
                           ),
                         ),
                       ),
                     ),
                   ),
                 ),
-              ),
-              // TODO: have a third state, "logging in", during which the UI is disabled and we show a progress indicator and cancel button
-              // HOME SCREEN LOGIN BUTTONS
-              DisableSubtree(
-                disabled: loggedIn,
-                child: ValueListenableBuilder<bool>(
-                  valueListenable: widget.game.loginServer.connected,
-                  builder: (BuildContext context, bool connected, Widget? child) => CustomSingleChildLayout(
-                    delegate: const MenuLayoutDelegate(),
-                    child: FittedBox(
-                      child: Padding(
-                        padding: const EdgeInsets.all(20.0),
-                        child: SizedBox(
-                          height: 120.0,
-                          width: 150.0,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: <Widget>[
-                              const Spacer(),
-                              Expanded(
-                                child: Button(child: const Text('New Game'), onPressed: !_pending ? _doNewGame : null),
-                              ),
-                              const Spacer(),
-                              Expanded(
-                                child: Button(child: const Text('Login'), onPressed: !_pending ? _doLogin : null),
-                              ),
-                              const Spacer(),
-                            ],
+                // TODO: have a third state, "logging in", during which the UI is disabled and we show a progress indicator and cancel button
+                // HOME SCREEN LOGIN BUTTONS
+                DisableSubtree(
+                  disabled: loggedIn,
+                  child: ValueListenableBuilder<bool>(
+                    valueListenable: widget.game.loginServer.connected,
+                    builder: (BuildContext context, bool connected, Widget? child) => CustomSingleChildLayout(
+                      delegate: const MenuLayoutDelegate(),
+                      child: FittedBox(
+                        child: Padding(
+                          padding: const EdgeInsets.all(20.0),
+                          child: SizedBox(
+                            height: 120.0,
+                            width: 150.0,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: <Widget>[
+                                const Spacer(),
+                                Expanded(
+                                  child: Button(child: const Text('New Game'), onPressed: !_pending ? _doNewGame : null),
+                                ),
+                                const Spacer(),
+                                Expanded(
+                                  child: Button(child: const Text('Login'), onPressed: !_pending ? _doLogin : null),
+                                ),
+                                const Spacer(),
+                              ],
+                            ),
                           ),
                         ),
                       ),
                     ),
                   ),
                 ),
-              ),
-              // TOP LEFT BUTTON
-              PositionedDirectional(
-                top: 0.0,
-                start: 0.0,
-                child: DecoratedBox(
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: AlignmentDirectional.topStart,
-                      end: AlignmentDirectional.bottomEnd,
-                      colors: <Color>[
-                        Color(0x99000000),
-                        Color(0x00000000),
-                        Color(0x00000000),
-                      ],
-                    ),
-                  ),
-                  child: SafeArea(
-                    child: Padding(
-                      padding: const EdgeInsetsDirectional.fromSTEB(8.0, 8.0, 32.0, 32.0),
-                      child: PopupMenuButton<void>(
-                        icon: Icon(Icons.settings, shadows: kElevationToShadow[1]),
-                        popUpAnimationStyle: const AnimationStyle(
-                          curve: Curves.easeInCubic,
-                          reverseCurve: Curves.decelerate,
-                          duration: Duration(milliseconds: 400),
-                        ),
-                        iconColor: Theme.of(context).colorScheme.onSecondary,
-                        itemBuilder: (BuildContext context) => <PopupMenuEntry<void>>[
-                          PopupMenuItem<void>(
-                            child: const ListTile(
-                              leading: Icon(Icons.show_chart),
-                              title: Text('View high scores'),
-                            ),
-                            onTap: _showScores,
-                          ),
-                          if (loggedIn)
-                            PopupMenuItem<void>(
-                              child: ListTile(
-                                leading: const Icon(Icons.password),
-                                title: widget.game.credentials.value!.username.contains('\u0010')
-                                        ? const Text('Set username and password')
-                                        : const Text('Change username or password'),
-                              ),
-                              onTap: _doChangeCredentials,
-                            ),
-                          if (loggedIn)
-                            PopupMenuItem<void>(
-                              child: const ListTile(
-                                leading: Icon(Icons.logout),
-                                title: Text('Logout'),
-                              ),
-                              onTap: _doLogout,
-                            ),
-                          const PopupMenuDivider(),
-                          PopupMenuItem<void>(
-                            child: const ListTile(
-                              leading: Icon(Icons.help),
-                              title: Text('About'),
-                            ),
-                            onTap: _doAbout,
-                          ),
+                // TOP LEFT BUTTON
+                PositionedDirectional(
+                  top: 0.0,
+                  start: 0.0,
+                  child: DecoratedBox(
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: AlignmentDirectional.topStart,
+                        end: AlignmentDirectional.bottomEnd,
+                        colors: <Color>[
+                          Color(0x99000000),
+                          Color(0x00000000),
+                          Color(0x00000000),
                         ],
                       ),
                     ),
-                  ),
-                ),
-              ),
-              // TOP RIGHT BUTTON
-              PositionedDirectional(
-                top: 0.0,
-                end: 0.0,
-                child: ValueListenableBuilder<bool>(
-                  valueListenable: widget.game.connectionStatus,
-                  builder: (BuildContext context, bool networkProblem, Widget? child) => DisableSubtree(
-                    disabled: !networkProblem,
-                    child: DecoratedBox(
-                      decoration: const BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: AlignmentDirectional.topEnd,
-                          end: AlignmentDirectional.bottomStart,
-                          colors: <Color>[
-                            Color(0x99000000),
-                            Color(0x00000000),
-                            Color(0x00000000),
+                    child: SafeArea(
+                      child: Padding(
+                        padding: const EdgeInsetsDirectional.fromSTEB(8.0, 8.0, 32.0, 32.0),
+                        child: PopupMenuButton<void>(
+                          icon: Icon(Icons.settings, shadows: kElevationToShadow[1]),
+                          popUpAnimationStyle: const AnimationStyle(
+                            curve: Curves.easeInCubic,
+                            reverseCurve: Curves.decelerate,
+                            duration: Duration(milliseconds: 400),
+                          ),
+                          iconColor: Theme.of(context).colorScheme.onSecondary,
+                          itemBuilder: (BuildContext context) => <PopupMenuEntry<void>>[
+                            PopupMenuItem<void>(
+                              child: const ListTile(
+                                leading: Icon(Icons.show_chart),
+                                title: Text('View high scores'),
+                              ),
+                              onTap: _showScores,
+                            ),
+                            if (loggedIn)
+                              PopupMenuItem<void>(
+                                child: ListTile(
+                                  leading: const Icon(Icons.password),
+                                  title: widget.game.credentials.value!.username.contains('\u0010')
+                                          ? const Text('Set username and password')
+                                          : const Text('Change username or password'),
+                                ),
+                                onTap: _doChangeCredentials,
+                              ),
+                            if (loggedIn)
+                              PopupMenuItem<void>(
+                                child: const ListTile(
+                                  leading: Icon(Icons.logout),
+                                  title: Text('Logout'),
+                                ),
+                                onTap: _doLogout,
+                              ),
+                            const PopupMenuDivider(),
+                            PopupMenuItem<void>(
+                              child: const ListTile(
+                                leading: Icon(Icons.help),
+                                title: Text('About'),
+                              ),
+                              onTap: _doAbout,
+                            ),
                           ],
                         ),
                       ),
-                      child: SafeArea(
-                        child: Padding(
-                          padding: const EdgeInsetsDirectional.fromSTEB(32.0, 8.0, 8.0, 32.0),
-                          child: IconButton(
-                            icon: Icon(Icons.cloud_off, shadows: kElevationToShadow[1]),
-                            tooltip: 'Try to reconnect immediately',
-                            color: Theme.of(context).colorScheme.onSecondary,
-                            onPressed: () {
-                              widget.game.connectionStatus.triggerReset();
-                            },
-                          ),
-                        ),
-                      ),
                     ),
                   ),
                 ),
-              ),
-              // DOCKS
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                child: SizedBox(
-                  height: 128.0,
-                  child: Row(
-                    children: <Widget>[
-                      Spacer(flex: (100 * RenderGalaxy.legendWidthFraction).toInt()),
-                      Expanded(flex: (100 - (200 * RenderGalaxy.legendWidthFraction)).toInt(), child: docks!),
-                      Spacer(flex: (100 * RenderGalaxy.legendWidthFraction).toInt()),
-                    ],
-                  ),
-                ),
-              ),
-              // MESSAGE LINE
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                child: DisableSubtree(
-                  disabled: !_showMessage,
-                  child: GestureDetector(
-                    onTap: () { setState(() { _showMessage = false; }); },
-                    child: FittedBox(
-                      child: Padding(
-                        padding: const EdgeInsets.all(8.0),
-                        child: Card(
-                          elevation: 8.0,
+                // TOP RIGHT BUTTON
+                PositionedDirectional(
+                  top: 0.0,
+                  end: 0.0,
+                  child: ValueListenableBuilder<bool>(
+                    valueListenable: widget.game.connectionStatus,
+                    builder: (BuildContext context, bool networkProblem, Widget? child) => DisableSubtree(
+                      disabled: !networkProblem,
+                      child: DecoratedBox(
+                        decoration: const BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: AlignmentDirectional.topEnd,
+                            end: AlignmentDirectional.bottomStart,
+                            colors: <Color>[
+                              Color(0x99000000),
+                              Color(0x00000000),
+                              Color(0x00000000),
+                            ],
+                          ),
+                        ),
+                        child: SafeArea(
                           child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              vertical: 2.0,
-                              horizontal: 8.0,
+                            padding: const EdgeInsetsDirectional.fromSTEB(32.0, 8.0, 8.0, 32.0),
+                            child: IconButton(
+                              icon: Icon(Icons.cloud_off, shadows: kElevationToShadow[1]),
+                              tooltip: 'Try to reconnect immediately',
+                              color: Theme.of(context).colorScheme.onSecondary,
+                              onPressed: () {
+                                widget.game.connectionStatus.triggerReset();
+                              },
                             ),
-                            child: ConstrainedBox(
-                              constraints: const BoxConstraints(
-                                minWidth: 400.0,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                // DOCKS
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: RenderGalaxy.legendFontSize * 3.0,
+                  child: SizedBox(
+                    height: 96.0,
+                    child: docks,
+                  ),
+                ),
+                // MESSAGE LINE
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: DisableSubtree(
+                    disabled: !_showMessage,
+                    child: GestureDetector(
+                      onTap: () { setState(() { _showMessage = false; }); },
+                      child: FittedBox(
+                        child: Padding(
+                          padding: const EdgeInsets.all(8.0),
+                          child: Card(
+                            elevation: 8.0,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 2.0,
+                                horizontal: 8.0,
                               ),
-                              child: Text(
-                                _message,
-                                textAlign: TextAlign.center,
+                              child: ConstrainedBox(
+                                constraints: const BoxConstraints(
+                                  minWidth: 400.0,
+                                ),
+                                child: Text(
+                                  _message,
+                                  textAlign: TextAlign.center,
+                                ),
                               ),
                             ),
                           ),
@@ -569,8 +568,8 @@ class _InterstellarDynastiesState extends State<InterstellarDynasties> with Rest
                     ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

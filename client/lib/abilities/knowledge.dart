@@ -18,7 +18,7 @@ class KnowledgeFeature extends AbilityFeature {
   RendererType get rendererType => RendererType.ui;
 
   @override
-  Widget buildRenderer(BuildContext context) {
+  Widget buildRenderer(BuildContext context, double paintDiameter) {
     // TODO: this should be left-aligned until it runs out of room, then stack
     if (assetClasses.isNotEmpty || materials.isNotEmpty) {
       final List<Widget> children = <Widget>[

@@ -21,7 +21,7 @@ const TextStyle italic = TextStyle(fontStyle: FontStyle.italic);
 
 class WorldLayoutBuilder extends ConstrainedLayoutBuilder<WorldConstraints> {
   const WorldLayoutBuilder({ super.key, required super.builder });
-
+  
   @override
   RenderAbstractLayoutBuilderMixin<WorldConstraints, RenderWorld> createRenderObject(BuildContext context) => _RenderWorldLayoutBuilder();
 }
@@ -30,7 +30,9 @@ class _RenderWorldLayoutBuilder extends RenderWorld
       with RenderObjectWithChildMixin<RenderWorld>,
            RenderObjectWithLayoutCallbackMixin,
            RenderAbstractLayoutBuilderMixin<WorldConstraints, RenderWorld> {
-  _RenderWorldLayoutBuilder();
+  _RenderWorldLayoutBuilder({
+    super.paintDiameter = double.nan,
+  });
 
   @override
   WorldNode get node => child!.node;
@@ -43,12 +45,12 @@ class _RenderWorldLayoutBuilder extends RenderWorld
   }
 
   @override
-  void computeLayout(WorldConstraints constraints, double actualDiameter) {
+  void computeLayout(WorldConstraints constraints) {
     child!.layout(constraints, parentUsesSize: true);
   }
 
   @override
-  void computePaint(PaintingContext context, Offset offset, double actualDiameter) {
+  void computePaint(PaintingContext context, Offset offset) {
     context.paintChild(child!, offset);
   }
 
@@ -67,24 +69,29 @@ class WorldNull extends LeafRenderObjectWidget {
   const WorldNull({
     super.key,
     required this.node,
+    required this.paintDiameter,
   });
 
   final WorldNode node;
+  final double paintDiameter;
 
   @override
   RenderWorldNull createRenderObject(BuildContext context) {
-    return RenderWorldNull(node: node);
+    return RenderWorldNull(node: node, paintDiameter: paintDiameter);
   }
 }
 
 class RenderWorldNull extends RenderWorldNode {
-  RenderWorldNull({ required super.node });
+  RenderWorldNull({
+    required super.node,
+    required super.paintDiameter,
+  });
 
   @override
-  void computeLayout(WorldConstraints constraints, double actualDiameter) { }
+  void computeLayout(WorldConstraints constraints) { }
 
   @override
-  void computePaint(PaintingContext context, Offset offset, double actualDiameter) { }
+  void computePaint(PaintingContext context, Offset offset) { }
 
   @override
   bool hitTestChildren(BoxHitTestResult result, { required Offset position }) {
@@ -203,22 +210,26 @@ class WorldBoxGrid extends MultiChildRenderObjectWidget {
   const WorldBoxGrid({
     super.key,
     required this.node,
+    required this.paintDiameter,
     super.children,
   });
 
   final WorldNode node;
+  final double paintDiameter;
 
   @override
   RenderWorldBoxGrid createRenderObject(BuildContext context) {
     return RenderWorldBoxGrid(
       node: node,
+      paintDiameter: paintDiameter,
     );
   }
 
   @override
   void updateRenderObject(BuildContext context, RenderWorldBoxGrid renderObject) {
     renderObject
-      ..node = node;
+      ..node = node
+      ..paintDiameter = paintDiameter;
   }
 }
 
@@ -229,6 +240,7 @@ class WorldBoxGridParentData extends ContainerBoxParentData<RenderBox> {
 class RenderWorldBoxGrid extends RenderWorldNode with ContainerRenderObjectMixin<RenderBox, WorldBoxGridParentData>, RenderBoxContainerDefaultsMixin<RenderBox, WorldBoxGridParentData> {
   RenderWorldBoxGrid({
     required super.node,
+    required super.paintDiameter,
   });
 
   @override
@@ -242,10 +254,10 @@ class RenderWorldBoxGrid extends RenderWorldNode with ContainerRenderObjectMixin
   double? _cellSize;
 
   @override
-  void computeLayout(WorldConstraints constraints, double actualDiameter) {
+  void computeLayout(WorldConstraints constraints) {
     final int count = childCount;
     _cellCount = sqrt(count).ceil();
-    _cellSize = actualDiameter / _cellCount!;
+    _cellSize = paintDiameter / _cellCount!;
     final BoxConstraints childConstraints = BoxConstraints.tightFor(width: _cellSize, height: _cellSize);
     RenderBox? child = firstChild;
     while (child != null) {
@@ -256,7 +268,7 @@ class RenderWorldBoxGrid extends RenderWorldNode with ContainerRenderObjectMixin
   }
 
   @override
-  void computePaint(PaintingContext context, Offset offset, double actualDiameter) {
+  void computePaint(PaintingContext context, Offset offset) {
     RenderBox? child = firstChild;
     double x = 0;
     double y = 0;
@@ -276,7 +288,7 @@ class RenderWorldBoxGrid extends RenderWorldNode with ContainerRenderObjectMixin
       }
     }
     if (debugPaintSizeEnabled) {
-      context.canvas.drawRect(Rect.fromCircle(center: offset, radius: actualDiameter / 2.0), Paint()..color=const Color(0x7FFF00FF)..strokeWidth=2..style=PaintingStyle.stroke);
+      context.canvas.drawRect(Rect.fromCircle(center: offset, radius: paintDiameter / 2.0), Paint()..color=const Color(0x7FFF00FF)..strokeWidth=2..style=PaintingStyle.stroke);
     }
   }
 
@@ -295,22 +307,26 @@ class WorldStack extends MultiChildRenderObjectWidget {
   const WorldStack({
     super.key,
     required this.node,
+    required this.paintDiameter,
     super.children,
   });
 
   final WorldNode node;
+  final double paintDiameter;
 
   @override
   RenderWorldStack createRenderObject(BuildContext context) {
     return RenderWorldStack(
       node: node,
+      paintDiameter: paintDiameter,
     );
   }
 
   @override
   void updateRenderObject(BuildContext context, RenderWorldStack renderObject) {
     renderObject
-      ..node = node;
+      ..node = node
+      ..paintDiameter = paintDiameter;
   }
 }
 
@@ -319,6 +335,7 @@ class StackParentData extends ParentData with ContainerParentDataMixin<RenderWor
 class RenderWorldStack extends RenderWorldWithChildren<StackParentData> {
   RenderWorldStack({
     required super.node,
+    required super.paintDiameter,
   });
 
   @override
@@ -329,7 +346,7 @@ class RenderWorldStack extends RenderWorldWithChildren<StackParentData> {
   }
 
   @override
-  void computeLayout(WorldConstraints constraints, double actualDiameter) {
+  void computeLayout(WorldConstraints constraints) {
     RenderWorld? child = firstChild;
     while (child != null) {
       final StackParentData childParentData = child.parentData! as StackParentData;
@@ -339,7 +356,7 @@ class RenderWorldStack extends RenderWorldWithChildren<StackParentData> {
   }
 
   @override
-  void computePaint(PaintingContext context, Offset offset, double actualDiameter) {
+  void computePaint(PaintingContext context, Offset offset) {
     RenderWorld? child = firstChild;
     while (child != null) {
       final StackParentData childParentData = child.parentData! as StackParentData;
@@ -366,45 +383,50 @@ class WorldToBoxAdapter extends SingleChildRenderObjectWidget {
   const WorldToBoxAdapter({
     super.key,
     required this.node,
+    required this.paintDiameter,
     super.child,
   });
 
   final WorldNode node;
+  final double paintDiameter;
 
   @override
   RenderWorldToBoxAdapter createRenderObject(BuildContext context) {
     return RenderWorldToBoxAdapter(
       node: node,
+      paintDiameter: paintDiameter,
     );
   }
 
   @override
   void updateRenderObject(BuildContext context, RenderWorldToBoxAdapter renderObject) {
     renderObject
-      ..node = node;
+      ..node = node
+      ..paintDiameter = paintDiameter;
   }
 }
 
 class RenderWorldToBoxAdapter extends RenderWorldNode with RenderObjectWithChildMixin<RenderBox> {
   RenderWorldToBoxAdapter({
     required super.node,
+    required super.paintDiameter,
   });
 
   @override
-  void computeLayout(WorldConstraints constraints, double actualDiameter) {
+  void computeLayout(WorldConstraints constraints) {
     if (child != null) {
-      child!.layout(BoxConstraints.tight(Size.square(actualDiameter)));
+      child!.layout(BoxConstraints.tight(Size.square(paintDiameter)));
     }
   }
 
   Offset? _childPosition;
 
   @override
-  void computePaint(PaintingContext context, Offset offset, double actualDiameter) {
-    _childPosition = Offset(offset.dx - actualDiameter / 2.0, offset.dy - actualDiameter / 2.0);
+  void computePaint(PaintingContext context, Offset offset) {
+    _childPosition = Offset(offset.dx - paintDiameter / 2.0, offset.dy - paintDiameter / 2.0);
     context.paintChild(child!, _childPosition!);
     if (debugPaintSizeEnabled) {
-      context.canvas.drawRect(_childPosition! & Size.square(actualDiameter), Paint()..color=const Color(0x7FFFFF00)..strokeWidth=10..style=PaintingStyle.stroke);
+      context.canvas.drawRect(_childPosition! & Size.square(paintDiameter), Paint()..color=const Color(0x7FFFFF00)..strokeWidth=10..style=PaintingStyle.stroke);
     }
   }
 
@@ -431,6 +453,7 @@ class RenderWorldToBoxAdapter extends RenderWorldNode with RenderObjectWithChild
 
 @Deprecated('Unused')
 class NoZoom extends StatelessWidget {
+  @Deprecated('Unused')
   const NoZoom({
     super.key,
     required this.child,
@@ -535,11 +558,13 @@ class BuildableDish extends StatefulWidget {
     required this.assetClasses,
     required this.onSelect,
     required this.selection,
+    required this.label,
   });
 
   final List<AssetClass> assetClasses;
   final ValueSetter<AssetClass?> onSelect;
   final AssetClass? selection;
+  final String label;
 
   @override
   State<BuildableDish> createState() => _BuildableDishState();
@@ -558,7 +583,7 @@ class _BuildableDishState extends State<BuildableDish> {
     return Stack(
       children: <Widget>[
         Container(
-          margin: const EdgeInsets.only(top: padding * 1.25),
+          margin: const EdgeInsets.fromLTRB(padding, padding * 1.25, padding, 0.0),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(padding),
             border: Border.all(
@@ -584,26 +609,32 @@ class _BuildableDishState extends State<BuildableDish> {
             ],
           ),
           child: Padding(
-            padding: const EdgeInsets.only(left: padding, top: padding * 1.5, right: padding, bottom: padding),
-            child: Wrap(
-              spacing: padding,
-              runSpacing: padding,
-              children: <Widget>[
-                for (AssetClass assetClass in widget.assetClasses)
-                  BuildIcon(
-                    assetClass: assetClass,
-                    onSelect: widget.onSelect,
-                    selection: widget.selection,
-                  ),
-              ],
+            padding: const EdgeInsets.fromLTRB(4.0, 8.0, 4.0, 4.0),
+            child: LayoutBuilder(
+              builder: (BuildContext context, BoxConstraints constraints) {
+                final double iconSize = constraints.maxHeight;
+                return Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  spacing: 2.0,
+                  children: <Widget>[
+                    for (AssetClass assetClass in widget.assetClasses)
+                      BuildIcon(
+                        iconSize: iconSize,
+                        assetClass: assetClass,
+                        onSelect: widget.onSelect,
+                        selection: widget.selection,
+                      ),
+                  ],
+                );
+              },
             ),
           ),
         ),
-        const Positioned(
+        Positioned(
           left: padding * 2.0,
           top: 0.0,
           child: DecoratedBox(
-            decoration: ShapeDecoration(
+            decoration: const ShapeDecoration(
               shape: StadiumBorder(
                 side: BorderSide(),
               ),
@@ -616,8 +647,8 @@ class _BuildableDishState extends State<BuildableDish> {
               ],
             ),
             child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: padding, vertical: padding / 3.0),
-              child: Text('Build Palette'),
+              padding: const EdgeInsets.symmetric(horizontal: padding, vertical: padding / 3.0),
+              child: Text(widget.label),
             ),
           ),
         ),
@@ -630,7 +661,7 @@ class BuildIcon extends StatefulWidget {
   const BuildIcon({
     super.key,
     required this.assetClass,
-    this.iconSize = IconsManager.buildIconSize,
+    required this.iconSize,
     this.iconPadding = 8.0,
     required this.onSelect,
     required this.selection,

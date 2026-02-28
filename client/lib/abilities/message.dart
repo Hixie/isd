@@ -40,7 +40,7 @@ class MessageFeature extends AbilityFeature with ChangeNotifier {
   }
   
   @override
-  Widget buildRenderer(BuildContext context) {
+  Widget buildRenderer(BuildContext context, double paintDiameter) {
     // Messages that are directly visible in the real world.
     return Card(
       child: Padding(

@@ -55,7 +55,7 @@ class MaterialStackFeature extends AbilityFeature {
   }
 
   @override
-  Widget buildRenderer(BuildContext context) {
+  Widget buildRenderer(BuildContext context, double paintDiameter) {
     if (pileQuantityFlowRate == 0.0)
       return _buildForQuantity(context, pileQuantity);
     return ValueListenableBuilder<double>(

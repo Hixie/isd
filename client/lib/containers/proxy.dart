@@ -43,9 +43,10 @@ class ProxyFeature extends ContainerFeature {
   RendererType get rendererType => RendererType.overlay;
 
   @override
-  Widget buildRenderer(BuildContext context) {
+  Widget buildRenderer(BuildContext context, double paintDiameter) {
     return ProxyWidget(
       node: parent,
+      paintDiameter: paintDiameter,
       child: child?.build(context),
     );
   }
@@ -80,15 +81,18 @@ class ProxyWidget extends SingleChildRenderObjectWidget {
   const ProxyWidget({
     super.key,
     required this.node,
+    required this.paintDiameter,
     super.child,
   });
 
   final WorldNode node;
+  final double paintDiameter;
 
   @override
   RenderProxy createRenderObject(BuildContext context) {
     return RenderProxy(
       node: node,
+      paintDiameter: paintDiameter,
     );
   }
 
@@ -102,10 +106,11 @@ class ProxyWidget extends SingleChildRenderObjectWidget {
 class RenderProxy extends RenderWorldNode with RenderObjectWithChildMixin<RenderWorld> {
   RenderProxy({
     required super.node,
+    required super.paintDiameter,
   });
 
   @override
-  void computeLayout(WorldConstraints constraints, double actualDiameter) {
+  void computeLayout(WorldConstraints constraints) {
     if (child != null) {
       child!.layout(constraints);
     }
@@ -114,7 +119,7 @@ class RenderProxy extends RenderWorldNode with RenderObjectWithChildMixin<Render
   Offset? _childPosition;
 
   @override
-  void computePaint(PaintingContext context, Offset offset, double actualDiameter) {
+  void computePaint(PaintingContext context, Offset offset) {
     if (child != null) {
       // TODO: position the child based on the icon's fields
       // one of the modes should be to center the child's bottom

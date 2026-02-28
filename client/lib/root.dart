@@ -7,7 +7,6 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
 import 'dynasty.dart';
-import 'hud.dart';
 import 'layout.dart';
 import 'world.dart';
 
@@ -43,6 +42,8 @@ class WorldFocusNotifier extends ChangeNotifier {
   void _notify() => notifyListeners();
 }
 
+typedef WorldRootKey = GlobalKey<WorldRootState>;
+
 class WorldRoot extends StatefulWidget {
   const WorldRoot({
     super.key,
@@ -52,16 +53,16 @@ class WorldRoot extends StatefulWidget {
     required this.worldFocusNotifier,
   });
 
-  final WorldNode rootNode;
+  final WorldNode rootNode; // typically a GalaxyNode
   final ValueListenable<WorldNode?> recommendedFocus;
   final DynastyManager dynastyManager;
   final WorldFocusNotifier worldFocusNotifier;
 
   @override
-  _WorldRootState createState() => _WorldRootState();
+  WorldRootState createState() => WorldRootState();
 }
 
-class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMixin {
+class WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMixin {
   late final AnimationController _controller = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 3000),
@@ -138,8 +139,8 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
   void _updatePan(Offset newPan, double scale, { double? zoom }) {
     final Size size = _worldRoot.size;
     _updateSnap(zoom ?? _zoom.value, Offset(
-      _clampPan(newPan.dx, size.width / scale, widget.rootNode.diameter, _rootPosition.dx),
-      _clampPan(newPan.dy, size.height / scale, widget.rootNode.diameter, _rootPosition.dy),
+      _clampPan(newPan.dx, size.width / scale, widget.rootNode.actualDiameter, _rootPosition.dx),
+      _clampPan(newPan.dy, size.height / scale, widget.rootNode.actualDiameter, _rootPosition.dy),
     ));
   }
 
@@ -200,13 +201,13 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
 
   void _centerOn(WorldNode node) {
     _changeCenterNode(node);
-    double centerDiameter = _centerNode.diameter;
+    double centerDiameter = _centerNode.actualDiameter;
     WorldNode ancestorNode = _centerNode;
     while (centerDiameter <= 0.0) {
       ancestorNode = _centerNode.worldParent!;
-      centerDiameter = ancestorNode.diameter;
+      centerDiameter = ancestorNode.actualDiameter;
     }
-    final double zoom = log(widget.rootNode.diameter / centerDiameter);
+    final double zoom = log(widget.rootNode.actualDiameter / centerDiameter);
     _zoomTween.begin = _zoom.value;
     _zoomTween.end = zoom;
     _panTween.begin = _pan.value;
@@ -216,7 +217,7 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
 
   void _centerNear(WorldNode node, Offset offset, double diameter) {
     _changeCenterNode(node);
-    final double zoom = log(widget.rootNode.diameter / diameter);
+    final double zoom = log(widget.rootNode.actualDiameter / diameter);
     _zoomTween.begin = _zoom.value;
     _zoomTween.end = zoom;
     _panTween.begin = _pan.value;
@@ -311,63 +312,60 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
           }
         });
       },
-      child: ZoomProvider(
-        state: this,
-        child: DynastyProvider(
-          dynastyManager: widget.dynastyManager,
-          child: GestureDetector(
-            trackpadScrollCausesScale: true,
-            onScaleStart: (ScaleStartDetails details) {
+      child: DynastyProvider(
+        dynastyManager: widget.dynastyManager,
+        child: GestureDetector(
+          trackpadScrollCausesScale: true,
+          onScaleStart: (ScaleStartDetails details) {
+            final RenderBoxToRenderWorldAdapter box = _worldRoot;
+            _scaleAtGestureStart = box.layoutScale;
+            _zoomAtGestureStart = _zoom.value;
+            _panAtGestureStart = _pan.value;
+            _accumulatedOffset = Offset.zero;
+          },
+          onScaleEnd: (ScaleEndDetails details) {
+            _scaleAtGestureStart = null;
+            _zoomAtGestureStart = null;
+            _panAtGestureStart = null;
+          },
+          onScaleUpdate: (ScaleUpdateDetails details) {
+            // TODO: still need to test this with pinch+zoom at the same time
+            setState(() {
               final RenderBoxToRenderWorldAdapter box = _worldRoot;
-              _scaleAtGestureStart = box.layoutScale;
-              _zoomAtGestureStart = _zoom.value;
-              _panAtGestureStart = _pan.value;
-              _accumulatedOffset = Offset.zero;
-            },
-            onScaleEnd: (ScaleEndDetails details) {
-              _scaleAtGestureStart = null;
-              _zoomAtGestureStart = null;
-              _panAtGestureStart = null;
-            },
-            onScaleUpdate: (ScaleUpdateDetails details) {
-              // TODO: still need to test this with pinch+zoom at the same time
+              final Size size = box.size;
               setState(() {
-                final RenderBoxToRenderWorldAdapter box = _worldRoot;
-                final Size size = box.size;
-                setState(() {
-                  _lastScale ??= box.layoutScale;
-                  final Offset sigma = -Offset(details.localFocalPoint.dx - size.width / 2.0, details.localFocalPoint.dy - size.height / 2.0) + details.focalPointDelta;
-                  final double newScale = max(box.minScale, _scaleAtGestureStart! * details.scale);
-                  _accumulatedOffset = _accumulatedOffset! + details.focalPointDelta / newScale;
-                  _updatePan(_panAtGestureStart! + _accumulatedOffset! + sigma / _scaleAtGestureStart! - sigma / newScale, newScale, zoom: _zoomAtGestureStart! + log(details.scale));
-                });
+                _lastScale ??= box.layoutScale;
+                final Offset sigma = -Offset(details.localFocalPoint.dx - size.width / 2.0, details.localFocalPoint.dy - size.height / 2.0) + details.focalPointDelta;
+                final double newScale = max(box.minScale, _scaleAtGestureStart! * details.scale);
+                _accumulatedOffset = _accumulatedOffset! + details.focalPointDelta / newScale;
+                _updatePan(_panAtGestureStart! + _accumulatedOffset! + sigma / _scaleAtGestureStart! - sigma / newScale, newScale, zoom: _zoomAtGestureStart! + log(details.scale));
               });
+            });
+          },
+          onTapDown: (TapDownDetails details) {
+            assert(_currentTarget == null);
+            _currentTarget = _worldRoot.routeTap(details.localPosition);
+            _currentTarget?.handleTapDown();
+          },
+          onTapCancel: () {
+            _currentTarget?.handleTapCancel();
+            _currentTarget = null;
+          },
+          onTapUp: (TapUpDetails details) {
+            _currentTarget?.handleTapUp();
+            _currentTarget = null;
+          },
+          child: ListenableBuilder(
+            listenable: Listenable.merge(<Listenable?>[widget.rootNode, _controller]),
+            builder: (BuildContext context, Widget? child) {
+              return BoxToWorldAdapter(
+                key: _worldRootKey,
+                diameter: widget.rootNode.actualDiameter,
+                zoom: max(0.0, _zoom.value),
+                precomputedPositions: _precomputedPositions,
+                child: widget.rootNode.build(context),
+              );
             },
-            onTapDown: (TapDownDetails details) {
-              assert(_currentTarget == null);
-              _currentTarget = _worldRoot.routeTap(details.localPosition);
-              _currentTarget?.handleTapDown();
-            },
-            onTapCancel: () {
-              _currentTarget?.handleTapCancel();
-              _currentTarget = null;
-            },
-            onTapUp: (TapUpDetails details) {
-              _currentTarget?.handleTapUp();
-              _currentTarget = null;
-            },
-            child: ListenableBuilder(
-              listenable: Listenable.merge(<Listenable?>[widget.rootNode, _controller]),
-              builder: (BuildContext context, Widget? child) {
-                return BoxToWorldAdapter(
-                  key: _worldRootKey,
-                  diameter: widget.rootNode.diameter,
-                  zoom: max(0.0, _zoom.value),
-                  precomputedPositions: _precomputedPositions,
-                  child: widget.rootNode.build(context),
-                );
-              },
-            ),
           ),
         ),
       ),
@@ -376,9 +374,11 @@ class _WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMix
 }
 
 class ZoomProvider extends InheritedWidget {
-  const ZoomProvider({ super.key, required _WorldRootState state, required super.child }) : _state = state;
+  const ZoomProvider({ super.key, required this.stateKey, required super.child });
 
-  final _WorldRootState _state;
+  final WorldRootKey stateKey;
+
+  WorldRootState get _state => stateKey.currentState!;
 
   static void centerOn(BuildContext context, WorldNode target) {
     final ZoomProvider? provider = context.dependOnInheritedWidgetOfExactType<ZoomProvider>();

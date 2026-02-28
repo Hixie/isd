@@ -179,47 +179,37 @@ class GalaxyNode extends WorldNode {
   }
 
   @override
-  double get diameter {
+  double get actualDiameter {
     if (galaxy != null) {
       return galaxy!.diameter;
     }
     return 1.0;
   }
 
-  double? _lastScale;
-
   @override
-  Widget buildRenderer(BuildContext context, Widget? nil) {
+  Widget buildRenderer(BuildContext context, double paintDiameter) {
     if (galaxy != null) {
-      return WorldLayoutBuilder(
-        builder: (BuildContext context, WorldConstraints constraints) {
-          if (_lastScale != constraints.scale) {
-            _children = null;
-          }
-          _lastScale = constraints.scale;
-          return GalaxyWidget(
-            node: this,
-            galaxy: galaxy!,
-            diameter: galaxy!.diameter,
-            children: _children ??= _rebuildChildren(context, constraints.scale),
-          );
-        },
+      return GalaxyWidget(
+        node: this,
+        galaxy: galaxy!,
+        actualDiameter: galaxy!.diameter,
+        paintDiameter: paintDiameter,
+        children: _children ??= _rebuildChildren(context),
       );
     }
-    return WorldNull(node: this);
+    return WorldNull(node: this, paintDiameter: paintDiameter);
   }
 
-  List<Widget> _rebuildChildren(BuildContext context, double scale) {
+  List<Widget> _rebuildChildren(BuildContext context) {
     return systems.map((SystemNode childNode) {
       return ListenableBuilder(
         listenable: childNode,
         builder: (BuildContext context, Widget? child) {
           assert(child != null);
-          final bool visible = childNode.diameter * scale >= WorldGeometry.minSystemRenderDiameter;
           return GalaxyChildData(
             position: findLocationForChild(childNode, <VoidCallback>[markChildrenDirty]),
             label: childNode.label,
-            child: visible ? child! : WorldNull(node: childNode),
+            child: child!,
             onTap: () {
               ZoomProvider.centerOn(context, childNode);
             },
@@ -236,14 +226,16 @@ class GalaxyWidget extends MultiChildRenderObjectWidget {
     super.key,
     required this.node,
     required this.galaxy,
-    required this.diameter,
+    required this.actualDiameter,
+    required this.paintDiameter,
     this.onTap,
     super.children,
   });
 
   final WorldNode node;
   final Galaxy galaxy;
-  final double diameter;
+  final double actualDiameter;
+  final double paintDiameter;
   final GalaxyTapHandler? onTap;
 
   @override
@@ -251,7 +243,8 @@ class GalaxyWidget extends MultiChildRenderObjectWidget {
     return RenderGalaxy(
       node: node,
       galaxy: galaxy,
-      diameter: diameter,
+      actualDiameter: actualDiameter,
+      paintDiameter: paintDiameter,
     );
   }
 
@@ -260,7 +253,8 @@ class GalaxyWidget extends MultiChildRenderObjectWidget {
     renderObject
       ..node = node
       ..galaxy = galaxy
-      ..diameter = diameter;
+      ..actualDiameter = actualDiameter
+      ..paintDiameter = paintDiameter;
   }
 }
 
@@ -407,9 +401,10 @@ class RenderGalaxy extends RenderWorldWithChildren<GalaxyParentData> {
   RenderGalaxy({
     required super.node,
     required Galaxy galaxy,
-    required double diameter,
+    required double actualDiameter,
+    required super.paintDiameter,
   }) : _galaxy = galaxy,
-       _diameter = diameter;
+       _actualDiameter = actualDiameter;
 
   Galaxy? get galaxy => _galaxy;
   Galaxy? _galaxy;
@@ -422,16 +417,14 @@ class RenderGalaxy extends RenderWorldWithChildren<GalaxyParentData> {
   }
 
   // In meters.
-  double get diameter => _diameter;
-  double _diameter;
-  set diameter (double value) {
-    if (value != _diameter) {
-      _diameter = value;
+  double get actualDiameter => _actualDiameter;
+  double _actualDiameter;
+  set actualDiameter (double value) {
+    if (value != _actualDiameter) {
+      _actualDiameter = value;
       markNeedsLayout();
     }
   }
-
-  double get radius => diameter / 2.0;
 
   @override
   void setupParentData(RenderObject child) {
@@ -467,11 +460,13 @@ class RenderGalaxy extends RenderWorldWithChildren<GalaxyParentData> {
     }
   }
 
+  static const double legendFontSize = 12.0;
+  
   final TextPainter _legendLabel = TextPainter(textDirection: TextDirection.ltr);
   static final Paint _legendPaint = Paint()
     ..color = const Color(0xFFFFFFFF)
     ..blendMode = BlendMode.difference;
-  static final TextStyle _legendStyle = TextStyle(fontSize: 12.0, foreground: _legendPaint);
+  static final TextStyle _legendStyle = TextStyle(fontSize: legendFontSize, foreground: _legendPaint);
 
   final TextStyle _hudStyle = const TextStyle(fontSize: 14.0, color: Color(0xFFFFFFFF));
 
@@ -507,7 +502,7 @@ class RenderGalaxy extends RenderWorldWithChildren<GalaxyParentData> {
   double _legendLength = 0.0;
 
   @override
-  void computeLayout(WorldConstraints constraints, double actualDiameter) {
+  void computeLayout(WorldConstraints constraints) {
     RenderWorld? child = firstChild;
     while (child != null) {
       final GalaxyParentData childParentData = child.parentData! as GalaxyParentData;
@@ -536,10 +531,10 @@ class RenderGalaxy extends RenderWorldWithChildren<GalaxyParentData> {
   }
 
   @override
-  void computePaint(PaintingContext context, Offset offset, double actualDiameter) {
+  void computePaint(PaintingContext context, Offset offset) {
     if (galaxy != null) {
       _drawGalaxyHalo(context, offset);
-      final Rect wholeGalaxy = Rect.fromCircle(center: Offset.zero, radius: diameter / 2.0);
+      final Rect wholeGalaxy = Rect.fromCircle(center: Offset.zero, radius: actualDiameter / 2.0);
       final Rect viewport = Rect.fromCenter(center: -offset / constraints.scale, width: constraints.viewportSize.width / constraints.scale, height: constraints.viewportSize.height / constraints.scale);
       final Rect visibleGalaxy = wholeGalaxy.intersect(viewport);
       if (_preparedStarsRect == null ||
@@ -578,7 +573,7 @@ class RenderGalaxy extends RenderWorldWithChildren<GalaxyParentData> {
       context.canvas.drawOval(
         Rect.fromCircle(
           center: offset,
-          radius: diameter * constraints.scale / 2.0,
+          radius: actualDiameter * constraints.scale / 2.0,
         ),
         Paint()
           ..color = galaxyGlowColor
@@ -589,6 +584,7 @@ class RenderGalaxy extends RenderWorldWithChildren<GalaxyParentData> {
 
   void _prepareStars(Rect visibleRect) { // arguments are in meters
     assert(galaxy != null);
+    final double radius = actualDiameter / 2.0;
     final double dx = -radius;
     final double dy = -radius;
     // filter galaxy to visible stars
@@ -619,6 +615,7 @@ class RenderGalaxy extends RenderWorldWithChildren<GalaxyParentData> {
     for (int categoryIndex = 0; categoryIndex < galaxy!.stars.length; categoryIndex += 1) {
       final StarType starType = _starTypes[categoryIndex];
       final double starDiameter = starType.strokeWidth(constraints.zoom);
+      // TODO: clamp star diameter to about 4 pixels unless it really is bigger than that without scaling
       const double pixelTriangleRadius = 1.0;
       if (starType.blur == null && (starDiameter * constraints.scale < pixelTriangleRadius * 2.0)) {
         final double triangleRadius = pixelTriangleRadius / constraints.scale;

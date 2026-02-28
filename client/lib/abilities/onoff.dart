@@ -28,7 +28,7 @@ class OnOffFeature extends AbilityFeature {
   late _OnOffHudState _state;
 
   @override
-  Widget buildRenderer(BuildContext context) {
+  Widget buildRenderer(BuildContext context, double paintDiameter) {
     return ListenableBuilder(
       listenable: _state,
       builder: (BuildContext context, Widget? child) => Align(

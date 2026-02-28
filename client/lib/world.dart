@@ -1,6 +1,8 @@
 import 'package:flutter/widgets.dart';
 
+import 'layout.dart';
 import 'spacetime.dart';
+import 'widgets.dart';
 
 abstract class Node {
   Node({
@@ -26,6 +28,12 @@ abstract class Node {
   // return the nearest WorldParent ancestor
   WorldNode? get worldParent => parent?._worldParent;
   WorldNode? get _worldParent => parent?._worldParent;
+
+  @protected
+  WorldNode cartoonZoomRoot(WorldNode child) => child;
+  
+  @protected
+  Widget buildRenderer(BuildContext context, double paintDiameter);
 }
 
 abstract class WorldNode extends Node with ChangeNotifier {
@@ -47,10 +55,7 @@ abstract class WorldNode extends Node with ChangeNotifier {
   }
 
   // in meters
-  double get diameter;
-
-  // in meters
-  double get maxRenderDiameter => diameter;
+  double get actualDiameter;
 
   // in meters relative to nearest parent WorldNode, used by computePosition
   Offset findLocationForChild(WorldNode child, List<VoidCallback> callbacks);
@@ -81,14 +86,22 @@ abstract class WorldNode extends Node with ChangeNotifier {
     return spaceTime.computeTime(<VoidCallback>[_triggerTransients, ...callbacks]);
   }
 
-  late final Widget _build = ListenableBuilder(
-    listenable: this,
-    builder: buildRenderer,
-  );
-  Widget build(BuildContext context) => _build;
-
   @protected
-  Widget buildRenderer(BuildContext context, Widget? nil);
+  double computePaintDiameter(WorldConstraints constraints) {
+    return actualDiameter * constraints.scale;
+  }
+
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: this,
+    builder: (BuildContext context, Widget? child) => WorldLayoutBuilder(
+      builder: (BuildContext context, WorldConstraints constraints) {
+        final double paintDiameter = computePaintDiameter(constraints);
+        if (paintDiameter < WorldGeometry.minAssetRenderDiameter)
+          return WorldNull(node: this, paintDiameter: paintDiameter);
+        return buildRenderer(context, paintDiameter);
+      },
+    ),
+  );
 
   @override
   String toString() => '<$runtimeType>';

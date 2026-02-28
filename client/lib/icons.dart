@@ -149,7 +149,6 @@ class IconsManager {
   }
 
   static const double knowledgeIconSize = 64.0;
-  static const double buildIconSize = IconsManager.knowledgeIconSize;
 
   // This renders the icon in the form used to represent knowledge.
   static Widget knowledgeIcon(BuildContext context, String icon, String tooltip) {
@@ -315,12 +314,14 @@ class WorldIcon extends LeafRenderObjectWidget {
     required this.icon,
     required this.ghost,
     this.onTap,
+    required this.paintDiameter,
   });
 
   final WorldNode node;
   final String icon;
   final bool ghost;
   final IconTapCallback? onTap;
+  final double paintDiameter;
 
   @override
   RenderWorldIcon createRenderObject(BuildContext context) {
@@ -333,6 +334,7 @@ class WorldIcon extends LeafRenderObjectWidget {
       shaders: ShaderProvider.of(context),
       spaceTime: SystemNode.of(node).spaceTime,
       onTap: onTap == null ? null : () => onTap!(context),
+      paintDiameter: paintDiameter,
     );
   }
 
@@ -346,7 +348,8 @@ class WorldIcon extends LeafRenderObjectWidget {
       ..icons = IconsManagerProvider.of(context)
       ..shaders = ShaderProvider.of(context)
       ..spaceTime = SystemNode.of(node).spaceTime
-      ..onTap = onTap == null ? null : () => onTap!(context);
+      ..onTap = (onTap == null ? null : () => onTap!(context))
+      ..paintDiameter = paintDiameter;
     }
 }
 
@@ -360,6 +363,7 @@ class RenderWorldIcon extends RenderWorldNode {
     required ShaderLibrary shaders,
     required SpaceTime spaceTime,
     this.onTap,
+    required super.paintDiameter,
   }) : _icon = icon,
        _ghost = ghost,
        _devicePixelRatio = devicePixelRatio,
@@ -427,14 +431,14 @@ class RenderWorldIcon extends RenderWorldNode {
   FragmentShader? _shader;
 
   @override
-  void computeLayout(WorldConstraints constraints, double actualDiameter) {
+  void computeLayout(WorldConstraints constraints) {
     final ImageStream? oldImageStream = _imageStream;
     _shader ??= shaders.ghost;
-    _shader!.setFloat(uD, actualDiameter);
+    _shader!.setFloat(uD, paintDiameter);
     _shader!.setFloat(uGhost, ghost ? 1.0 : 0.0);
     _imageStream = IconImageProvider(icon, icons).resolve(ImageConfiguration(
       devicePixelRatio: devicePixelRatio,
-      size: Size.square(actualDiameter),
+      size: Size.square(paintDiameter),
     ));
     if (_imageStream!.key != oldImageStream?.key) {
       oldImageStream?.removeListener(_imageChangeListener);
@@ -482,20 +486,20 @@ class RenderWorldIcon extends RenderWorldNode {
   Paint? _paint;
 
   @override
-  void computePaint(PaintingContext context, Offset offset, double actualDiameter) {
+  void computePaint(PaintingContext context, Offset offset) {
     if (_imageInfo == null) {
-      context.canvas.drawCircle(offset, actualDiameter / 2.0, _errorPaint(actualDiameter));
-      final Offset r = Offset(actualDiameter / 2.0, actualDiameter / 2.0);
-      context.canvas.drawLine(offset - r, offset + r, _errorPaint(actualDiameter));
+      context.canvas.drawCircle(offset, paintDiameter / 2.0, _errorPaint(paintDiameter));
+      final Offset r = Offset(paintDiameter / 2.0, paintDiameter / 2.0);
+      context.canvas.drawLine(offset - r, offset + r, _errorPaint(paintDiameter));
       assert(() {
-        if (actualDiameter > 100.0) {
+        if (paintDiameter > 100.0) {
           final TextPainter painter = TextPainter(
             text: TextSpan(text: _errorMessage, style: const TextStyle(color: Color(0xFF000000))),
             textAlign: TextAlign.left,
             textDirection: TextDirection.ltr,
           );
-          painter.layout(maxWidth: actualDiameter);
-          painter.paint(context.canvas, offset - Offset(actualDiameter / 2.0, actualDiameter / 2.0));
+          painter.layout(maxWidth: paintDiameter);
+          painter.paint(context.canvas, offset - Offset(paintDiameter / 2.0, paintDiameter / 2.0));
           painter.dispose();
         }
         return true;
@@ -505,10 +509,10 @@ class RenderWorldIcon extends RenderWorldNode {
       _shader!.setFloat(uT, time);
       _shader!.setFloat(uX, offset.dx);
       _shader!.setFloat(uY, offset.dy);
-      _shader!.setFloat(uD, actualDiameter);
+      _shader!.setFloat(uD, paintDiameter);
       _paint ??= Paint()
         ..shader = _shader;
-      final Rect rect = Rect.fromCircle(center: offset, radius: actualDiameter / 2.0);
+      final Rect rect = Rect.fromCircle(center: offset, radius: paintDiameter / 2.0);
       context.canvas.drawRect(rect, _paint!);
       // paintImage(
       //   canvas: context.canvas,
@@ -522,7 +526,7 @@ class RenderWorldIcon extends RenderWorldNode {
       // );
     }
     if (debugPaintSizeEnabled) {
-      context.canvas.drawCircle(offset, actualDiameter / 2.0, Paint()
+      context.canvas.drawCircle(offset, paintDiameter / 2.0, Paint()
         ..color= const Color(0x1100CCCC)
       );
     }
@@ -577,10 +581,12 @@ class WorldFields extends MultiChildRenderObjectWidget {
     required this.node,
     required this.icon,
     required super.children,
+    required this.paintDiameter,
   });
 
   final WorldNode node;
   final String icon;
+  final double paintDiameter;
 
   @override
   RenderWorldFieldPlacement createRenderObject(BuildContext context) {
@@ -588,6 +594,7 @@ class WorldFields extends MultiChildRenderObjectWidget {
       node: node,
       icon: icon,
       icons: IconsManagerProvider.of(context),
+      paintDiameter: paintDiameter,
     );
   }
 
@@ -596,7 +603,8 @@ class WorldFields extends MultiChildRenderObjectWidget {
     renderObject
       ..node = node
       ..icon = icon
-      ..icons = IconsManagerProvider.of(context);
+      ..icons = IconsManagerProvider.of(context)
+      ..paintDiameter = paintDiameter;
   }
 }
 
@@ -621,6 +629,7 @@ class RenderWorldFieldPlacement extends RenderWorldNode
     required super.node,
     required String icon,
     required IconsManager icons,
+    required super.paintDiameter,
   }) : _icon = icon,
        _icons = icons;
 
@@ -659,7 +668,7 @@ class RenderWorldFieldPlacement extends RenderWorldNode
   }
 
   @override
-  void computeLayout(WorldConstraints constraints, double actualDiameter) {
+  void computeLayout(WorldConstraints constraints) {
     _fields = null;
     RenderBox? child = firstChild;
     if (!icons.isKnownBad(icon)) {
@@ -683,14 +692,14 @@ class RenderWorldFieldPlacement extends RenderWorldNode
         while (child != null && index < _fields!.length) {
           final WorldFieldPlacementParentData childParentData = child.parentData! as WorldFieldPlacementParentData;
           final Size innerSize = _fields![index].size;
-          final Size outerSize = _fields![index].region.size * actualDiameter;
+          final Size outerSize = _fields![index].region.size * paintDiameter;
           final FittedSizes fittedSizes = applyBoxFit(BoxFit.contain, innerSize, outerSize);
           assert(fittedSizes.source == innerSize);
           final double halfWidthDelta = (fittedSizes.destination.width - outerSize.width) / 2.0;
           final double halfHeightDelta = (fittedSizes.destination.height - outerSize.height) / 2.0;
           childParentData._region = Rect.fromLTWH(
-            _fields![index].region.left * actualDiameter + halfWidthDelta,
-            _fields![index].region.top * actualDiameter + halfHeightDelta,
+            _fields![index].region.left * paintDiameter + halfWidthDelta,
+            _fields![index].region.top * paintDiameter + halfHeightDelta,
             fittedSizes.destination.width,
             fittedSizes.destination.height,
           );
@@ -716,14 +725,14 @@ class RenderWorldFieldPlacement extends RenderWorldNode
   }
 
   @override
-  void computePaint(PaintingContext context, Offset offset, double actualDiameter) {
+  void computePaint(PaintingContext context, Offset offset) {
     RenderBox? child = firstChild;
-    final Offset topLeftOffset = offset.translate(-actualDiameter / 2.0, -actualDiameter / 2.0);
+    final Offset topLeftOffset = offset.translate(-paintDiameter / 2.0, -paintDiameter / 2.0);
     if (debugPaintSizeEnabled) {
       if (_fields != null) {
         int index = 1;
         for (IconField field in _fields!) {
-          final Rect rect = (topLeftOffset + (field.region.topLeft * actualDiameter)) & field.region.size * actualDiameter;
+          final Rect rect = (topLeftOffset + (field.region.topLeft * paintDiameter)) & field.region.size * paintDiameter;
           context.canvas.drawRect(rect, Paint()..color=const Color(0x30FFFF00));
           if (rect.width > 100) {
             final TextPainter painter = TextPainter(
@@ -738,7 +747,7 @@ class RenderWorldFieldPlacement extends RenderWorldNode
           index += 1;
         }
       }
-      context.canvas.drawRect(Rect.fromCircle(center: offset, radius: actualDiameter / 2.0), Paint()..color=const Color(0x7FFF00FF)..strokeWidth=2..style=PaintingStyle.stroke);
+      context.canvas.drawRect(Rect.fromCircle(center: offset, radius: paintDiameter / 2.0), Paint()..color=const Color(0x7FFF00FF)..strokeWidth=2..style=PaintingStyle.stroke);
     }
     while (child != null) {
       final WorldFieldPlacementParentData childParentData = child.parentData! as WorldFieldPlacementParentData;

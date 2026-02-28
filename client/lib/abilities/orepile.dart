@@ -56,7 +56,7 @@ class OrePileFeature extends AbilityFeature {
   }
 
   @override
-  Widget buildRenderer(BuildContext context) {
+  Widget buildRenderer(BuildContext context, double paintDiameter) {
     if (pileMassFlowRate == 0.0)
       return _buildForMass(context, pileMass);
     return ValueListenableBuilder<double>(

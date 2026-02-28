@@ -48,9 +48,10 @@ class SurfaceFeature extends ContainerFeature {
   RendererType get rendererType => RendererType.overlay;
 
   @override
-  Widget buildRenderer(BuildContext context) {
+  Widget buildRenderer(BuildContext context, double paintDiameter) {
     return SurfaceWidget(
       node: parent,
+      paintDiameter: paintDiameter,
       children: children.keys.map((AssetNode assetChild) => assetChild.build(context)).toList(),
     );
   }
@@ -85,22 +86,26 @@ class SurfaceWidget extends MultiChildRenderObjectWidget {
   const SurfaceWidget({
     super.key,
     required this.node,
+    required this.paintDiameter,
     super.children,
   });
 
   final WorldNode node;
+  final double paintDiameter;
 
   @override
   RenderSurface createRenderObject(BuildContext context) {
     return RenderSurface(
       node: node,
+      paintDiameter: paintDiameter,
     );
   }
 
   @override
   void updateRenderObject(BuildContext context, RenderSurface renderObject) {
     renderObject
-      ..node = node;
+      ..node = node
+      ..paintDiameter = paintDiameter;
   }
 }
 
@@ -111,6 +116,7 @@ class SurfaceParentData extends ParentData with ContainerParentDataMixin<RenderW
 class RenderSurface extends RenderWorldWithChildren<SurfaceParentData> {
   RenderSurface({
     required super.node,
+    required super.paintDiameter,
   });
 
   @override
@@ -121,7 +127,7 @@ class RenderSurface extends RenderWorldWithChildren<SurfaceParentData> {
   }
 
   @override
-  void computeLayout(WorldConstraints constraints, double actualDiameter) {
+  void computeLayout(WorldConstraints constraints) {
     RenderWorld? child = firstChild;
     while (child != null) {
       final SurfaceParentData childParentData = child.parentData! as SurfaceParentData;
@@ -131,7 +137,7 @@ class RenderSurface extends RenderWorldWithChildren<SurfaceParentData> {
   }
 
   @override
-  void computePaint(PaintingContext context, Offset offset, double actualDiameter) {
+  void computePaint(PaintingContext context, Offset offset) {
     RenderWorld? child = firstChild;
     while (child != null) {
       final SurfaceParentData childParentData = child.parentData! as SurfaceParentData;

@@ -99,7 +99,7 @@ class GridFeature extends ContainerFeature {
   DockHandle? _dock;
 
   @override
-  Widget buildRenderer(BuildContext context) {
+  Widget buildRenderer(BuildContext context, double paintDiameter) {
     final SystemNode system = SystemNode.of(this);
     final int assetID = parent.id;
     return StateManagerBuilder<_GridState>(
@@ -117,6 +117,7 @@ class GridFeature extends ContainerFeature {
         node: parent,
         cellSize: cellSize,
         dimension: dimension,
+        paintDiameter: paintDiameter,
         children: children.keys.map((AssetNode node) => node.build(context)).toList(),
         onBuild: _state!.selection == null ? null : (int x, int y) {
           system.play(<Object>[assetID, 'build', x, y, _state!.selection!.id]);
@@ -162,9 +163,10 @@ class GridFeature extends ContainerFeature {
         listenable: _state!,
         builder: (BuildContext context, Widget? child) {
           return BuildableDish(
-             assetClasses: buildables.map((Buildable buildable) => buildable.assetClass).toList(),
-             onSelect: (AssetClass? assetClass) => _state!.selection = assetClass,
-             selection: _state!.selection,
+            label: parent.nameOrClassName,
+            assetClasses: buildables.map((Buildable buildable) => buildable.assetClass).toList(),
+            onSelect: (AssetClass? assetClass) => _state!.selection = assetClass,
+            selection: _state!.selection,
           );
         },
       ),
@@ -229,6 +231,7 @@ class GridWidget extends MultiChildRenderObjectWidget {
     required this.dimension,
     required this.selection,
     required this.onBuild,
+    required this.paintDiameter,
     super.children,
   });
 
@@ -238,6 +241,7 @@ class GridWidget extends MultiChildRenderObjectWidget {
   final int dimension;
   final BuildCallback? onBuild;
   final AssetClass? selection;
+  final double paintDiameter;
 
   @override
   RenderGrid createRenderObject(BuildContext context) {
@@ -248,6 +252,7 @@ class GridWidget extends MultiChildRenderObjectWidget {
       cellSize: cellSize,
       dimension: dimension,
       onBuild: onBuild,
+      paintDiameter: paintDiameter,
     );
   }
 
@@ -259,7 +264,8 @@ class GridWidget extends MultiChildRenderObjectWidget {
       ..node = node
       ..cellSize = cellSize
       ..dimension = dimension
-      ..onBuild = onBuild;
+      ..onBuild = onBuild
+      ..paintDiameter = paintDiameter;
   }
 }
 
@@ -275,6 +281,7 @@ class RenderGrid extends RenderWorldWithChildren<GridParentData> {
     required double cellSize,
     required int dimension,
     required this.onBuild,
+    required super.paintDiameter,
   }) : _spaceTime = spaceTime,
        _shaders = shaders,
        _cellSize = cellSize,
@@ -321,8 +328,6 @@ class RenderGrid extends RenderWorldWithChildren<GridParentData> {
 
   BuildCallback? onBuild;
 
-  double get diameter => dimension * cellSize;
-
   @override
   void setupParentData(RenderObject child) {
     if (child.parentData is! GridParentData) {
@@ -331,7 +336,7 @@ class RenderGrid extends RenderWorldWithChildren<GridParentData> {
   }
 
   @override
-  void computeLayout(WorldConstraints constraints, double actualDiameter) {
+  void computeLayout(WorldConstraints constraints) {
     RenderWorld? child = firstChild;
     while (child != null) {
       final GridParentData childParentData = child.parentData! as GridParentData;
@@ -344,16 +349,16 @@ class RenderGrid extends RenderWorldWithChildren<GridParentData> {
   final Paint _gridPaint = Paint();
 
   @override
-  void computePaint(PaintingContext context, Offset offset, double actualDiameter) {
+  void computePaint(PaintingContext context, Offset offset) {
     _gridShader ??= shaders.grid(height: dimension, width: dimension);
     final double time = spaceTime.computeTime(<VoidCallback>[markNeedsPaint]);
     _gridShader!.setFloat(uT, time);
     _gridShader!.setFloat(uX, offset.dx);
     _gridShader!.setFloat(uY, offset.dy);
-    _gridShader!.setFloat(uGridWidth, actualDiameter);
-    _gridShader!.setFloat(uGridHeight, actualDiameter);
+    _gridShader!.setFloat(uGridWidth, paintDiameter);
+    _gridShader!.setFloat(uGridHeight, paintDiameter);
     _gridPaint.shader = _gridShader;
-    final Rect rect = Rect.fromCircle(center: offset, radius: actualDiameter / 2.0);
+    final Rect rect = Rect.fromCircle(center: offset, radius: paintDiameter / 2.0);
     context.canvas.drawRect(rect, _gridPaint);
     RenderWorld? child = firstChild;
     while (child != null) {

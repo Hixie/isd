@@ -43,7 +43,7 @@ class ResearchFeature extends AbilityFeature {
   RendererType get rendererType => RendererType.ui;
 
   @override
-  Widget buildRenderer(BuildContext context) {
+  Widget buildRenderer(BuildContext context, double paintDiameter) {
     final DefaultTextStyle parentTextStyles = DefaultTextStyle.of(context);
     final SystemNode system = SystemNode.of(parent);
     return DecoratedBox(

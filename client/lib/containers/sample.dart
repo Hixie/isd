@@ -56,9 +56,10 @@ class SampleAssetFeature extends ContainerFeature {
   RendererType get rendererType => RendererType.overlay;
 
   @override
-  Widget buildRenderer(BuildContext context) {
+  Widget buildRenderer(BuildContext context, double paintDiameter) {
     return ProxyWidget(
       node: parent,
+      paintDiameter: paintDiameter,
       child: child?.build(context),
     );
   }

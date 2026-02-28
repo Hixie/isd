@@ -55,10 +55,10 @@ class SpaceFeature extends ContainerFeature {
   RendererType get rendererType => RendererType.circle;
 
   @override
-  Widget buildRenderer(BuildContext context) {
+  Widget buildRenderer(BuildContext context, double paintDiameter) {
     return SpaceWidget(
       node: parent,
-      diameter: parent.diameter,
+      paintDiameter: paintDiameter,
       children: children.keys.map((AssetNode assetChild) => assetChild.build(context)).toList(),
     );
   }
@@ -93,18 +93,18 @@ class SpaceWidget extends MultiChildRenderObjectWidget {
   const SpaceWidget({
     super.key,
     required this.node,
-    required this.diameter,
+    required this.paintDiameter,
     super.children,
   });
 
   final WorldNode node;
-  final double diameter;
+  final double paintDiameter;
 
   @override
   RenderSpace createRenderObject(BuildContext context) {
     return RenderSpace(
       node: node,
-      diameter: diameter,
+      paintDiameter: paintDiameter,
     );
   }
 
@@ -112,7 +112,7 @@ class SpaceWidget extends MultiChildRenderObjectWidget {
   void updateRenderObject(BuildContext context, RenderSpace renderObject) {
     renderObject
       ..node = node
-      ..diameter = diameter;
+      ..paintDiameter = paintDiameter;
   }
 }
 
@@ -123,19 +123,8 @@ class SpaceParentData extends ParentData with ContainerParentDataMixin<RenderWor
 class RenderSpace extends RenderWorldWithChildren<SpaceParentData> {
   RenderSpace({
     required super.node,
-    required double diameter,
-  }) : _diameter = diameter;
-
-  double get diameter => _diameter;
-  double _diameter;
-  set diameter (double value) {
-    if (value != _diameter) {
-      _diameter = value;
-      markNeedsPaint();
-    }
-  }
-
-  double get radius => diameter / 2.0;
+    required super.paintDiameter,
+  });
 
   @override
   void setupParentData(RenderObject child) {
@@ -145,7 +134,7 @@ class RenderSpace extends RenderWorldWithChildren<SpaceParentData> {
   }
 
   @override
-  void computeLayout(WorldConstraints constraints, double actualDiameter) {
+  void computeLayout(WorldConstraints constraints) {
     RenderWorld? child = firstChild;
     while (child != null) {
       final SpaceParentData childParentData = child.parentData! as SpaceParentData;
@@ -155,7 +144,7 @@ class RenderSpace extends RenderWorldWithChildren<SpaceParentData> {
   }
 
   @override
-  void computePaint(PaintingContext context, Offset offset, double actualDiameter) {
+  void computePaint(PaintingContext context, Offset offset) {
     RenderWorld? child = firstChild;
     while (child != null) {
       final SpaceParentData childParentData = child.parentData! as SpaceParentData;

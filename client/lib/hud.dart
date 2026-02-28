@@ -4,7 +4,6 @@ import 'dart:math' show max, min, pi;
 import 'package:flutter/material.dart' hide Gradient;
 
 import 'layout.dart';
-import 'widgets.dart';
 
 class HudLayout extends StatefulWidget {
   const HudLayout({

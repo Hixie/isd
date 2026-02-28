@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 
@@ -60,8 +62,6 @@ abstract class Feature extends Node {
 
   String? get status => null;
 
-  Widget buildRenderer(BuildContext context); // this one is abstract; containers always need to build something
-
   Widget? buildDialog(BuildContext context) {
     debugPrint('warning: $runtimeType has no buildDialog');
     return null;
@@ -81,7 +81,7 @@ abstract class AbilityFeature extends Feature {
   AbilityFeature();
 
   @override
-  Widget buildRenderer(BuildContext context) {
+  Widget buildRenderer(BuildContext context, double paintDiameter) {
     assert(rendererType == RendererType.none, '$runtimeType does not override buildRenderer');
     throw StateError('buildRenderer should not be called if rendererType is RendererType.none');
   }
@@ -219,17 +219,9 @@ class AssetNode extends WorldNode {
   }
 
   @override
-  double get diameter {
+  double get actualDiameter {
     assert(_size != null, 'unknown size for asset $id');
     return _size!;
-  }
-
-  @override
-  double get maxRenderDiameter {
-    if (parent is OrbitFeature) { // TODO: this is a hack
-      return worldParent!.maxRenderDiameter;
-    }
-    return super.maxRenderDiameter; // returns this.diameter
   }
 
   @override
@@ -286,7 +278,7 @@ class AssetNode extends WorldNode {
   }
 
   @override
-  Widget buildRenderer(BuildContext context, [ Widget? nil ]) {
+  Widget buildRenderer(BuildContext context, double paintDiameter) {
     List<Widget>? backgrounds;
     List<Widget>? overlays;
     List<Widget>? boxes;
@@ -297,21 +289,21 @@ class AssetNode extends WorldNode {
           ;
         case RendererType.ui:
           boxes ??= <Widget>[];
-          boxes.add(feature.buildRenderer(context));
+          boxes.add(feature.buildRenderer(context, paintDiameter));
         case RendererType.overlay:
           overlays ??= <Widget>[];
-          overlays.add(feature.buildRenderer(context));
+          overlays.add(feature.buildRenderer(context, paintDiameter));
         case RendererType.circle:
           backgrounds ??= <Widget>[];
-          backgrounds.add(feature.buildRenderer(context));
+          backgrounds.add(feature.buildRenderer(context, paintDiameter));
           shape ??= BoxShape.circle; // does not override an earlier RendererType.square
         case RendererType.square:
           backgrounds ??= <Widget>[];
-          backgrounds.add(feature.buildRenderer(context));
+          backgrounds.add(feature.buildRenderer(context, paintDiameter));
           shape = BoxShape.rectangle; // does override an earlier RendererType.circle
         case RendererType.space:
           backgrounds ??= <Widget>[];
-          backgrounds.add(feature.buildRenderer(context));
+          backgrounds.add(feature.buildRenderer(context, paintDiameter));
       }
     }
     if (isVirtual) {
@@ -319,18 +311,14 @@ class AssetNode extends WorldNode {
       // virtual assets only have RendererType.ui renderers
       assert(overlays == null);
       assert(backgrounds == null);
-      final Widget result;
       if (boxes != null) {
         if (boxes.length > 1) {
-          result = ListBody(children: boxes);
-        } else {
-          assert(boxes.length == 1);
-          result = boxes.single;
+          return ListBody(children: boxes);
         }
-      } else {
-        result = const Placeholder();
+        assert(boxes.length == 1);
+        return boxes.single;
       }
-      return result;
+      return const Placeholder();
     }
     assert((parent is! Feature) || (!(parent! as Feature).debugExpectVirtualChildren));
     // non-virtual assets assume a RenderWorld world
@@ -341,12 +329,14 @@ class AssetNode extends WorldNode {
         node: this,
         icon: assetClass.icon,
         ghost: isGhost,
+        paintDiameter: paintDiameter,
       ));
     }
     if (boxes != null) {
       backgrounds.add(WorldFields(
         node: this,
         icon: assetClass.icon,
+        paintDiameter: paintDiameter,
         children: boxes,
      ));
     }
@@ -355,6 +345,7 @@ class AssetNode extends WorldNode {
         node: this,
         shape: shape,
         onTap: showInspector,
+        paintDiameter: paintDiameter,
       ));
     }
     if (overlays != null) {
@@ -363,10 +354,45 @@ class AssetNode extends WorldNode {
     if (backgrounds.length > 1) {
       return WorldStack(
         node: this,
+        paintDiameter: paintDiameter,
         children: backgrounds,
       );
     }
     return backgrounds.single;
+  }
+
+  @override
+  WorldNode cartoonZoomRoot(WorldNode child) => parent!.cartoonZoomRoot(this);
+  
+  @override
+  double computePaintDiameter(WorldConstraints constraints) {
+    final WorldNode root = cartoonZoomRoot(this);
+    if (root == this) {
+      // we know the math simplifies to this if we're our own root
+      return actualDiameter * constraints.scale;
+    }
+    return _computePaintDiameter(actualDiameter, root.actualDiameter, constraints.scale);
+  }
+  
+  static const double _minDiameter = 20.0;
+  static const double _maxDiameterRatio = 0.1;
+  static double get _minCartoonDiameter => log(10e6); // 10,000 km, a bit smaller than earth
+  static double get _maxCartoonDiameter => log( 1e9); // 2 million km, a bit bigger than our sun
+
+  static double _computePaintDiameter(double diameter, double parentDiameter, double scale) {
+    final double cartoonScale = ((log(diameter) - _minCartoonDiameter) / (_maxCartoonDiameter - _minCartoonDiameter)).clamp(0.0, 1.0) * 2.5 + 1.0;
+    assert(cartoonScale >= 1.0);
+    assert(cartoonScale <= 3.5);
+    return min(
+      max(
+        diameter * scale, // try to be your actual size, but
+        _minDiameter * cartoonScale, // ...don't be smaller than something visible
+      ),
+      scale * max( // ...and...
+        parentDiameter * _maxDiameterRatio, // ...definitely don't be bigger than one tenth your parent
+        diameter, // ...unless you really are bigger than one tenth your parent
+      ),
+    );
   }
 
   Widget asIcon(BuildContext context, { required double size, IconsManager? icons, String? tooltip }) {
@@ -547,7 +573,7 @@ class _AssetInspectorState extends State<AssetInspector> {
           final OrbitFeature orbit = parentAsset.parent! as OrbitFeature;
           final AssetNode orbittingParent = orbit.originChild;
           dependencies.add(orbittingParent);
-          final double distance = orbit.findLocationForChild(parentAsset, const <VoidCallback>[]).distance - orbittingParent.diameter / 2.0;
+          final double distance = orbit.findLocationForChild(parentAsset, const <VoidCallback>[]).distance - orbittingParent.actualDiameter / 2.0;
           details.add(
             Padding(
               padding: dialogPadding,

@@ -48,9 +48,10 @@ class AssetPileFeature extends ContainerFeature {
   RendererType get rendererType => RendererType.square;
 
   @override
-  Widget buildRenderer(BuildContext context) {
+  Widget buildRenderer(BuildContext context, double paintDiameter) {
     return AssetPileWidget(
       node: parent,
+      paintDiameter: paintDiameter,
       children: children.map((AssetNode child) => child.build(context)).toList(),
     );
   }
@@ -85,22 +86,26 @@ class AssetPileWidget extends MultiChildRenderObjectWidget {
   const AssetPileWidget({
     super.key,
     required this.node,
+    required this.paintDiameter,
     super.children,
   });
 
   final WorldNode node;
+  final double paintDiameter;
 
   @override
   RenderAssetPile createRenderObject(BuildContext context) {
     return RenderAssetPile(
       node: node,
+      paintDiameter: paintDiameter,
     );
   }
 
   @override
   void updateRenderObject(BuildContext context, RenderAssetPile renderObject) {
     renderObject
-      ..node = node;
+      ..node = node
+      ..paintDiameter = paintDiameter;
   }
 }
 
@@ -111,6 +116,7 @@ class AssetPileParentData extends ParentData with ContainerParentDataMixin<Rende
 class RenderAssetPile extends RenderWorldWithChildren<AssetPileParentData> {
   RenderAssetPile({
     required super.node,
+    required super.paintDiameter,
   });
 
   @override
@@ -121,7 +127,7 @@ class RenderAssetPile extends RenderWorldWithChildren<AssetPileParentData> {
   }
 
   @override
-  void computeLayout(WorldConstraints constraints, double actualDiameter) {
+  void computeLayout(WorldConstraints constraints) {
     RenderWorld? child = firstChild;
     while (child != null) {
       final AssetPileParentData childParentData = child.parentData! as AssetPileParentData;
@@ -131,7 +137,7 @@ class RenderAssetPile extends RenderWorldWithChildren<AssetPileParentData> {
   }
 
   @override
-  void computePaint(PaintingContext context, Offset offset, double actualDiameter) {
+  void computePaint(PaintingContext context, Offset offset) {
     RenderWorld? child = firstChild;
     while (child != null) {
       final AssetPileParentData childParentData = child.parentData! as AssetPileParentData;
