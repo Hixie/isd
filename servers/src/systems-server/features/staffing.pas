@@ -125,7 +125,7 @@ var
    Message: TRegisterEmployerMessage;
    RateLimit: Double; // ignored
 begin
-   CheckDisabled(Parent, RateLimit, False, Self);
+   CheckDisabled(Parent, Self, RateLimit);
    if (RateLimit = 0.0) then
    begin
       if (FPriority <> 0) then
@@ -165,7 +165,7 @@ function TStaffingFeatureNode.HandleBusMessage(Message: TBusMessage): THandleBus
 begin
    if (Message is TCheckDisabledBusMessage) then
    begin
-      if ((Message as TCheckDisabledBusMessage).Identifier = Pointer(Self)) then
+      if ((Message as TCheckDisabledBusMessage).SourceIdentifier = Pointer(Self)) then
       begin
          Result := hrShortcut;
          exit;

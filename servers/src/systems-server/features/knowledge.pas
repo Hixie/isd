@@ -398,6 +398,7 @@ var
    Research: TResearch;
    Dynasty: TDynasty;
    Unlock: TUnlockedKnowledge;
+   Material: TMaterial;
 begin
    // TODO: support a message for getting active situations
    if (Message is TGetKnownMaterialsMessage) then
@@ -420,6 +421,13 @@ begin
                begin
                   if (not KnownMaterialsForDynasty.Has(Unlock.Material)) then
                      KnownMaterialsForDynasty.Add(Unlock.Material);
+               end
+               else
+               if (Unlock.Kind = ukAssetClass) then
+               begin
+                  for Material in Unlock.AssetClass.GetRelatedMaterials(System) do
+                     if (not KnownMaterialsForDynasty.Has(Material)) then
+                        KnownMaterialsForDynasty.Add(Material);
                end;
             end;
          end;

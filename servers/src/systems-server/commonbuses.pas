@@ -25,6 +25,7 @@ type
       drCannotGuaranteeInput = 5, // A factory is disabled because the region could not guarantee availibility of input.
       drCannotStoreOutput = 6, // A factory is disabled because the region could not guarantee availability of space for output.
       drInsufficientEnergy = 7, // The asset is operating below maximum strength because of a lack of power.
+      drConfiguration = 8, // The factory is configured to be slow.
       drActive // unused; reserved value for fdActive
    );
    TDisabledReasons = set of TDisabledReason;
@@ -38,16 +39,17 @@ type
    strict private
       FReasons: TDisabledReasons;
       FRateLimit: Double;
-      FIdentifier: Pointer;
+      FSourceIdentifier: Pointer;
    public
-      constructor Create(AIdentifier: Pointer);
+      constructor Create(ASourceIdentifier: Pointer);
       procedure AddReason(Reason: TDisabledReason; ARateLimit: Double = 0.0);
+      procedure AddReasons(Reasons: TDisabledReasons; ARateLimit: Double = 0.0);
       property Reasons: TDisabledReasons read FReasons;
       property RateLimit: Double read FRateLimit;
-      property Identifier: Pointer read FIdentifier;
+      property SourceIdentifier: Pointer read FSourceIdentifier;
    end; // should be injected using Parent.HandleBusMessage
 
-function CheckDisabled(Asset: TAssetNode; out RateLimit: Double; CanOperateWhileUnowned: Boolean = False; Identifier: Pointer = nil): TDisabledReasons;
+function CheckDisabled(Asset: TAssetNode; SourceIdentifier: Pointer; out RateLimit: Double; CanOperateWhileUnowned: Boolean = False): TDisabledReasons;
 
 type
    TFindDestructorsMessage = class(TPhysicalConnectionBusMessage)
@@ -130,11 +132,11 @@ implementation
 uses
    sysutils;
 
-constructor TCheckDisabledBusMessage.Create(AIdentifier: Pointer);
+constructor TCheckDisabledBusMessage.Create(ASourceIdentifier: Pointer);
 begin
    inherited Create();
    FRateLimit := 1.0;
-   FIdentifier := AIdentifier;
+   FSourceIdentifier := ASourceIdentifier;
 end;
 
 procedure TCheckDisabledBusMessage.AddReason(Reason: TDisabledReason; ARateLimit: Double = 0.0);
@@ -148,14 +150,26 @@ begin
    end;
 end;
 
-function CheckDisabled(Asset: TAssetNode; out RateLimit: Double; CanOperateWhileUnowned: Boolean = False; Identifier: Pointer = nil): TDisabledReasons;
+procedure TCheckDisabledBusMessage.AddReasons(Reasons: TDisabledReasons; ARateLimit: Double = 0.0);
+begin
+   Assert(Reasons <> []);
+   FReasons := FReasons + Reasons;
+   Assert(ARateLimit >= 0.0);
+   Assert(ARateLimit < 1.0);
+   if (ARateLimit < FRateLimit) then
+   begin
+      FRateLimit := ARateLimit;
+   end;
+end;
+
+function CheckDisabled(Asset: TAssetNode; SourceIdentifier: Pointer; out RateLimit: Double; CanOperateWhileUnowned: Boolean = False): TDisabledReasons;
 var
    OnOffMessage: TCheckDisabledBusMessage;
 begin
    Assert(Assigned(Asset));
    if (Assigned(Asset.Owner) or CanOperateWhileUnowned) then
    begin
-      OnOffMessage := TCheckDisabledBusMessage.Create(Identifier);
+      OnOffMessage := TCheckDisabledBusMessage.Create(SourceIdentifier);
       try
          Asset.HandleBusMessage(OnOffMessage);
          Result := OnOffMessage.Reasons;

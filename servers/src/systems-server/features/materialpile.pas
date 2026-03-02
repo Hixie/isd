@@ -293,16 +293,19 @@ end;
 
 procedure TMaterialPileFeatureNode.ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynasty.TArray);
 begin
+   Writeln(DebugName, ' :: TMaterialPileFeatureNode.ResetDynastyNotes :: dynasty count: ', Length(NewDynasties));
    FMaterialKnowledge.Init(Length(NewDynasties)); // $R-
 end;
 
 procedure TMaterialPileFeatureNode.ResetVisibility();
 begin
+   Writeln(DebugName, ' :: TMaterialPileFeatureNode.ResetVisibility');
    FMaterialKnowledge.Reset();
 end;
 
 procedure TMaterialPileFeatureNode.HandleKnowledge(const DynastyIndex: Cardinal; const Sensors: ISensorsProvider);
 begin
+   Writeln(DebugName, ' :: TMaterialPileFeatureNode.HandleKnowledge :: ', DynastyIndex, ' ', Sensors.Knows(FFeatureClass.FMaterial), ' for ', FFeatureClass.FMaterial.Name);
    FMaterialKnowledge.SetEntry(DynastyIndex, Sensors.Knows(FFeatureClass.FMaterial));
 end;
 

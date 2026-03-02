@@ -51,6 +51,7 @@ type
    protected
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
       procedure HandleChanges(); override;
+      function HandleBusMessage(Message: TBusMessage): THandleBusMessageResult; override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
       constructor Create(ASystem: TSystem; AFeatureClass: TFactoryFeatureClass);
@@ -282,7 +283,7 @@ var
    PoweredLimit: TIterationsRate;
 begin
    Writeln(DebugName, ' :: HandleChanges');
-   DisabledReasons := CheckDisabled(Parent, RateLimit);
+   DisabledReasons := CheckDisabled(Parent, Self, RateLimit);
    PoweredLimit := FFeatureClass.FMaxRate * RateLimit;
    if (PoweredLimit > FConfiguredMaxRate) then
       PoweredLimit := FConfiguredMaxRate;
@@ -341,6 +342,46 @@ begin
    else
       Writeln('  => Enabled, but already connected.');
    inherited;
+end;
+
+function TFactoryFeatureNode.HandleBusMessage(Message: TBusMessage): THandleBusMessageResult;
+var
+   DisabledMessage: TCheckDisabledBusMessage;
+   NextReason: TDisabledReasons;
+begin
+   if (Message is TCheckDisabledBusMessage) then
+   begin
+      DisabledMessage := Message as TCheckDisabledBusMessage;
+      if (DisabledMessage.SourceIdentifier = Pointer(Self)) then
+      begin
+         Result := hrShortcut;
+         exit;
+      end;
+      if (FRegion.IsFlagSet(bsNoRegion)) then
+      begin
+         Assert(not FRegion.Assigned);
+         DisabledMessage.AddReason(drNoBus);
+      end
+      else
+      if (FCurrentRate < FFeatureClass.FMaxRate) then
+      begin
+         NextReason := [];
+         if (FRegion.IsFlagSet(bsNoRegion)) then
+         begin
+            Assert(not FRegion.Assigned);
+            Assert(FCurrentRate.IsExactZero);
+            Include(NextReason, drNoBus);
+         end;
+         if (FRegion.IsFlagSet(bsInputStalled)) then
+            Include(NextReason, drCannotGuaranteeInput);
+         if (FRegion.IsFlagSet(bsOutputStalled)) then
+            Include(NextReason, drCannotStoreOutput);
+         if (FConfiguredMaxRate < FFeatureClass.FMaxRate) then
+            Include(NextReason, drConfiguration);
+         DisabledMessage.AddReasons(NextReason, FCurrentRate / FFeatureClass.FMaxRate);
+      end;
+   end;
+   Result := inherited HandleBusMessage(Message);
 end;
 
 procedure TFactoryFeatureNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);

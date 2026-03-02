@@ -164,7 +164,7 @@ var
    Message: TRegisterRefineryBusMessage;
    RateLimit: Double;
 begin
-   DisabledReasons := CheckDisabled(Parent, RateLimit);
+   DisabledReasons := CheckDisabled(Parent, Self, RateLimit);
    if ((RateLimit = 0.0) and (FStatus.Connected)) then
    begin
       FStatus.Region.RemoveRefinery(Self);

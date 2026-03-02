@@ -117,7 +117,7 @@ var
    RateLimit: Double;
    Message: TRegisterEnergyConsumerBusMessage;
 begin
-   FDisabledReasons := CheckDisabled(Parent, RateLimit);
+   FDisabledReasons := CheckDisabled(Parent, Self, RateLimit);
    if (RateLimit = 0.0) then
    begin
       if (FBus.Assigned) then
@@ -132,9 +132,9 @@ begin
       if (FBus.IsFlagClear(csSentBusRegistration)) then
       begin
          Message := TRegisterEnergyConsumerBusMessage.Create(Self);
+         FBus.SetFlag(csSentBusRegistration);
          InjectBusMessage(Message);
          Message.Free();
-         FBus.SetFlag(csSentBusRegistration);
       end;
       if (RateLimit <> FRateLimit) then
       begin
@@ -152,7 +152,7 @@ begin
    if (Message is TCheckDisabledBusMessage) then
    begin
       DisabledMessage := Message as TCheckDisabledBusMessage;
-      if (DisabledMessage.Identifier = Pointer(Self)) then
+      if (DisabledMessage.SourceIdentifier = Pointer(Self)) then
       begin
          Result := hrShortcut;
          exit;
@@ -181,6 +181,7 @@ begin
    begin
       Writer.WriteCardinal(fcConsumer);
       Writer.WriteStringReference(FFeatureClass.Energy.Name);
+      Writer.WriteStringReference(FFeatureClass.Energy.Description);
       Writer.WriteStringReference(FFeatureClass.Energy.Units);
       Writer.WriteCardinal(Cardinal(FDisabledReasons));
       if (dmInternals in Visibility) then

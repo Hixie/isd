@@ -115,7 +115,7 @@ var
    NewDisabledReasons: TDisabledReasons;
    NewRateLimit: Double;
 begin
-   NewDisabledReasons := CheckDisabled(Parent, NewRateLimit);
+   NewDisabledReasons := CheckDisabled(Parent, Self, NewRateLimit);
    if (NewRateLimit <> FRateLimit) then
    begin
       // turned on or off

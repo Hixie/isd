@@ -371,7 +371,7 @@ var
    RateLimit: Double;
 begin
    Assert(Assigned(Parent));
-   NewDisabledReasons := CheckDisabled(Parent, RateLimit); // TODO: do something with the rate limit
+   NewDisabledReasons := CheckDisabled(Parent, Self, RateLimit); // TODO: do something with the rate limit
    if (NewDisabledReasons <> FDisabledReasons) then
    begin
       FDisabledReasons := NewDisabledReasons;

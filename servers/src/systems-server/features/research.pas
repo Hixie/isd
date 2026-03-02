@@ -277,7 +277,7 @@ var
    NewDisabledReasons: TDisabledReasons;
    NewRateLimit: Double;
 begin
-   NewDisabledReasons := CheckDisabled(Parent, NewRateLimit);
+   NewDisabledReasons := CheckDisabled(Parent, Self, NewRateLimit);
    if (NewDisabledReasons <> FDisabledReasons) then
    begin
       FDisabledReasons := NewDisabledReasons;

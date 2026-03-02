@@ -1038,7 +1038,7 @@ var
    Message: TRegisterBuilderMessage;
    RateLimit: Double;
 begin
-   NewDisabledReasons := CheckDisabled(Parent, RateLimit);
+   NewDisabledReasons := CheckDisabled(Parent, Self, RateLimit);
    if (NewDisabledReasons <> FDisabledReasons) then
    begin
       FDisabledReasons := NewDisabledReasons;

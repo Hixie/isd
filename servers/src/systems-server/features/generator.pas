@@ -117,7 +117,7 @@ var
    RateLimit: Double;
    Message: TRegisterEnergyGeneratorBusMessage;
 begin
-   FDisabledReasons := CheckDisabled(Parent, RateLimit);
+   FDisabledReasons := CheckDisabled(Parent, Self, RateLimit);
    if (RateLimit = 0.0) then
    begin
       if (FBus.Assigned) then
@@ -155,6 +155,7 @@ begin
    begin
       Writer.WriteCardinal(fcGenerator);
       Writer.WriteStringReference(FFeatureClass.Energy.Name);
+      Writer.WriteStringReference(FFeatureClass.Energy.Description);
       Writer.WriteStringReference(FFeatureClass.Energy.Units);
       Writer.WriteCardinal(Cardinal(FDisabledReasons));
       if (dmInternals in Visibility) then

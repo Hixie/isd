@@ -69,6 +69,7 @@ type
       function GetDynastyTable(Dynasty: TDynasty): TPerEnergyHashTable;
       function GetEnergyEntries(Dynasty: TDynasty; Energy: TEnergy): PGeneratorsConsumers;
    protected
+      constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
       function ManageBusMessage(Message: TBusMessage): TInjectBusMessageResult; override;
       function HandleBusMessage(Message: TBusMessage): THandleBusMessageResult; override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
@@ -109,7 +110,7 @@ begin
          Reader.Tokens.Error('Energy "%s" (units "%s") listed twice', [Energy.Name, Units]);
       Time := ReadTimeDenominator(Reader.Tokens);
       FCapabilities[Energy] := value / Time;
-   until not Reader.Tokens.IsDouble();
+   until not ReadComma(Reader.Tokens);
 end;
 
 destructor TEnergyBusFeatureClass.Destroy();
@@ -151,6 +152,13 @@ constructor TEnergyBusFeatureNode.Create(ASystem: TSystem; AFeatureClass: TEnerg
 begin
    inherited Create(ASystem);
    FFeatureClass := AFeatureClass;
+end;
+
+constructor TEnergyBusFeatureNode.CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem);
+begin
+   Assert(Assigned(AFeatureClass));
+   FFeatureClass := AFeatureClass as TEnergyBusFeatureClass;
+   inherited;
 end;
 
 destructor TEnergyBusFeatureNode.Destroy();
@@ -303,36 +311,51 @@ var
 begin
    if (FDirty) then
    begin
+      Writeln(DebugName, ' COMPUTING ENERGY BUS DYNAMICS');
       Assert(Assigned(FData));
       for Dynasty in FData do
       begin
+         Writeln('  Dynasty ', Dynasty.DynastyID);
          DynastyData := FData[Dynasty];
          Assert(Assigned(DynastyData));
          for Energy in DynastyData do
          begin
+            Writeln('    Energy ', Energy.Name);
             Entries := DynastyData.ItemsPtr[Energy];
             GeneratedSum.Reset();
             for Generator in Entries^.Generators do
                GeneratedSum.Inc(Generator.EnergyGeneratorGetMaxRate());
             Generated := GeneratedSum.Flatten();
+            Writeln('      Generating: ', Generated.ToString());
             ConsumedSum.Reset();
             for Consumer in Entries^.Consumers do
                ConsumedSum.Inc(Consumer.EnergyConsumerGetMaxRate());
             Requested := ConsumedSum.Flatten();
+            Writeln('      Requested: ', Requested.ToString());
             Consumed := Requested;
             Max := FFeatureClass.Capabilities[Energy];
             if (Consumed > Max) then
                Consumed := Max;
+            Writeln('      Bus Capacity: ', Max.ToString());
             if (Consumed > Generated) then
                Consumed := Generated;
-            GenerationRatio := Consumed / Generated;
-            Assert(GenerationRatio <= 1.0);
-            Assert(GenerationRatio >= 0.0);
-            for Generator in Entries^.Generators do
-               Generator.EnergyGeneratorSetRate(Self, GenerationRatio);
-            ConsumptionRatio := Consumed / Requested;
-            for Consumer in Entries^.Consumers do
-               Consumer.EnergyConsumerSetRate(Self, ConsumptionRatio);
+            Writeln('      Consumed: ', Consumed.ToString());
+            if (Generated.IsPositive) then
+            begin
+               GenerationRatio := Consumed / Generated;
+               Assert(GenerationRatio <= 1.0);
+               Assert(GenerationRatio >= 0.0);
+               for Generator in Entries^.Generators do
+                  Generator.EnergyGeneratorSetRate(Self, GenerationRatio);
+            end;
+            if (Requested.IsPositive) then
+            begin
+               ConsumptionRatio := Consumed / Requested;
+               for Consumer in Entries^.Consumers do
+                  Consumer.EnergyConsumerSetRate(Self, ConsumptionRatio);
+            end
+            else
+               Assert(Consumed.IsExactZero);
          end;
       end;
       FDirty := False;
