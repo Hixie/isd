@@ -46,6 +46,8 @@ abstract class Feature extends Node {
   @override
   AssetNode get parent => super.parent! as AssetNode;
 
+  AssetNode? get parentOrNull => super.parent as AssetNode?;
+
   @override
   void attach(Node parent) {
     assert(parent is AssetNode);

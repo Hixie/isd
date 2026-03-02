@@ -6,7 +6,6 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
-import 'dynasty.dart';
 import 'layout.dart';
 import 'world.dart';
 
@@ -49,13 +48,11 @@ class WorldRoot extends StatefulWidget {
     super.key,
     required this.rootNode,
     required this.recommendedFocus,
-    required this.dynastyManager,
     required this.worldFocusNotifier,
   });
 
   final WorldNode rootNode; // typically a GalaxyNode
   final ValueListenable<WorldNode?> recommendedFocus;
-  final DynastyManager dynastyManager;
   final WorldFocusNotifier worldFocusNotifier;
 
   @override
@@ -312,61 +309,58 @@ class WorldRootState extends State<WorldRoot> with SingleTickerProviderStateMixi
           }
         });
       },
-      child: DynastyProvider(
-        dynastyManager: widget.dynastyManager,
-        child: GestureDetector(
-          trackpadScrollCausesScale: true,
-          onScaleStart: (ScaleStartDetails details) {
+      child: GestureDetector(
+        trackpadScrollCausesScale: true,
+        onScaleStart: (ScaleStartDetails details) {
+          final RenderBoxToRenderWorldAdapter box = _worldRoot;
+          _scaleAtGestureStart = box.layoutScale;
+          _zoomAtGestureStart = _zoom.value;
+          _panAtGestureStart = _pan.value;
+          _accumulatedOffset = Offset.zero;
+        },
+        onScaleEnd: (ScaleEndDetails details) {
+          _scaleAtGestureStart = null;
+          _zoomAtGestureStart = null;
+          _panAtGestureStart = null;
+        },
+        onScaleUpdate: (ScaleUpdateDetails details) {
+          // TODO: still need to test this with pinch+zoom at the same time
+          setState(() {
             final RenderBoxToRenderWorldAdapter box = _worldRoot;
-            _scaleAtGestureStart = box.layoutScale;
-            _zoomAtGestureStart = _zoom.value;
-            _panAtGestureStart = _pan.value;
-            _accumulatedOffset = Offset.zero;
-          },
-          onScaleEnd: (ScaleEndDetails details) {
-            _scaleAtGestureStart = null;
-            _zoomAtGestureStart = null;
-            _panAtGestureStart = null;
-          },
-          onScaleUpdate: (ScaleUpdateDetails details) {
-            // TODO: still need to test this with pinch+zoom at the same time
+            final Size size = box.size;
             setState(() {
-              final RenderBoxToRenderWorldAdapter box = _worldRoot;
-              final Size size = box.size;
-              setState(() {
-                _lastScale ??= box.layoutScale;
-                final Offset sigma = -Offset(details.localFocalPoint.dx - size.width / 2.0, details.localFocalPoint.dy - size.height / 2.0) + details.focalPointDelta;
-                final double newScale = max(box.minScale, _scaleAtGestureStart! * details.scale);
-                _accumulatedOffset = _accumulatedOffset! + details.focalPointDelta / newScale;
-                _updatePan(_panAtGestureStart! + _accumulatedOffset! + sigma / _scaleAtGestureStart! - sigma / newScale, newScale, zoom: _zoomAtGestureStart! + log(details.scale));
-              });
+              _lastScale ??= box.layoutScale;
+              final Offset sigma = -Offset(details.localFocalPoint.dx - size.width / 2.0, details.localFocalPoint.dy - size.height / 2.0) + details.focalPointDelta;
+              final double newScale = max(box.minScale, _scaleAtGestureStart! * details.scale);
+              _accumulatedOffset = _accumulatedOffset! + details.focalPointDelta / newScale;
+              _updatePan(_panAtGestureStart! + _accumulatedOffset! + sigma / _scaleAtGestureStart! - sigma / newScale, newScale, zoom: _zoomAtGestureStart! + log(details.scale));
             });
+          });
+        },
+        onTapDown: (TapDownDetails details) {
+          assert(_currentTarget == null);
+          _currentTarget = _worldRoot.routeTap(details.localPosition);
+          _currentTarget?.handleTapDown();
+        },
+        onTapCancel: () {
+          _currentTarget?.handleTapCancel();
+          _currentTarget = null;
+        },
+        onTapUp: (TapUpDetails details) {
+          _currentTarget?.handleTapUp();
+          _currentTarget = null;
+        },
+        child: ListenableBuilder(
+          listenable: Listenable.merge(<Listenable?>[widget.rootNode, _controller]),
+          builder: (BuildContext context, Widget? child) {
+            return BoxToWorldAdapter(
+              key: _worldRootKey,
+              diameter: widget.rootNode.actualDiameter,
+              zoom: max(0.0, _zoom.value),
+              precomputedPositions: _precomputedPositions,
+              child: widget.rootNode.build(context),
+            );
           },
-          onTapDown: (TapDownDetails details) {
-            assert(_currentTarget == null);
-            _currentTarget = _worldRoot.routeTap(details.localPosition);
-            _currentTarget?.handleTapDown();
-          },
-          onTapCancel: () {
-            _currentTarget?.handleTapCancel();
-            _currentTarget = null;
-          },
-          onTapUp: (TapUpDetails details) {
-            _currentTarget?.handleTapUp();
-            _currentTarget = null;
-          },
-          child: ListenableBuilder(
-            listenable: Listenable.merge(<Listenable?>[widget.rootNode, _controller]),
-            builder: (BuildContext context, Widget? child) {
-              return BoxToWorldAdapter(
-                key: _worldRootKey,
-                diameter: widget.rootNode.actualDiameter,
-                zoom: max(0.0, _zoom.value),
-                precomputedPositions: _precomputedPositions,
-                child: widget.rootNode.build(context),
-              );
-            },
-          ),
         ),
       ),
     );

@@ -98,6 +98,7 @@ abstract class WorldNode extends Node with ChangeNotifier {
         final double paintDiameter = computePaintDiameter(constraints);
         if (paintDiameter < WorldGeometry.minAssetRenderDiameter)
           return WorldNull(node: this, paintDiameter: paintDiameter);
+        
         return buildRenderer(context, paintDiameter);
       },
     ),

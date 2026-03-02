@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/material.dart' hide Gradient;
@@ -21,11 +20,39 @@ typedef GridParameters = ({int x, int y, int size});
 // TODO: when the connection drops, we create new AssetClass instances, but we don't update the _GridState's selection
 
 class _GridState extends ChangeNotifier {
+  _GridState(this._feature, this._selection);
+  
+  GridFeature get feature => _feature;
+  GridFeature _feature;
+  set feature(GridFeature feature) {
+    _feature = feature;
+    notifyListeners();
+  }
+  
   AssetClass? get selection => _selection;
   AssetClass? _selection;
   set selection(AssetClass? value) {
     _selection = value;
-    scheduleMicrotask(notifyListeners);
+    notifyListeners();
+  }
+
+  Widget? buildDock(BuildContext context, double height) {
+    if (feature.buildables.isEmpty)
+      return null;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8.0),
+      child: ListenableBuilder(
+        listenable: this,
+        builder: (BuildContext context, Widget? child) {
+          return BuildableDish(
+            label: feature.parent.nameOrClassName,
+            assetClasses: feature.buildables.map((Buildable buildable) => buildable.assetClass).toList(),
+            onSelect: (AssetClass? assetClass) => selection = assetClass,
+            selection: selection,
+          );
+        },
+      ),
+    );
   }
 }
 
@@ -52,11 +79,12 @@ class GridFeature extends ContainerFeature {
     super.init(oldFeature);
     if (oldFeature is GridFeature) {
       _state = oldFeature._state;
+      _state!.feature = this;
       if (_state!._selection != null) {
         _state!._selection = assetClassMap.assetClass(_state!._selection!.id);
       }
     } else {
-      _state = _GridState();
+      _state = _GridState(this, null);
     }
   }
 
@@ -154,24 +182,7 @@ class GridFeature extends ContainerFeature {
   }
 
   @override
-  Widget? buildDock(BuildContext context, double height) {
-    if (buildables.isEmpty)
-      return null;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8.0),
-      child: ListenableBuilder(
-        listenable: _state!,
-        builder: (BuildContext context, Widget? child) {
-          return BuildableDish(
-            label: parent.nameOrClassName,
-            assetClasses: buildables.map((Buildable buildable) => buildable.assetClass).toList(),
-            onSelect: (AssetClass? assetClass) => _state!.selection = assetClass,
-            selection: _state!.selection,
-          );
-        },
-      ),
-    );
-  }
+  Widget? buildDock(BuildContext context, double height) => _state!.buildDock(context, height);
 }
 
 class BuildTile extends StatelessWidget {
