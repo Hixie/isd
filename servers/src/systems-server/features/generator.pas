@@ -40,6 +40,7 @@ type
    public
       constructor Create(ASystem: TSystem; AFeatureClass: TGeneratorFeatureClass);
       destructor Destroy(); override;
+      procedure Attaching(); override; 
       procedure Detaching(); override;
       procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader); override;
@@ -99,8 +100,13 @@ end;
 
 destructor TGeneratorFeatureNode.Destroy();
 begin
-   Detaching(); // TODO: temporary hack until TAssetNode.Destroy is fixed to detach first
+   Assert(not FBus.Assigned);
    inherited;
+end;
+
+procedure TGeneratorFeatureNode.Attaching();
+begin
+   MarkAsDirty([dkNeedsHandleChanges]);
 end;
 
 procedure TGeneratorFeatureNode.Detaching();

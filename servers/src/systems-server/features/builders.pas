@@ -119,6 +119,10 @@ type
       procedure Destroy();
       function GetSortedBuildersFor(Dynasty: TDynasty): TBuilderFeatureNodeArray;
       function GetSortedStructuresFor(Dynasty: TDynasty): IStructureArray;
+      {$IFOPT C+}
+      function GetBuilderCountFor(Dynasty: TDynasty): Cardinal;
+      function GetStructureCountFor(Dynasty: TDynasty): Cardinal;
+      {$ENDIF}
       property Dynasties: TDynastyEnumerator read GetDynastyEnumerator;
       property AllBuilders: TAllBuilderHashsetEnumerator read GetAllBuilderEnumerator;
       property AllStructures: TAllStructureHashsetEnumerator read GetAllStructureEnumerator;
@@ -147,11 +151,14 @@ type
       procedure Reset();
       procedure Sync();
       function ManageBusMessage(Message: TBusMessage): TInjectBusMessageResult; override;
+      function HandleBusMessage(Message: TBusMessage): THandleBusMessageResult; override;
       procedure HandleChanges(); override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
       constructor Create(ASystem: TSystem);
       destructor Destroy(); override;
+      procedure Attaching(); override; 
+      procedure Detaching(); override;
       procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader); override;
       procedure RemoveBuilder(Builder: TBuilderFeatureNode); // will not call BuilderBusSync on caller
@@ -190,6 +197,7 @@ type
    public
       constructor Create(ASystem: TSystem; AFeatureClass: TBuilderFeatureClass);
       destructor Destroy(); override;
+      procedure Detaching(); override;
       procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader); override;
       procedure BuilderBusConnected(Bus: TBuilderBusFeatureNode); // must come from builder bus
@@ -760,7 +768,50 @@ begin
    specialize Sort<IStructure>(Result, @Compare);
 end;
 
+{$IFOPT C+}
+function TBuilderBusRecords.GetBuilderCountFor(Dynasty: TDynasty): Cardinal;
+begin
+   Assert(Assigned(Dynasty));
+   if (FDynasty = Dynasty) then
+   begin
+      if (Assigned(FBuilders)) then
+         Result := FBuilders.Count
+      else
+         Result := 0;
+   end
+   else
+   if ((Pointer(FDynasty) = MultiDynastic) and Assigned(FPerDynastyBuilders) and FPerDynastyBuilders.Has(FDynasty)) then
+   begin
+      Result := FPerDynastyBuilders[Dynasty].Count;
+   end
+   else
+   begin
+      Result := 0;
+   end;
+end;
 
+function TBuilderBusRecords.GetStructureCountFor(Dynasty: TDynasty): Cardinal;
+begin
+   Assert(Assigned(Dynasty));
+   if (FDynasty = Dynasty) then
+   begin
+      if (Assigned(FStructures)) then
+         Result := FStructures.Count
+      else
+         Result := 0;
+   end
+   else
+   if ((Pointer(FDynasty) = MultiDynastic) and Assigned(FPerDynastyStructures) and FPerDynastyStructures.Has(FDynasty)) then
+   begin
+      Result := FPerDynastyStructures[Dynasty].Count;
+   end
+   else
+   begin
+      Result := 0;
+   end;
+end;
+{$ENDIF}
+      
 
 constructor TRegisterBuilderMessage.Create(ABuilder: TBuilderFeatureNode);
 begin
@@ -806,9 +857,18 @@ end;
 
 destructor TBuilderBusFeatureNode.Destroy();
 begin
-   Reset();
    FRecords.Destroy();
    inherited;
+end;
+
+procedure TBuilderBusFeatureNode.Attaching();
+begin
+   MarkAsDirty([dkNeedsHandleChanges]);
+end;
+
+procedure TBuilderBusFeatureNode.Detaching();
+begin
+   Reset();
 end;
 
 procedure TBuilderBusFeatureNode.Reset();
@@ -838,6 +898,17 @@ begin
 end;
 
 function TBuilderBusFeatureNode.ManageBusMessage(Message: TBusMessage): TInjectBusMessageResult;
+begin
+   if ((Message is TRegisterBuilderMessage) or
+       (Message is TRegisterStructureMessage)) then
+   begin
+      Result := DeferOrHandleBusMessage(Message);
+   end
+   else
+      Result := irDeferred;
+end;
+
+function TBuilderBusFeatureNode.HandleBusMessage(Message: TBusMessage): THandleBusMessageResult;
 var
    RegisterBuilder: TRegisterBuilderMessage;
    RegisterStructure: TRegisterStructureMessage;
@@ -849,7 +920,7 @@ begin
       FRecords.AddBuilder(RegisterBuilder.Builder);
       RegisterBuilder.Builder.BuilderBusConnected(Self);
       MarkAsDirty([dkNeedsHandleChanges]);
-      Result := irHandled;
+      Result := hrHandled;
    end
    else
    if (Message is TRegisterStructureMessage) then
@@ -859,7 +930,7 @@ begin
       FRecords.AddStructure(RegisterStructure.Structure);
       RegisterStructure.Structure.BuilderBusConnected(Self);
       MarkAsDirty([dkNeedsHandleChanges]);
-      Result := irHandled;
+      Result := hrHandled;
    end
    else
       Result := inherited;
@@ -889,10 +960,15 @@ var
 begin
    if (not FRecords.AssignedBuilders) then
    begin
+      Writeln(DebugName, ' COMPUTING BUILDER DYNAMICS');
       for Dynasty in FRecords.Dynasties do
       begin
+         Writeln('  Dynasty ', Dynasty.DynastyID);
+         Writeln('    builder count: ', FRecords.GetBuilderCountFor(Dynasty));
+         Writeln('    structure count: ', FRecords.GetStructureCountFor(Dynasty));
          if (FRecords.HasBothBuildersAndStructures(Dynasty)) then
          begin
+            Writeln('    has both builders and structures');
             Builders := FRecords.GetSortedBuildersFor(Dynasty);
             BuilderIndex := -1;
             RemainingWorkers := 0;
@@ -904,10 +980,12 @@ begin
                   if (BuilderIndex < Length(Builders)) then
                   begin
                      RemainingWorkers := Builders[BuilderIndex].Capacity;
+                     Writeln('    adding ', Builders[BuilderIndex].Capacity, ' workers to queue from ', Builders[BuilderIndex].DebugName);
                   end;
                end;
                if (RemainingWorkers > 0) then
                begin
+                  Writeln('    sending one worker to work on structure ', Structure.GetAsset().DebugName);
                   Builders[BuilderIndex].BuilderBusStartBuilding(Structure);
                   Dec(RemainingWorkers);
                end;
@@ -1009,6 +1087,13 @@ begin
 end;
 
 destructor TBuilderFeatureNode.Destroy();
+begin
+   if (Assigned(FBus) or Assigned(FStructures)) then
+      Detaching();
+   inherited;
+end;
+
+procedure TBuilderFeatureNode.Detaching();
 var
    Structure: IStructure;
 begin
@@ -1023,7 +1108,6 @@ begin
          Structure.StopBuilding();
       FreeAndNil(FStructures);
    end;
-   inherited;
 end;
 
 function TBuilderFeatureNode.GetCapacity(): Cardinal;

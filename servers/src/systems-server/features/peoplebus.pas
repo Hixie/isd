@@ -118,10 +118,11 @@ type
             function GetIsNotMultidynastic(): Boolean; inline;
             function GetInternalEmployers(): PEmployerList; inline;
             function GetInternalHousing(): PHousingList; inline;
-            property FEmployers: PEmployerList read GetInternalEmployers;
-            property FHousing: PHousingList read GetInternalHousing;
+            function GetIsNotEmpty(): Boolean; inline;
             property IsMultidynastic: Boolean read GetIsMultidynastic;
             property IsNotMultidynastic: Boolean read GetIsNotMultidynastic;
+            property FEmployers: PEmployerList read GetInternalEmployers;
+            property FHousing: PHousingList read GetInternalHousing;
          public
             procedure AddEmployer(Dynasty: TDynasty; Employer: IEmployer);
             procedure RemoveEmployer(Dynasty: TDynasty; Employer: IEmployer);
@@ -129,19 +130,23 @@ type
             procedure AddHousing(Dynasty: TDynasty; Housing: IHousing);
             procedure RemoveHousing(Dynasty: TDynasty; Housing: IHousing);
             function GetHousing(Dynasty: TDynasty): THousingList.TReadOnlyView;
+            procedure Clear();
             property Dynasties: TDynastyEnumerator read GetDynasties; // allocates a new object
+            property IsNotEmpty: Boolean read GetIsNotEmpty;
          strict private
             FDynasty: TDynasty;
             {$PUSH}
             {$CODEALIGN RECORDMIN=4}
             case Byte of
                0: ();
-               1: (FEmployersMem: array[0..SizeOf(TEmployerList)] of Byte; FHousingMem: array[0..SizeOf(THousingList)] of Byte);
-               2: (FEmployersPerDynasty: TPerDynastyEmployers; FHousingPerDynasty: TPerDynastyHousing);
+               1: (FEmployersMem: array[0..SizeOf(TEmployerList)] of Byte; FHousingMem: array[0..SizeOf(THousingList)] of Byte); // for one dynasty, we inline the list pointers
+               2: (FEmployersPerDynasty: TPerDynastyEmployers; FHousingPerDynasty: TPerDynastyHousing); // for multiple dynasties, we inline hashtable pointers, and their entries contain the list pointers
             {$POP}
          end;
       var
          FRecords: TPeopleBusRecords;
+      procedure Attaching(); override; 
+      procedure Detaching(); override;
       function ManageBusMessage(Message: TBusMessage): TInjectBusMessageResult; override;
       function HandleBusMessage(Message: TBusMessage): THandleBusMessageResult; override;
       procedure HandleChanges(); override;
@@ -272,20 +277,25 @@ end;
 
 class operator TPeopleBusFeatureNode.TPeopleBusRecords.Finalize(var Rec: TPeopleBusRecords);
 begin
-   if (Assigned(Rec.FDynasty)) then
+   Rec.Clear();
+end;
+
+procedure TPeopleBusFeatureNode.TPeopleBusRecords.Clear();
+begin
+   if (Assigned(FDynasty)) then
    begin
-      if (Rec.IsNotMultidynastic) then
+      if (IsNotMultidynastic) then
       begin
-         Finalize(Rec.FEmployers^);
-         Finalize(Rec.FHousing^);
+         Finalize(FEmployers^);
+         Finalize(FHousing^);
       end
       else
       begin
-         Assert(Rec.IsMultidynastic);
-         FreeAndNil(Rec.FEmployersPerDynasty);
-         FreeAndNil(Rec.FHousingPerDynasty);
+         Assert(IsMultidynastic);
+         FreeAndNil(FEmployersPerDynasty);
+         FreeAndNil(FHousingPerDynasty);
       end;
-      {$IFOPT C+} Rec.FDynasty := nil; {$ENDIF}
+      FDynasty := nil;
    end;
 end;
 
@@ -397,6 +407,11 @@ begin
    Result := PHousingList(@FHousingMem);
 end;
 
+function TPeopleBusFeatureNode.TPeopleBusRecords.GetIsNotEmpty(): Boolean;
+begin
+   Result := Assigned(FDynasty);
+end;
+
 procedure TPeopleBusFeatureNode.TPeopleBusRecords.AddEmployer(Dynasty: TDynasty; Employer: IEmployer);
 var
    DynastyEmployers: PEmployerList;
@@ -501,6 +516,18 @@ end;
 
 
 destructor TPeopleBusFeatureNode.Destroy();
+begin
+   if (FRecords.IsNotEmpty) then
+      Detaching();
+   inherited;
+end;
+
+procedure TPeopleBusFeatureNode.Attaching();
+begin
+   MarkAsDirty([dkNeedsHandleChanges]);
+end;
+
+procedure TPeopleBusFeatureNode.Detaching();
 var
    Dynasty: TDynasty;
    EmployerList: TPeopleBusRecords.TEmployerList.TReadOnlyView;
@@ -521,7 +548,7 @@ begin
          Housing.PeopleBusDisconnected();
       end;
    end;
-   inherited;
+   FRecords.Clear();
 end;
 
 function TPeopleBusFeatureNode.ManageBusMessage(Message: TBusMessage): TInjectBusMessageResult;

@@ -77,6 +77,8 @@ type
       FDynastyKnowledge: array of TKnowledgeSummary; // for each item in the bill of materials, which dynasties know about it here // TODO: this is expensive when there are not many dynasties (8 bytes per material, even if there's only 1 dynasty), but it really doesn't have to be, especially if we were to limit the number of materials in a bill of materials to 32 or 64 or something.
       FBuildingState: PBuildingState; // if this is nil, the StructuralIntegrity is 100%
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
+      procedure Attaching(); override; 
+      procedure Detaching(); override;
       procedure InitBuildingState();
       function GetNextStructureMaterial(): TMaterial;
       function GetNextStructureQuantity(): TQuantity32;
@@ -346,6 +348,20 @@ var
    Index: Cardinal;
 begin
    if (Assigned(FBuildingState)) then
+      Detaching();
+   for Index := 0 to FFeatureClass.BillOfMaterialsLength - 1 do // $R-
+      FDynastyKnowledge[Index].Done();
+   inherited;
+end;
+
+procedure TStructureFeatureNode.Attaching();
+begin
+   MarkAsDirty([dkNeedsHandleChanges]);
+end;
+
+procedure TStructureFeatureNode.Detaching();
+begin
+   if (Assigned(FBuildingState)) then
    begin
       if (Assigned(FBuildingState^.Region)) then
          FBuildingState^.Region.RemoveMaterialConsumer(Self);
@@ -356,10 +372,8 @@ begin
       if (Assigned(FBuildingState^.NextEvent)) then
          CancelEvent(FBuildingState^.NextEvent);
       Dispose(FBuildingState);
+      FBuildingState := nil;
    end;
-   for Index := 0 to FFeatureClass.BillOfMaterialsLength - 1 do // $R-
-      FDynastyKnowledge[Index].Done();
-   inherited;
 end;
 
 function TStructureFeatureNode.GetNextStructureMaterial(): TMaterial;
@@ -1153,6 +1167,7 @@ begin
       Assert(FBuildingState^.PendingQuantity.IsPositive);
       Assert(FBuildingState^.AnchorTime.IsInfinite);
       RemainingTime := FBuildingState^.PendingQuantity / FBuildingState^.MaterialsQuantityRate;
+      Writeln(DebugName, ' time until current material (', FBuildingState^.PendingQuantity.ToString(), ' of ', FBuildingState^.PendingMaterial.Name, ') is filled (', FBuildingState^.MaterialsQuantityRate.ToString(), '): ', RemainingTime.ToString());
    end
    else
    if (FBuildingState^.StructuralIntegrityRate.IsNotExactZero and (FBuildingState^.MaterialsQuantity.AsInt64 > FBuildingState^.StructuralIntegrity)) then
@@ -1160,6 +1175,7 @@ begin
       Assert((FBuildingState^.PendingQuantity.IsPositive) xor (FBuildingState^.MaterialsQuantity = FFeatureClass.TotalQuantity));
       RemainingTime := (FBuildingState^.MaterialsQuantity.AsInt64 - FBuildingState^.StructuralIntegrity) / FBuildingState^.StructuralIntegrityRate;
       // we may shorten this in case we would hit the structural integrity sooner, see below
+      Writeln(DebugName, ' time until hp is filled (', FBuildingState^.StructuralIntegrityRate.ToString(), '): ', RemainingTime.ToString());
    end
    else
    begin
@@ -1196,9 +1212,11 @@ begin
       if ((TimeUntilIntegrityFunctional.IsPositive) and (TimeUntilIntegrityFunctional < RemainingTime)) then
       begin
          RemainingTime := TimeUntilIntegrityFunctional;
+         Writeln(DebugName, ' time until hp hits structural integrity threshold: ', RemainingTime.ToString());
       end;
    end;
    Assert(RemainingTime.IsNotZero);
+   Writeln(DebugName, ' next event in ', RemainingTime.ToString());
    FBuildingState^.NextEvent := System.ScheduleEvent(RemainingTime, @HandleEvent, Self);
    FBuildingState^.AnchorTime := System.Now;
 end;

@@ -160,11 +160,7 @@ end;
 
 destructor TFactoryFeatureNode.Destroy();
 begin
-   if (FRegion.Assigned) then
-   begin
-      FRegion.Unwrap().RemoveFactory(Self);
-      FRegion.Clear();
-   end;
+   Assert(not FRegion.Assigned);
    inherited;
 end;
 
@@ -179,7 +175,7 @@ procedure TFactoryFeatureNode.Detaching();
 begin
    if (FRegion.Assigned) then
       FRegion.Unwrap().RemoveFactory(Self);
-   FRegion.ClearFlag(bsNoRegion);
+   FRegion.Clear();
 end;
 
 function TFactoryFeatureNode.GetFactoryInputs(): TMaterialQuantity32Array;

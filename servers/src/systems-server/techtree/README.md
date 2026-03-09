@@ -1126,8 +1126,9 @@ feature: KnowledgeBus;
 ##### `MaterialPile`
 
 Represents the container for a dynasty's materials stored in a
-`Region`. Such containers are specialized to a specific material, and
-have a specific capacity (number of units).
+`Region` (a material pile or material stack). Such containers are
+specialized to a specific material, and have a specific capacity
+(number of units).
 
 Settings syntax:
 

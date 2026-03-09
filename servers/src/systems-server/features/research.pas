@@ -79,6 +79,8 @@ type
       procedure DetermineTopics(var Target: TTopicHashSet);
    protected
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
+      procedure Attaching(); override; 
+      procedure Detaching(); override;
       function ManageBusMessage(Message: TBusMessage): TInjectBusMessageResult; override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
       procedure HandleChanges(); override;
@@ -194,12 +196,27 @@ end;
 
 destructor TResearchFeatureNode.Destroy();
 begin
+   // see also Detaching
    if (FSubscription.Subscribed) then
       FSubscription.Unsubscribe();
    FBankedResearch.Free();
    if (Assigned(FResearchEvent)) then
       CancelEvent(FResearchEvent);
    inherited;
+end;
+
+procedure TResearchFeatureNode.Attaching();
+begin
+   MarkAsDirty([dkNeedsHandleChanges]);
+end;
+
+procedure TResearchFeatureNode.Detaching();
+begin
+   // see also Destroy
+   if (FSubscription.Subscribed) then
+      FSubscription.Unsubscribe();
+   if (Assigned(FResearchEvent)) then
+      CancelEvent(FResearchEvent);
 end;
 
 function TResearchFeatureNode.ManageBusMessage(Message: TBusMessage): TInjectBusMessageResult;

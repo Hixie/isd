@@ -184,6 +184,7 @@ asset "Colony ship" {
   feature: Sample size 2m;
   feature: Research;
   feature: Knowledge research id -1;
+  feature: Builder capacity 1, build 1 hp/s;
 }
 
 research package {
@@ -196,12 +197,55 @@ research package {
 
 // TEST RESEARCH
 
+material "Beam" {
+  id: 2026030204;
+  vaguely: "Beam vague.";
+  description: "Beam clear.";
+  icon: "beam";
+  metrics: component, size 1m, mass 1kg;
+}
+
+asset "Factory" {
+  id: 2026030201;
+  vaguely: "Factory vague description.";
+  description: "Factory clear description.";
+  icon: "factory";
+  build: land;
+  feature: Factory input "Iron", output "Beam" * 1000kg, max throughput 1/min;
+  feature: Size 10m;
+}
+
+asset "Iron Mine" {
+  id: 2026030202;
+  vaguely: "Iron Mine vague description.";
+  description: "Iron Mine clear description.";
+  icon: "miner";
+  build: land;
+  feature: Mining max throughput 100t/min;
+  feature: Refining for "Iron", max throughput 1t/min;
+  feature: OrePile max mass 1000t;
+  feature: MaterialPile for "Iron", capacity 1000t;
+  feature: Size 10m;
+}
+
+asset "Structure" {
+  id: 2026030203;
+  vaguely: "Structure vague description.";
+  description: "Structure clear description.";
+  icon: "house";
+  build: land;
+  feature: Structure size 100m, materials ("Core": "Beam" * 10 units), minimum "Core" 2 units;
+}
+
 research {
   id: 1;
   requires nothing;
   takes 1 hour;
   unlocks material "Iron";
   unlocks material "Silicon";
+  unlocks asset "Iron Mine";
+  unlocks asset "Factory";
+  unlocks asset "Structure";
   story: [
     Technology unlocked.
   ];

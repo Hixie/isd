@@ -178,6 +178,7 @@ type
       procedure WalkChildren(Callback: TAssetWalkChildrenCallback); override;
    public
       procedure UpdateFrom(Stream: TServerStreamReader); override;
+      procedure Describe(var Output: specialize PlasticArray<UTF8String, UTF8StringUtils>; Indent: UTF8String = ''); override;
    public
       Children: specialize PlasticArray <TChild, specialize IncomparableUtils<TChild>>;
    end;
@@ -196,6 +197,7 @@ type
       procedure WalkChildren(Callback: TAssetWalkChildrenCallback); override;
    public
       procedure UpdateFrom(Stream: TServerStreamReader); override;
+      procedure Describe(var Output: specialize PlasticArray<UTF8String, UTF8StringUtils>; Indent: UTF8String = ''); override;
    strict private
       FPrimaryAssetID: UInt32;
    public
@@ -213,6 +215,7 @@ type
             MaterialID: Int32;
          end;
       procedure UpdateFrom(Stream: TServerStreamReader); override;
+      procedure Describe(var Output: specialize PlasticArray<UTF8String, UTF8StringUtils>; Indent: UTF8String = ''); override;
    public
       LineItems: specialize PlasticArray <TMaterialLineItem, specialize IncomparableUtils<TMaterialLineItem>>;
    strict private
@@ -288,6 +291,7 @@ type
       procedure WalkChildren(Callback: TAssetWalkChildrenCallback); override;
    public
       procedure UpdateFrom(Stream: TServerStreamReader); override;
+      procedure Describe(var Output: specialize PlasticArray<UTF8String, UTF8StringUtils>; Indent: UTF8String = ''); override;
    public
       Children: specialize PlasticArray <TChild, specialize IncomparableUtils<TChild>>;
    end;
@@ -309,6 +313,7 @@ type
       procedure WalkChildren(Callback: TAssetWalkChildrenCallback); override;
    public
       procedure UpdateFrom(Stream: TServerStreamReader); override;
+      procedure Describe(var Output: specialize PlasticArray<UTF8String, UTF8StringUtils>; Indent: UTF8String = ''); override;
    strict private
       FCellSize: Double;
       FDimension: UInt32;
@@ -336,6 +341,7 @@ type
          TGossipArray = array of TGossip;
    public
       procedure UpdateFrom(Stream: TServerStreamReader); override;
+      procedure Describe(var Output: specialize PlasticArray<UTF8String, UTF8StringUtils>; Indent: UTF8String = ''); override;
    strict private
       FDisabledReasons: Cardinal;
       FTotal, FMax: Cardinal;
@@ -356,6 +362,7 @@ type
       procedure WalkChildren(Callback: TAssetWalkChildrenCallback); override;
    public
       procedure UpdateFrom(Stream: TServerStreamReader); override;
+      procedure Describe(var Output: specialize PlasticArray<UTF8String, UTF8StringUtils>; Indent: UTF8String = ''); override;
    public
       Children: specialize PlasticArray <UInt32, specialize IncomparableUtils<UInt32>>;
    end;
@@ -383,6 +390,7 @@ type
             Quantity: UInt64;
          end;
       procedure UpdateFrom(Stream: TServerStreamReader); override;
+      procedure Describe(var Output: specialize PlasticArray<UTF8String, UTF8StringUtils>; Indent: UTF8String = ''); override;
    public
       KnownContents: specialize PlasticArray <TContents, specialize IncomparableUtils<TContents>>;
    strict private
@@ -397,6 +405,7 @@ type
       procedure WalkChildren(Callback: TAssetWalkChildrenCallback); override;
    public
       procedure UpdateFrom(Stream: TServerStreamReader); override;
+      procedure Describe(var Output: specialize PlasticArray<UTF8String, UTF8StringUtils>; Indent: UTF8String = ''); override;
    strict private
       FChild: UInt32;
    published
@@ -426,6 +435,7 @@ type
          end;
    public
       procedure UpdateFrom(Stream: TServerStreamReader); override;
+      procedure Describe(var Output: specialize PlasticArray<UTF8String, UTF8StringUtils>; Indent: UTF8String = ''); override;
       destructor Destroy(); override;
    public
       Knowledge: specialize PlasticArray <TKnowledge, specialize IncomparableUtils<TKnowledge>>;
@@ -434,6 +444,7 @@ type
    TModelResearchFeature = class (TModelFeature)
    public
       procedure UpdateFrom(Stream: TServerStreamReader); override;
+      procedure Describe(var Output: specialize PlasticArray<UTF8String, UTF8StringUtils>; Indent: UTF8String = ''); override;
    strict private
       FDisabledReasons: Cardinal;
       FTopic: UTF8String;
@@ -462,6 +473,7 @@ type
    TModelOrePileFeature = class (TModelFeature)
    public
       procedure UpdateFrom(Stream: TServerStreamReader); override;
+      procedure Describe(var Output: specialize PlasticArray<UTF8String, UTF8StringUtils>; Indent: UTF8String = ''); override;
    strict private
       FPileMass: Double;
       FPileMassFlowRate: Double;
@@ -555,6 +567,7 @@ type
    TModelBuilderFeature = class (TModelFeature)
    public
       procedure UpdateFrom(Stream: TServerStreamReader); override;
+      procedure Describe(var Output: specialize PlasticArray<UTF8String, UTF8StringUtils>; Indent: UTF8String = ''); override;
    strict private
       FCapacity: UInt32;
       FRate: Double;
@@ -610,6 +623,7 @@ type
       procedure WalkChildren(Callback: TAssetWalkChildrenCallback); override;
    public
       procedure UpdateFrom(Stream: TServerStreamReader); override;
+      procedure Describe(var Output: specialize PlasticArray<UTF8String, UTF8StringUtils>; Indent: UTF8String = ''); override;
    public
       Children: specialize PlasticArray <UInt32, specialize IncomparableUtils<UInt32>>;
    end;
@@ -617,6 +631,7 @@ type
    TModelFactoryFeature = class (TModelFeature)
    public
       procedure UpdateFrom(Stream: TServerStreamReader); override;
+      procedure Describe(var Output: specialize PlasticArray<UTF8String, UTF8StringUtils>; Indent: UTF8String = ''); override;
    public
       type
          TFactoryEntry = record
@@ -1272,6 +1287,17 @@ begin
    end;
 end;
 
+procedure TModelSpaceFeature.Describe(var Output: specialize PlasticArray<UTF8String, UTF8StringUtils>; Indent: UTF8String = '');
+var
+   Child: TChild;
+begin
+   inherited;
+   for Child in Children do
+      Output.Push(Indent + '  Child: ' + IntToStr(Child.AssetID) + ' at '
+                  + FloatToStrF(Child.X, ffGeneral, 15, 4, FloatFormat) + ','
+                  + FloatToStrF(Child.Y, ffGeneral, 15, 4, FloatFormat));
+end;
+
 procedure TModelSpaceFeature.ResetChildren();
 begin
    inherited;
@@ -1311,6 +1337,29 @@ begin
       ModelSystem.Assets[Child.AssetID].FParent := Self;
       Children.Push(Child);
    end;
+end;
+
+procedure TModelOrbitFeature.Describe(var Output: specialize PlasticArray<UTF8String, UTF8StringUtils>; Indent: UTF8String = '');
+var
+   Child: TChild;
+
+   function Direction(Clockwise: Boolean): UTF8String;
+   begin
+      if (Clockwise) then
+         Result := '↻'
+      else
+         Result := '↺';
+   end;
+   
+begin
+   inherited;
+   for Child in Children do
+      Output.Push(Indent + '  Child: ' + IntToStr(Child.AssetID) + ' at '
+                  + ' a=' + FloatToStrF(Child.SemiMajorAxis, ffGeneral, 15, 4, FloatFormat)
+                  + ' e=' + FloatToStrF(Child.Eccentricity, ffGeneral, 15, 4, FloatFormat)
+                  + ' w=' + FloatToStrF(Child.Omega, ffGeneral, 15, 4, FloatFormat) // ω
+                  + ' t0=' + FloatToStrF(Child.TimeOrigin, ffGeneral, 15, 4, FloatFormat) // t₀
+                  + ' ' + Direction(Child.Clockwise));
 end;
 
 procedure TModelOrbitFeature.ResetChildren();
@@ -1355,6 +1404,15 @@ begin
    Hp := Stream.ReadInt64();
    HpRate := Stream.ReadDouble();
    MinHp := Stream.ReadInt64();
+end;
+
+procedure TModelStructureFeature.Describe(var Output: specialize PlasticArray<UTF8String, UTF8StringUtils>; Indent: UTF8String = '');
+var
+   MaterialLineItem: TMaterialLineItem;
+begin
+   inherited;
+   for MaterialLineItem in LineItems do
+      Output.Push(Indent + '  Line item: "' + MaterialLineItem.ComponentName + '" made of ' + IntToStr(MaterialLineItem.Max) + ' units ' + MaterialLineItem.MaterialName + ' (' + IntToStr(MaterialLineItem.MaterialID) + ')');
 end;
 
 
@@ -1403,6 +1461,17 @@ begin
       ModelSystem.Assets[Child.AssetID].FParent := Self;
       Children.Push(Child);
    end;
+end;
+
+procedure TModelSurfaceFeature.Describe(var Output: specialize PlasticArray<UTF8String, UTF8StringUtils>; Indent: UTF8String = '');
+var
+   Child: TChild;
+begin
+   inherited;
+   for Child in Children do
+      Output.Push(Indent + '  Child: ' + IntToStr(Child.AssetID) + ' at '
+                  + FloatToStrF(Child.X, ffGeneral, 15, 4, FloatFormat) + ','
+                  + FloatToStrF(Child.Y, ffGeneral, 15, 4, FloatFormat));
 end;
 
 procedure TModelSurfaceFeature.ResetChildren();
@@ -1458,6 +1527,18 @@ begin
    end;
 end;
 
+procedure TModelGridFeature.Describe(var Output: specialize PlasticArray<UTF8String, UTF8StringUtils>; Indent: UTF8String = '');
+var
+   Child: TChild;
+   Buildable: TBuildable;
+begin
+   inherited;
+   for Child in Children do
+      Output.Push(Indent + '  Child: ' + IntToStr(Child.AssetID) + ' at ' + IntToStr(Child.X) + ',' + IntToStr(Child.Y) + ' size ' + IntToStr(Child.Size));
+   for Buildable in Buildables do
+      Output.Push(Indent + '  Buildable: ' + Buildable.AssetClass^.Name + ' size ' + IntToStr(Buildable.Size));
+end;
+
 procedure TModelGridFeature.ResetChildren();
 begin
    inherited;
@@ -1502,6 +1583,23 @@ begin
    end;
 end;
 
+procedure TModelPopulationFeature.Describe(var Output: specialize PlasticArray<UTF8String, UTF8StringUtils>; Indent: UTF8String = '');
+var
+   GossipItem: TGossip;
+begin
+   inherited;
+   for GossipItem in FGossip do
+      Output.Push(Indent + '  Gossip: ' + GossipItem.Message
+                  + ' [source=' + IntToStr(GossipItem.Source)
+                  + ' timestamp=' + IntToStr(GossipItem.Timestamp)
+                  + ' impact=' + FloatToStrF(GossipItem.HappinessImpact, ffGeneral, 15, 4, FloatFormat)
+                  + ' duration=' + IntToStr(GossipItem.Duration)
+                  + ' anchor=' + IntToStr(GossipItem.PopulationAnchorTime)
+                  + ' affected=' + IntToStr(GossipItem.AffectedPeople)
+                  + ' spread=' + FloatToStrF(GossipItem.SpreadRate, ffGeneral, 15, 4, FloatFormat)
+                  + ']');
+end;
+
 
 procedure TModelMessageBoardFeature.UpdateFrom(Stream: TServerStreamReader);
 var
@@ -1516,6 +1614,16 @@ begin
       ModelSystem.Assets[Child].FParent := Self;
       Children.Push(Child);
    end;
+end;
+
+
+procedure TModelMessageBoardFeature.Describe(var Output: specialize PlasticArray<UTF8String, UTF8StringUtils>; Indent: UTF8String = '');
+var
+   Child: UInt32;
+begin
+   inherited;
+   for Child in Children do
+      Output.Push(Indent + '  Child: ' + IntToStr(Child));
 end;
 
 procedure TModelMessageBoardFeature.ResetChildren();
@@ -1561,11 +1669,27 @@ begin
    RemainingMass := Stream.ReadDouble();
 end;
 
+procedure TModelRubblePileFeature.Describe(var Output: specialize PlasticArray<UTF8String, UTF8StringUtils>; Indent: UTF8String = '');
+var
+   Contents: TContents;
+begin
+   inherited;
+   for Contents in KnownContents do
+      Output.Push(Indent + '  Contents: ' + IntToStr(Contents.Quantity) + ' units of material ' + IntToStr(Contents.MaterialID));
+end;
+
 
 procedure TModelProxyFeature.UpdateFrom(Stream: TServerStreamReader);
 begin
    Child := Stream.ReadCardinal();
    ModelSystem.Assets[Child].FParent := Self;
+end;
+
+
+procedure TModelProxyFeature.Describe(var Output: specialize PlasticArray<UTF8String, UTF8StringUtils>; Indent: UTF8String = '');
+begin
+   inherited;
+   Output.Push(Indent + '  Child: ' + IntToStr(Child));
 end;
 
 procedure TModelProxyFeature.ResetChildren();
@@ -1626,6 +1750,23 @@ begin
    end;
 end;
 
+procedure TModelKnowledgeFeature.Describe(var Output: specialize PlasticArray<UTF8String, UTF8StringUtils>; Indent: UTF8String = '');
+var
+   KnowledgeItem: TKnowledge;
+begin
+   inherited;
+   for KnowledgeItem in Knowledge do
+   begin
+      if (KnowledgeItem is TAssetKnowledge) then
+         Output.Push(Indent + '  Knowledge: asset class ' + TAssetKnowledge(KnowledgeItem).AssetClass^.Name + ' (' + IntToStr(TAssetKnowledge(KnowledgeItem).AssetClass^.ID) + ')')
+      else
+      if (KnowledgeItem is TMaterialKnowledge) then
+         Output.Push(Indent + '  Knowledge: material ' + TMaterialKnowledge(KnowledgeItem).Name + ' (' + IntToStr(TMaterialKnowledge(KnowledgeItem).MaterialID) + ')')
+      else
+         Output.Push(Indent + '  Knowledge: ' + KnowledgeItem.ClassName);
+   end;
+end;
+
 destructor TModelKnowledgeFeature.Destroy();
 var
    KnowledgeItem: TKnowledge;
@@ -1654,6 +1795,15 @@ begin
    Progress := Stream.ReadByte();
 end;
 
+procedure TModelResearchFeature.Describe(var Output: specialize PlasticArray<UTF8String, UTF8StringUtils>; Indent: UTF8String = '');
+var
+   TopicItem: UTF8String;
+begin
+   inherited;
+   for TopicItem in FTopics do
+      Output.Push(Indent + '  Topic: "' + TopicItem + '"');
+end;
+
 
 procedure TModelMiningFeature.UpdateFrom(Stream: TServerStreamReader);
 begin
@@ -1678,6 +1828,15 @@ begin
          break;
       Materials.Push(Material);
    end;
+end;
+
+procedure TModelOrePileFeature.Describe(var Output: specialize PlasticArray<UTF8String, UTF8StringUtils>; Indent: UTF8String = '');
+var
+   Material: Int32;
+begin
+   inherited;
+   for Material in Materials do
+      Output.Push(Indent + '  Material: ' + IntToStr(Material));
 end;
 
 
@@ -1746,6 +1905,15 @@ begin
    end;
 end;
 
+procedure TModelBuilderFeature.Describe(var Output: specialize PlasticArray<UTF8String, UTF8StringUtils>; Indent: UTF8String = '');
+var
+   Structure: UInt32;
+begin
+   inherited;
+   for Structure in Structures do
+      Output.Push(Indent + '  Structure: ' + IntToStr(Structure));
+end;
+
 
 procedure TModelInternalSensorFeature.UpdateFrom(Stream: TServerStreamReader);
 begin
@@ -1785,6 +1953,15 @@ begin
       ModelSystem.Assets[Child].FParent := Self;
       Children.Push(Child);
    end;
+end;
+
+procedure TModelAssetPileFeature.Describe(var Output: specialize PlasticArray<UTF8String, UTF8StringUtils>; Indent: UTF8String = '');
+var
+   Child: UInt32;
+begin
+   inherited;
+   for Child in Children do
+      Output.Push(Indent + '  Child: ' + IntToStr(Child));
 end;
 
 procedure TModelAssetPileFeature.ResetChildren();
@@ -1832,6 +2009,17 @@ begin
    FConfiguredRate := Stream.ReadDouble();
    FCurrentRate := Stream.ReadDouble();
    FDisabledReasons := Stream.ReadCardinal();
+end;
+
+procedure TModelFactoryFeature.Describe(var Output: specialize PlasticArray<UTF8String, UTF8StringUtils>; Indent: UTF8String = '');
+var
+   Entry: TFactoryEntry;
+begin
+   inherited;
+   for Entry in FInputs do
+      Output.Push(Indent + '  Input: ' + IntToStr(Entry.Quantity) + ' of material ' + IntToStr(Entry.MaterialID));
+   for Entry in FOutputs do
+      Output.Push(Indent + '  Output: ' + IntToStr(Entry.Quantity) + ' of material ' + IntToStr(Entry.MaterialID));
 end;
 
 

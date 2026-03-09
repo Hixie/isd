@@ -540,6 +540,9 @@ type
       FCallback: TEventCallback;
       FData: Pointer;
       FSystem: TSystem;
+      {$IFOPT C+}
+      FStackTrace: UTF8String;
+      {$ENDIF}
       {$PUSH}
       {$WARN 3019 OFF} // (it wants the destructor to be public for some reason)
       destructor Cancel();
@@ -1704,12 +1707,13 @@ var
    OldFeatures: TFeatureNode.TArray;
    Feature: TFeatureNode;
 begin
+   if (Assigned(Parent)) then
+      Parent.DropChild(Self);
    OldFeatures := FFeatures;
    SetLength(FFeatures, 0);
    for Feature in OldFeatures do
       Feature.Free();
-   if (Assigned(Parent)) then // TODO: should move this above the features getting destroyed, then move all features' Destroy logic into Detaching
-      Parent.DropChild(Self);
+   Assert(Length(FFeatures) = 0);
    inherited;
 end;
 
@@ -3113,6 +3117,10 @@ var
 begin
    Writeln('System ', SystemID, ' running event...');
    Event := TSystemEvent(Data);
+   {$IFOPT C+}
+   Writeln('Event scheduler:');
+   Writeln(Event.FStackTrace);
+   {$ENDIF}
    Assert(Assigned(Event));
    Assert(FScheduledEvents.Has(Event));
    Assert(FNextEvent = Event);
@@ -3354,6 +3362,9 @@ begin
    FCallback := ACallback;
    FData := AData;
    FSystem := ASystem;
+   {$IFOPT C+}
+   FStackTrace := GetStackTrace();
+   {$ENDIF}
 end;
 
 destructor TSystemEvent.Cancel();

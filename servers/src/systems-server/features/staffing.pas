@@ -95,6 +95,7 @@ destructor TStaffingFeatureNode.Destroy();
 begin
    if (Assigned(FPeopleBus)) then
       FPeopleBus.RemoveEmployer(Self);
+   // See also Detaching
    inherited;
 end;
 
@@ -109,6 +110,7 @@ end;
 
 procedure TStaffingFeatureNode.Detaching();
 begin
+   // See also Destroy
    if (Assigned(FPeopleBus)) then
    begin
       FPeopleBus.RemoveEmployer(Self);

@@ -40,6 +40,7 @@ type
    public
       constructor Create(ASystem: TSystem; AFeatureClass: TEnergyConsumerFeatureClass);
       destructor Destroy(); override;
+      procedure Attaching(); override; 
       procedure Detaching(); override;
       procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader); override;
@@ -99,8 +100,14 @@ end;
 
 destructor TEnergyConsumerFeatureNode.Destroy();
 begin
-   Detaching(); // TODO: temporary hack until TAssetNode.Destroy is fixed to detach first
+   if (FBus.Assigned) then
+      Detaching();
    inherited;
+end;
+
+procedure TEnergyConsumerFeatureNode.Attaching();
+begin
+   MarkAsDirty([dkNeedsHandleChanges]);
 end;
 
 procedure TEnergyConsumerFeatureNode.Detaching();

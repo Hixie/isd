@@ -65,6 +65,8 @@ type
       FChildren: TAssetNode.TArray;
       function GetOrbitName(): UTF8String;
    protected
+      procedure Attaching(); override;
+      procedure Detaching(); override;
       procedure AdoptOrbitingChild(Child: TAssetNode); // Child must be an orbit.
       procedure ParentMarkedAsDirty(ParentDirtyKinds, NewDirtyKinds: TDirtyKinds); override;
       function GetMass(): TMass; override;
@@ -243,6 +245,24 @@ begin
    inherited;
 end;
 
+procedure TOrbitFeatureNode.Attaching();
+begin
+   MarkAsDirty([dkNeedsHandleChanges]);
+end;
+
+procedure TOrbitFeatureNode.Detaching();
+var
+   Child: TAssetNode;
+   OrbitData: POrbitData;
+begin
+   for Child in FChildren do
+   begin
+      OrbitData := POrbitData(Child.ParentData);
+      if (Assigned(OrbitData^.CrashEvent)) then
+         CancelEvent(POrbitData(Child.ParentData)^.CrashEvent);
+   end;
+end;
+
 procedure TOrbitFeatureNode.AdoptOrbitingChild(Child: TAssetNode);
 begin
    AdoptChild(Child);
@@ -253,18 +273,20 @@ end;
 procedure TOrbitFeatureNode.DropChild(Child: TAssetNode);
 var
    Index: Cardinal;
+   OrbitData: POrbitData;
 begin
    if (Assigned(Child.ParentData)) then // the primary child doesn't have parent data
    begin
-      if (Assigned(POrbitData(Child.ParentData)^.CrashEvent)) then
+      OrbitData := POrbitData(Child.ParentData);
+      if (Assigned(OrbitData^.CrashEvent)) then
       begin
-         CancelEvent(POrbitData(Child.ParentData)^.CrashEvent);
+         CancelEvent(OrbitData^.CrashEvent);
       end;
-      Delete(FChildren, POrbitData(Child.ParentData)^.Index, 1);
-      if (POrbitData(Child.ParentData)^.Index < Length(FChildren)) then
-         for Index := POrbitData(Child.ParentData)^.Index to High(FChildren) do // $R-
+      Delete(FChildren, OrbitData^.Index, 1);
+      if (OrbitData^.Index < Length(FChildren)) then
+         for Index := OrbitData^.Index to High(FChildren) do // $R-
             POrbitData(FChildren[Index].ParentData)^.Index := Index;
-      Dispose(POrbitData(Child.ParentData));
+      Dispose(OrbitData);
       Child.ParentData := nil;
    end
    else

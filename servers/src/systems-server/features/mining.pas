@@ -34,6 +34,8 @@ type
       function GetDynasty(): TDynasty;
    protected
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
+      procedure Attaching(); override; 
+      procedure Detaching(); override;
       procedure HandleChanges(); override;
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
@@ -85,9 +87,20 @@ end;
 destructor TMiningFeatureNode.Destroy();
 begin
    if (FStatus.Connected) then
+      Detaching();
+   inherited;
+end;
+
+procedure TMiningFeatureNode.Attaching();
+begin
+   MarkAsDirty([dkNeedsHandleChanges]);
+end;
+
+procedure TMiningFeatureNode.Detaching();
+begin
+   if (FStatus.Connected) then
       FStatus.Region.RemoveMiner(Self);
    FStatus.Reset();
-   inherited;
 end;
 
 function TMiningFeatureNode.GetMinerMaxRate(): TMassRate; // kg per second

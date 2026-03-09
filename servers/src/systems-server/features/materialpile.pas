@@ -105,8 +105,7 @@ end;
 destructor TMaterialPileFeatureNode.Destroy();
 begin
    if (FRegion.Assigned) then
-      FRegion.Unwrap().RemoveMaterialPile(Self);
-   FRegion.Clear();
+      Detaching();
    FMaterialKnowledge.Done();
    inherited;
 end;

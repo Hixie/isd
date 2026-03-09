@@ -113,6 +113,7 @@ type
       FSubscriptions: specialize PlasticArray<TCallback, specialize DefaultUnorderedUtils<TCallback>>;
       procedure FreeCaches();
    protected
+      procedure Detaching(); override;
       procedure NotifySubscribers();
       procedure ParentMarkedAsDirty(ParentDirtyKinds, NewDirtyKinds: TDirtyKinds); override;
       function ManageBusMessage(Message: TBusMessage): TInjectBusMessageResult; override;
@@ -330,8 +331,19 @@ end;
 destructor TKnowledgeBusFeatureNode.Destroy();
 begin
    FreeCaches();
-   NotifySubscribers();
+   if (FSubscriptions.IsNotEmpty) then
+      Detaching();
    inherited;
+end;
+
+procedure TKnowledgeBusFeatureNode.Detaching();
+var
+   Callback: TCallback;
+begin
+   for Callback in FSubscriptions do
+      if (Assigned(Callback)) then
+         Callback();
+   FSubscriptions.Empty();
 end;
 
 procedure TKnowledgeBusFeatureNode.NotifySubscribers();

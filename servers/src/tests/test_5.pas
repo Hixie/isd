@@ -47,6 +47,8 @@ var
    Index: QWord;
    LoginServer, DynastyServer, SystemsServer: TServerWebSocket;
    Success: Boolean;
+   HomeRegion: TModelGridFeature;
+   AssetClass: Int32;
 begin
    LoginServer := FLoginServer.ConnectWebSocket();
    LoginServer.SendWebSocketStringMessage('0'#00'new'#00);
@@ -93,10 +95,56 @@ begin
 
    AdvanceTime(1 * Hours);
    ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 31); // crash // 18 if we fix the bug where structure dirties itself even when knowledge didn't change
-   // HomeRegion := specialize GetUpdatedFeature<TModelGridFeature>(ModelSystem).Parent;
+   HomeRegion := specialize GetUpdatedFeature<TModelGridFeature>(ModelSystem);
 
    LoginServerIPC.AwaitScores(1);
 
+  // unlocks asset "Iron Mine";
+  // unlocks asset "Factory";
+  // unlocks asset "Structure";
+
+   AssetClass := GetAssetClassFromBuildingsList(HomeRegion, 'Iron Mine');
+   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.Parent.ID) + #00'build'#00'0'#00'0'#00 + IntToStr(AssetClass) + #00);
+   Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
+   VerifyPositiveResponse(Response);
+   FreeAndNil(Response);
+   TimePinned := True;
+   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 3);
+
+   AssetClass := GetAssetClassFromBuildingsList(HomeRegion, 'Structure');
+   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.Parent.ID) + #00'build'#00'1'#00'0'#00 + IntToStr(AssetClass) + #00);
+   Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
+   VerifyPositiveResponse(Response);
+   FreeAndNil(Response);
+   TimePinned := True;
+   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 4);
+
+   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.Parent.ID) + #00'build'#00'2'#00'0'#00 + IntToStr(AssetClass) + #00);
+   Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
+   VerifyPositiveResponse(Response);
+   FreeAndNil(Response);
+   TimePinned := True;
+   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 5);
+
+   AssetClass := GetAssetClassFromBuildingsList(HomeRegion, 'Factory');
+   SystemsServer.SendWebSocketStringMessage('0'#00'play'#00 + IntToStr(ModelSystem.SystemID) + #00 + IntToStr(HomeRegion.Parent.ID) + #00'build'#00'0'#00'1'#00 + IntToStr(AssetClass) + #00);
+   Response := TStringStreamReader.Create(SystemsServer.ReadWebSocketStringMessage());
+   VerifyPositiveResponse(Response);
+   FreeAndNil(Response);
+   TimePinned := True;
+   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 6);
+
+   with (specialize GetUpdatedFeature<TModelFactoryFeature>(ModelSystem, 0)) do
+   begin
+      Verify(DisabledReasons = %00000000);
+   end;
+
+   AdvanceTime(10000000 * Days);
+
+   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 3);
+   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 3);
+   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 3);
+   
    FreeAndNil(ModelSystem);
    SystemsServerIPC.CloseSocket();
    FreeAndNil(SystemsServerIPC);
@@ -127,7 +175,7 @@ begin
    ModelSystem := TModelSystem.Create();
 
    TimePinned := True;
-   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 64); // 30 if we fix the bug where structure dirties itself even when knowledge didn't change
+   ExpectUpdate(SystemsServer, ModelSystem, MinTime, MaxTime, TimePinned, 68);
 
    FreeAndNil(ModelSystem);
    SystemsServer.CloseWebSocket();

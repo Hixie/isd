@@ -150,7 +150,7 @@ end;
 destructor TPopulationFeatureNode.Destroy();
 begin
    if (Assigned(FPeopleBus)) then
-      FPeopleBus.RemoveHousing(Self);
+      Detaching();
    FGossip.Free();
    inherited;
 end;

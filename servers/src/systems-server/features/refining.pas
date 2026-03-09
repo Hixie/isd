@@ -40,6 +40,8 @@ type
       function GetPendingFraction(): PFraction32;
    protected
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
+      procedure Attaching(); override; 
+      procedure Detaching(); override;
       procedure HandleChanges(); override;
       {$IFOPT C+}
       procedure ResetDynastyNotes(OldDynasties: TDynastyIndexHashTable; NewDynasties: TDynasty.TArray); override;
@@ -109,9 +111,20 @@ end;
 destructor TRefiningFeatureNode.Destroy();
 begin
    if (FStatus.Connected) then
+      Detaching();
+   inherited;
+end;
+
+procedure TRefiningFeatureNode.Attaching();
+begin
+   MarkAsDirty([dkNeedsHandleChanges]);
+end;
+
+procedure TRefiningFeatureNode.Detaching();
+begin
+   if (FStatus.Connected) then
       FStatus.Region.RemoveRefinery(Self);
    FStatus.Reset();
-   inherited;
 end;
 
 function TRefiningFeatureNode.GetRefineryOre(): TOres;

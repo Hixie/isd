@@ -310,6 +310,8 @@ type
       procedure ReturnOreToGround(DynastyData: PPerDynastyData; TotalOrePileMass, TotalTransferMass: TMass);
    protected
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
+      procedure Attaching(); override; 
+      procedure Detaching(); override;
       function GetMass(): TMass; override;
       function GetMassFlowRate(): TMassRate; override;
       function ManageBusMessage(Message: TBusMessage): TInjectBusMessageResult; override;
@@ -896,13 +898,25 @@ end;
 destructor TRegionFeatureNode.Destroy();
 begin
    if (FActive) then
+      Detaching();
+   inherited;
+end;
+
+procedure TRegionFeatureNode.Attaching();
+begin
+   MarkAsDirty([dkNeedsHandleChanges]);
+end;
+
+procedure TRegionFeatureNode.Detaching();
+begin
+   if (FActive) then
    begin
       if (Assigned(FNextEvent)) then
          CancelEvent(FNextEvent);
       FDynamic := False;
       Reset();
+      Assert(not FActive);
    end;
-   inherited;
 end;
 
 function TRegionFeatureNode.GetMass(): TMass;
@@ -2767,11 +2781,13 @@ begin
          TimeUntilOrePilesEmpty := TMillisecondsDuration.Infinity;
          TimeUntilOrePilesFull := TMillisecondsDuration.Infinity;
          TotalNetOrePileGrowthRate := TMassRate.Zero;            
+         Writeln('  ore pile dynamics:');
          for Ore in TOres do
          begin
             Material := System.Encyclopedia.Materials[Ore];
             OreRefiningRate := OreRefiningRates[Ore].Flatten();
             NetOrePileGrowthRate := OreMiningRates[Ore] - OreRefiningRate;
+            Writeln('    ', Material.Name, ': ', NetOrePileGrowthRate.ToString(), ' (mining at ', OreMiningRates[Ore].ToString(), ', refining at ', OreRefiningRate.ToString(), ', net: ', (NetOrePileGrowthRate * Material.MassPerUnit).ToString(), ')');
             TotalNetOrePileGrowthRate := TotalNetOrePileGrowthRate + NetOrePileGrowthRate * Material.MassPerUnit;
             if (NetOrePileGrowthRate.IsNegative) then
             begin
@@ -2796,6 +2812,8 @@ begin
             RemainingOrePileCapacity := OrePileCapacity - TotalOrePileMass;
             if (RemainingOrePileCapacity.IsPositive) then
             begin
+               Writeln('  TotalNetOrePileGrowthRate=', TotalNetOrePileGrowthRate.ToString());
+               Writeln('  RemainingOrePileCapacity=', RemainingOrePileCapacity.ToString());
                TimeUntilOrePilesFull := RemainingOrePileCapacity / TotalNetOrePileGrowthRate;
                Writeln('  ore piles will fill in ', TimeUntilOrePilesFull.ToString());
             end

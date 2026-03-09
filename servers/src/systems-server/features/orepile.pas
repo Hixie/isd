@@ -56,6 +56,7 @@ type
       function GetDynasty(): TDynasty;
    protected
       constructor CreateFromJournal(Journal: TJournalReader; AFeatureClass: TFeatureClass; ASystem: TSystem); override;
+      procedure Attaching(); override; 
       procedure Detaching(); override;
       function GetMass(): TMass; override;
       function GetMassFlowRate(): TMassRate; override;
@@ -279,9 +280,23 @@ end;
 destructor TOrePileFeatureNode.Destroy();
 begin
    if (FRegion.Assigned) then
-      FRegion.Unwrap().RemoveOrePile(Self);
+      Detaching();
    FDynastyKnowledge.Done();
    inherited;
+end;
+
+procedure TOrePileFeatureNode.Attaching();
+begin
+   MarkAsDirty([dkNeedsHandleChanges]);
+end;
+
+procedure TOrePileFeatureNode.Detaching();
+begin
+   if (FRegion.Assigned) then
+   begin
+      FRegion.Unwrap().RemoveOrePile(Self);
+      FRegion.Clear();
+   end;
 end;
 
 function TOrePileFeatureNode.GetOrePileCapacity(): TMass;
@@ -364,15 +379,6 @@ begin
       FRegion.SetFlag(rfSearchedForRegion);
    end;
    inherited;
-end;
-
-procedure TOrePileFeatureNode.Detaching();
-begin
-   if (FRegion.Assigned) then
-   begin
-      FRegion.Unwrap().RemoveOrePile(Self);
-      FRegion.Clear();
-   end;
 end;
 
 function TOrePileFeatureNode.GetMass(): TMass;

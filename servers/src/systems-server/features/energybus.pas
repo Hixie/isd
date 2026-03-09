@@ -75,12 +75,13 @@ type
       procedure Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter); override;
    public
       constructor Create(ASystem: TSystem; AFeatureClass: TEnergyBusFeatureClass);
-      destructor Destroy(); override;
+      procedure Attaching(); override; 
       procedure Detaching(); override;
       procedure HandleChanges(); override;
       procedure UpdateJournal(Journal: TJournalWriter); override;
       procedure ApplyJournal(Journal: TJournalReader); override;
    public
+      destructor Destroy(); override;
       procedure DisconnectGenerator(Client: IEnergyGenerator);
       procedure DisconnectConsumer(Client: IEnergyConsumer);
       procedure ClientChanged();
@@ -163,8 +164,14 @@ end;
 
 destructor TEnergyBusFeatureNode.Destroy();
 begin
-   Detaching(); // TODO: temporary hack until TAssetNode.Destroy is fixed to detach first
+   if (Assigned(FData)) then
+      Detaching();
    inherited;
+end;
+
+procedure TEnergyBusFeatureNode.Attaching();
+begin
+   MarkAsDirty([dkNeedsHandleChanges]);
 end;
 
 procedure TEnergyBusFeatureNode.Detaching();

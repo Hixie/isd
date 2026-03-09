@@ -27,6 +27,8 @@ type
       FDisabledReasons: TDisabledReasons;
       FRateLimit: Double;
       FLastCountDetected: Cardinal;
+      procedure Attaching(); override; 
+      procedure Detaching(); override;
       procedure ResetVisibility(); override;
       procedure HandleKnowledgeChanged();
       procedure HandleChanges(); override;
@@ -86,10 +88,21 @@ end;
 destructor TSensorFeatureNode.Destroy();
 begin
    if (FSubscription.Subscribed) then
-      FSubscription.Unsubscribe();
+      Detaching();
    Assert(not Assigned(FKnownMaterials));
    Assert(not Assigned(FKnownAssetClasses));
    inherited;
+end;
+
+procedure TSensorFeatureNode.Attaching();
+begin
+   MarkAsDirty([dkNeedsHandleChanges]);
+end;
+
+procedure TSensorFeatureNode.Detaching();
+begin
+   if (FSubscription.Subscribed) then
+      FSubscription.Unsubscribe();
 end;
 
 function TSensorFeatureNode.GetDebugName(): UTF8String;
