@@ -684,9 +684,9 @@ begin
                Assert(Remaining.IsPositive);
                // expected quantity unknown
                if (Remaining < Quantity) then
-                  Writer.WriteInt64(Remaining.AsInt64)
+                  Writer.WriteCardinal(Remaining.AsInt64)
                else
-                  Writer.WriteInt64(Quantity.AsCardinal);
+                  Writer.WriteCardinal(Quantity.AsCardinal);
                Writer.WriteStringReference(''); // component name unknown
             end;
             Writer.WriteStringReference(FFeatureClass.BillOfMaterials[Index].Material.AmbiguousName);
