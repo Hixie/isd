@@ -31,7 +31,7 @@ type
       FFeatureClass: TFactoryFeatureClass;
       FRegion: specialize TAnnotatedPointer<TRegionFeatureNode, TBusStatus>;
       FConfiguredMaxRate: TIterationsRate; // the rate set by the player
-      FCurrentRate: TIterationsRate; // FFeatureClass.FMaxRate * RateLimit, limited to FConfiguredMaxRate; FLocalDisabledReason overrides this
+      FCurrentRate: TIterationsRate; // FFeatureClass.FMaxRate * RateLimit, limited to FConfiguredMaxRate; if bsNoRegion, bsInputStalled, or bsOutputStalled are set, this is irrelevant
       FDisabledReasons: TDisabledReasons;
       FPendingFraction: Fraction32;
       FBacklog: Cardinal; // number of cycles we've artificially kept back because it was causing accounting issues
@@ -230,6 +230,7 @@ begin
       srOutput: FRegion.SetFlag(bsOutputStalled);
    end;
    FRegion.Wrap(nil);
+   Assert(not FRegion.Assigned);
    Assert(FRegion.IsFlagSet(bsInputStalled) xor FRegion.IsFlagSet(bsOutputStalled));
    FPendingFraction.ResetToZero();
    FBacklog := 0;
@@ -304,7 +305,7 @@ begin
    end;
    if (PoweredLimit.IsExactZero) then
    begin
-      Writeln('  => Disabled due to configuration or other issue.');
+      Writeln('  => Disabled due to configuration or rate limit from earlier feature.');
       Assert(FDisabledReasons <> []);
       if (FRegion.Assigned) then
       begin
@@ -347,34 +348,30 @@ var
 begin
    if (Message is TCheckDisabledBusMessage) then
    begin
+      Writeln(DebugName, ' :: HandleBusMessage for ', Message.ClassName);
       DisabledMessage := Message as TCheckDisabledBusMessage;
       if (DisabledMessage.SourceIdentifier = Pointer(Self)) then
       begin
          Result := hrShortcut;
          exit;
       end;
-      if (FRegion.IsFlagSet(bsNoRegion)) then
-      begin
-         Assert(not FRegion.Assigned);
-         DisabledMessage.AddReason(drNoBus);
-      end
-      else
-      if (FCurrentRate < FFeatureClass.FMaxRate) then
+      if (FRegion.AnyFlagSet) then
       begin
          NextReason := [];
-         if (FRegion.IsFlagSet(bsNoRegion)) then
-         begin
-            Assert(not FRegion.Assigned);
-            Assert(FCurrentRate.IsExactZero);
-            Include(NextReason, drNoBus);
-         end;
          if (FRegion.IsFlagSet(bsInputStalled)) then
             Include(NextReason, drCannotGuaranteeInput);
          if (FRegion.IsFlagSet(bsOutputStalled)) then
             Include(NextReason, drCannotStoreOutput);
          if (FConfiguredMaxRate < FFeatureClass.FMaxRate) then
             Include(NextReason, drConfiguration);
-         DisabledMessage.AddReasons(NextReason, FCurrentRate / FFeatureClass.FMaxRate);
+         Assert(NextReason <> [], 'Could not figure out why we''re slow');
+         DisabledMessage.AddReasons(NextReason, 0.0);
+      end
+      else
+      if (FCurrentRate < FFeatureClass.FMaxRate) then
+      begin
+         Assert(FRegion.Assigned or FCurrentRate.IsExactZero);
+         DisabledMessage.AddReasons(FDisabledReasons, FCurrentRate / FFeatureClass.FMaxRate);
       end;
    end;
    Result := inherited HandleBusMessage(Message);
@@ -406,7 +403,7 @@ begin
       WriteManifest(FFeatureClass.FOutputs);
       Writer.WriteDouble(FFeatureClass.FMaxRate.AsDouble);
       Writer.WriteDouble(FConfiguredMaxRate.AsDouble);
-      if (FRegion.Assigned) then
+      if (FRegion.Assigned and not FRegion.AnyFlagSet) then
       begin
          Writer.WriteDouble(FCurrentRate.AsDouble)
       end
@@ -421,7 +418,7 @@ begin
          Include(ReportedDisabledReason, drSourceLimited);
       if (FRegion.IsFlagSet(bsOutputStalled)) then
          Include(ReportedDisabledReason, drTargetLimited);
-      Assert((FRegion.Assigned and FCurrentRate.IsNotExactZero) or FConfiguredMaxRate.IsExactZero or (ReportedDisabledReason <> [])); // PROBLEM ASSERT
+      Assert((FRegion.Assigned and FCurrentRate.IsNotExactZero) or FConfiguredMaxRate.IsExactZero or (ReportedDisabledReason <> []));
       Writer.WriteCardinal(Cardinal(ReportedDisabledReason));
    end;
 end;

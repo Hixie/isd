@@ -684,7 +684,7 @@ begin
                Assert(Remaining.IsPositive);
                // expected quantity unknown
                if (Remaining < Quantity) then
-                  Writer.WriteCardinal(Remaining.AsInt64)
+                  Writer.WriteCardinal(Remaining.AsInt64) // $R- (always safe here because Quantity is 32bit and Remaining < Quantity)
                else
                   Writer.WriteCardinal(Quantity.AsCardinal);
                Writer.WriteStringReference(''); // component name unknown

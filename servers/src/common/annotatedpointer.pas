@@ -10,6 +10,7 @@ type
    strict private
       FValue: PtrUInt;
       function GetAssigned(): Boolean; inline;
+      function GetAnyFlagSet(): Boolean; inline;
    public
       class operator := (Value: PType): specialize TAnnotatedPointer<PType, TFlags>; inline; // also clears flags
       procedure Clear(); inline; // clears value and flags
@@ -22,6 +23,7 @@ type
       function IsFlagSet(Flag: TFlags): Boolean; inline;
       function IsFlagClear(Flag: TFlags): Boolean; inline;
       property Assigned: Boolean read GetAssigned;
+      property AnyFlagSet: Boolean read GetAnyFlagSet;
    end;
 
 implementation
@@ -58,6 +60,11 @@ end;
 function TAnnotatedPointer.GetAssigned(): Boolean;
 begin
    Result := system.Assigned(PType(FValue and not $07));
+end;
+
+function TAnnotatedPointer.GetAnyFlagSet(): Boolean;
+begin
+   Result := (FValue and $07) > $00;
 end;
 
 procedure TAnnotatedPointer.ConfigureFlag(Flag: TFlags; Value: Boolean);

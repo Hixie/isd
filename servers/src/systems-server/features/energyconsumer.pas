@@ -124,6 +124,7 @@ var
    RateLimit: Double;
    Message: TRegisterEnergyConsumerBusMessage;
 begin
+   Writeln(DebugName, ' :: HandleChanges');
    FDisabledReasons := CheckDisabled(Parent, Self, RateLimit);
    if (RateLimit = 0.0) then
    begin
@@ -138,6 +139,7 @@ begin
    begin
       if (FBus.IsFlagClear(csSentBusRegistration)) then
       begin
+         Writeln('  Sending bus registration...');
          Message := TRegisterEnergyConsumerBusMessage.Create(Self);
          FBus.SetFlag(csSentBusRegistration);
          InjectBusMessage(Message);
@@ -158,15 +160,15 @@ var
 begin
    if (Message is TCheckDisabledBusMessage) then
    begin
+      Writeln(DebugName, ' :: HandleBusMessage for ', Message.ClassName);
       DisabledMessage := Message as TCheckDisabledBusMessage;
       if (DisabledMessage.SourceIdentifier = Pointer(Self)) then
       begin
          Result := hrShortcut;
          exit;
       end;
-      if (not FBus.Assigned) then
+      if ((not FBus.Assigned) and FBus.IsFlagSet(csSentBusRegistration)) then
       begin
-         Assert(FBus.IsFlagSet(csSentBusRegistration));
          DisabledMessage.AddReason(drNoBus);
       end
       else

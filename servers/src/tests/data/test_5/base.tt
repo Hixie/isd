@@ -202,7 +202,7 @@ material "Beam" {
   vaguely: "Beam vague.";
   description: "Beam clear.";
   icon: "beam";
-  metrics: component, size 1m, mass 1kg;
+  metrics: component, size 1m, mass 1000kg;
 }
 
 asset "Factory" {
@@ -211,7 +211,7 @@ asset "Factory" {
   description: "Factory clear description.";
   icon: "factory";
   build: land;
-  feature: Factory input "Iron", output "Beam" * 1000kg, max throughput 1/min;
+  feature: Factory input "Iron" * 1000kg, output "Beam", max throughput 1/min;
   feature: Size 10m;
 }
 

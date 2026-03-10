@@ -2169,8 +2169,12 @@ procedure TAssetNode.HandleChanges();
 var
    Feature: TFeatureNode;
 begin
+   Writeln(DebugName, ' :: HandleChanges');
    for Feature in FFeatures do
+   begin
+      Writeln(' - ', Feature.ClassName);
       Feature.HandleChanges();
+   end;
 end;
 
 procedure TAssetNode.Serialize(DynastyIndex: Cardinal; Writer: TServerStreamWriter);
